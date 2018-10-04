@@ -1,0 +1,13 @@
+/.stack-work/
+/*.cabal
+/dist
+/dist-newstyle
+cabal.exe
+.ghc.*
+
+#
+old/
+concat/
+logo/
+tree-view/
+typelits-witnesses/

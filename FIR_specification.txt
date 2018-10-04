@@ -1,0 +1,53 @@
+
+
+Basic types:
+  - ()
+  - Bool
+  - Int (signed/unsigned, various sizes)
+  - Float (various sizes)
+
+Compound types:
+  - VecN (N in {2,3,4}) of floats
+  - MatNxM (N,M in {2,3,4}) of floats
+  - Array (containing any basic type)
+  - Record (containing any other types)
+
+Pointers:
+  - annotated with the type of the thing they point to
+
+ Constants:
+  - () :: ()
+  - True, False :: Bool
+  - constant integers
+  - constant floats
+
+Constructors:
+  - vec2 :: a -> a -> V2 a a, etc
+  - matnxm
+  - arrays...
+
+Operations:
+  - logical operations on booleans
+    - &&, ||, not
+  - numeric operations on numeric types
+    - +, -, *, /
+  - conversions between numeric types
+  - bitwise operations on numeric types
+  - standard floating point functions
+    - sin, cos, exp, log, atan2, etc
+  - vector and matrix linear algebra
+  - functor / foldable instances for vectors, matrices, arrays
+  - load/store through pointers
+
+Functions:
+  - ???
+
+Control flow:
+  - if/then
+  - switch
+  - loops
+
+
+need to think about records/structs and in particular memory layout & alignment concerns
+structs should use type-level symbols to access individual components
+arrays should use runtime ints
