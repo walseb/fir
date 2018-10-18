@@ -8,8 +8,13 @@ hoogle.exe
 *.html
 
 #
-old/
+src/old/
+
+#
 concat/
 logo/
 tree-view/
 typelits-witnesses/
+
+#
+refs/

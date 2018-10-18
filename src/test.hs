@@ -49,7 +49,7 @@ instance MonadIxFail (Codensity S) where
 
 
 type Program i j a
-  = Codensity S (AST a := (Union (FromList i) (FromList j))) (FromList i)
+  = Codensity S (AST a := Union (FromList i) (FromList j)) (FromList i)
 
 type R  = '[ 'Read  ]
 type W  = '[ 'Write ]
@@ -57,19 +57,20 @@ type RW = '[ 'Read, 'Write ]
 
 program :: 
   Program
-    '[ "gl_Model"      ':-> 'Var R (M 4 4 Float)
-     , "gl_View"       ':-> 'Var R (M 4 4 Float)
-     , "gl_Projection" ':-> 'Var R (M 4 4 Float)
-     , "gl_Position"   ':-> 'Var R (V 3 Float)
+    '[ "model"       ':-> 'Var R (M 4 4 Float)
+     , "view"        ':-> 'Var R (M 4 4 Float)
+     , "projection"  ':-> 'Var R (M 4 4 Float)
+     , "position"    ':-> 'Var R (V 3 Float)
+     , "gl_Position" ':-> 'Var W (V 3 Float)
      ]    
-    '[ "main"          ':-> 'Fun '[] (V 3 Float)
+    '[ "main"        ':-> 'Fun '[] ()
      ]
-    (V 3 Float)
+    ()
 program = do
-  model         <- get @"gl_Model"
-  view          <- get @"gl_View"
-  projection    <- get @"gl_Projection"
-  Vec3 px py pz <- get @"gl_Position"
+  model         <- get @"model"
+  view          <- get @"view"
+  projection    <- get @"projection"
+  Vec3 px py pz <- get @"position"
 
   let mvp        = projection !*! view !*! model
       position'  = vec4 px py pz 1
@@ -77,7 +78,7 @@ program = do
   fundef @"main" $ do
     def @"pos" @R ( mvp !*^ position' )
     Vec4 x y z _ <- get @"pos"
-    pure ( vec3 x y z )
+    put @"gl_Position" ( vec3 x y z )
 
   
 test :: IO()

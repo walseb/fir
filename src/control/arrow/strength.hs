@@ -1,6 +1,6 @@
 module Control.Arrow.Strength where
 
-import Control.Arrow(Arrow(first,second,(***),(&&&)), (>>^), (^>>))
+import Control.Arrow(Arrow(first,second, (&&&)), (>>^))
 
 ---------------------------------------------------
 -- Functor f => Strong (Star f)

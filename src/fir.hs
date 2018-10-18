@@ -34,7 +34,7 @@ import GHC.TypeLits(KnownNat, type (+), type (-), KnownSymbol, TypeError, ErrorM
 import GHC.TypeNats(type (<=?))
 
 -- fir  
-import AST((:=)(WithIx), AST(..), PrimTy, ScalarTy(scalar), S)
+import AST((:=)(WithIx), AST(..), PrimTy, ScalarTy(InternalScalar), S)
 import qualified AST
 import Bindings(Assignment((:->)), CanDef, CanFunDef, Put, Get, Union, Variadic, Binding(Var,Fun), BindingType, Insert)
 import TypeClasses.Logic ( Eq(..), Boolean(..), HasBool(..)
@@ -49,7 +49,7 @@ import Linear( Semimodule(..), Module(..)
              , dfoldrV, buildV
              , pattern V2, pattern V3, pattern V4
              )
-import qualified SPIRV
+import qualified SPIRV.PrimOps as SPIRV
 
 ---------------------------------------------------
 
@@ -148,6 +148,9 @@ instance Boolean (AST Bool) where
 instance PrimTy a => HasBool (AST Bool) (AST a) where
   bool = fromAST If
 
+scalar :: forall a. Proxy (InternalScalar a)
+scalar = Proxy
+
 instance (ScalarTy a, Eq a , Logic a ~ Bool) => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)
   (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (scalar @a)) (==)
@@ -201,14 +204,22 @@ instance (ScalarTy a, ScalarTy b, Convert a b, DisEq a b ~ 'True)
 instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
   type Scalar (AST (V 0 a))   = AST a
   type OfDim  (AST (V 0 a)) n = AST (V n a)
-  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (scalar @a)) (^+^)
-  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (scalar @a)) (^*)
+
+  (^+^) :: forall n. KnownNat n
+        => AST (V n a) -> AST (V n a) -> AST (V n a)
+  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (Proxy @n) (scalar @a)) (^+^)
+
+  (^*) :: forall n. KnownNat n
+        => AST (V n a) -> AST a -> AST (V n a)
+  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (Proxy @n) (scalar @a)) (^*)
 
 instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
-  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (scalar @a)) (^-^)
+  (^-^) :: forall n. KnownNat n
+        => AST (V n a) -> AST (V n a) -> AST (V n a)
+  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (Proxy @n) (scalar @a)) (^-^)
 
 instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
-  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV (scalar @a)) (^.^)
+  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV (Proxy @0) (scalar @a)) (^.^)
 
 
 -- matrices
@@ -218,16 +229,37 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
 
   diag        = error "todo"
   konst       = error "todo"
-  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (scalar @a)) transpose  
-  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (scalar @a)) inverse    
-  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (scalar @a)) determinant
+
+  transpose :: forall n m. (KnownNat n, KnownNat m)
+            => AST (M n m a) -> AST (M m n a)
+  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (Proxy @m) (Proxy @n) (scalar @a)) transpose
+
+  inverse :: forall n. KnownNat n
+            => AST (M n n a) -> AST (M n n a)
+  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (Proxy @n) (Proxy @n) (scalar @a)) inverse
+  
+  determinant :: forall n. KnownNat n
+              => AST (M n n a) -> AST a
+  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (Proxy @0) (Proxy @0) (scalar @a)) determinant
 
   (!+!) = error "todo"
   (!-!) = error "todo"
-  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (scalar @a)) (!*!)
-  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (scalar @a)) (^*!)
-  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (scalar @a)) (!*^)
-  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (scalar @a)) (!*)
+
+  (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
+        => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
+  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (Proxy @i) (Proxy @k) (scalar @a)) (!*!)
+
+  (^*!) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (V i a) -> AST (M i j a) -> AST (V j a)
+  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (Proxy @j) (Proxy @0) (scalar @a)) (^*!)
+
+  (!*^) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (M i j a) -> AST (V j a) -> AST (V i a)
+  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (Proxy @i) (Proxy @0) (scalar @a)) (!*^)
+
+  (!*) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (M i j a) -> AST a -> AST (M i j a)
+  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (Proxy @i) (Proxy @j) (scalar @a)) (!*)
 
 instance 
   TypeError (     Text "The AST datatype does not have a Functor instance."

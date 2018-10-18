@@ -28,7 +28,7 @@ module Linear where
 -- base
 import Prelude hiding(Eq(..), Num(..), Fractional(..), Floating(..), sum)
 import Control.Applicative(liftA2)
-import Control.Arrow(second, (&&&))
+import Control.Arrow(second)
 import Data.Kind(Type)
 import Data.Type.Equality((:~:)(..))
 import Data.Proxy(Proxy(..))
@@ -72,19 +72,17 @@ instance KnownNat n => Distributive (V n) where
                Refl -> const Nil
     
 instance KnownNat n => Applicative (V n) where
-  pure                    = repeatV
-  Nil       <*>  _        = Nil
+  pure                    = unfold id
+  _         <*>  Nil      = Nil
   (f :. fs) <*> (a :. as) = f a :. fs <*> as
+  _         <*> _         = error "unreachable"
 
 
 instance (KnownNat n, Semigroup a) => Semigroup (V n a) where
   (<>) = liftA2 (<>)
 
 instance (KnownNat n, Monoid a) => Monoid (V n a) where
-  mempty = repeatV mempty
-
-repeatV :: forall a n. KnownNat n => a -> V n a
-repeatV = unfold id
+  mempty = pure mempty
 
 headV :: (KnownNat n, 1 <= n) => V n a -> a
 headV (a :. _) = a
@@ -307,14 +305,11 @@ type M n m a = V n (V m a)
 identityMat :: forall n a. (KnownNat n, Ring a) => M n n a
 identityMat = 
   case (Proxy :: Proxy 1) %<=? (Proxy :: Proxy n) of
-       LE Refl   -> (1 :. repeatV 0) :. fmap (0:.) (identityMat :: M (n-1) (n-1) a)
+       LE Refl   -> (1 :. pure 0) :. fmap (0:.) (identityMat :: M (n-1) (n-1) a)
        NLE nle _ -> case deduceZero nle of
                          Refl -> Nil
 
 newtype WrappedMatrix m n a k = WrappedMatrix { wrappedMatrix :: M m (n+k) a }
-
-transposeMat :: (KnownNat m, KnownNat n) => M m n a -> M n m a
-transposeMat rows = repeatV Nil `addCols` rows
 
 addCol' :: (KnownNat m, KnownNat n, KnownNat k) => WrappedMatrix m n a k -> V m a -> WrappedMatrix m n a (k+1)
 addCol' WrappedMatrix { wrappedMatrix = mat } col = WrappedMatrix { wrappedMatrix = liftA2 (:.) col mat }
@@ -333,18 +328,10 @@ columnMatrix = fmap (:. Nil)
 
 blockSum :: forall m1 m2 n1 n2 a. (KnownNat m1, KnownNat m2, KnownNat n1, KnownNat n2, Semiring a) 
          => M m1 n1 a -> M m2 n2 a -> M (m1+m2) (n1+n2) a
-blockSum mat1 mat2 = fmap (<++> repeatV zero) mat1 <++> fmap (repeatV zero <++>) mat2
+blockSum mat1 mat2 = fmap (<++> pure zero) mat1 <++> fmap (pure zero <++>) mat2
 
 fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> M m l a
-fromColumns = addCols ( repeatV Nil :: M m 0 a)
-
-
-{-
-applyM44 :: Num a => M 4 4 a -> V 3 a -> V 3 a
-applyM44 mat (V3 x y z) =
-  let V4 x' y' z' _ = mat !*^ (V4 x y z 0)
-  in V3 x' y' z'
--}
+fromColumns = addCols ( pure Nil :: M m 0 a)
 
 
 ------------------------------------------------------------------
@@ -361,9 +348,9 @@ class Module (Vector m) => Matrix m where
 
   identity    :: KnownNat i                           => OfDims m i i
   diag        :: KnownNat i                           => Scalar (Vector m) -> OfDims m i i
+  inverse     :: KnownNat i                           => OfDims m i i -> OfDims m i i
+  determinant :: KnownNat i                           => OfDims m i i -> Scalar (Vector m)
   transpose   :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDims m j i
-  inverse     :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDims m j i
-  determinant :: (KnownNat i, KnownNat j)             => OfDims m i j -> Scalar (Vector m)
   (!+!)       :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDims m i j -> OfDims m i j
   (!-!)       :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDims m i j -> OfDims m i j
   konst       :: (KnownNat i, KnownNat j)             => Scalar (Vector m) -> OfDims m i j
@@ -382,12 +369,12 @@ instance Ring a => Matrix (M 0 0 a) where
   identity = identityMat
   diag a = a *! identity
   transpose = distribute
-  m !*! n = fmap (\row -> fmap (sum . liftA2 (*) row) (transposeMat n)) m
-  m !+! n = liftA2 ( liftA2 (+) ) m n
-  m !-! n = liftA2 ( liftA2 (-) ) m n
-  konst = repeatV . repeatV
+  (!+!) = liftA2 ( liftA2 (+) )
+  (!-!) = liftA2 ( liftA2 (-) )
+  konst = pure . pure
   m !* a = liftA2 ( liftA2 (*) ) (konst a) m
   m !*^ v = fmap (\row -> sum $ liftA2 (*) row v) m
-  v ^*! m = fmap (\row -> sum $ liftA2 (*) row v) (transposeMat m)
-  determinant = undefined "todo"
-  inverse = undefined "todo"
+  v ^*! m = fmap (\row -> sum $ liftA2 (*) row v) (transpose m)
+  m !*! n = fmap (\row -> fmap (sum . liftA2 (*) row) (transpose n)) m
+  determinant = error "todo"
+  inverse     = error "todo"

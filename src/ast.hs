@@ -19,8 +19,8 @@ module AST where
 -- base  
 import Control.Monad.State.Lazy(State, put, get, evalState)
 import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits( Nat, KnownNat, natVal, type (-), type (*)
+import Data.Proxy(Proxy)
+import GHC.TypeLits( Nat, KnownNat, natVal, type (-)
                    , KnownSymbol, symbolVal)
 import GHC.TypeNats(type (<=?))
 
@@ -30,27 +30,34 @@ import Data.Tree(Tree(Node))
 -- fir
 import Bindings(Binding(Var, Fun), BindingType, CanDef, CanFunDef, Get, Put, Insert, Union)
 import Linear(V, M)
-import qualified SPIRV
-import SPIRV(Integrality(Floating, Signed, Unsigned), Width(Width))
+import qualified SPIRV.PrimOps as SPIRV
+import qualified SPIRV.Types   as SPIRV
+import SPIRV.Types( Signedness(Unsigned, Signed), Width(W16, W32))
 
 
 ------------------------------------------------------------
 -- primitive types, which can be internalised in the AST
 
 class Show ty => PrimTy ty where 
-instance PrimTy Word  where
-instance PrimTy Int   where
-instance PrimTy Float where
-instance PrimTy Bool  where
+instance PrimTy ()     where
+instance PrimTy Bool   where
+instance PrimTy Word   where
+instance PrimTy Int    where
+instance PrimTy Float  where
+instance PrimTy Double where
 
-class PrimTy a => ScalarTy a where
-  scalar :: SPIRV.Scalar
+
+class (PrimTy a, SPIRV.KnownScalar (InternalScalar a)) => ScalarTy a where
+  type InternalScalar a :: SPIRV.PrimTy
+
 instance ScalarTy Word where
-  scalar = SPIRV.Scalar Unsigned (Width 8)
+  type InternalScalar Word   = SPIRV.Integer Unsigned W32
 instance ScalarTy Int where
-  scalar = SPIRV.Scalar Signed   (Width 8)
+  type InternalScalar Int    = SPIRV.Integer Signed   W32
 instance ScalarTy Float where
-  scalar = SPIRV.Scalar Floating (Width 4)
+  type InternalScalar Float  = SPIRV.Floating W16
+instance ScalarTy Double where
+  type InternalScalar Double = SPIRV.Floating W32
 
 instance ( PrimTy a
          , Num a
@@ -152,12 +159,12 @@ toTreeArgs (Lam f) as = do
     _  -> Node  ":$"               (body : as)
 toTreeArgs (PrimOp op _ ) as 
   = return (Node ("PrimOp " ++ opName ) as)
-    where (opName, opCode) = SPIRV.getNameAndOpCode op
-toTreeArgs If                as = return (Node "If"    as)
-toTreeArgs Pure              as = return (Node "Pure"  as)
-toTreeArgs Bind              as = return (Node "Bind"  as)
-toTreeArgs Ix                as = return (Node "Ix"    as)
-toTreeArgs (NamedVar v     ) as = return (Node v       as)
+    where opName = show . fst $ SPIRV.op op
+toTreeArgs If                as = return (Node "If"   as)
+toTreeArgs Pure              as = return (Node "Pure" as)
+toTreeArgs Bind              as = return (Node "Bind" as)
+toTreeArgs Ix                as = return (Node "Ix"   as)
+toTreeArgs (NamedVar v     ) as = return (Node v      as)
 toTreeArgs (Lit      a     ) as = return (Node ("Lit "     ++ show a          ) as)
 toTreeArgs (Get      px    ) as = return (Node ("Get @"    ++ symbolVal    px ) as)
 toTreeArgs (Put      px    ) as = return (Node ("Put @"    ++ symbolVal    px ) as)
