@@ -30,13 +30,7 @@ data OpCode
 -- type constructors
 
 opTypeCode :: Ty -> OpCode
-opTypeCode Void     = OpCode 19
-opTypeCode Bool     = OpCode 20
-opTypeCode Int      = OpCode 21
-opTypeCode Float    = OpCode 22
-opTypeCode Vector   = OpCode 23
-opTypeCode Matrix   = OpCode 24
-opTypeCode Function = OpCode 33
+opTypeCode ty = OpCode ( fromIntegral (fromEnum ty) + 19 )
 
 --------------------------------------------------
 -- operations

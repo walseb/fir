@@ -20,7 +20,7 @@ data Capability
   | ImageBasic
   | ImageReadWrite
   | ImageMipmap
-  | UNDEFINED_CAPABILITY1
+  | UNDEFINED_CAPABILITY_1
   | Pipes
   | Groups
   | DeviceEnqueue
@@ -30,7 +30,7 @@ data Capability
   | TessellationPointSize
   | GeometryPointSize
   | ImageGatherExtended
-  | UNDEFINED_CAPABILITY2
+  | UNDEFINED_CAPABILITY_2
   | StorageImageMultisample
   | UniformBufferArrayDynamicIndexing
   | SampledImageArrayDynamicIndexing

@@ -47,3 +47,8 @@ think: do I only want to use load/store for the interface variables, or for thos
 
 ensure correctness of the binary instance for strings (needed e.g. to import GLSL and to name entry points)
 apply RowMajor decoration to matrix type declarations
+
+should be able to simplify "Instruction" by removing forced "resID" & "resTy" arguments
+
+
+codegen: given entry point data except IDs, in the course of code generation should give entry point IDs
