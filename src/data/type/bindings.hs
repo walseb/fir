@@ -18,48 +18,46 @@ import GHC.TypeLits(Symbol, CmpSymbol, TypeError, ErrorMessage(Text, ShowType, t
 ------------------------------------------------
 -- barebones type-level map functionality
 
-type family (:++) as bs where
-  (:++) '[]       bs = bs
-  (:++) (a ': as) bs = a ': (as :++ bs)
-
-infixr 4 :->
-data Assignment k v = k :-> v
+data Assignment k v = Assignment k v
 type BindingsMap = [Assignment Symbol Binding]
 
+infixr 4 :->
+type k :-> v = 'Assignment k v
+
 type family Lookup (k :: Symbol) (i :: BindingsMap) :: Maybe Binding where
-  Lookup _ '[]               = 'Nothing
-  Lookup k ((k ':-> a) ': b) = 'Just a
-  Lookup k (_          ': b) = Lookup k b
+  Lookup _ '[]              = 'Nothing
+  Lookup k ((k :-> a) ': b) = 'Just a
+  Lookup k (_         ': b) = Lookup k b
 
 -- insert a key/value pair in an already-sorted map
 type family Insert (k :: Symbol) (v :: Binding) (i :: BindingsMap) :: BindingsMap where
-  Insert k v '[]               = '[ k ':-> v ]
-  Insert k v ((k ':-> a) ': b) = TypeError
+  Insert k v '[]              = '[ k :-> v ]
+  Insert k v ((k :-> a) ': b) = TypeError
       (     Text "Duplicate key "
        :<>: ShowType k
        :<>: Text " in list of bindings:"
-       :$$: ShowType ((k ':-> v) ': (k ':-> a) ': b)
+       :$$: ShowType ((k :-> v) ': (k :-> a) ': b)
       )
-  Insert k v ((l ':-> a) ': b) = If (CmpSymbol k l == 'LT)
-                                    ((k ':-> v) ': (l ':-> a) ': b)
-                                    ((l ':-> a) ': Insert k v b)
+  Insert k v ((l :-> a) ': b) = If (CmpSymbol k l == 'LT)
+                                   ((k :-> v) ': (l :-> a) ': b)
+                                   ((l :-> a) ': Insert k v b)
 
 type family Union (i :: BindingsMap) (j :: BindingsMap) :: BindingsMap where
-  Union i '[] = i
-  Union i ( (k ':-> a) ': b) = Union (Insert k a i) b
+  Union i '[]               = i
+  Union i ( (k :-> a) ': b) = Union (Insert k a i) b
 
 type family Delete (k :: Symbol) (i :: BindingsMap) :: BindingsMap where
-  Delete k '[] = '[]
-  Delete k ( (k ':-> _) ': i) = i -- assumes there are no duplicates
-  Delete k ( _          ': i) = Delete k i
+  Delete k '[]               = '[]
+  Delete k ( (k :-> _) ': i) = i -- assumes there are no duplicates
+  Delete k ( _         ': i) = Delete k i
 
 type family Remove (i :: BindingsMap) (j :: BindingsMap) :: BindingsMap where
-  Remove '[]                j = j
-  Remove ( (k ':-> _) ': i) j = Remove i (Delete k j) 
+  Remove '[]               j = j
+  Remove ( (k :-> _) ': i) j = Remove i (Delete k j) 
 
 type family FromList (i :: BindingsMap) :: BindingsMap where
-  FromList '[] = '[]
-  FromList ((k ':-> v) : l) = Insert k v (FromList l)
+  FromList '[]             = '[]
+  FromList ((k :-> v) : l) = Insert k v (FromList l)
 
 
 
@@ -76,16 +74,19 @@ type family Elem x as where
   Elem x (_ ': as) = Elem x as
 
 data Binding where
-  Var  :: [Permission] -> Type -> Binding
-  Fun  :: [Assignment Symbol Binding] -> Type -> Binding
+  Variable :: [Permission] -> Type -> Binding
+  Function :: [Assignment Symbol Binding] -> Type -> Binding
+
+type Var ps a = 'Variable ps a
+type Fun as b = 'Function as b
 
 type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
-  Variadic '[]                b = b
-  Variadic ((_ ':-> a) ': as) b = BindingType a -> Variadic as b
+  Variadic '[]               b = b
+  Variadic ((_ :-> a) ': as) b = BindingType a -> Variadic as b
 
 type family BindingType (bd :: Binding) :: Type where
-  BindingType ('Var  _ a) = a
-  BindingType ('Fun as b) = Variadic as b
+  BindingType (Var  _ a) = a
+  BindingType (Fun as b) = Variadic as b
 
 ------------------------------------------------------------------------------------------------
 -- constraints for 'get'
@@ -99,7 +100,7 @@ type family Get' (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :: Type
       :$$: Text "In-scope bindings are:"
       :$$: ShowType i
     )
-  Get' k _ ('Just ('Var p a)) = Get'' k ('Var p a) (Elem 'Read p)
+  Get' k _ ('Just (Var p a)) = Get'' k (Var p a) (Elem 'Read p)
   Get' _ _ ('Just bd) = BindingType bd -- functions
 
 type family Get'' (k :: Symbol) (bd :: Binding) (readable :: Bool) :: Type where
@@ -120,11 +121,11 @@ type family PutAt (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding) :: 
       :$$: Text "In-scope bindings are:"
       :$$: ShowType i
     )
-  PutAt k i ('Just ('Fun as b)) = TypeError
-    (      Text "'put': function bound at name " :<>: ShowType k :<>: Text ": " :<>: ShowType ('Fun as b) :<>: Text "."
+  PutAt k i ('Just (Fun as b)) = TypeError
+    (      Text "'put': function bound at name " :<>: ShowType k :<>: Text ": " :<>: ShowType (Fun as b) :<>: Text "."
       :$$: Text "Use 'fundef' to define a function."
     )
-  PutAt k i ('Just ('Var ps a)) = PutIfWritable k a (Elem 'Write ps)
+  PutAt k i ('Just (Var ps a)) = PutIfWritable k a (Elem 'Write ps)
 
 type family PutIfWritable (k :: Symbol) (a :: Type) (writable :: Bool) :: Type where
   PutIfWritable _ a 'True  = a
@@ -149,11 +150,11 @@ type family NotAlreadyDefined (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe 
 -- constraints for 'fundef'
 
 type family CanFunDef 
-            (k :: Symbol)       -- name of function to be defined
-            (as :: BindingsMap) -- function arguments
-            (i :: BindingsMap)  -- variables in scope
-            (l :: BindingsMap)  -- l contains the above two sets, together with the function's local variables
-            :: Bool where
+      ( k  :: Symbol      )  -- name of function to be defined
+      ( as :: BindingsMap )  -- function arguments
+      ( i  :: BindingsMap )  -- variables in scope
+      ( l  :: BindingsMap )  -- l contains the above two sets, together with the function's local variables
+      :: Bool where
   CanFunDef k as i l = CanFunDef' k as i     --            ┌━━┤ local variables
                             (Lookup k i)     --            │
                             (Lookup k as)    --  ┌━━━━━┴━━━━━━━┐
@@ -164,17 +165,17 @@ type family NotHigherOrder (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap) 
 
 type family NotHigherOrder'
    (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap) (as_rec :: BindingsMap) (l_rec :: BindingsMap) :: Bool where
-  NotHigherOrder' _ _ _ '[]                            '[]   = 'True
-  NotHigherOrder' k as l ((_ ':-> 'Var _ _) ': as_rec) l_rec = NotHigherOrder' k as l as_rec l_rec
-  NotHigherOrder' k as _ ((v ':-> 'Fun _ _) ': _     ) _     = TypeError
+  NotHigherOrder' _ _ _ '[]                          '[]   = 'True
+  NotHigherOrder' k as l ((_ :-> Var _ _) ': as_rec) l_rec = NotHigherOrder' k as l as_rec l_rec
+  NotHigherOrder' k as _ ((v :-> Fun _ _) ': _     ) _     = TypeError
     (     Text "'fundef': forbidden higher order argument " :<>: ShowType v :<>: Text ","
      :$$: Text "in function definition for " :<>: ShowType k :<>: Text ","
      :$$: Text "when trying to abstract over:"
      :$$: ShowType as
      :$$: Text "Function definitions can only abstract over variables, not over functions."
     )
-  NotHigherOrder' k as l as_rec ((_ ':-> 'Var _ _) ': l_rec) = NotHigherOrder' k as l as_rec l_rec
-  NotHigherOrder' k as l _      ((v ':-> 'Fun _ _) ': _    ) = TypeError
+  NotHigherOrder' k as l as_rec ((_ :-> Var _ _) ': l_rec) = NotHigherOrder' k as l as_rec l_rec
+  NotHigherOrder' k as l _      ((v :-> Fun _ _) ': _    ) = TypeError
     (     Text "'fundef': unexpected nested function definition inside function " :<>: ShowType k :<>: Text ":"
      :$$: Text "local name " :<>: ShowType v :<>: Text "binds a function."
      :$$: Text "Local bindings for " :<>: ShowType k :<>: Text "are:"
@@ -183,13 +184,13 @@ type family NotHigherOrder'
 
 
 type family CanFunDef' 
-    (k :: Symbol)
-    (as :: BindingsMap)
-    (i :: BindingsMap)
-    (mb_bd1 :: Maybe Binding)
-    (mb_bd2 :: Maybe Binding)
-    (notHigherOrder :: Bool) 
-    :: Bool where
+      ( k      :: Symbol        )
+      ( as     :: BindingsMap   )
+      ( i      :: BindingsMap   )
+      ( mb_bd1 :: Maybe Binding )
+      ( mb_bd2 :: Maybe Binding )
+      ( notHO  :: Bool          )
+      :: Bool where
   CanFunDef' k as i ('Just _) _ _ = TypeError
     (     Text "'fundef': cannot define a new function with name " :<>: ShowType k :<>: Text ";"
      :$$: Text "that name is already in scope. In scope bindings are:"

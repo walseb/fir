@@ -1,0 +1,68 @@
+name:           fir
+version:        0.0.0
+synopsis:       FIR
+category:       graphics
+author:         Sam Derbyshire
+maintainer:     Sam Derbyshire
+license:        MIT
+build-type:     Simple
+cabal-version:  >= 1.10
+extra-source-files:
+    stack.yaml
+
+
+library
+
+  hs-source-dirs:
+      src
+
+  exposed-modules:
+      FIR.AST
+    , FIR.Instances
+    , FIR.Pipeline
+    , CodeGen.Binary
+    , CodeGen.CodeGen
+    , CodeGen.Declarations
+    , CodeGen.Instruction
+    , CodeGen.Monad
+    , Control.Arrow.Strength
+    , Control.Monad.Indexed
+    , Data.Type.Bindings
+    , Math.Algebra.Class
+    , Math.Logic.Class
+    , Math.Linear
+    , SPIRV.Builtin
+    , SPIRV.Capability
+    , SPIRV.Decoration
+    , SPIRV.ExecutionMode
+    , SPIRV.Extension
+    , SPIRV.Operation
+    , SPIRV.PrimOp
+    , SPIRV.PrimTy
+    , Test
+
+  build-depends: 
+      base
+    , binary
+    , bytestring
+    , containers
+    , mtl
+    , transformers
+    , tree-view
+    , text-utf8
+    , lens
+        >= 4.16
+    , distributive
+        >= 0.6
+    , typelits-witnesses
+        >= 0.2.3
+    , ghc-typelits-knownnat 
+        >= 0.6
+    , ghc-typelits-natnormalise 
+        >= 0.6.2
+
+  default-language: Haskell2010
+  ghc-options: -Wall -fno-warn-orphans -fno-warn-unticked-promoted-constructors
+
+  if impl(ghc >= 8.6)
+    default-extensions: NoStarIsType

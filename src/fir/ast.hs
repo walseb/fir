@@ -32,7 +32,7 @@ import Control.Monad.State.Lazy(State, put, get, evalState)
 -- fir
 import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..) )
 import Data.Type.Bindings 
-  ( Binding(Var, Fun), BindingType
+  ( BindingType, Var, Fun
   , CanDef, CanFunDef, Get, Put
   , Insert, Union
   )
@@ -101,24 +101,24 @@ data AST :: Type -> Type where
   If :: PrimTy a => AST (Bool -> a -> a -> a)
 
   -- (indexed) monadic operations
-  Pure :: AST ((a := j) i -> m (a := j) i)
+  Pure :: AST (a i -> m a i)
   Bind :: AST (m (a := j) i -> (a -> m b j) -> m b i) -- angelic bind
 
   Ix :: AST (a -> (a := i) i) -- hack, would be solved if we could have
-                              -- Pure :: AST (a -> m (a := j) i)
+                              -- Pure :: AST (a -> m (a := i) i)
 
   Def :: forall k perms a i. (KnownSymbol k, CanDef k i ~ 'True, PrimTy a)
       => Proxy k
       -> Proxy perms
       -> AST (    a
-               -> S ( a := Insert k ('Var perms a) i) i
+               -> S ( a := Insert k (Var perms a) i) i
              )
   FunDef :: forall k as b l i. (KnownSymbol k, CanFunDef k as i l ~ 'True, PrimTy b)
          => Proxy k
          -> Proxy as
          -> Proxy l
          -> AST (    S (b := l) (Union i as)
-                  -> S (BindingType ('Fun as b) := Insert k ('Fun as b) i) i
+                  -> S (BindingType (Fun as b) := Insert k (Fun as b) i) i
                 )
 
   Get    :: forall k a i. (KnownSymbol k, Get k i ~ a)

@@ -36,17 +36,17 @@ type Program i j a
 
 program ::
   Program
-    '[ "model"       ':-> 'Var R (M 4 4 Float)
-     , "view"        ':-> 'Var R (M 4 4 Float)
-     , "projection"  ':-> 'Var R (M 4 4 Float)
-     , "position"    ':-> 'Var R (V 3 Float)
-     , "gl_Position" ':-> 'Var W (V 3 Float)
+    '[ "model"       :-> Var R (M 4 4 Float)
+     , "view"        :-> Var R (M 4 4 Float)
+     , "projection"  :-> Var R (M 4 4 Float)
+     , "position"    :-> Var R (V 3 Float)
+     , "gl_Position" :-> Var W (V 3 Float)
      ]    
-    '[ "testFun"     ':-> 'Fun '[ "u" ':-> 'Var R Float
-                                , "v" ':-> 'Var R Float
-                                ]
-                                Float
-     , "main"        ':-> 'Fun '[] ()
+    '[ "testFun"     :-> Fun '[ "u" :-> Var R Float
+                              , "v" :-> Var R Float
+                              ]
+                              Float
+     , "main"        :-> Fun '[] ()
      ]
     ()
 program = do
@@ -61,7 +61,8 @@ program = do
   testFun <- fundef @"testFun" $ do
     u <- get @"u"
     v <- get @"v"
-    pure $ u + v
+    l <- def @"l" @R @Float 11 -- local variable
+    pure $ u + v + l
 
   fundef @"main" $ do
     ~(Vec4 x y z _) <- def @"pos" @R ( mvp !*^ position' )

@@ -40,7 +40,7 @@ import GHC.TypeNats(type (<=?))
 import FIR.AST(AST(..), Codensity(..), PrimTy, PrimScalarTy, scalar, S)
 import qualified FIR.AST as AST
 import Control.Monad.Indexed ( FunctorIx(fmapIx), MonadIx(..), MonadIxFail(..), (:=)(..), withKey )
-import Data.Type.Bindings( Binding(Var, Fun), BindingType
+import Data.Type.Bindings( BindingType, Var, Fun
                          , CanDef, CanFunDef
                          , Put, Get
                          , Union, Insert
@@ -77,7 +77,7 @@ class MonadIx m => ScopeIx m where
        => Proxy k
        -> Proxy perms
        -> AST a
-       -> m (AST a := Insert k ('Var perms a) i) i
+       -> m (AST a := Insert k (Var perms a) i) i
 
   defun' :: forall k as b l i. 
             ( KnownSymbol k
@@ -88,7 +88,7 @@ class MonadIx m => ScopeIx m where
          -> Proxy as
          -> Proxy l
          -> AST (S (b := l) (Union i as))
-         -> m (AST (BindingType ('Fun as b)) := Insert k ('Fun as b) i) i
+         -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
 
   get' :: forall k a i. (KnownSymbol k, Get k i ~ a)
        => Proxy k
@@ -101,12 +101,12 @@ class MonadIx m => ScopeIx m where
   
 def :: forall k perms a i m. (ScopeIx m, KnownSymbol k, CanDef k i ~ 'True, PrimTy a)
     => AST a
-    -> m (AST a := Insert k ('Var perms a) i) i 
+    -> m (AST a := Insert k (Var perms a) i) i 
 def = def' @m @k @perms @a @i Proxy Proxy
 
 defun :: forall k as b l i m. (ScopeIx m, KnownSymbol k, CanFunDef k as i l ~ 'True, PrimTy b)
         => AST (S (b := l) (Union i as))
-        -> m (AST (BindingType ('Fun as b)) := Insert k ('Fun as b) i) i
+        -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
 defun = defun' @m @k @as @b @l @i Proxy Proxy Proxy
 
 get :: forall k a i m. (ScopeIx m, KnownSymbol k, Get k i ~ a)
@@ -129,7 +129,7 @@ fundef :: forall k as b f l i.
           , Syntactic f, Internal f ~ Variadic as b
           )
        => Codensity S (AST b := l) (Union i as) 
-       -> Codensity S (f := Insert k ('Fun as b) i) i
+       -> Codensity S (f := Insert k (Fun as b) i) i
 fundef = fmapIx (fromAST `withKey`) . defun @k @as . toAST
 
 --------------------------------------------------------------------------
@@ -288,15 +288,18 @@ class Syntactic a where
   toAST :: a -> AST (Internal a)
   fromAST :: AST (Internal a) -> a
 
+
 instance Syntactic (AST a) where
   type Internal (AST a) = a
   toAST   = id
   fromAST = id
 
+
 instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   type Internal (a -> b) = Internal a -> Internal b
   toAST   f = Lam ( toAST . f . fromAST )
   fromAST f = \a -> fromAST ( f :$ toAST a )
+
 
 instance Syntactic a => Syntactic ( (a := j) i ) where
   type Internal ( (a := j) i ) = (Internal a := j) i
@@ -306,10 +309,13 @@ instance Syntactic a => Syntactic ( (a := j) i ) where
   fromAST (Ix :$ a) = AtKey (fromAST a)
   fromAST _ = error "help needed"
 
-instance (Syntactic a) => Syntactic (Codensity (m :: (k -> Type) -> (k -> Type)) (a := j) i) where
+
+instance Syntactic a => Syntactic (Codensity (m :: (k -> Type) -> (k -> Type)) (a := j) i) where
   type Internal (Codensity m (a := j) i) = m (Internal a := j) i
+
   toAST :: Codensity m (a := j) i -> AST (m (Internal a := j) i)
   toAST (Codensity k) = k ( fromAST Pure )
+
   fromAST :: AST (m (Internal a := j) i) -> Codensity m (a := j) i
   fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
 
