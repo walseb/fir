@@ -52,3 +52,28 @@ should be able to simplify "Instruction" by removing forced "resID" & "resTy" ar
 
 
 codegen: given entry point data except IDs, in the course of code generation should give entry point IDs
+
+
+functions: functions are EITHER entry points or function which can be called, can't be both
+make this distinction in the type-level lists of bindings
+
+think: is it true that functions need to be floated to the top? (would need to create closures or something to deal with that...)
+try to compile an example GLSL file with a function that uses variables, see what SPIR-V is generated
+
+looking through storage classes for variables:
+  - UniformConstant
+  - Input (for the ['Read] starting variables)
+  - Output (for the ['Write] starting variables)
+      - have a custom Program type which sets uniforms, inputs, outputs
+  - Uniform
+  - PushConstant
+  - Variable for function variables (use this with fundef)
+
+program optimisation: when possible, bundle together the vector indexing "At" things into a OpVectorShuffle
+
+
+
+address string issues:
+  - use Text for error messages
+  - figure out which ByteString to use for SPIR-V internal strings (if any)
+  - figure out if the ByteString used in Binary.Put is correct

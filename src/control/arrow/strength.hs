@@ -25,4 +25,4 @@ firstF = (>>^ uncurry leftStrength) . first
 
 secondF :: (Arrow a, Functor f)
         => a b (f c) -> a (d, b) (f (d, c))
-secondF = (>>^ uncurry rightStrength) . second 
+secondF = (>>^ uncurry rightStrength) . second

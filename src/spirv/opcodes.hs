@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module SPIRV.OpCodes
   ( Extension(..), extensionName
   , OpCode(..)
@@ -7,6 +9,9 @@ module SPIRV.OpCodes
 
 -- base
 import Data.Word(Word16, Word32)
+
+-- text-utf8
+import Data.Text(Text)
 
 -- fir
 import SPIRV.Types(Ty(..))
@@ -19,12 +24,13 @@ data Extension
   = GLSL
   deriving ( Show, Eq, Ord, Enum, Bounded )
 
-extensionName :: Extension -> String
+extensionName :: Extension -> Text
 extensionName GLSL = "GLSL.std.450"
 
 data OpCode 
   = OpCode Word16
   | ExtOpCode Extension Word32
+  deriving Show
 
 --------------------------------------------------
 -- type constructors

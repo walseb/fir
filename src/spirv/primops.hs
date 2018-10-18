@@ -15,7 +15,7 @@ import Prelude hiding( Ordering(..) )
 
 -- fir
 import SPIRV.Types( PrimTy(..), Signedness(..) )
-                  
+
 -------------------------------------------------------------------------------
 -- primitive operations
 
@@ -29,7 +29,7 @@ data PrimOp where
   MatOp   :: MatPrimOp   -> Int -> Int -> PrimTy -> PrimOp
   ConvOp  :: ConvPrimOp      -> PrimTy -> PrimTy -> PrimOp
   deriving Show
- 
+
 data BoolPrimOp
   = Or
   | And

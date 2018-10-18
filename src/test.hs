@@ -76,8 +76,7 @@ program = do
       position'  = vec4 px py pz 1
 
   fundef @"main" $ do
-    def @"pos" @R ( mvp !*^ position' )
-    Vec4 x y z _ <- get @"pos"
+    Vec4 x y z _ <- def @"pos" @R ( mvp !*^ position' )
     put @"gl_Position" ( vec3 x y z )
 
   

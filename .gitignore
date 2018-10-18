@@ -1,6 +1,10 @@
-/.stack-work/
-/*.cabal
-/dist
-/dist-newstyle
+.stack-work/
+*.cabal
+dist/
+dist-newstyle/
 .ghc.*
 *.html
+
+shaders/
+
+TODO.txt

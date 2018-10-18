@@ -1,5 +1,6 @@
-{-# LANGUAGE NamedFieldPuns   #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE NamedFieldPuns    #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module CodeGen.Binary where
 
@@ -18,6 +19,9 @@ import qualified Data.Binary.Put as Binary
 -- containers
 import Data.Map.Strict(Map)
 import qualified Data.Map.Strict as Map
+
+-- text
+import Data.Text(Text)
 
 -- fir
 import CodeGen.Instruction ( Args(..), arity, putArgs, argsList
@@ -38,7 +42,7 @@ putInstruction extInstrs Instruction { code, resTy, resID = res, args }
         let n = 1                          -- OpCode and number of arguments
               + maybe 0 (const 1) resTy    -- result type + ID, if operation produces a result
               + maybe 0 (const 1) res
-              + arity args                 -- one per argument              
+              + arity args                 -- one per argument
         in do Binary.putWord32be ( Bits.shift n 16 + fromIntegral opCode )
               traverse_ Binary.put resTy
               traverse_ Binary.put res
@@ -61,8 +65,8 @@ putInstruction extInstrs Instruction { code, resTy, resID = res, args }
                   putArgs args
 
 
-header :: Word32 -> Binary.Put
-header bound
+putHeader :: Word32 -> Binary.Put
+putHeader bound
   = traverse_
       Binary.putWord32be
       [ 0x07230203   -- magic number
@@ -72,8 +76,8 @@ header bound
       , 0            -- always 0
       ]
 
-capabilities :: [SPIRV.Capability] -> Binary.Put
-capabilities
+putCapabilities :: [SPIRV.Capability] -> Binary.Put
+putCapabilities
   = traverse_
       ( \cap -> putInstruction Map.empty Instruction 
         { name  = "Capability"
@@ -85,23 +89,12 @@ capabilities
         }
       )
 
-extendedInstructions :: Map SPIRV.Extension ID -> Binary.Put
-extendedInstructions
-  = Map.foldrWithKey -- poor man's traverseWithKey_
-      ( \ext ext_ID r -> putInstruction Map.empty Instruction
-        { name  = "ExtInstImport"
-        , code  = SPIRV.OpCode 11
-        , resTy = Nothing
-        , resID = Just ext_ID
-        , args  = Arg ( SPIRV.extensionName ext ) -- TODO: 'Put' instance for strings might be wrong
-                  EndArgs 
-        }
-        >> r
-      )
-      (pure ())
-
-memoryModel :: Binary.Put
-memoryModel = putInstruction Map.empty Instruction
+putExtendedInstructions :: Map SPIRV.Extension Instruction -> Binary.Put
+putExtendedInstructions
+  = traverse_ ( putInstruction Map.empty )
+      
+putMemoryModel :: Binary.Put
+putMemoryModel = putInstruction Map.empty Instruction
   { name  = "MemoryModel"
   , code  = SPIRV.OpCode 14
   , resTy = Nothing
@@ -111,32 +104,32 @@ memoryModel = putInstruction Map.empty Instruction
           EndArgs
   }
 
-entryPoints :: [EntryPoint ID] -> Binary.Put
-entryPoints
+putEntryPoints :: Map Text (EntryPoint ID) -> Binary.Put
+putEntryPoints
   = traverse_
-      ( \ EntryPoint { entryPoint, entryModel, entryID, interface }
+      ( \ EntryPoint { entryPointName, entryPointModel, entryPointID, entryPointInterface }
          -> putInstruction Map.empty Instruction
-              { name  = "ExtInstImport"
+              { name  = "EntryPoint"
               , code  = SPIRV.OpCode 15
-              , resTy = Nothing
-              , resID = Nothing
-              , args  = Arg @Word32 (fromIntegral . fromEnum $ entryModel)
-                      $ Arg entryID
-                      $ Arg entryPoint
-                      $ argsList interface
+              -- slight kludge to account for unusual parameters for OpEntryPoint
+              -- instead of result type, resTy field holds the ExecutionModel value
+              , resTy = Just $ ID (fromIntegral . fromEnum $ entryPointModel)
+              , resID = Just entryPointID
+              , args  = Arg entryPointName
+                      $ argsList entryPointInterface
               }
       )
 
-executionModes :: [EntryPoint ID] -> Binary.Put
-executionModes
+putExecutionModes :: Map Text (EntryPoint ID) -> Binary.Put
+putExecutionModes
   = traverse_
-    ( \ EntryPoint { entryID, executionMode, executionModeArgs }
+    ( \ EntryPoint { entryPointID, executionMode, executionModeArgs }
        -> putInstruction Map.empty Instruction
             { name = "ExecutionMode"
             , code = SPIRV.OpCode 16
             , resTy = Nothing
             , resID = Nothing
-            , args  = Arg entryID
+            , args  = Arg entryPointID
                     $ Arg @Word32 (fromIntegral . fromEnum $ executionMode)
                     $ argsList executionModeArgs 
             }
@@ -144,15 +137,15 @@ executionModes
 
 -- assumes the map of types is well-founded,
 -- e.g. if a vector type is declared, the component type is too
-tyDecs :: Map SPIRVTy.PrimTy Instruction -> Binary.Put
-tyDecs
+putTyDecs :: Map SPIRVTy.PrimTy Instruction -> Binary.Put
+putTyDecs
   = traverse_ ( putInstruction Map.empty )
   . sortBy (comparing resID)
   . Map.elems
 
--- TODO: execution modes for each entry point 
+-- TODO: execution modes for each entry point
 -- ( e.g. number of invocations for a geometry shader,
---   or vertex orientation for a tessellation shader ) 
+--   or vertex orientation for a tessellation shader )
 -- see page 30 of the SPIR-V spec for necessary modes
 
 -- TODO: debug instructions

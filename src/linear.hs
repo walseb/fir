@@ -67,7 +67,7 @@ instance KnownNat n => Distributive (V n) where
                    . second distribute
                    . strong
                    . fmap headTailV
-        NLE nle _ -> 
+        NLE nle _ ->
           case deduceZero nle of
                Refl -> const Nil
     
@@ -134,11 +134,14 @@ buildV f u = go @n f u Nil where
      -> v
      -> V (n-j) a
      -> V n a
-  go g v w = case Proxy @1 %<=? Proxy @j of
-                  LE Refl   -> case deduceOK @j @n Refl  of
-                                    Refl -> go @(j-1) g v (g (Proxy @j) v :. w)
-                  NLE nle _ -> case deduceZero nle of
-                                    Refl -> w
+  go g v w =
+    case Proxy @1 %<=? Proxy @j of
+         LE Refl   -> 
+          case deduceOK @j @n Refl  of
+               Refl -> go @(j-1) g v (g (Proxy @j) v :. w)
+         NLE nle _ -> 
+          case deduceZero nle of
+               Refl -> w
 
 deduceZero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
 deduceZero = unsafeCoerce
@@ -155,10 +158,12 @@ dfoldrV f d = go
         go (a:.as) = f a (go as)
 
 unfold :: forall n a. KnownNat n => (a -> a) -> a -> V n a
-unfold f a = case Proxy @1 %<=? Proxy @n of
-                   LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
-                   NLE nle _ -> case deduceZero nle of
-                                     Refl -> Nil
+unfold f a 
+    = case Proxy @1 %<=? Proxy @n of
+           LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
+           NLE nle _ -> 
+            case deduceZero nle of
+                 Refl -> Nil
 
 infixl 6 <++>
 
@@ -266,7 +271,7 @@ along :: (KnownNat n, Module v) => Scalar v -> OfDim v n -> OfDim v n -> OfDim v
 along t x y = (1-t) *^ x ^+^ t *^ y
 
 normalise :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n
-normalise v = 
+normalise v =
   let nm = norm v in
   if nm == 0
      then 0 *^ v
@@ -283,7 +288,7 @@ proj :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim
 proj x y = projC x y *^ y
 
 projC :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> Scalar v
-projC x y = 
+projC x y =
   let sqNm = dot y y
   in if sqNm == 0
      then 0
@@ -307,7 +312,7 @@ rotateAroundAxis n theta v = cos theta *^ v ^+^ sin theta *^ (n ^×^ v)
 type M n m a = V n (V m a)
 
 identityMat :: forall n a. (KnownNat n, Ring a) => M n n a
-identityMat = 
+identityMat =
   case (Proxy :: Proxy 1) %<=? (Proxy :: Proxy n) of
        LE Refl   -> (1 :. pure 0) :. fmap (0:.) (identityMat :: M (n-1) (n-1) a)
        NLE nle _ -> case deduceZero nle of

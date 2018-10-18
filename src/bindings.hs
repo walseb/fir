@@ -35,8 +35,8 @@ type family Lookup (k :: Symbol) (i :: BindingsMap) :: Maybe Binding where
 type family Insert (k :: Symbol) (v :: Binding) (i :: BindingsMap) :: BindingsMap where
   Insert k v '[]               = '[ k ':-> v ]
   Insert k v ((k ':-> a) ': b) = TypeError
-      (     Text "Duplicate key " 
-       :<>: ShowType k 
+      (     Text "Duplicate key "
+       :<>: ShowType k
        :<>: Text " in list of bindings:"
        :$$: ShowType ((k ':-> v) ': (k ':-> a) ': b)
       )

@@ -57,7 +57,7 @@ import qualified SPIRV.PrimOps as SPIRV
 class MonadIx m => ScopeIx m where
 
   def' :: forall k perms ty i. (KnownSymbol k, CanDef k i ~ 'True, PrimTy ty)
-       => Proxy k -> Proxy perms -> AST ty -> m (AST () := Insert k ('Var perms ty) i) i
+       => Proxy k -> Proxy perms -> AST ty -> m (AST ty := Insert k ('Var perms ty) i) i
 
   defun' :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty)
          => Proxy k -> Proxy j -> Proxy l -> AST (S (ty := l) (Union i j)) -> m (AST (BindingType ('Fun j ty)) := Insert k ('Fun j ty) i) i
@@ -69,7 +69,7 @@ class MonadIx m => ScopeIx m where
        => Proxy k -> AST ty -> m (AST () := i) i
   
 def :: forall k perms ty i m. (ScopeIx m, KnownSymbol k, CanDef k i ~ 'True, PrimTy ty)
-    => AST ty -> m (AST () := Insert k ('Var perms ty) i) i 
+    => AST ty -> m (AST ty := Insert k ('Var perms ty) i) i 
 def = def' @m @k @perms @ty @i Proxy Proxy
 
 defun :: forall k j ty l i m. (ScopeIx m, KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty)
@@ -349,11 +349,11 @@ vec4 = fromAST (MkVector (Proxy @4) )
 
 pattern Mat22
   :: AST a -> AST a
-  -> AST a -> AST a 
+  -> AST a -> AST a
   -> AST ( M 2 2 a )
-pattern Mat22 a11 a12 
-              a21 a22 
-  <- ( fromAST 
+pattern Mat22 a11 a12
+              a21 a22
+  <- ( fromAST
        -> V2 (V2 a11 a12)
              (V2 a21 a22)
      )
@@ -364,7 +364,7 @@ pattern Mat23
   -> AST ( M 2 3 a )
 pattern Mat23 a11 a12 a13
               a21 a22 a23
-   <- ( fromAST 
+   <- ( fromAST
         -> V2 (V3 a11 a12 a13)
               (V3 a21 a22 a23)
       )
@@ -375,7 +375,7 @@ pattern Mat24
   -> AST ( M 2 4 a )
 pattern Mat24 a11 a12 a13 a14
               a21 a22 a23 a24
-   <- ( fromAST 
+   <- ( fromAST
         -> V2 (V4 a11 a12 a13 a14)
               (V4 a21 a22 a23 a24)
       )
@@ -388,7 +388,7 @@ pattern Mat32
 pattern Mat32 a11 a12
               a21 a22
               a31 a32
-   <- ( fromAST 
+   <- ( fromAST
         -> V3 (V2 a11 a12)
               (V2 a21 a22)
               (V2 a31 a32)
@@ -402,7 +402,7 @@ pattern Mat33
 pattern Mat33 a11 a12 a13
               a21 a22 a23
               a31 a32 a33
-   <- ( fromAST 
+   <- ( fromAST
         -> V3 (V3 a11 a12 a13)
               (V3 a21 a22 a23)
               (V3 a31 a32 a33)
@@ -462,20 +462,20 @@ pattern Mat44
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST ( M 4 4 a )
-pattern Mat44 a11 a12 a13 a14 
+pattern Mat44 a11 a12 a13 a14
               a21 a22 a23 a24
               a31 a32 a33 a34
               a41 a42 a43 a44
-   <- ( fromAST 
+   <- ( fromAST
         -> V4 (V4 a11 a12 a13 a14)
               (V4 a21 a22 a23 a24)
               (V4 a31 a32 a33 a34)
               (V4 a41 a42 a43 a44)
       )
 
-mat22 
+mat22
   :: AST a -> AST a
-  -> AST a -> AST a 
+  -> AST a -> AST a
   -> AST ( M 2 2 a )
 mat22 a11 a12
       a21 a22

@@ -121,7 +121,7 @@ data AST :: Type -> Type where
       => Proxy k
       -> Proxy perms
       -> AST (    ty
-               -> S (():= Insert k ('Var perms ty) i) i
+               -> S ( ty := Insert k ('Var perms ty) i) i
              )
   FunDef :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty)
          => Proxy k

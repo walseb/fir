@@ -19,7 +19,7 @@ import AST(AST)
 -- indexed monads (à la Conor McBride)
 
 class FunctorIx ( f :: (k -> Type) -> (k -> Type) ) where
-  fmapIx :: ( forall ix.   p ix ->   q ix ) 
+  fmapIx :: ( forall ix.   p ix ->   q ix )
          -> ( forall ix. f p ix -> f q ix )
 
 class FunctorIx m => MonadIx m where
@@ -32,13 +32,13 @@ class FunctorIx m => MonadIx m where
 
 -- demonic codensity
 newtype Codensity m a i
-  = Codensity 
+  = Codensity
     { runCodensity :: forall (b :: k -> Type)
     . (forall (j :: k). a j -> AST (m b j) ) -> AST (m b i)
     }
 
 instance FunctorIx (Codensity m) where
-  fmapIx :: ( forall ix.               p ix ->               q ix ) 
+  fmapIx :: ( forall ix.               p ix ->               q ix )
          -> ( forall ix. (Codensity m) p ix -> (Codensity m) q ix )
   fmapIx f (Codensity m) = Codensity ( \k -> m ( k . f ) )
 
