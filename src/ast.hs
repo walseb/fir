@@ -7,8 +7,6 @@
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -22,15 +20,15 @@ module AST where
 import Control.Monad.State.Lazy(State, put, get, evalState)
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits(Nat, KnownNat, natVal, type (-), type (*), Symbol, KnownSymbol, symbolVal)
+import GHC.TypeLits( Nat, KnownNat, natVal, type (-), type (*)
+                   , KnownSymbol, symbolVal)
 import GHC.TypeNats(type (<=?))
 
 -- containers
 import Data.Tree(Tree(Node))
 
 -- fir
-import Indexed((:=), MonadIx)
-import Bindings(Binding(Var, Fun), BindingType, CanDef, CanFunDef, Get, Put, Insert, Permission(Read,Write), Union)
+import Bindings(Binding(Var, Fun), BindingType, CanDef, CanFunDef, Get, Put, Insert, Union)
 import Linear(V, M)
 import qualified SPIRV
 import SPIRV(Integrality(Floating, Signed, Unsigned), Width(Width))
@@ -75,8 +73,20 @@ type family Variadic (n :: Nat) a b = r where
   Variadic n a b = Variadic' n a b (1 <=? n)
 
 type family Variadic' (n :: Nat) a b geq1 where
-  Variadic' _ _ b ('False) = b
-  Variadic' n a b ('True ) = a -> Variadic (n-1) a b
+  Variadic' _ _ b 'False = b
+  Variadic' n a b 'True  = a -> Variadic (n-1) a b
+
+------------------------------------------------
+-- Atkey indexing
+
+data (:=) :: Type -> i -> (i -> Type) where
+  WithIx :: a -> (a := i) i
+
+atKey :: (a := j) i -> a
+atKey (WithIx a) = a
+  
+instance Show a => Show ( (a := i) j ) where
+  show (WithIx a) = "WithIx " ++ show a
 
 ------------------------------------------------------------
 -- main AST data type
@@ -86,7 +96,7 @@ data AST :: Type -> Type where
   (:$) :: AST (a -> b) -> AST a -> AST b
 
   Lit :: PrimTy a => a -> AST a
-  PrimOp :: SPIRV.PrimTy -> SPIRV.PrimOp -> a -> AST a
+  PrimOp :: SPIRV.PrimOp -> a -> AST a
 
   If :: PrimTy a => AST (Bool -> a -> a -> a)
 
@@ -118,18 +128,9 @@ data AST :: Type -> Type where
          => Proxy k
          -> AST ( ty -> S (():= i) i )
 
-  -- vectors and matrices
+  -- vectors (and matrices)
   MkVector :: KnownNat n => Proxy n -> AST ( Variadic n a ( V n a ) )
   VectorAt :: (KnownNat n, KnownNat i) => Proxy i -> AST ( V n a -> a )
-
-  MkMatrix -- from rows
-    :: (KnownNat n, KnownNat m)
-    => Proxy m
-    -> Proxy n
-    -> AST (Variadic (n*m) a (M m n a))
-  MatrixAt :: (KnownNat n, KnownNat m, KnownNat i, KnownNat j) 
-          => Proxy i -> Proxy j -> AST ( M m n a -> a )
-
 
   -- for printing lambdas
   NamedVar :: String -> AST a
@@ -149,9 +150,9 @@ toTreeArgs (Lam f) as = do
   return $ case as of
     [] -> Node ("Lam v" ++ show v) [body]
     _  -> Node  ":$"               (body : as)
-toTreeArgs (PrimOp ty op _ ) as 
+toTreeArgs (PrimOp op _ ) as 
   = return (Node ("PrimOp " ++ opName ) as)
-    where (opName, opCode) = SPIRV.getNameAndOpCode ty op
+    where (opName, opCode) = SPIRV.getNameAndOpCode op
 toTreeArgs If                as = return (Node "If"    as)
 toTreeArgs Pure              as = return (Node "Pure"  as)
 toTreeArgs Bind              as = return (Node "Bind"  as)
@@ -164,9 +165,6 @@ toTreeArgs (Def      px _  ) as = return (Node ("Def @"    ++ symbolVal    px ) 
 toTreeArgs (FunDef   px _ _) as = return (Node ("FunDef @" ++ symbolVal    px ) as)
 toTreeArgs (MkVector px    ) as = return (Node ("Vec"      ++ show (natVal px)) as)
 toTreeArgs (VectorAt px    ) as = return (Node ("At "      ++ show (natVal px)) as)
-toTreeArgs (MkMatrix px px') as = return (Node ("Mat"      ++ show (natVal px) ++ show (natVal px')) as)
-toTreeArgs (MatrixAt px px') as = return (Node ("At "      ++ show (natVal px) ++ " " ++ show (natVal px')) as)
-
 
 toTree :: AST a -> Tree String
 toTree a = evalState (toTreeArgs a []) 0

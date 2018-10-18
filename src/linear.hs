@@ -26,12 +26,9 @@
 module Linear where
 
 -- base
-import Prelude hiding( Functor(..), (<$>), Foldable(..), Traversable(..), Applicative(..)
-                     , Eq(..), and, or, any, all, ifThenElse
-                     )
-import qualified Prelude
+import Prelude hiding(Eq(..), Num(..), Fractional(..), Floating(..), sum)
 import Control.Applicative(liftA2)
-import Data.Coerce(coerce)
+import Control.Arrow(second, (&&&))
 import Data.Kind(Type)
 import Data.Type.Equality((:~:)(..))
 import Data.Proxy(Proxy(..))
@@ -40,18 +37,16 @@ import Foreign.Storable(Storable(alignment, sizeOf, peek, poke, peekElemOff, pok
 import GHC.Base(Int#, Int(I#), (+#))
 import GHC.TypeLits(Nat, KnownNat, natVal, type (+), type (-))
 import GHC.TypeLits.Compare
-import GHC.TypeNats(type (<=?))
+import GHC.TypeNats(type (<=), type (<=?))
 import Unsafe.Coerce(unsafeCoerce)
 
+-- distributive
+import Data.Distributive(Distributive(..))
+
 -- fir
-import TypeClasses.Equality(Eq(Logic,(==)), HasBool(bool), and, ifThenElse)
-import TypeClasses.Category( Functor(FunctorApp,fmap), (<$>)
-                           , Applicative(pure,(<*>))
-                           , Foldable(foldMap)
-                           , Traversable(traverse)
-                           , sum
-                           )
-import qualified SPIRV
+import Control.Arrow.Strength(strong)
+import TypeClasses.Logic(Eq(Logic,(==)), HasBool, (#.), ifThenElse)
+import TypeClasses.Algebra(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Floating(..))
 
 infixr 3 :.
 
@@ -59,10 +54,28 @@ data V :: Nat -> Type -> Type where
   Nil :: V 0 a
   (:.) :: KnownNat n => a -> V n a -> V (n+1) a
 
-deriving instance KnownNat n => Prelude.Functor     (V n)
-deriving instance KnownNat n => Prelude.Foldable    (V n)
-deriving instance KnownNat n => Prelude.Traversable (V n)
+deriving instance KnownNat n => Functor     (V n)
+deriving instance KnownNat n => Foldable    (V n)
+deriving instance KnownNat n => Traversable (V n)
 deriving instance (KnownNat n, Show a) => Show (V n a)
+
+instance KnownNat n => Distributive (V n) where
+  distribute :: Functor f => f (V n a) -> V n (f a)
+  distribute
+    = case Proxy @1 %<=? Proxy @n of
+        LE Refl   -> uncurry (:.) 
+                   . second distribute
+                   . strong
+                   . fmap headTailV
+        NLE nle _ -> 
+          case deduceZero nle of
+               Refl -> const Nil
+    
+instance KnownNat n => Applicative (V n) where
+  pure                    = repeatV
+  Nil       <*>  _        = Nil
+  (f :. fs) <*> (a :. as) = f a :. fs <*> as
+
 
 instance (KnownNat n, Semigroup a) => Semigroup (V n a) where
   (<>) = liftA2 (<>)
@@ -72,6 +85,15 @@ instance (KnownNat n, Monoid a) => Monoid (V n a) where
 
 repeatV :: forall a n. KnownNat n => a -> V n a
 repeatV = unfold id
+
+headV :: (KnownNat n, 1 <= n) => V n a -> a
+headV (a :. _) = a
+
+tailV :: (KnownNat n, 1 <= n) => V n a -> V (n-1) a
+tailV (_ :. as) = as
+
+headTailV :: (KnownNat n, 1 <= n) => V n a -> (a, V (n-1) a)
+headTailV (a :. as) = ( a, as )
 
 instance (KnownNat n, Storable a) => Storable (V n a) where
   sizeOf :: V n a -> Int
@@ -88,24 +110,35 @@ instance (KnownNat n, Storable a) => Storable (V n a) where
               go v (n# +# 1#)
   
   peek :: Ptr (V n a) -> IO (V n a)
-  peek ptr = traverse (peekElemOff (castPtr ptr)) $ ixVec
+  peek ptr = traverse (peekElemOff (castPtr ptr)) ixVec
       where ixVec :: V n Int
             ixVec = unfold pred (fromInteger $ natVal (Proxy @n))
 
+
+newtype Sum a = Sum { getSum :: a }
+instance AdditiveGroup a => Semigroup (Sum a) where
+  (Sum a) <> (Sum b) = Sum (a + b)
+instance AdditiveGroup a => Monoid (Sum a) where
+  mempty = Sum zero
+
+sum :: (AdditiveGroup a, Traversable t) => t a -> a
+sum = getSum #. foldMap Sum
+
+
 -- TODO: indexing is slightly off, I'm doing {0, ..., n} instead of {1, ..., n}
 buildV :: forall n a v. KnownNat n
-       => ( forall i. (KnownNat i, (i <=? n) ~ 'True) => Proxy i -> v -> a)
+       => ( forall i. (KnownNat i, i <= n) => Proxy i -> v -> a)
        -> v
        -> V n a
-buildV f v = go @n f v Nil where
-  go :: forall j. (KnownNat j, (j <=? n) ~ 'True)
-     => ( forall i. (KnownNat i, (i <=? n) ~ 'True) => Proxy i -> v -> a)
+buildV f u = go @n f u Nil where
+  go :: forall j. (KnownNat j, j <= n)
+     => ( forall i. (KnownNat i, i <= n) => Proxy i -> v -> a)
      -> v
      -> V (n-j) a
      -> V n a
-  go f v w = case (Proxy @1) %<=? (Proxy @j) of
+  go g v w = case Proxy @1 %<=? Proxy @j of
                   LE Refl   -> case deduceOK @j @n Refl  of
-                                    Refl -> go @(j-1) f v (f (Proxy @j) v :. w)
+                                    Refl -> go @(j-1) g v (g (Proxy @j) v :. w)
                   NLE nle _ -> case deduceZero nle of
                                     Refl -> w
 
@@ -116,15 +149,15 @@ deduceOK :: (KnownNat j, KnownNat n) => (j <=? n) :~: 'True -> ((j-1) <=? n) :~:
 deduceOK = unsafeCoerce
 
 dfoldrV :: forall n a b. KnownNat n 
-        => (forall k. (KnownNat k, (k+1 <=? n) ~ 'True) => a -> b k -> b (k+1))
+        => (forall k. (KnownNat k, k+1 <= n) => a -> b k -> b (k+1))
         -> b 0 -> V n a -> b n
 dfoldrV f d = go
-  where go :: (KnownNat m, (m <=? n) ~ 'True) => V m a -> b m
+  where go :: (KnownNat m, m <= n) => V m a -> b m
         go Nil    = d
         go (a:.as) = f a (go as)
 
 unfold :: forall n a. KnownNat n => (a -> a) -> a -> V n a
-unfold f a = case (Proxy @1) %<=? (Proxy @n) of
+unfold f a = case Proxy @1 %<=? Proxy @n of
                    LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
                    NLE nle _ -> case deduceZero nle of
                                      Refl -> Nil
@@ -135,11 +168,6 @@ infixl 6 <++>
 (<++>) Nil      v = v
 (<++>) (a:.Nil) v = a :. v
 (<++>) (a:.as)  v = a :. (as <++> v)
-
-instance KnownNat n => Prelude.Applicative (V n) where
-  pure                    = repeatV
-  Nil       <*>  _        = Nil
-  (f :. fs) <*> (a :. as) = f a :. fs <*> as
 
 {-# COMPLETE V0 #-}
 pattern V0 :: V 0 a
@@ -169,53 +197,46 @@ infixl 6 ^+^, ^-^
 infixl 7 ^.^, ^×^
 infix  8 ^*, *^
 
-class Num (Scalar v) => Module v where
+class Semiring (Scalar v) => Semimodule v where
   type Scalar v :: Type
-  type OfDim v (n :: Nat) = res | res -> v n
-  (^+^), (^-^) :: KnownNat n => OfDim v n -> OfDim v n -> OfDim v n
-  (*^) :: KnownNat n => Scalar v -> OfDim v n -> OfDim v n
-  (^*) :: KnownNat n => OfDim v n -> Scalar v -> OfDim v n
+  type OfDim v (n :: Nat) = r | r -> v n
+  (^+^) :: KnownNat n => OfDim v n -> OfDim v n -> OfDim v n
+  (*^)  :: KnownNat n => Scalar v  -> OfDim v n -> OfDim v n
+  (^*)  :: KnownNat n => OfDim v n -> Scalar v  -> OfDim v n
   (*^) = flip (^*) -- SPIRV defines VectorTimesScalar not ScalarTimesVector...
+
+class (Ring (Scalar v), Semimodule v) => Module v where
+  (^-^) :: KnownNat n => OfDim v n -> OfDim v n -> OfDim v n
   (^-^) x y = x ^+^ ((-1) *^ y)
 
-class Module v => Inner v where
+class Semimodule v => Inner v where
   (^.^), dot :: KnownNat n => OfDim v n -> OfDim v n -> Scalar v
   dot = (^.^)
 
-class Inner v => Cross v where
+class Module v => Cross v where
   (^×^), cross :: OfDim v 3 -> OfDim v 3 -> OfDim v 3
   (^×^) = cross
 
-
--- newtype WrapEq (v :: Nat -> Type) n = WrapEq { wrapEq :: v n }
--- 
--- instance {-# INCOHERENT #-} (KnownNat n, HasBool b (v n)) => HasBool b (WrapEq v n) where
---   bool b (WrapEq x) (WrapEq y) = WrapEq ( bool b x y )
--- 
--- instance HasEquality v n => Eq (WrapEq v n) where
---   type Logic (WrapEq v n) = Logic (Scalar v)
---   (WrapEq u) == (WrapEq v) = components u `match` components v
---     where match :: V n (Scalar v) -> V n (Scalar v) -> Logic (Scalar v)
---           match = (and .) . liftA2 (==)
-
-class    (Module v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
-instance (Module v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
+class    (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
+instance (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
 
 
 ------------------------------------------------------------------
 -- instances for plain vectors
 
-instance Num a => Module (V 0 a) where
+instance Semiring a => Semimodule (V 0 a) where
   type Scalar (V 0 a) = a
   type OfDim (V 0 a) n = V n a
   (^+^) = liftA2 (+)
-  (^-^) = liftA2 (-)
   v ^* k = fmap (*k) v
 
-instance Num a => Inner (V 0 a) where
+instance Ring a => Module (V 0 a) where
+  (^-^) = liftA2 (-)  
+
+instance Semiring a => Inner (V 0 a) where
   (^.^) = (sum .) . liftA2 (*)
 
-instance Num a => Cross (V 0 a) where
+instance Ring a => Cross (V 0 a) where
   cross (V3 x y z) (V3 x' y' z') = V3 a b c
     where a = y * z' - z * y'
           b = z * x' - x * z'
@@ -233,10 +254,10 @@ norm v = sqrt $ squaredNorm v
 squaredNorm :: (KnownNat n, Inner v) => OfDim v n -> Scalar v
 squaredNorm v = dot v v
 
-sqdist :: (KnownNat n, Inner v) => OfDim v n -> OfDim v n -> Scalar v
+sqdist :: (KnownNat n, Module v, Inner v) => OfDim v n -> OfDim v n -> Scalar v
 sqdist x y = squaredNorm (x ^-^ y)
 
-distance :: (Floating (Scalar v), KnownNat n, Inner v) => OfDim v n -> OfDim v n -> Scalar v
+distance :: (Floating (Scalar v), KnownNat n, Module v, Inner v) => OfDim v n -> OfDim v n -> Scalar v
 distance x y = norm (x ^-^ y)
 
 along :: (KnownNat n, Module v) => Scalar v -> OfDim v n -> OfDim v n -> OfDim v n
@@ -249,28 +270,28 @@ normalise v =
      then 0 *^ v
      else (1 / nm ) *^ v
 
-reflect :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> OfDim v n
+reflect :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> OfDim v n
 reflect v n = reflect' v (normalise n)
 
-reflect' :: (KnownNat n, Inner v) => OfDim v n -> OfDim v n -> OfDim v n
+reflect' :: (KnownNat n, Module v, Inner v) => OfDim v n -> OfDim v n -> OfDim v n
 reflect' v n = v ^-^ (2 * dot v n) *^ n -- assumes n is normalised
 
 -- |Projects the first argument onto the second.
-proj :: (Fractional (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> OfDim v n
+proj :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> OfDim v n
 proj x y = projC x y *^ y
 
-projC :: (Fractional (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> Scalar v
+projC :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> Scalar v
 projC x y = 
   let sqNm = dot y y
   in if sqNm == 0
      then 0
      else dot x y / sqNm
 
-isOrthogonal :: (KnownNat n, Inner v, Eq (Scalar v)) => OfDim v n -> OfDim v n -> Logic (Scalar v)
+isOrthogonal :: (KnownNat n, Module v, Inner v, Eq (Scalar v)) => OfDim v n -> OfDim v n -> Logic (Scalar v)
 isOrthogonal v w = dot v w == 0
 
 -- |Gram-Schmidt algorithm.
-gramSchmidt :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n) => [OfDim v n] -> [OfDim v n]
+gramSchmidt :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n) => [OfDim v n] -> [OfDim v n]
 gramSchmidt []     = []
 gramSchmidt (x:xs) = x' : gramSchmidt (map (\v -> v ^-^ proj v x') xs)
   where x' = normalise x
@@ -283,7 +304,7 @@ rotateAroundAxis n theta v = cos theta *^ v ^+^ sin theta *^ (n ^×^ v)
 
 type M n m a = V n (V m a)
 
-identityMat :: forall n a. (KnownNat n, Num a) => M n n a
+identityMat :: forall n a. (KnownNat n, Ring a) => M n n a
 identityMat = 
   case (Proxy :: Proxy 1) %<=? (Proxy :: Proxy n) of
        LE Refl   -> (1 :. repeatV 0) :. fmap (0:.) (identityMat :: M (n-1) (n-1) a)
@@ -310,9 +331,9 @@ rowMatrix = (:. Nil)
 columnMatrix :: KnownNat n => V n a -> M n 1 a
 columnMatrix = fmap (:. Nil)
 
-blockSum :: forall m1 m2 n1 n2 a. (KnownNat m1, KnownNat m2, KnownNat n1, KnownNat n2, Num a) 
+blockSum :: forall m1 m2 n1 n2 a. (KnownNat m1, KnownNat m2, KnownNat n1, KnownNat n2, Semiring a) 
          => M m1 n1 a -> M m2 n2 a -> M (m1+m2) (n1+n2) a
-blockSum mat1 mat2 = fmap (<++> repeatV 0) mat1 <++> fmap (repeatV 0 <++>) mat2
+blockSum mat1 mat2 = fmap (<++> repeatV zero) mat1 <++> fmap (repeatV zero <++>) mat2
 
 fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> M m l a
 fromColumns = addCols ( repeatV Nil :: M m 0 a)
@@ -336,7 +357,7 @@ infix  9 *!, !*
 
 class Module (Vector m) => Matrix m where
   type Vector m
-  type OfDims m (i :: Nat) (j :: Nat) = res | res -> m i j
+  type OfDims m (i :: Nat) (j :: Nat) = r | r -> m i j
 
   identity    :: KnownNat i                           => OfDims m i i
   diag        :: KnownNat i                           => Scalar (Vector m) -> OfDims m i i
@@ -355,12 +376,12 @@ class Module (Vector m) => Matrix m where
   identity = diag 1
   (*!) = flip (!*) -- SPIRV defines MatrixTimesScalar
 
-instance Num a => Matrix (M 0 0 a) where
+instance Ring a => Matrix (M 0 0 a) where
   type Vector (M 0 0 a) = V 0 a
   type OfDims (M 0 0 a) i j = M i j a
   identity = identityMat
   diag a = a *! identity
-  transpose rows = repeatV Nil `addCols` rows
+  transpose = distribute
   m !*! n = fmap (\row -> fmap (sum . liftA2 (*) row) (transposeMat n)) m
   m !+! n = liftA2 ( liftA2 (+) ) m n
   m !-! n = liftA2 ( liftA2 (-) ) m n

@@ -11,7 +11,7 @@ module Bindings where
 
 -- base 
 import Data.Kind(Type)
-import Data.Type.Bool(If, type (&&))
+import Data.Type.Bool(If)
 import Data.Type.Equality(type (==))
 import GHC.TypeLits(Symbol, CmpSymbol, TypeError, ErrorMessage(Text, ShowType, type (:<>:), type (:$$:)))
 

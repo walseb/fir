@@ -3,7 +3,9 @@
 /dist
 /dist-newstyle
 cabal.exe
+hoogle.exe
 .ghc.*
+*.html
 
 #
 old/

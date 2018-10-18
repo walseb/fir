@@ -22,24 +22,33 @@
 module FIR where
 
 -- base
-import Prelude hiding(Functor(..), Eq(..), (&&), (||), not, Integral(..), fromIntegral)
-import qualified Prelude as P
-
-import Data.Coerce(Coercible, coerce)
-import Unsafe.Coerce(unsafeCoerce)
+import Prelude hiding( Eq(..), (&&), (||), not
+                     , Ord(..)
+                     , Num(..), Floating(..)
+                     , Integral(..)
+                     , Fractional(..), fromRational
+                     )
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits(Nat, KnownNat, type (+), type (-), Symbol, KnownSymbol, TypeError, ErrorMessage(Text,(:$$:),(:<>:)))
+import GHC.TypeLits(KnownNat, type (+), type (-), KnownSymbol, TypeError, ErrorMessage(..))
 import GHC.TypeNats(type (<=?))
 
 -- fir  
-import AST(AST(..), PrimTy, ScalarTy(scalar), S)
+import AST((:=)(WithIx), AST(..), PrimTy, ScalarTy(scalar), S)
 import qualified AST
-import Bindings(Assignment((:->)), CanDef, CanFunDef, Put, Get, Union, Variadic, Binding(Var,Fun), BindingType, Insert, Permission(Read,Write))
-import TypeClasses.Equality(Eq(..), Boolean(..), HasBool(..))
-import TypeClasses.Category(Functor(..))
-import Indexed((:=)(WithIx), Codensity(Codensity), MonadIx, FunctorIx(fmapIx))
-import Linear(Module(..), Inner(..), Matrix(..), V, M, dfoldrV, buildV, pattern V2, pattern V3, pattern V4)
+import Bindings(Assignment((:->)), CanDef, CanFunDef, Put, Get, Union, Variadic, Binding(Var,Fun), BindingType, Insert)
+import TypeClasses.Logic ( Eq(..), Boolean(..), HasBool(..)
+                         , Ord(..)
+                         )
+import TypeClasses.Algebra( AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Signed(..), Archimedean(..), Convert(..) )
+import Indexed( Codensity(Codensity), MonadIx, FunctorIx(fmapIx))
+import Linear( Semimodule(..), Module(..)
+             , Inner(..)
+             , Matrix(..)
+             , V, M
+             , dfoldrV, buildV
+             , pattern V2, pattern V3, pattern V4
+             )
 import qualified SPIRV
 
 ---------------------------------------------------
@@ -83,23 +92,21 @@ put = put' @m @k @ty @i Proxy
 -- instead of AST (a1 -> a2 -> ... -> b)
 
 
-fundef :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty, Convert j ty)
-       => Codensity AST S (AST ty := l) (Union i j) 
-       -> Codensity AST S (VariadicAST j ty := Insert k ('Fun j ty) i) i
+fundef :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty, CanFunctionalise j ty)
+       => Codensity S (AST ty := l) (Union i j) 
+       -> Codensity S (VariadicAST j ty := Insert k ('Fun j ty) i) i
 fundef f =
-  let f' :: Codensity AST S (AST ty := l) (Union i j) 
-      f' = coerce f
-      f'' :: AST (S (ty := l) (Union i j))
-      f'' = toAST f'
-      f''' :: Codensity AST S (AST (BindingType ('Fun j ty)) := Insert k ('Fun j ty) i) i
-      f''' = defun @k @j @ty @l @i @(Codensity AST S) f''
-  in functionalise @k @j @ty @i f'''
+  let f' :: AST (S (ty := l) (Union i j))
+      f' = toAST f
+      f'' :: Codensity S (AST (BindingType ('Fun j ty)) := Insert k ('Fun j ty) i) i
+      f'' = defun @k @j @ty @l @i @(Codensity S) f'
+  in functionaliseCodensity @k @j @ty @i f''
 
 -- variadic mischievery
-functionalise :: forall k j ty i. (KnownSymbol k, PrimTy ty, Convert j ty)
-     => Codensity AST S (AST (Variadic j ty) := Insert k ('Fun j ty) i) i
-     -> Codensity AST S (VariadicAST j ty  := Insert k ('Fun j ty) i) i
-functionalise = fmapIx ( throughIx (convert @j @ty) )
+functionaliseCodensity :: forall k j ty i. (KnownSymbol k, PrimTy ty, CanFunctionalise j ty)
+     => Codensity S (AST (Variadic j ty) := Insert k ('Fun j ty) i) i
+     -> Codensity S (VariadicAST j ty  := Insert k ('Fun j ty) i) i
+functionaliseCodensity = fmapIx ( throughIx (functionalise @j @ty) )
 
 throughIx :: (a -> b) -> (a := i) j -> (b := i) j
 throughIx f (WithIx a) = WithIx (f a)
@@ -108,119 +115,128 @@ type family VariadicAST as b where
   VariadicAST '[]                 b = AST b
   VariadicAST (( _ ':-> a) ': as) b = AST (BindingType a) -> VariadicAST as b
 
-class Convert as b where
-  convert :: AST (Variadic as b) -> VariadicAST as b
+class CanFunctionalise as b where
+  functionalise :: AST (Variadic as b) -> VariadicAST as b
 
-instance Convert '[] b where
-  convert = id
+instance CanFunctionalise '[] b where
+  functionalise = id
 
-instance (Convert as b) => Convert ((k ':-> v) ': as) b where
-  convert :: AST (Variadic ((k ':-> v) ': as) b) -> VariadicAST ((k ':-> v) ': as) b
-  convert f a = convert @as @b (f :$ a)
-  -- everything happens here ---^^^^^^
+instance (CanFunctionalise as b) => CanFunctionalise ((k ':-> v) ': as) b where
+  functionalise :: AST (Variadic ((k ':-> v) ': as) b) -> VariadicAST ((k ':-> v) ': as) b
+  functionalise f a = functionalise @as @b (f :$ a)
+  -- everything happens here ---------------^^^^^^
 
 --------------------------------------------------------------------------
 
-instance ScopeIx (Codensity AST S) where
-  def'   k b   a = Codensity ( \h -> Bind :$ (Def    k b   :$ coerce a) :$ (Lam $ h . WithIx         ) )
-  defun' k j l f = Codensity ( \h -> Bind :$ (FunDef k j l :$        f) :$ (Lam $ h . WithIx         ) )
-  get'   k       = Codensity ( \h -> Bind :$  Get    k                  :$ (Lam $ h . WithIx . coerce) )
-  put'   k     a = Codensity ( \h -> Bind :$ (Put    k     :$ coerce a) :$ (Lam $ h . WithIx         ) )
+instance ScopeIx (Codensity S) where
+  def'   k b   a = Codensity ( \h -> Bind :$ (Def    k b   :$ a) :$ (Lam $ h . WithIx) )
+  defun' k j l f = Codensity ( \h -> Bind :$ (FunDef k j l :$ f) :$ (Lam $ h . WithIx) )
+  get'   k       = Codensity ( \h -> Bind :$  Get    k           :$ (Lam $ h . WithIx) )
+  put'   k     a = Codensity ( \h -> Bind :$ (Put    k     :$ a) :$ (Lam $ h . WithIx) )
 
 --------------------------------------------------------------------------------------
 -- instances for AST
 
-instance ( ScalarTy a
-         , Num a
-         ) => Num (AST a) where
-  (+)    = fromAST $ PrimOp (SPIRV.Numeric (scalar @a)) (SPIRV.NumOp SPIRV.Add ) (+)
-  (-)    = fromAST $ PrimOp (SPIRV.Numeric (scalar @a)) (SPIRV.NumOp SPIRV.Sub ) (-)
-  (*)    = fromAST $ PrimOp (SPIRV.Numeric (scalar @a)) (SPIRV.NumOp SPIRV.Mul ) (*)
-  abs    = fromAST $ PrimOp (SPIRV.Numeric (scalar @a)) (SPIRV.NumOp SPIRV.Abs ) abs
-  signum = fromAST $ PrimOp (SPIRV.Numeric (scalar @a)) (SPIRV.NumOp SPIRV.Sign) signum
-  negate = fromAST $ PrimOp (SPIRV.Numeric (scalar @a)) (SPIRV.NumOp SPIRV.Neg ) negate
-  fromInteger = Lit . fromInteger
-
+-- logical operations
 instance Boolean (AST Bool) where
   true  = Lit True
   false = Lit False
-  (&&)  = fromAST $ PrimOp SPIRV.Boolean (SPIRV.BoolOp SPIRV.And) (&&)
-  (||)  = fromAST $ PrimOp SPIRV.Boolean (SPIRV.BoolOp SPIRV.Or ) (||)
-  not   = fromAST $ PrimOp SPIRV.Boolean (SPIRV.BoolOp SPIRV.Not) not
+  (&&)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.And) (&&)
+  (||)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Or ) (||)
+  not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Not) not
 
 instance PrimTy a => HasBool (AST Bool) (AST a) where
-  bool = fromAST $ If
+  bool = fromAST If
 
-instance (PrimTy a, Eq a , Logic a ~ Bool) => Eq (AST a) where
+instance (ScalarTy a, Eq a , Logic a ~ Bool) => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)
-  (==) = error "todo" --fromAST $ PrimOp "==" (==)
+  (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (scalar @a)) (==)
+  (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (scalar @a)) (/=)
 
-instance ( ScalarTy a
-         , Fractional a
-         ) => Fractional (AST a) where
-  (/)   = fromAST $ PrimOp (SPIRV.Numeric (scalar @a)) (SPIRV.NumOp SPIRV.Div) (/)
+instance (ScalarTy a, Ord a, Logic a ~ Bool) => Ord (AST a) where
+  type Compare (AST a) = AST Int
+  compare = error "todo"
+  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (scalar @a)) (<=)
+  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (scalar @a)) (>=)
+  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (scalar @a)) (<)
+  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (scalar @a)) (>)
+  min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (scalar @a)) min
+  max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (scalar @a)) max
+
+-- numeric operations
+instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
+  (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalar @a)) (+)
+  zero   = Lit (zero :: a)
+instance (ScalarTy a, Semiring a) => Semiring (AST a) where
+  (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (scalar @a)) (*)  
+instance (ScalarTy a, Ring a) => Ring (AST a) where
+  (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (scalar @a)) (-)
+  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (scalar @a)) negate
+  fromInteger = Lit . fromInteger
+instance (ScalarTy a, Signed a) => Signed (AST a) where
+  abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (scalar @a)) abs
+  signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (scalar @a)) signum
+instance (ScalarTy a, DivisionRing a) => DivisionRing (AST a) where
+  (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (scalar @a)) (/)
   fromRational = Lit . fromRational
+instance (ScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) where
+  mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (scalar @a)) mod
+  rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (scalar @a)) rem
 
 
-instance ( ScalarTy a
-         , Floating a
-         ) => Floating (AST a) where
-  (**)  = error "todo" --fromAST $ PrimOp "**"    (**)
-  sqrt  = error "todo" --fromAST $ PrimOp "sqrt"  sqrt
-  acos  = error "todo" --fromAST $ PrimOp "acos"  acos
-  asin  = error "todo" --fromAST $ PrimOp "asin"  asin
-  atan  = error "todo" --fromAST $ PrimOp "atan"  atan
-  cos   = error "todo" --fromAST $ PrimOp "cos"   cos
-  sin   = error "todo" --fromAST $ PrimOp "sin"   sin
-  tan   = error "todo" --fromAST $ PrimOp "tan"   tan
-  acosh = error "todo" --fromAST $ PrimOp "acosh" acosh
-  asinh = error "todo" --fromAST $ PrimOp "asinh" asinh
-  atanh = error "todo" --fromAST $ PrimOp "atanh" atanh
-  cosh  = error "todo" --fromAST $ PrimOp "cosh"  cosh
-  sinh  = error "todo" --fromAST $ PrimOp "sinh"  sinh
-  tanh  = error "todo" --fromAST $ PrimOp "tanh"  tanh
-  exp   = error "todo" --fromAST $ PrimOp "exp"   exp
-  log   = error "todo" --fromAST $ PrimOp "log"   log
-  pi    = Lit pi
+-- numeric conversions
 
-instance ( ScalarTy a
-         , Num a
-         ) => Module (AST (V 0 a)) where
+
+-- too lazy to define all instances by hand, so using this hack
+type family DisEq a b where
+  DisEq a a = 'False
+  DisEq a b = 'True
+
+instance (ScalarTy a, ScalarTy b, Convert a b, DisEq a b ~ 'True)
+         => Convert (AST a) (AST b) where
+  convert = fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalar @a) (scalar @b)) convert
+
+
+-- vectors
+instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
   type Scalar (AST (V 0 a))   = AST a
   type OfDim  (AST (V 0 a)) n = AST (V n a)
-  v ^+^ w = fromAST (PrimOp (SPIRV.Vector (scalar @a)) (SPIRV.VecOp SPIRV.AddV ) (^+^)) v w
-  v ^-^ w = fromAST (PrimOp (SPIRV.Vector (scalar @a)) (SPIRV.VecOp SPIRV.SubV ) (^-^)) v w
-  v ^*  k = fromAST (PrimOp (SPIRV.Vector (scalar @a)) (SPIRV.VecOp SPIRV.VMulK) (^*) ) v k
+  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (scalar @a)) (^+^)
+  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (scalar @a)) (^*)
+
+instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
+  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (scalar @a)) (^-^)
+
+instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
+  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV (scalar @a)) (^.^)
 
 
-instance Functor (AST (V n ())) where
-  type FunctorApp (AST (V n ())) a = AST (V n a)
-  fmap = undefined
-
-
-instance ( ScalarTy a
-         , Num a
-         ) => Inner (AST (V 0 a)) where
-  v ^.^ w = fromAST ( PrimOp (SPIRV.Vector (scalar @a) ) (SPIRV.VecOp SPIRV.DotV) (^.^)) v w
-
-instance ( ScalarTy a
-         , Num a
-         ) => Matrix (AST (M 0 0 a)) where
+-- matrices
+instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
   type Vector (AST (M 0 0 a)) = AST (V 0 a)
   type OfDims (AST (M 0 0 a)) m n = AST (M m n a)
 
-  diag        t  = error "todo" --ASTMat ( fromAST (PrimOp "diag"        diag       ) t )
-  konst       t  = error "todo" --ASTMat ( fromAST (PrimOp "konst"       konst      ) t )
-  transpose   m = fromAST (PrimOp (SPIRV.Matrix (scalar @a)) (SPIRV.MatOp SPIRV.Transp) transpose  ) m
-  inverse     m = fromAST (PrimOp (SPIRV.Matrix (scalar @a)) (SPIRV.MatOp SPIRV.Inv   ) inverse    ) m
-  determinant m = fromAST (PrimOp (SPIRV.Matrix (scalar @a)) (SPIRV.MatOp SPIRV.Det   ) determinant) m
+  diag        = error "todo"
+  konst       = error "todo"
+  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (scalar @a)) transpose  
+  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (scalar @a)) inverse    
+  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (scalar @a)) determinant
 
-  m !+! n = error "todo" --ASTMat ( fromAST (PrimOp "!+!" (!+!)) m n )
-  m !-! n = error "todo" --ASTMat ( fromAST (PrimOp "!-!" (!-!)) m n )
-  m !*! n = fromAST (PrimOp (SPIRV.Matrix (scalar @a)) (SPIRV.MatOp SPIRV.MMulM) (!*!)) m n
-  v ^*! n = fromAST (PrimOp (SPIRV.Matrix (scalar @a)) (SPIRV.MatOp SPIRV.VMulM) (^*!)) v n
-  m !*^ w = fromAST (PrimOp (SPIRV.Matrix (scalar @a)) (SPIRV.MatOp SPIRV.MMulV) (!*^)) m w
-  m !*  k = fromAST (PrimOp (SPIRV.Matrix (scalar @a)) (SPIRV.MatOp SPIRV.MMulK) (!*) ) m k
+  (!+!) = error "todo"
+  (!-!) = error "todo"
+  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (scalar @a)) (!*!)
+  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (scalar @a)) (^*!)
+  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (scalar @a)) (!*^)
+  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (scalar @a)) (!*)
+
+instance 
+  TypeError (     Text "The AST datatype does not have a Functor instance."
+             :$$: Text "Cannot map Haskell functions over internal types."
+             -- :$$: Text "To map an _internal_ function over an internal type, use fmapAST."
+            ) => Functor AST where
+  fmap = error "unreachable"
+
+--fmapAST = error "TODO"
 
 ------------------------------------------------
 -- syntactic
@@ -248,11 +264,11 @@ instance Syntactic a => Syntactic ( (a := j) i ) where
   fromAST (Ix :$ a) = WithIx (fromAST a)
   fromAST _ = error "help needed"
 
-instance (Syntactic a) => Syntactic (Codensity AST (m :: (k -> Type) -> (k -> Type)) (a := j) i) where
-  type Internal (Codensity AST m (a := j) i) = m (Internal a := j) i
-  toAST :: Codensity AST m (a := j) i -> AST (m (Internal a := j) i)
+instance (Syntactic a) => Syntactic (Codensity (m :: (k -> Type) -> (k -> Type)) (a := j) i) where
+  type Internal (Codensity m (a := j) i) = m (Internal a := j) i
+  toAST :: Codensity m (a := j) i -> AST (m (Internal a := j) i)
   toAST (Codensity k) = k ( fromAST Pure )
-  fromAST :: AST (m (Internal a := j) i) -> Codensity AST m (a := j) i
+  fromAST :: AST (m (Internal a := j) i) -> Codensity m (a := j) i
   fromAST a = Codensity ( \k -> fromAST Bind a (k . WithIx) )
 
 
@@ -260,35 +276,29 @@ instance (Syntactic a) => Syntactic (Codensity AST (m :: (k -> Type) -> (k -> Ty
 -- utility type for the following instance declaration
 newtype B n a b i = B { unB :: AST (AST.Variadic (n-i) a b) }
 
-instance KnownNat n => Syntactic (V n (AST a)) where
-  type Internal (V n (AST a)) = V n a
+instance (KnownNat n, Syntactic a) => Syntactic (V n a) where
+  type Internal (V n a) = V n (Internal a)
 
-  toAST :: V n (AST a) -> AST (V n a)
+  toAST :: V n a -> AST (V n (Internal a))
   toAST v = res'
     where f :: forall i. (KnownNat i, (n-(i+1)) ~ ((n-i)-1), (1 <=? (n-i)) ~ 'True)
-            => AST a
-            -> B n a (V n a) i
-            -> B n a (V n a) (i+1)
-          f a (B b) = B ( b :$ a )
-          a0 :: B n a (V n a) 0
-          a0 = B ( MkVector @n @a Proxy )
-          res :: B n a (V n a) n
+            => a
+            -> B n (Internal a) (V n (Internal a)) i
+            -> B n (Internal a) (V n (Internal a)) (i+1)
+          f a (B b) = B ( b :$ toAST a )
+          a0 :: B n (Internal a) (V n (Internal a)) 0
+          a0 = B ( MkVector @n @(Internal a) Proxy )
+          res :: B n (Internal a) (V n (Internal a)) n
           res = dfoldrV f a0 v
-          res' :: ((n-n) ~ 0) => AST (AST.Variadic 0 a (V n a))
+          res' :: ((n-n) ~ 0) => AST (AST.Variadic 0 (Internal a) (V n (Internal a)))
           res' = unB res
 
-  fromAST :: AST (V n a) -> V n (AST a)
-  fromAST = buildV (\i v -> VectorAt i :$ v)
+  fromAST :: AST (V n (Internal a)) -> V n a
+  fromAST = buildV ( \i v -> fromAST ( VectorAt i :$ v) )
 
-instance (KnownNat n, KnownNat m) => Syntactic (M n m (AST a)) where
-  type Internal (M n m (AST a)) = M n m a
-
-  toAST :: M n m (AST a) -> AST (M n m a)
-  toAST = error "todo todo todo"
-
-  fromAST :: AST (M n m a) -> M n m (AST a)
-  fromAST =  buildV ( \i -> buildV ( \j y -> MatrixAt i j :$ y ) )
-
+-- these patterns and constructors could be generalised to have types such as:
+-- Vec2 :: Syntactic a => a -> a -> AST ( V 2 (Internal a) )
+-- but this leads to poor type-inference
 
 pattern Vec2 :: AST a -> AST a -> AST ( V 2 a )
 pattern Vec2 x y <- (fromAST -> V2 x y)
@@ -300,13 +310,13 @@ pattern Vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 
 vec2 :: AST a -> AST a -> AST ( V 2 a )
-vec2 x y = fromAST (MkVector (Proxy @2) ) x y
+vec2 = fromAST (MkVector (Proxy @2) )
 
 vec3 :: AST a -> AST a -> AST a -> AST ( V 3 a )
-vec3 x y z = fromAST (MkVector (Proxy @3) ) x y z
+vec3 = fromAST (MkVector (Proxy @3) )
 
 vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
-vec4 x y z w = fromAST (MkVector (Proxy @4) ) x y z w
+vec4 = fromAST (MkVector (Proxy @4) )
 
 pattern Mat22
   :: AST a -> AST a
@@ -440,9 +450,9 @@ mat22
   -> AST ( M 2 2 a )
 mat22 a11 a12
       a21 a22
-  = fromAST ( MkMatrix (Proxy @2) (Proxy @2) ) 
-      a11 a12
-      a21 a22
+  = vec2
+      ( vec2 a11 a12 )
+      ( vec2 a21 a22 )
 
 mat23
   :: AST a -> AST a -> AST a
@@ -450,9 +460,9 @@ mat23
   -> AST ( M 2 3 a )
 mat23 a11 a12 a13
       a21 a22 a23
-  = fromAST (MkMatrix (Proxy @2) (Proxy @3) ) 
-      a11 a12 a13
-      a21 a22 a23
+  = vec2
+      ( vec3 a11 a12 a13 )
+      ( vec3 a21 a22 a23 )
 
 mat24
   :: AST a -> AST a -> AST a -> AST a
@@ -460,9 +470,9 @@ mat24
   -> AST ( M 2 4 a )
 mat24 a11 a12 a13 a14
       a21 a22 a23 a24
-  = fromAST (MkMatrix (Proxy @2) (Proxy @4) ) 
-      a11 a12 a13 a14
-      a21 a22 a23 a24
+  = vec2
+      ( vec4 a11 a12 a13 a14 )
+      ( vec4 a21 a22 a23 a24 )
 
 mat32
   :: AST a -> AST a
@@ -472,10 +482,10 @@ mat32
 mat32 a11 a12
       a21 a22
       a31 a32
-  = fromAST (MkMatrix (Proxy @3) (Proxy @2) ) 
-      a11 a12
-      a21 a22
-      a31 a32
+  = vec3
+      ( vec2 a11 a12 )
+      ( vec2 a21 a22 )
+      ( vec2 a31 a32 )
 
 mat33
   :: AST a -> AST a -> AST a
@@ -485,10 +495,10 @@ mat33
 mat33 a11 a12 a13
       a21 a22 a23
       a31 a32 a33
-  = fromAST (MkMatrix (Proxy @3) (Proxy @3) ) 
-      a11 a12 a13
-      a21 a22 a23
-      a31 a32 a33
+  = vec3
+      ( vec3 a11 a12 a13 )
+      ( vec3 a21 a22 a23 )
+      ( vec3 a31 a32 a33 )
 
 mat34
   :: AST a -> AST a -> AST a -> AST a
@@ -498,10 +508,10 @@ mat34
 mat34 a11 a12 a13 a14
       a21 a22 a23 a24
       a31 a32 a33 a34
-  = fromAST (MkMatrix (Proxy @3) (Proxy @4) ) 
-      a11 a12 a13 a14
-      a21 a22 a23 a24
-      a31 a32 a33 a34
+  = vec3
+      ( vec4 a11 a12 a13 a14 )
+      ( vec4 a21 a22 a23 a24 )
+      ( vec4 a31 a32 a33 a34 )
 
 mat42
   :: AST a -> AST a
@@ -513,11 +523,11 @@ mat42 a11 a12
       a21 a22
       a31 a32
       a41 a42
-  = fromAST (MkMatrix (Proxy @4) (Proxy @2) ) 
-      a11 a12
-      a21 a22
-      a31 a32
-      a41 a42
+  = vec4
+      ( vec2 a11 a12 )
+      ( vec2 a21 a22 )
+      ( vec2 a31 a32 )
+      ( vec2 a41 a42 )
 
 mat43
   :: AST a -> AST a -> AST a
@@ -529,11 +539,11 @@ mat43 a11 a12 a13
       a21 a22 a23
       a31 a32 a33
       a41 a42 a43
-  = fromAST (MkMatrix (Proxy @4) (Proxy @3) ) 
-      a11 a12 a13
-      a21 a22 a23
-      a31 a32 a33
-      a41 a42 a43
+  = vec4
+      ( vec3 a11 a12 a13 )
+      ( vec3 a21 a22 a23 )
+      ( vec3 a31 a32 a33 )
+      ( vec3 a41 a42 a43 )
 
 mat44
   :: AST a -> AST a -> AST a -> AST a
@@ -541,12 +551,12 @@ mat44
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST ( M 4 4 a )
-mat44 a11 a12 a13 a14 
+mat44 a11 a12 a13 a14
       a21 a22 a23 a24
       a31 a32 a33 a34
       a41 a42 a43 a44
-  = fromAST (MkMatrix (Proxy @4) (Proxy @4) ) 
-      a11 a12 a13 a14 
-      a21 a22 a23 a24
-      a31 a32 a33 a34
-      a41 a42 a43 a44
+  = vec4
+      ( vec4 a11 a12 a13 a14 )
+      ( vec4 a21 a22 a23 a24 )
+      ( vec4 a31 a32 a33 a34 )
+      ( vec4 a41 a42 a43 a44 )

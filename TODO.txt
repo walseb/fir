@@ -1,0 +1,33 @@
+
+
+Basic types:
+  - ()
+  - more widths for Word / Int / Float
+  - pointers ???
+
+Compound types:
+  - Arrays (containing any basic type)
+  - Records/structs (containing any other types)
+  - (Syntactic sugar for) complex numbers & quaternions
+  - (Syntactic sugar for) tuples
+
+Operations:
+  - comparison (using Ordering, not just < <= > >=)
+  - rounding operations
+  - bitwise operations on numeric types
+  - way to lift operations to vectors (like 'fmap')
+  - load/store through pointers???
+  - glsl utility operations (clamp, mix, step, smoothstep, ...)
+
+
+Control flow:
+  - switch
+  - loops
+
+
+need to think about records/structs and in particular memory layout & alignment concerns
+structs should use type-level symbols to access individual components
+arrays should use runtime ints
+
+
+turn back on the unused do bind thing and make it so that there are no warnings
