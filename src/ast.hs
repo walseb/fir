@@ -17,7 +17,6 @@
 module AST where
 
 -- base  
-import Control.Monad.State.Lazy(State, put, get, evalState)
 import Data.Kind(Type)
 import Data.Proxy(Proxy)
 import GHC.TypeLits( Nat, KnownNat, natVal, type (-)
@@ -27,47 +26,51 @@ import GHC.TypeNats(type (<=?))
 -- containers
 import Data.Tree(Tree(Node))
 
+-- mtl
+import Control.Monad.State.Lazy(State, put, get, evalState)
+
 -- fir
-import Bindings(Binding(Var, Fun), BindingType, CanDef, CanFunDef, Get, Put, Insert, Union)
+import Bindings ( Binding(Var, Fun), BindingType
+                , CanDef, CanFunDef, Get, Put
+                , Insert, Union
+                )
 import Linear(V, M)
 import qualified SPIRV.PrimOps as SPIRV
 import qualified SPIRV.Types   as SPIRV
-import SPIRV.Types( Signedness(Unsigned, Signed), Width(W16, W32))
+import SPIRV.Types ( Signedness(Unsigned, Signed)
+                   , Width(W16, W32)
+                   )
 
 
 ------------------------------------------------------------
 -- primitive types, which can be internalised in the AST
 
-class Show ty => PrimTy ty where 
-instance PrimTy ()     where
-instance PrimTy Bool   where
-instance PrimTy Word   where
-instance PrimTy Int    where
-instance PrimTy Float  where
-instance PrimTy Double where
+class Show ty => PrimTy ty     where 
+instance         PrimTy ()     where
+instance         PrimTy Bool   where
+instance         PrimTy Word   where
+instance         PrimTy Int    where
+instance         PrimTy Float  where
+instance         PrimTy Double where
 
 
-class (PrimTy a, SPIRV.KnownScalar (InternalScalar a)) => ScalarTy a where
-  type InternalScalar a :: SPIRV.PrimTy
+class PrimTy a => PrimScalarTy a where
+  scalar :: SPIRV.PrimTy
 
-instance ScalarTy Word where
-  type InternalScalar Word   = SPIRV.Integer Unsigned W32
-instance ScalarTy Int where
-  type InternalScalar Int    = SPIRV.Integer Signed   W32
-instance ScalarTy Float where
-  type InternalScalar Float  = SPIRV.Floating W16
-instance ScalarTy Double where
-  type InternalScalar Double = SPIRV.Floating W32
+instance PrimScalarTy Word where
+  scalar = SPIRV.Integer Unsigned W32
+instance PrimScalarTy Int where
+  scalar = SPIRV.Integer Signed   W32
+instance PrimScalarTy Float where
+  scalar = SPIRV.Floating         W16
+instance PrimScalarTy Double where
+  scalar = SPIRV.Floating         W32
 
-instance ( PrimTy a
-         , Num a
-         , ScalarTy a
+instance ( PrimScalarTy a
          , KnownNat n
          ) => PrimTy (V n a) where
 
-instance ( PrimTy a
-         , Num a
-         , ScalarTy a
+instance ( PrimScalarTy a
          , KnownNat m
          , KnownNat n
          ) => PrimTy (M m n a) where
@@ -159,7 +162,7 @@ toTreeArgs (Lam f) as = do
     _  -> Node  ":$"               (body : as)
 toTreeArgs (PrimOp op _ ) as 
   = return (Node ("PrimOp " ++ opName ) as)
-    where opName = show . fst $ SPIRV.op op
+    where opName = show ( SPIRV.op op )
 toTreeArgs If                as = return (Node "If"   as)
 toTreeArgs Pure              as = return (Node "Pure" as)
 toTreeArgs Bind              as = return (Node "Bind" as)

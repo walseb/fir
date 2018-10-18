@@ -187,6 +187,10 @@ pattern V3 x y z = x :. y :. z :. Nil
 pattern V4 :: a -> a -> a -> a -> V 4 a
 pattern V4 x y z w = x :. y :. z :. w :. Nil
 
+------------------------------------------------------------------
+
+dim :: forall n. KnownNat n => Int
+dim = fromInteger ( natVal ( Proxy @n ) )
 
 ------------------------------------------------------------------
 -- type classes for vector operations

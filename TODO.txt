@@ -38,10 +38,12 @@ also need zipWith, e.g. shift operators (zipWith shiftRight intvec datavec)
 fix vector indexing to start from 0 and not 1
 
 
+use deriving-via with FreshSucc
 
 
+think: do I only want to use load/store for the interface variables, or for those defined along the way?
+  - in SPIR-V, for load/store I need everything to be global, so everything would need to be floated to the top
 
-arguments to provide to each SPIRV operation:
-  - opcode & number of operands
-  - result type
-  - result id
+
+ensure correctness of the binary instance for strings (needed e.g. to import GLSL and to name entry points)
+apply RowMajor decoration to matrix type declarations

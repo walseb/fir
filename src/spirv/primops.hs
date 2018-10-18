@@ -1,43 +1,35 @@
-{-# LANGUAGE GADTs     #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE GADTs #-}
 
-module SPIRV.PrimOps where
+module SPIRV.PrimOps
+  ( PrimOp(..)
+  , BoolPrimOp(..), EqPrimOp(..), OrdPrimOp(..)
+  , NumPrimOp(..), FloatPrimOp(..)
+  , VecPrimOp(..), MatPrimOp(..)
+  , ConvPrimOp(..)
+  , Op(..)
+  , opAndReturnType
+  , op
+  ) where
 
 -- base
-import Data.Proxy    ( Proxy )
-import GHC.TypeLits  ( KnownNat )
 import Prelude hiding( Ordering(..) )
 
 -- fir
-import SPIRV.Types( PrimTy(..), Signedness(..)
-                  , KnownScalar, scalarVal
-                  )
+import SPIRV.Types( PrimTy(..), Signedness(..) )
+                  
+-------------------------------------------------------------------------------
+-- primitive operations
 
 data PrimOp where
-  BoolOp  :: BoolPrimOp -> PrimOp
-  EqOp    :: KnownScalar s => EqPrimOp    -> Proxy s -> PrimOp
-  OrdOp   :: KnownScalar s => OrdPrimOp   -> Proxy s -> PrimOp
-  NumOp   :: KnownScalar s => NumPrimOp   -> Proxy s -> PrimOp
-  FloatOp :: KnownScalar s => FloatPrimOp -> Proxy s -> PrimOp
-  VecOp   :: ( KnownScalar s
-             , KnownNat n
-             ) => VecPrimOp -> Proxy n -> Proxy s -> PrimOp
-  MatOp   :: ( KnownScalar s
-             , KnownNat n
-             , KnownNat m
-             ) => MatPrimOp -> Proxy n -> Proxy m -> Proxy s -> PrimOp
-  ConvOp  :: (KnownScalar s1, KnownScalar s2)
-          => ConvPrimOp -> Proxy s1 -> Proxy s2 -> PrimOp
-  
-instance Show PrimOp where
-  show (BoolOp  primOp       ) = "BoolOp "  ++ show primOp
-  show (EqOp    primOp _     ) = "EqOp "    ++ show primOp
-  show (OrdOp   primOp _     ) = "OrdOp "   ++ show primOp
-  show (NumOp   primOp _     ) = "NumOp "   ++ show primOp
-  show (FloatOp primOp _     ) = "FloatOp " ++ show primOp
-  show (VecOp   primOp _ _   ) = "VecOp "   ++ show primOp
-  show (MatOp   primOp _ _ _ ) = "MatOp "   ++ show primOp
-  show (ConvOp  primOp _ _   ) = "ConvOp "  ++ show primOp
+  BoolOp  :: BoolPrimOp                          -> PrimOp
+  EqOp    :: EqPrimOp                  -> PrimTy -> PrimOp
+  OrdOp   :: OrdPrimOp                 -> PrimTy -> PrimOp
+  NumOp   :: NumPrimOp                 -> PrimTy -> PrimOp
+  FloatOp :: FloatPrimOp               -> PrimTy -> PrimOp
+  VecOp   :: VecPrimOp   -> Int        -> PrimTy -> PrimOp
+  MatOp   :: MatPrimOp   -> Int -> Int -> PrimTy -> PrimOp
+  ConvOp  :: ConvPrimOp      -> PrimTy -> PrimTy -> PrimOp
+  deriving Show
  
 data BoolPrimOp
   = Or
@@ -232,22 +224,32 @@ data Op
   | Invsqrt
   deriving Show
 
-op :: PrimOp -> (Op, PrimTy)
-op (BoolOp     boolOp )  = ( booleanOp  boolOp
-                           , Boolean
-                           )
-op (EqOp       eqOp  s) = ( equalityOp eqOp (scalarVal s)
-                           , Boolean
-                           )
-op (OrdOp      ordOp s) = orderOp    ordOp  (scalarVal s)
-op (NumOp      numOp s) = numericOp  numOp  (scalarVal s)
-op (FloatOp    flOp  s) = ( floatingOp flOp
-                          , scalarVal s -- should be a Floating type always
-                          )
-op (VecOp      vecOp n s  ) = vectorOp vecOp (scalarVal s) n   s
-op (MatOp      matOp n m s) = matrixOp matOp               n m s
-op (ConvOp cOp s1 s2)
-  = convOp cOp (scalarVal s1) (scalarVal s2)
+opAndReturnType :: PrimOp -> (Op, PrimTy)
+opAndReturnType (BoolOp boolOp )
+  = ( booleanOp  boolOp
+    , Boolean
+    )
+opAndReturnType (EqOp eqOp s)
+  = ( equalityOp eqOp s
+    , Boolean
+    )
+opAndReturnType (OrdOp ordOp s)
+  = orderOp ordOp s
+opAndReturnType (NumOp numOp s)
+  = numericOp numOp s
+opAndReturnType (FloatOp flOp s)
+  = ( floatingOp flOp
+    , s -- should be a Floating type always
+    )
+opAndReturnType (VecOp vecOp n s)
+  = vectorOp vecOp n s
+opAndReturnType (MatOp matOp n m s)
+  = matrixOp matOp n m s
+opAndReturnType (ConvOp cOp s1 s2)
+  = convOp cOp s1 s2
+
+op :: PrimOp -> Op
+op = fst . opAndReturnType
 
 booleanOp :: BoolPrimOp -> Op
 booleanOp Or  = LogicalOr
@@ -335,29 +337,27 @@ floatingOp FLog     = Log
 floatingOp FSqrt    = Sqrt
 floatingOp FInvsqrt = Invsqrt
 
-vectorOp :: (KnownNat n, KnownScalar s)
-         => VecPrimOp -> PrimTy -> Proxy n -> Proxy s -> (Op, PrimTy)
+vectorOp :: VecPrimOp -> Int -> PrimTy -> (Op, PrimTy)
 -- re-use numeric operations on vectors
-vectorOp AddV   ty           n s = (fst $ numericOp Add ty, Vec n s)
-vectorOp SubV   ty           n s = (fst $ numericOp Sub ty, Vec n s)
-vectorOp NegV   ty           n s = (fst $ numericOp Neg ty, Vec n s)
-vectorOp DotV   (Floating w) _ _ = (Dot, Floating w)
-vectorOp DotV   _            _ _ = error "Dot product: vector elements must be of floating-point type."
-vectorOp VMulK  (Floating _) n s = (VectorTimesScalar, Vec n s)
-vectorOp VMulK  _            _ _ = error "Scalar multiplication: vector elements must be of floating-point type (sorry!)."
-vectorOp CrossV (Floating _) n s = (Cross, Vec n s)
-vectorOp CrossV _            _ _ = error "Cross product: vector elements must be of floating-point type."
+vectorOp AddV   n s            = ( fst $ numericOp Add s, Vec n s )
+vectorOp SubV   n s            = ( fst $ numericOp Sub s, Vec n s )
+vectorOp NegV   n s            = ( fst $ numericOp Neg s, Vec n s )
+vectorOp DotV   _ (Floating w) = ( Dot, Floating w )
+vectorOp DotV   _ _            = error "Dot product: vector elements must be of floating-point type."
+vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vec n (Floating w) )
+vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements must be of floating-point type (sorry!)."
+vectorOp CrossV n (Floating w) = ( Cross, Vec n (Floating w) )
+vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
 
-matrixOp :: (KnownNat n, KnownNat m, KnownScalar s)
-         => MatPrimOp -> Proxy n -> Proxy m -> Proxy s -> (Op, PrimTy)
-matrixOp MMulK  n m s = (MatrixTimesScalar, Mat n m   s)
-matrixOp MMulV  n _ s = (MatrixTimesVector, Vec n     s)
-matrixOp VMulM  n _ s = (VectorTimesMatrix, Vec n     s)
-matrixOp MMulM  n m s = (MatrixTimesMatrix, Mat n m   s)
-matrixOp Transp n m s = (Transpose        , Mat n m   s)
-matrixOp Det    _ _ s = (Determinant      , scalarVal s)
-matrixOp Inv    n m s = (MatrixInverse    , Mat n m   s)
-matrixOp Out    n m s = (OuterProduct     , Mat n m   s)
+matrixOp :: MatPrimOp -> Int -> Int -> PrimTy -> (Op, PrimTy)
+matrixOp MMulK  n m s = ( MatrixTimesScalar, Mat n m s )
+matrixOp MMulV  n _ s = ( MatrixTimesVector, Vec n   s )
+matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vec n   s )
+matrixOp MMulM  n m s = ( MatrixTimesMatrix, Mat n m s )
+matrixOp Transp n m s = ( Transpose        , Mat n m s )
+matrixOp Det    _ _ s = ( Determinant      ,         s )
+matrixOp Inv    n m s = ( MatrixInverse    , Mat n m s )
+matrixOp Out    n m s = ( OuterProduct     , Mat n m s )
 
 convOp :: ConvPrimOp -> PrimTy -> PrimTy -> (Op, PrimTy)
 convOp Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF   , Floating         w )
