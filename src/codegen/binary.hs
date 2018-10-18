@@ -28,41 +28,47 @@ import CodeGen.Instruction ( Args(..), arity, putArgs, argsList
                            , ID(..), Instruction(..)
                            , EntryPoint(..)
                            )
-import qualified SPIRV.Types        as SPIRVTy
-import qualified SPIRV.OpCodes      as SPIRV
-import qualified SPIRV.Capabilities as SPIRV
+import qualified SPIRV.Capability    as SPIRV
+import qualified SPIRV.ExecutionMode as SPIRV
+import qualified SPIRV.Extension     as SPIRV
+import qualified SPIRV.Operation     as SPIRV.Op
+import qualified SPIRV.PrimTy        as SPIRV
 
 ----------------------------------------------------------------------------
 
-putInstruction :: Map SPIRV.Extension Instruction -> Instruction -> Binary.Put
-putInstruction extInstrs Instruction { code, resTy, resID = res, args }
-  = case code of
+traverseWithKey_ :: Applicative t => (k -> v -> t a) -> Map k v -> t ()
+traverseWithKey_ f = Map.foldrWithKey (\k a b -> f k a *> b) (pure ())
 
-      SPIRV.OpCode opCode ->
+----------------------------------------------------------------------------
+
+putInstruction :: Map SPIRV.ExtInst Instruction -> Instruction -> Binary.Put
+putInstruction extInsts
+  Instruction { operation = op, resTy = opResTy, resID = opResID, args = opArgs }
+    = case op of
+
+      SPIRV.Op.OpCode opCode ->
         let n = 1                          -- OpCode and number of arguments
-              + maybe 0 (const 1) resTy    -- result type + ID, if operation produces a result
-              + maybe 0 (const 1) res
-              + arity args                 -- one per argument
+              + maybe 0 (const 1) opResTy  -- result type + ID, if operation produces a result
+              + maybe 0 (const 1) opResID
+              + arity opArgs               -- one per argument
         in do Binary.putWord32be ( Bits.shift n 16 + fromIntegral opCode )
-              traverse_ Binary.put resTy
-              traverse_ Binary.put res
-              putArgs args
+              traverse_ Binary.put opResTy
+              traverse_ Binary.put opResID
+              putArgs opArgs
            
-      SPIRV.ExtOpCode ext extOpCode ->
-        case resID <$> Map.lookup ext extInstrs of
+      SPIRV.Op.ExtOpCode ext extOpCode ->
+        case resID <$> Map.lookup ext extInsts of
           Nothing    -> pure ()
           Just extID ->
-            let n = 1                           -- OpCode and number of arguments
-                  + maybe 0 (const 1) resTy     -- result type + ID 
-                  + maybe 0 (const 1) res       -- (these should always be present in this case)
-                  + 2                           -- instruction set ID, instruction ID
-                  + arity args                  -- one per argument
-            in do Binary.putWord32be ( Bits.shift n 16 + 12 ) -- OpExtInst has OpCode 12
-                  traverse_ Binary.put resTy
-                  traverse_ Binary.put res
-                  Binary.put extID
-                  Binary.putWord32be extOpCode
-                  putArgs args
+            putInstruction Map.empty
+              Instruction
+                { operation = SPIRV.Op.ExtInst
+                , resTy     = opResTy
+                , resID     = opResID
+                , args      = Arg extID
+                            $ Arg extOpCode
+                            $ opArgs
+                }
 
 
 putHeader :: Word32 -> Binary.Put
@@ -79,77 +85,92 @@ putHeader bound
 putCapabilities :: [SPIRV.Capability] -> Binary.Put
 putCapabilities
   = traverse_
-      ( \cap -> putInstruction Map.empty Instruction 
-        { name  = "Capability"
-        , code  = SPIRV.OpCode 17
-        , resTy = Nothing
-        , resID = Nothing
-        , args  = Arg @Word32 ( fromIntegral ( fromEnum cap ) )
-                  EndArgs
-        }
+      ( \cap -> putInstruction Map.empty 
+        Instruction 
+          { operation = SPIRV.Op.Capability
+          , resTy     = Nothing
+          , resID     = Nothing
+          , args      = Arg cap
+                        EndArgs
+          }
       )
 
-putExtendedInstructions :: Map SPIRV.Extension Instruction -> Binary.Put
+putExtendedInstructions :: Map SPIRV.ExtInst Instruction -> Binary.Put
 putExtendedInstructions
   = traverse_ ( putInstruction Map.empty )
       
 putMemoryModel :: Binary.Put
-putMemoryModel = putInstruction Map.empty Instruction
-  { name  = "MemoryModel"
-  , code  = SPIRV.OpCode 14
-  , resTy = Nothing
-  , resID = Nothing
-  , args  = Arg @Word32 0 -- logical addressing
-          $ Arg @Word32 1 -- GLSL450 memory model
-          EndArgs
-  }
+putMemoryModel 
+  = putInstruction Map.empty
+      Instruction
+        { operation = SPIRV.Op.MemoryModel
+        , resTy     = Nothing
+        , resID     = Nothing
+        , args      = Arg @Word32 0 -- logical addressing
+                    $ Arg @Word32 1 -- GLSL450 memory model
+                    EndArgs
+        }
 
 putEntryPoints :: Map Text (EntryPoint ID) -> Binary.Put
 putEntryPoints
   = traverse_
-      ( \ EntryPoint { entryPointName, entryPointModel, entryPointID, entryPointInterface }
-         -> putInstruction Map.empty Instruction
-              { name  = "EntryPoint"
-              , code  = SPIRV.OpCode 15
-              -- slight kludge to account for unusual parameters for OpEntryPoint
-              -- instead of result type, resTy field holds the ExecutionModel value
-              , resTy = Just $ ID (fromIntegral . fromEnum $ entryPointModel)
-              , resID = Just entryPointID
-              , args  = Arg entryPointName
-                      $ argsList entryPointInterface
-              }
+      ( \ EntryPoint { entryPointName
+                     , entryPointModel = SPIRV.ExecutionModel executionModel
+                     , entryPointID
+                     , entryPointInterface
+                     }
+         -> putInstruction Map.empty
+              Instruction
+                { operation = SPIRV.Op.EntryPoint
+                -- slight kludge to account for unusual parameters for OpEntryPoint
+                -- instead of result type, resTy field holds the ExecutionModel value
+                , resTy     = Just ( ID executionModel )
+                , resID     = Just entryPointID
+                , args      = Arg entryPointName
+                            $ argsList entryPointInterface
+                }
       )
 
 putExecutionModes :: Map Text (EntryPoint ID) -> Binary.Put
 putExecutionModes
   = traverse_
-    ( \ EntryPoint { entryPointID, executionMode, executionModeArgs }
-       -> putInstruction Map.empty Instruction
-            { name = "ExecutionMode"
-            , code = SPIRV.OpCode 16
-            , resTy = Nothing
-            , resID = Nothing
-            , args  = Arg entryPointID
-                    $ Arg @Word32 (fromIntegral . fromEnum $ executionMode)
-                    $ argsList executionModeArgs 
-            }
-    )
+      ( \ EntryPoint { entryPointID, executionMode, executionModeArgs }
+         -> putInstruction Map.empty
+              Instruction
+                { operation = SPIRV.Op.ExecutionMode
+                , resTy     = Nothing
+                , resID     = Nothing
+                , args      = Arg entryPointID
+                            $ Arg executionMode
+                            $ argsList executionModeArgs 
+                }
+      )
+
+
+putBindingAnnotations :: Map Text ID -> Binary.Put
+putBindingAnnotations
+  = traverseWithKey_
+      ( \ name ident -> putInstruction Map.empty
+        Instruction
+          { operation = SPIRV.Op.Name
+          , resTy     = Nothing
+          , resID     = Nothing
+          , args      = Arg ident
+                      $ Arg name EndArgs
+          }
+      )
+
+putDecorations :: todo -> Binary.Put
+putDecorations = error "todo"
 
 -- assumes the map of types is well-founded,
 -- e.g. if a vector type is declared, the component type is too
-putTyDecs :: Map SPIRVTy.PrimTy Instruction -> Binary.Put
+putTyDecs :: Map SPIRV.PrimTy Instruction -> Binary.Put
 putTyDecs
   = traverse_ ( putInstruction Map.empty )
-  . sortBy (comparing resID)
+  . sortBy ( comparing resID )
   . Map.elems
-
--- TODO: execution modes for each entry point
--- ( e.g. number of invocations for a geometry shader,
---   or vertex orientation for a tessellation shader )
--- see page 30 of the SPIR-V spec for necessary modes
 
 -- TODO: debug instructions
 -- annotations (decorations)
--- types, constants, global variables
--- functions
--- rest of instructions
+-- global variables

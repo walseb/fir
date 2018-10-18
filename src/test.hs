@@ -19,8 +19,8 @@ import Prelude hiding ( Monad(..), Applicative(..) -- for ix monad
 import Data.Tree.View(drawTree)
 
 -- fir
-import AST.AST
-import AST.Instances
+import FIR.AST
+import FIR.Instances
 import Control.Monad.Indexed
 import Data.Type.Bindings
 import Math.Linear
@@ -33,10 +33,6 @@ import Math.Algebra.Class
 
 type Program i j a
   = Codensity S (AST a := Union (FromList i) (FromList j)) (FromList i)
-
-type R  = '[ 'Read  ]
-type W  = '[ 'Write ]
-type RW = '[ 'Read, 'Write ]
 
 program :: 
   Program

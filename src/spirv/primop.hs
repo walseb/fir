@@ -1,19 +1,20 @@
 {-# LANGUAGE GADTs           #-}
 
-module SPIRV.PrimOps
+module SPIRV.PrimOp
   ( PrimOp(..)
   , BoolPrimOp(..), EqPrimOp(..), OrdPrimOp(..)
   , NumPrimOp(..), FloatPrimOp(..)
   , VecPrimOp(..), MatPrimOp(..)
   , ConvPrimOp(..)
-  , Op(..), opAndReturnType, op
+  , opAndReturnType, op
   ) where
 
 -- base
 import Prelude hiding( Ordering(..) )
 
 -- fir
-import SPIRV.Types( PrimTy(..), Signedness(..) )
+import SPIRV.Operation
+import SPIRV.PrimTy( PrimTy(..), Signedness(..) )
 
 -------------------------------------------------------------------------------
 -- primitive operations
@@ -116,113 +117,7 @@ data ConvPrimOp
   -- | CFloor
   deriving Show
 
--- raw SPIR-V operation names
-data Op
-  -- native SPIRV instructions
-  -- boolean operations
-  = LogicalOr
-  | LogicalAnd
-  | LogicalNot
-  -- comparisons
-  | IEqual
-  | INotEqual
-  | UGreaterThan
-  | SGreaterThan
-  | UGreaterThanEqual
-  | SGreaterThanEqual
-  | ULessThan
-  | SLessThan
-  | ULessThanEqual
-  | SLessThanEqual
-  | FOrdEqual
-  | FUnordEqual
-  | FOrdNotEqual
-  | FUnordNotEqual
-  | FOrdLessThan
-  | FUnordLessThan
-  | FOrdGreaterThan
-  | FUnordGreaterThan
-  | FOrdLessThanEqual
-  | FUnordLessThanEqual
-  | FOrdGreaterThanEqual
-  | FUnordGreaterThanEqual
-  -- numeric operations
-  | FAdd
-  | IAdd
-  | FSub
-  | ISub
-  | FMul
-  | IMul
-  | FNegate
-  | SNegate
-  | FDiv
-  | SDiv
-  | UDiv
-  | FMod
-  | FRem
-  | SMod
-  | UMod
-  | SRem
-  -- no URem, as it would be identical to UMod
-  -- vector and matrix operations (most vector operations re-use numeric operations)
-  | Dot
-  | VectorTimesScalar
-  | MatrixTimesScalar
-  | MatrixTimesVector
-  | VectorTimesMatrix
-  | MatrixTimesMatrix
-  | Transpose
-  | OuterProduct
-  -- numeric conversions
-  | ConvertFToU
-  | ConvertFToS
-  | ConvertSToF
-  | ConvertUToF
-  | UConvert
-  | SConvert
-  | FConvert
-  | SatConvertSToU
-  | SatConvertUToS
-  --
-  -- GLSL extended instructions
-  -- comparison
-  | FMin
-  | UMin
-  | SMin
-  | FMax
-  | UMax
-  | SMax
-  -- vectors & matrices
-  | Cross
-  | Determinant
-  | MatrixInverse
-  --   signed
-  | SAbs
-  | FAbs
-  | SSign
-  | FSign
-  --   floating
-  | Sin
-  | Cos
-  | Tan
-  | Asin
-  | Acos
-  | Atan
-  | Sinh
-  | Cosh
-  | Tanh
-  | Asinh
-  | Acosh
-  | Atanh
-  | Atan2
-  | Pow
-  | Exp
-  | Log
-  | Sqrt
-  | Invsqrt
-  deriving Show
-
-opAndReturnType :: PrimOp -> (Op, PrimTy)
+opAndReturnType :: PrimOp -> (Operation, PrimTy)
 opAndReturnType (BoolOp boolOp )
   = ( booleanOp  boolOp
     , Boolean
@@ -246,22 +141,22 @@ opAndReturnType (MatOp matOp n m s)
 opAndReturnType (ConvOp cOp s1 s2)
   = convOp cOp s1 s2
 
-op :: PrimOp -> Op
+op :: PrimOp -> Operation
 op = fst . opAndReturnType
 
-booleanOp :: BoolPrimOp -> Op
+booleanOp :: BoolPrimOp -> Operation
 booleanOp Or  = LogicalOr
 booleanOp And = LogicalAnd
 booleanOp Not = LogicalNot
 
-equalityOp :: EqPrimOp -> PrimTy -> Op
+equalityOp :: EqPrimOp -> PrimTy -> Operation
 equalityOp Equal    (Floating  _) = FOrdEqual -- not reflexive!
 equalityOp Equal    (Integer _ _) = IEqual
 equalityOp NotEqual (Floating  _) = FOrdNotEqual
 equalityOp NotEqual (Integer _ _) = INotEqual
 equalityOp primOp ty = error $ "unsupported type " ++ show ty ++ " with equality operation " ++ show primOp
 
-orderOp :: OrdPrimOp -> PrimTy -> (Op, PrimTy)
+orderOp :: OrdPrimOp -> PrimTy -> (Operation, PrimTy)
 orderOp GT  (Integer Unsigned _) = ( UGreaterThan        , Boolean )
 orderOp GT  (Integer Signed   _) = ( SGreaterThan        , Boolean )
 orderOp GT  (Floating         _) = ( FOrdGreaterThan     , Boolean )
@@ -282,7 +177,7 @@ orderOp Max (Integer Signed   w) = ( SMax , Integer Signed   w )
 orderOp Max (Floating         w) = ( FMax , Floating         w )
 orderOp primOp ty = error $ "unsupported type " ++ show ty ++ " with order operation " ++ show primOp
 
-numericOp :: NumPrimOp -> PrimTy -> (Op, PrimTy)
+numericOp :: NumPrimOp -> PrimTy -> (Operation, PrimTy)
 -- additive group
 numericOp Add  (Floating         w) = ( FAdd   , Floating         w )
 numericOp Add  (Integer s        w) = ( IAdd   , Integer s        w )
@@ -315,7 +210,7 @@ numericOp Rem  (Integer Signed   w) = ( SRem   , Integer Signed   w )
 numericOp Rem  (Integer Unsigned w) = ( UMod   , Integer Unsigned w ) -- URem pointless for unsigned type
 numericOp primOp ty = error $ "unsupported type " ++ show ty ++ " with numeric operation " ++ show primOp
 
-floatingOp :: FloatPrimOp -> Op
+floatingOp :: FloatPrimOp -> Operation
 floatingOp FSin     = Sin
 floatingOp FCos     = Cos
 floatingOp FTan     = Tan
@@ -335,29 +230,29 @@ floatingOp FLog     = Log
 floatingOp FSqrt    = Sqrt
 floatingOp FInvsqrt = Invsqrt
 
-vectorOp :: VecPrimOp -> Int -> PrimTy -> (Op, PrimTy)
+vectorOp :: VecPrimOp -> Int -> PrimTy -> (Operation, PrimTy)
 -- re-use numeric operations on vectors
-vectorOp AddV   n s            = ( fst $ numericOp Add s, Vec n s )
-vectorOp SubV   n s            = ( fst $ numericOp Sub s, Vec n s )
-vectorOp NegV   n s            = ( fst $ numericOp Neg s, Vec n s )
+vectorOp AddV   n s            = ( fst $ numericOp Add s, Vector n s )
+vectorOp SubV   n s            = ( fst $ numericOp Sub s, Vector n s )
+vectorOp NegV   n s            = ( fst $ numericOp Neg s, Vector n s )
 vectorOp DotV   _ (Floating w) = ( Dot, Floating w )
 vectorOp DotV   _ _            = error "Dot product: vector elements must be of floating-point type."
-vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vec n (Floating w) )
+vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Floating w) )
 vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements must be of floating-point type (sorry!)."
-vectorOp CrossV n (Floating w) = ( Cross, Vec n (Floating w) )
+vectorOp CrossV n (Floating w) = ( Cross, Vector n (Floating w) )
 vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
 
-matrixOp :: MatPrimOp -> Int -> Int -> PrimTy -> (Op, PrimTy)
-matrixOp MMulK  n m s = ( MatrixTimesScalar, Mat n m s )
-matrixOp MMulV  n _ s = ( MatrixTimesVector, Vec n   s )
-matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vec n   s )
-matrixOp MMulM  n m s = ( MatrixTimesMatrix, Mat n m s )
-matrixOp Transp n m s = ( Transpose        , Mat n m s )
-matrixOp Det    _ _ s = ( Determinant      ,         s )
-matrixOp Inv    n m s = ( MatrixInverse    , Mat n m s )
-matrixOp Out    n m s = ( OuterProduct     , Mat n m s )
+matrixOp :: MatPrimOp -> Int -> Int -> PrimTy -> (Operation, PrimTy)
+matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
+matrixOp MMulV  n _ s = ( MatrixTimesVector, Vector n   s )
+matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vector n   s )
+matrixOp MMulM  n m s = ( MatrixTimesMatrix, Matrix n m s )
+matrixOp Transp n m s = ( Transpose        , Matrix n m s )
+matrixOp Det    _ _ s = ( Determinant      ,            s )
+matrixOp Inv    n m s = ( MatrixInverse    , Matrix n m s )
+matrixOp Out    n m s = ( OuterProduct     , Matrix n m s )
 
-convOp :: ConvPrimOp -> PrimTy -> PrimTy -> (Op, PrimTy)
+convOp :: ConvPrimOp -> PrimTy -> PrimTy -> (Operation, PrimTy)
 convOp Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF   , Floating         w )
 convOp Convert (Integer Unsigned _) (Floating         w) = ( ConvertUToF   , Floating         w )
 convOp Convert (Floating         _) (Integer Signed   w) = ( ConvertFToS   , Integer Signed   w )

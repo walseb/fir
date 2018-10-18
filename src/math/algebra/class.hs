@@ -28,7 +28,7 @@ instance AdditiveGroup Double where
   zero = 0
 instance AdditiveGroup Word where
   (+) = (Prelude.+)
-  zero = Prelude.fromInteger 0
+  zero = 0
 
 
 

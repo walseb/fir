@@ -66,6 +66,10 @@ type family FromList (i :: BindingsMap) :: BindingsMap where
 data Permission = Read | Write
   deriving (Eq, Show)
 
+type R  = '[ 'Read  ]
+type W  = '[ 'Write ]
+type RW = '[ 'Read, 'Write ]
+
 type family Elem x as where
   Elem x '[]       = 'False
   Elem x (x ': _ ) = 'True

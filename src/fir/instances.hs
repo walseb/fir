@@ -19,7 +19,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ViewPatterns           #-}
 
-module AST.Instances where
+module FIR.Instances where
 
 -- base
 import Prelude hiding( Eq(..), (&&), (||), not
@@ -37,8 +37,8 @@ import GHC.TypeLits  ( KnownNat, type (+), type (-)
 import GHC.TypeNats(type (<=?))
 
 -- fir  
-import AST.AST(AST(..), Codensity(..), PrimTy, PrimScalarTy, scalar, S)
-import qualified AST.AST as AST
+import FIR.AST(AST(..), Codensity(..), PrimTy, PrimScalarTy, scalar, S)
+import qualified FIR.AST as AST
 import Control.Monad.Indexed ( FunctorIx(fmapIx), MonadIx(..), MonadIxFail(..), (:=)(..) )
 import Data.Type.Bindings( Binding(Var, Fun), BindingType, Assignment((:->))
                          , CanDef, CanFunDef
@@ -63,7 +63,7 @@ import Math.Linear( Semimodule(..), Module(..)
                   , dfoldrV, buildV
                   , pattern V2, pattern V3, pattern V4
                   )
-import qualified SPIRV.PrimOps as SPIRV
+import qualified SPIRV.PrimOp as SPIRV
 
 ---------------------------------------------------
 
@@ -104,6 +104,7 @@ put = put' @m @k @ty @i Proxy
 -- provides the user with a bona-fide function,
 -- of type AST a1 -> AST a2 -> ... -> AST b,
 -- instead of AST (a1 -> a2 -> ... -> b)
+-- TODO: can this be replaced by simply using fromAST?
 
 
 fundef :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty, CanFunctionalise j ty)
@@ -369,8 +370,8 @@ pattern Mat22
 pattern Mat22 a11 a12
               a21 a22
   <- ( fromAST
-       -> V2 (V2 a11 a12)
-             (V2 a21 a22)
+       -> V2 ( V2 a11 a12 )
+             ( V2 a21 a22 )
      )
 
 pattern Mat23
@@ -380,8 +381,8 @@ pattern Mat23
 pattern Mat23 a11 a12 a13
               a21 a22 a23
    <- ( fromAST
-        -> V2 (V3 a11 a12 a13)
-              (V3 a21 a22 a23)
+        -> V2 ( V3 a11 a12 a13 )
+              ( V3 a21 a22 a23 )
       )
 
 pattern Mat24
@@ -391,8 +392,8 @@ pattern Mat24
 pattern Mat24 a11 a12 a13 a14
               a21 a22 a23 a24
    <- ( fromAST
-        -> V2 (V4 a11 a12 a13 a14)
-              (V4 a21 a22 a23 a24)
+        -> V2 ( V4 a11 a12 a13 a14 )
+              ( V4 a21 a22 a23 a24 )
       )
 
 pattern Mat32
@@ -404,9 +405,9 @@ pattern Mat32 a11 a12
               a21 a22
               a31 a32
    <- ( fromAST
-        -> V3 (V2 a11 a12)
-              (V2 a21 a22)
-              (V2 a31 a32)
+        -> V3 ( V2 a11 a12 )
+              ( V2 a21 a22 )
+              ( V2 a31 a32 )
       )
 
 pattern Mat33
@@ -418,9 +419,9 @@ pattern Mat33 a11 a12 a13
               a21 a22 a23
               a31 a32 a33
    <- ( fromAST
-        -> V3 (V3 a11 a12 a13)
-              (V3 a21 a22 a23)
-              (V3 a31 a32 a33)
+        -> V3 ( V3 a11 a12 a13 )
+              ( V3 a21 a22 a23 )
+              ( V3 a31 a32 a33 )
       )
 
 pattern Mat34
@@ -432,9 +433,9 @@ pattern Mat34 a11 a12 a13 a14
               a21 a22 a23 a24
               a31 a32 a33 a34
    <- ( fromAST
-        -> V3 (V4 a11 a12 a13 a14)
-              (V4 a21 a22 a23 a24)
-              (V4 a31 a32 a33 a34)
+        -> V3 ( V4 a11 a12 a13 a14 )
+              ( V4 a21 a22 a23 a24 )
+              ( V4 a31 a32 a33 a34 )
       )
 
 pattern Mat42
@@ -448,10 +449,10 @@ pattern Mat42 a11 a12
               a31 a32
               a41 a42
    <- ( fromAST
-        -> V4 (V2 a11 a12)
-              (V2 a21 a22)
-              (V2 a31 a32)
-              (V2 a41 a42)
+        -> V4 ( V2 a11 a12 )
+              ( V2 a21 a22 )
+              ( V2 a31 a32 )
+              ( V2 a41 a42 )
       )
 
 pattern Mat43
@@ -465,10 +466,10 @@ pattern Mat43 a11 a12 a13
               a31 a32 a33
               a41 a42 a43
    <- ( fromAST
-        -> V4 (V3 a11 a12 a13)
-              (V3 a21 a22 a23)
-              (V3 a31 a32 a33)
-              (V3 a41 a42 a43)
+        -> V4 ( V3 a11 a12 a13 )
+              ( V3 a21 a22 a23 )
+              ( V3 a31 a32 a33 )
+              ( V3 a41 a42 a43 )
       )
 
 pattern Mat44
@@ -482,10 +483,10 @@ pattern Mat44 a11 a12 a13 a14
               a31 a32 a33 a34
               a41 a42 a43 a44
    <- ( fromAST
-        -> V4 (V4 a11 a12 a13 a14)
-              (V4 a21 a22 a23 a24)
-              (V4 a31 a32 a33 a34)
-              (V4 a41 a42 a43 a44)
+        -> V4 ( V4 a11 a12 a13 a14 )
+              ( V4 a21 a22 a23 a24 )
+              ( V4 a31 a32 a33 a34 )
+              ( V4 a41 a42 a43 a44 )
       )
 
 mat22

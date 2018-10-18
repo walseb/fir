@@ -15,7 +15,7 @@
 
 --{-# LANGUAGE NoStarIsType #-} -- for GHC 8.6.1
 
-module AST.AST where
+module FIR.AST where
 
 -- base  
 import Data.Kind(Type)
@@ -38,11 +38,11 @@ import Data.Type.Bindings
   , Insert, Union
   )
 import Math.Linear(V, M)
-import qualified SPIRV.PrimOps as SPIRV
-import qualified SPIRV.Types   as SPIRV
-import SPIRV.Types ( Signedness(Unsigned, Signed)
-                   , Width(W16, W32)
-                   )
+import qualified SPIRV.PrimOp as SPIRV
+import qualified SPIRV.PrimTy as SPIRV
+import SPIRV.PrimTy ( Signedness(Unsigned, Signed)
+                    , Width(W16, W32)
+                    )
 
 
 ------------------------------------------------------------

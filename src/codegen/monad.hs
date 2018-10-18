@@ -43,9 +43,9 @@ import CodeGen.Instruction( ID(ID)
                           , Instruction
                           , EntryPoint
                           )
-import qualified SPIRV.Capabilities as SPIRV
-import qualified SPIRV.OpCodes      as SPIRV
-import qualified SPIRV.Types        as SPIRV
+import qualified SPIRV.Capability as SPIRV
+import qualified SPIRV.Extension  as SPIRV
+import qualified SPIRV.PrimTy     as SPIRV
 
 ----------------------------------------------------------------------------
 -- code generator monad
@@ -57,16 +57,16 @@ data CGState
   = CGState
     { currentID          :: ID
     , neededCapabilities :: [ SPIRV.Capability ]
-    , knownExts          :: Map SPIRV.Extension Instruction
-    , knownTypes         :: Map SPIRV.PrimTy    Instruction
-    , knownBindings      :: Map Text            ID
+    , knownExtInsts      :: Map SPIRV.ExtInst Instruction
+    , knownTypes         :: Map SPIRV.PrimTy  Instruction
+    , knownBindings      :: Map Text          ID
     }
 
 initialState :: CGState
 initialState = CGState
   { currentID          = ID 1
   , neededCapabilities = [] 
-  , knownExts          = Map.empty
+  , knownExtInsts      = Map.empty
   , knownTypes         = Map.empty
   , knownBindings      = Map.empty 
   }
@@ -99,11 +99,11 @@ putCG = lift . lift . lift . lift . Binary.put -- apologies
 _currentID :: Lens' CGState ID
 _currentID = lens currentID ( \s v -> s { currentID = v } )
 
-_knownExts :: Lens' CGState (Map SPIRV.Extension Instruction)
-_knownExts = lens knownExts ( \s v -> s { knownExts = v } )
+_knownExtInsts :: Lens' CGState (Map SPIRV.ExtInst Instruction)
+_knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )
 
-_knownExt :: SPIRV.Extension -> Lens' CGState (Maybe Instruction)
-_knownExt ext = _knownExts . at ext
+_knownExtInst :: SPIRV.ExtInst -> Lens' CGState (Maybe Instruction)
+_knownExtInst ext = _knownExtInsts . at ext
 
 _knownTypes :: Lens' CGState (Map SPIRV.PrimTy Instruction)
 _knownTypes = lens knownTypes ( \s v -> s { knownTypes = v } )

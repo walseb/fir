@@ -17,8 +17,8 @@ import qualified Data.Binary as Binary
 import Data.Text(Text)
 
 -- fir
-import qualified SPIRV.OpCodes as SPIRV
-import qualified SPIRV.Types   as SPIRV
+import qualified SPIRV.ExecutionMode as SPIRV
+import qualified SPIRV.Operation     as SPIRV
 
 ----------------------------------------------------------------------------
 -- args
@@ -43,10 +43,6 @@ arity = foldrArgs (const (+1)) 0
 argsList :: ( Show a, Binary a ) => [a] -> Args
 argsList = foldr Arg EndArgs
 
-prependArg :: ( Show a, Binary a ) => a -> Instruction -> Instruction
-prependArg arg instr@Instruction { args = oldArgs }
-  = instr { args = Arg arg oldArgs }
-
 ----------------------------------------------------------------------------
 -- instructions
 
@@ -56,13 +52,16 @@ newtype ID = ID { idNumber :: Word32 }
 
 data Instruction
   = Instruction
-    { name  :: Text
-    , code  :: SPIRV.OpCode
-    , resTy :: Maybe ID
-    , resID :: Maybe ID
-    , args  :: Args
+    { operation :: SPIRV.Operation
+    , resTy     :: Maybe ID
+    , resID     :: Maybe ID
+    , args      :: Args
     }
   deriving Show
+
+prependArg :: ( Show a, Binary a ) => a -> Instruction -> Instruction
+prependArg arg instr@Instruction { args = oldArgs }
+  = instr { args = Arg arg oldArgs }
 
 data EntryPoint a
   = EntryPoint

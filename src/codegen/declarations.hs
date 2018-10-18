@@ -28,15 +28,17 @@ import CodeGen.Binary ( putHeader
                       , putExtendedInstructions
                       , putMemoryModel
                       , putEntryPoints
+                      , putBindingAnnotations
+                      , putDecorations
                       , putExecutionModes
                       , putTyDecs
                       )
 import CodeGen.Instruction ( ID(..)
                            , EntryPoint(..)
                            )
-import CodeGen.Monad( CGState(..), CGContext(..)
-                    , CGMonad, runCGMonad, runExceptTPutM
-                    )
+import CodeGen.Monad ( CGState(..), CGContext(..)
+                     , CGMonad, runCGMonad, runExceptTPutM
+                     )
 
 ----------------------------------------------------------------------------
 -- writing the declarations at the top, after codegen is finished
@@ -47,13 +49,15 @@ putDecs
   CGState   { .. }
   = do entryPointsWithIDs <- identifyEntryPoints knownBindings entryPoints
        lift $
-         do putHeader ( idNumber currentID )
-            putCapabilities neededCapabilities
-            putExtendedInstructions knownExts
+         do putHeader               ( idNumber currentID )
+            putCapabilities         neededCapabilities
+            putExtendedInstructions knownExtInsts
             putMemoryModel
-            putEntryPoints    entryPointsWithIDs
-            putExecutionModes entryPointsWithIDs
-            putTyDecs         knownTypes
+            putEntryPoints          entryPointsWithIDs
+            putExecutionModes       entryPointsWithIDs
+            putBindingAnnotations   knownBindings
+            putDecorations          undefined --todo
+            putTyDecs               knownTypes
 
 putASM :: CGContext -> CGMonad r -> Either Text ByteString
 putASM context mr
@@ -74,7 +78,7 @@ note :: MonadError e m => e -> Maybe a -> m a
 note _ (Just a) = pure a
 note e Nothing  = throwError e
 
--- fill in the ID of an entry point and its bindings in its interface
+-- fill in the ID of an entry point and of all its bindings in its interface
 identifyEntryPoint
   :: forall m. ( MonadError Text m )
   => Map Text ID 

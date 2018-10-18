@@ -14,9 +14,6 @@ import Data.ByteString.Lazy(ByteString)
 -- mtl
 import Control.Monad.State.Class(MonadState)
 
--- text-utf8
-import qualified Data.Text as Text
-
 -- lens
 import Control.Lens(Lens')
 
@@ -24,20 +21,21 @@ import Control.Lens(Lens')
 import Data.Text(Text)
 
 -- fir
-import AST.AST(AST(..))
+import FIR.AST(AST(..))
 import CodeGen.Monad( CGState, CGContext
                     , CGMonad
                     , MonadFresh
                     , create, createRec
                     , tryToUse, tryToUseWith
-                    , _knownExt, _knownType
+                    , _knownExtInst, _knownType
                     )
 import CodeGen.Instruction ( Args(..), prependArg, argsList
                            , ID, Instruction(..)
                            )
 import CodeGen.Declarations(putASM)
-import qualified SPIRV.Types   as SPIRV
-import qualified SPIRV.OpCodes as SPIRV
+import qualified SPIRV.Extension as SPIRV
+import qualified SPIRV.Operation as SPIRV.Op
+import qualified SPIRV.PrimTy    as SPIRV
 
 ----------------------------------------------------------------------------
 -- main code generator
@@ -52,18 +50,17 @@ runCodeGen context = putASM context . codeGen
 -- instructions generated along the way that need to be floated to the top
 
 -- get extended instruction set ID (or create one if none exist)
-extInstrID :: (MonadState CGState m, MonadFresh ID m)
-           => SPIRV.Extension -> m ID
-extInstrID ext = 
-  tryToUse ( _knownExt ext )
+extInstID :: (MonadState CGState m, MonadFresh ID m)
+           => SPIRV.ExtInst -> m ID
+extInstID extInst = 
+  tryToUse ( _knownExtInst extInst )
     ( fromJust . resID ) -- ExtInstImport instruction always has a result ID
     ( \ v -> Instruction
-      { name  = "ExtInstImport"
-      , code  = SPIRV.OpCode 11
-      , resTy = Nothing
-      , resID = Just v
-      , args  = Arg ( SPIRV.extensionName ext ) -- TODO: 'Put' instance for strings might be wrong
-                EndArgs 
+      { operation = SPIRV.Op.ExtInstImport
+      , resTy     = Nothing
+      , resID     = Just v
+      , args      = Arg ( SPIRV.extInstName extInst ) -- TODO: 'Put' instance for strings might be wrong
+                    EndArgs 
       }
   )
 
@@ -76,12 +73,12 @@ typeID primTy =
     ( fromJust . resID ) -- type constructor instructions always have a result ID
     $ case primTy of
 
-        SPIRV.Mat n _ a -> 
+        SPIRV.Matrix n _ a -> 
           createRec _knownPrimTy
-            ( typeID (SPIRV.Vec n a) ) -- column type
+            ( typeID (SPIRV.Vector n a) ) -- column type
             ( \ colID -> prependArg colID . mkTyConInstruction )
         
-        SPIRV.Vec _ a ->
+        SPIRV.Vector _ a ->
           createRec _knownPrimTy
             ( typeID a ) -- element type
             ( \ eltID -> prependArg eltID . mkTyConInstruction )
@@ -91,15 +88,14 @@ typeID primTy =
   where _knownPrimTy :: Lens' CGState (Maybe Instruction)
         _knownPrimTy = _knownType primTy
 
-        ty :: SPIRV.Ty
+        op :: SPIRV.Op.Operation
         someTyConArgs :: [Word32]
-        (ty, someTyConArgs) = SPIRV.tyAndSomeTyConArgs primTy
+        (op, someTyConArgs) = SPIRV.tyAndSomeTyConArgs primTy
 
         mkTyConInstruction :: ID -> Instruction
         mkTyConInstruction v = Instruction
-           { name = "Type" <> Text.pack ( show ty )
-           , code = SPIRV.opTypeCode ty
-           , resTy = Nothing
-           , resID = Just v
-           , args  = argsList someTyConArgs
+           { operation = op
+           , resTy     = Nothing
+           , resID     = Just v
+           , args      = argsList someTyConArgs
            }
