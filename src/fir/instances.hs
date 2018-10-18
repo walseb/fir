@@ -39,8 +39,8 @@ import GHC.TypeNats(type (<=?))
 -- fir  
 import FIR.AST(AST(..), Codensity(..), PrimTy, PrimScalarTy, scalar, S)
 import qualified FIR.AST as AST
-import Control.Monad.Indexed ( FunctorIx(fmapIx), MonadIx(..), MonadIxFail(..), (:=)(..) )
-import Data.Type.Bindings( Binding(Var, Fun), BindingType, Assignment((:->))
+import Control.Monad.Indexed ( FunctorIx(fmapIx), MonadIx(..), MonadIxFail(..), (:=)(..), withKey )
+import Data.Type.Bindings( Binding(Var, Fun), BindingType
                          , CanDef, CanFunDef
                          , Put, Get
                          , Union, Insert
@@ -69,88 +69,85 @@ import qualified SPIRV.PrimOp as SPIRV
 
 class MonadIx m => ScopeIx m where
 
-  def' :: forall k perms ty i. (KnownSymbol k, CanDef k i ~ 'True, PrimTy ty)
-       => Proxy k -> Proxy perms -> AST ty -> m (AST ty := Insert k ('Var perms ty) i) i
+  def' :: forall k perms a i. 
+          ( KnownSymbol k
+          , CanDef k i ~ 'True
+          , PrimTy a
+          )
+       => Proxy k
+       -> Proxy perms
+       -> AST a
+       -> m (AST a := Insert k ('Var perms a) i) i
 
-  defun' :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty)
-         => Proxy k -> Proxy j -> Proxy l -> AST (S (ty := l) (Union i j)) -> m (AST (BindingType ('Fun j ty)) := Insert k ('Fun j ty) i) i
+  defun' :: forall k as b l i. 
+            ( KnownSymbol k
+            , CanFunDef k as i l ~ 'True
+            , PrimTy b
+            )
+         => Proxy k
+         -> Proxy as
+         -> Proxy l
+         -> AST (S (b := l) (Union i as))
+         -> m (AST (BindingType ('Fun as b)) := Insert k ('Fun as b) i) i
 
-  get' :: forall k ty i. (KnownSymbol k, Get k i ~ ty)
-       => Proxy k -> m (AST ty := i) i
+  get' :: forall k a i. (KnownSymbol k, Get k i ~ a)
+       => Proxy k
+       -> m (AST a := i) i
 
-  put' :: forall k ty i. (KnownSymbol k, Put k i ~ ty, PrimTy ty)
-       => Proxy k -> AST ty -> m (AST () := i) i
+  put' :: forall k a i. (KnownSymbol k, Put k i ~ a, PrimTy a)
+       => Proxy k
+       -> AST a
+       -> m (AST () := i) i
   
-def :: forall k perms ty i m. (ScopeIx m, KnownSymbol k, CanDef k i ~ 'True, PrimTy ty)
-    => AST ty -> m (AST ty := Insert k ('Var perms ty) i) i 
-def = def' @m @k @perms @ty @i Proxy Proxy
+def :: forall k perms a i m. (ScopeIx m, KnownSymbol k, CanDef k i ~ 'True, PrimTy a)
+    => AST a
+    -> m (AST a := Insert k ('Var perms a) i) i 
+def = def' @m @k @perms @a @i Proxy Proxy
 
-defun :: forall k j ty l i m. (ScopeIx m, KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty)
-        => AST (S (ty := l) (Union i j)) -> m (AST (BindingType ('Fun j ty)) := Insert k ('Fun j ty) i) i
-defun = defun' @m @k @j @ty @l @i Proxy Proxy Proxy
+defun :: forall k as b l i m. (ScopeIx m, KnownSymbol k, CanFunDef k as i l ~ 'True, PrimTy b)
+        => AST (S (b := l) (Union i as))
+        -> m (AST (BindingType ('Fun as b)) := Insert k ('Fun as b) i) i
+defun = defun' @m @k @as @b @l @i Proxy Proxy Proxy
 
-get :: forall k ty i m. (ScopeIx m, KnownSymbol k, Get k i ~ ty)
-     => m (AST ty := i) i
-get = get' @m @k @ty @i Proxy
+get :: forall k a i m. (ScopeIx m, KnownSymbol k, Get k i ~ a)
+     => m (AST a := i) i
+get = get' @m @k @a @i Proxy
 
-put :: forall k ty i m. (ScopeIx m, KnownSymbol k, Put k i ~ ty, PrimTy ty)
-     => AST ty -> m (AST () := i) i
-put = put' @m @k @ty @i Proxy
+put :: forall k a i m. (ScopeIx m, KnownSymbol k, Put k i ~ a, PrimTy a)
+     => AST a -> m (AST () := i) i
+put = put' @m @k @a @i Proxy
 
 ---------------------------------------------------
--- specialise function definition code
--- to work with the codensity representation,
--- and modify it so that the return type of 'fundef'
--- provides the user with a bona-fide function,
--- of type AST a1 -> AST a2 -> ... -> AST b,
--- instead of AST (a1 -> a2 -> ... -> b)
--- TODO: can this be replaced by simply using fromAST?
+-- specialise function definition to work with the codensity representation
+-- generalise the return type, to allow user-defined function to yield types of either forms:
+-- AST a_1 -> ... -> AST a_n -> AST b
+-- AST ( a_1 -> ... -> a_n -> b)
 
-
-fundef :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty, CanFunctionalise j ty)
-       => Codensity S (AST ty := l) (Union i j) 
-       -> Codensity S (VariadicAST j ty := Insert k ('Fun j ty) i) i
-fundef f =
-  let f' :: AST (S (ty := l) (Union i j))
-      f' = toAST f
-      f'' :: Codensity S (AST (BindingType ('Fun j ty)) := Insert k ('Fun j ty) i) i
-      f'' = defun @k @j @ty @l @i @(Codensity S) f'
-  in functionaliseCodensity @k @j @ty @i f''
-
--- variadic mischievery
-functionaliseCodensity :: forall k j ty i. (KnownSymbol k, PrimTy ty, CanFunctionalise j ty)
-     => Codensity S (AST (Variadic j ty) := Insert k ('Fun j ty) i) i
-     -> Codensity S (VariadicAST j ty  := Insert k ('Fun j ty) i) i
-functionaliseCodensity = fmapIx ( throughIx (functionalise @j @ty) )
-
-throughIx :: (a -> b) -> (a := i) j -> (b := i) j
-throughIx f (AtKey a) = AtKey (f a)
-
-type family VariadicAST as b where
-  VariadicAST '[]                 b = AST b
-  VariadicAST (( _ ':-> a) ': as) b = AST (BindingType a) -> VariadicAST as b
-
-class CanFunctionalise as b where
-  functionalise :: AST (Variadic as b) -> VariadicAST as b
-
-instance CanFunctionalise '[] b where
-  functionalise = id
-
-instance CanFunctionalise as b => CanFunctionalise ((k ':-> v) ': as) b where
-  functionalise :: AST (Variadic ((k ':-> v) ': as) b) -> VariadicAST ((k ':-> v) ': as) b
-  functionalise f a = functionalise @as @b (f :$ a)
-  -- everything happens here ---------------^^^^^^
+fundef :: forall k as b f l i. 
+          ( KnownSymbol k, PrimTy b
+          , CanFunDef k as i l ~ 'True          
+          , Syntactic f, Internal f ~ Variadic as b
+          )
+       => Codensity S (AST b := l) (Union i as) 
+       -> Codensity S (f := Insert k ('Fun as b) i) i
+fundef = fmapIx (fromAST `withKey`) . defun @k @as . toAST
 
 --------------------------------------------------------------------------
 
-instance ScopeIx (Codensity S) where
+-- force uniqueness of ScopeIx instance to improve type inference
+instance (m ~ Codensity S) => ScopeIx m where
   def'   k b   a = Codensity ( \h -> Bind :$ (Def    k b   :$ a) :$ (Lam $ h . AtKey) )
   defun' k j l f = Codensity ( \h -> Bind :$ (FunDef k j l :$ f) :$ (Lam $ h . AtKey) )
   get'   k       = Codensity ( \h -> Bind :$  Get    k           :$ (Lam $ h . AtKey) )
   put'   k     a = Codensity ( \h -> Bind :$ (Put    k     :$ a) :$ (Lam $ h . AtKey) )
 
-instance MonadIxFail (Codensity S) where
-  fail = error "'fail': pattern match failed in the process of creating AST."
+instance TypeError (     Text "Failable pattern detected in AST construction."
+                    :$$: Text "Only irrefutable patterns are supported."
+                    :$$: Text "As inference of pattern refutability is sometimes patchy,"
+                    :$$: Text "consider using a lazy pattern match instead:"
+                    :$$: Text "'~pat <- ...' instead of 'pat <- ...'."
+                    ) => MonadIxFail (Codensity S) where
+  fail = error "'fail': irrefutable pattern failed to match, during AST construction."
 
 --------------------------------------------------------------------------------------
 -- instances for AST
@@ -345,12 +342,15 @@ instance (KnownNat n, Syntactic a) => Syntactic (V n a) where
 -- Vec2 :: Syntactic a => a -> a -> AST ( V 2 (Internal a) )
 -- but this leads to poor type-inference
 
+{-# COMPLETE Vec2 #-}
 pattern Vec2 :: AST a -> AST a -> AST ( V 2 a )
 pattern Vec2 x y <- (fromAST -> V2 x y)
 
+{-# COMPLETE Vec3 #-}
 pattern Vec3 :: AST a -> AST a -> AST a -> AST ( V 3 a )
 pattern Vec3 x y z <- (fromAST -> V3 x y z)
 
+{-# COMPLETE Vec4 #-}
 pattern Vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 
@@ -363,6 +363,7 @@ vec3 = fromAST (MkVector (Proxy @3) )
 vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 vec4 = fromAST (MkVector (Proxy @4) )
 
+{-# COMPLETE Mat22 #-}
 pattern Mat22
   :: AST a -> AST a
   -> AST a -> AST a
@@ -374,6 +375,7 @@ pattern Mat22 a11 a12
              ( V2 a21 a22 )
      )
 
+{-# COMPLETE Mat23 #-}
 pattern Mat23
   :: AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
@@ -385,6 +387,7 @@ pattern Mat23 a11 a12 a13
               ( V3 a21 a22 a23 )
       )
 
+{-# COMPLETE Mat24 #-}
 pattern Mat24
   :: AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
@@ -396,6 +399,7 @@ pattern Mat24 a11 a12 a13 a14
               ( V4 a21 a22 a23 a24 )
       )
 
+{-# COMPLETE Mat32 #-}
 pattern Mat32
   :: AST a -> AST a
   -> AST a -> AST a
@@ -410,6 +414,7 @@ pattern Mat32 a11 a12
               ( V2 a31 a32 )
       )
 
+{-# COMPLETE Mat33 #-}
 pattern Mat33
   :: AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
@@ -424,6 +429,7 @@ pattern Mat33 a11 a12 a13
               ( V3 a31 a32 a33 )
       )
 
+{-# COMPLETE Mat34 #-}
 pattern Mat34
   :: AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
@@ -438,6 +444,7 @@ pattern Mat34 a11 a12 a13 a14
               ( V4 a31 a32 a33 a34 )
       )
 
+{-# COMPLETE Mat42 #-}
 pattern Mat42
   :: AST a -> AST a
   -> AST a -> AST a
@@ -455,6 +462,7 @@ pattern Mat42 a11 a12
               ( V2 a41 a42 )
       )
 
+{-# COMPLETE Mat43 #-}
 pattern Mat43
   :: AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
@@ -472,6 +480,7 @@ pattern Mat43 a11 a12 a13
               ( V3 a41 a42 a43 )
       )
 
+{-# COMPLETE Mat44 #-}
 pattern Mat44
   :: AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a

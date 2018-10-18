@@ -34,7 +34,7 @@ import Math.Algebra.Class
 type Program i j a
   = Codensity S (AST a := Union (FromList i) (FromList j)) (FromList i)
 
-program :: 
+program ::
   Program
     '[ "model"       ':-> 'Var R (M 4 4 Float)
      , "view"        ':-> 'Var R (M 4 4 Float)
@@ -42,21 +42,30 @@ program ::
      , "position"    ':-> 'Var R (V 3 Float)
      , "gl_Position" ':-> 'Var W (V 3 Float)
      ]    
-    '[ "main"        ':-> 'Fun '[] ()
+    '[ "testFun"     ':-> 'Fun '[ "u" ':-> 'Var R Float
+                                , "v" ':-> 'Var R Float
+                                ]
+                                Float
+     , "main"        ':-> 'Fun '[] ()
      ]
     ()
 program = do
-  model         <- get @"model"
-  view          <- get @"view"
-  projection    <- get @"projection"
-  Vec3 px py pz <- get @"position"
+  model            <- get @"model"
+  view             <- get @"view"
+  projection       <- get @"projection"
+  ~(Vec3 px py pz) <- get @"position"
 
   let mvp        = projection !*! view !*! model
       position'  = vec4 px py pz 1
 
+  testFun <- fundef @"testFun" $ do
+    u <- get @"u"
+    v <- get @"v"
+    pure $ u + v
+
   fundef @"main" $ do
-    Vec4 x y z _ <- def @"pos" @R ( mvp !*^ position' )
-    put @"gl_Position" ( vec3 x y z )
+    ~(Vec4 x y z _) <- def @"pos" @R ( mvp !*^ position' )
+    put @"gl_Position" ( vec3 x y ( testFun x (y + z) ) )
 
   
 test :: IO()

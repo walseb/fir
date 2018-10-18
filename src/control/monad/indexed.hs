@@ -33,6 +33,9 @@ atKey (AtKey a) = a
 instance Show a => Show ( (a := i) j ) where
   show (AtKey a) = "AtKey " ++ show a
 
+withKey :: (a -> b) -> (a := i) j -> (b := i) j
+withKey f (AtKey a) = AtKey (f a)
+
 ------------------------------------------------
 -- rebindable syntax
 

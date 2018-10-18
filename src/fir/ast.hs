@@ -13,7 +13,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
---{-# LANGUAGE NoStarIsType #-} -- for GHC 8.6.1
 
 module FIR.AST where
 
@@ -108,26 +107,26 @@ data AST :: Type -> Type where
   Ix :: AST (a -> (a := i) i) -- hack, would be solved if we could have
                               -- Pure :: AST (a -> m (a := j) i)
 
-  Def :: forall k perms ty i. (KnownSymbol k, CanDef k i ~ 'True, PrimTy ty)
+  Def :: forall k perms a i. (KnownSymbol k, CanDef k i ~ 'True, PrimTy a)
       => Proxy k
       -> Proxy perms
-      -> AST (    ty
-               -> S ( ty := Insert k ('Var perms ty) i) i
+      -> AST (    a
+               -> S ( a := Insert k ('Var perms a) i) i
              )
-  FunDef :: forall k j ty l i. (KnownSymbol k, CanFunDef k i j l ~ 'True, PrimTy ty)
+  FunDef :: forall k as b l i. (KnownSymbol k, CanFunDef k as i l ~ 'True, PrimTy b)
          => Proxy k
-         -> Proxy j
+         -> Proxy as
          -> Proxy l
-         -> AST (    S (ty := l) (Union i j)
-                  -> S (BindingType ('Fun j ty) := Insert k ('Fun j ty) i) i
+         -> AST (    S (b := l) (Union i as)
+                  -> S (BindingType ('Fun as b) := Insert k ('Fun as b) i) i
                 )
 
-  Get    :: forall k ty i. (KnownSymbol k, Get k i ~ ty)
+  Get    :: forall k a i. (KnownSymbol k, Get k i ~ a)
          => Proxy k
-         -> AST ( S (ty := i) i)
-  Put    :: forall k ty i. (KnownSymbol k, Put k i ~ ty, PrimTy ty)
+         -> AST ( S (a := i) i)
+  Put    :: forall k a i. (KnownSymbol k, Put k i ~ a, PrimTy a)
          => Proxy k
-         -> AST ( ty -> S (():= i) i )
+         -> AST ( a -> S (():= i) i )
 
   -- vectors (and matrices)
   MkVector :: KnownNat n => Proxy n -> AST ( Variadic n a ( V n a ) )

@@ -149,25 +149,32 @@ type family NotAlreadyDefined (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe 
 -- constraints for 'fundef'
 
 type family CanFunDef 
-            (k :: Symbol) (i :: BindingsMap) (j :: BindingsMap) (l :: BindingsMap) :: Bool where
-  CanFunDef k i j l = CanFunDef' k i j (Lookup k i) (Lookup k j) (NotHigherOrder k j (Remove i (Remove j l)))
+            (k :: Symbol)       -- name of function to be defined
+            (as :: BindingsMap) -- function arguments
+            (i :: BindingsMap)  -- variables in scope
+            (l :: BindingsMap)  -- l contains the above two sets, together with the function's local variables
+            :: Bool where
+  CanFunDef k as i l = CanFunDef' k as i     --            ┌━━┤ local variables
+                            (Lookup k i)     --            │
+                            (Lookup k as)    --  ┌━━━━━┴━━━━━━━┐
+                            (NotHigherOrder k as (Remove i (Remove as l)))
 
-type family NotHigherOrder (k :: Symbol) (j :: BindingsMap) (l :: BindingsMap) :: Bool where
-  NotHigherOrder k j l = NotHigherOrder' k j l j l
+type family NotHigherOrder (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap) :: Bool where
+  NotHigherOrder k as l = NotHigherOrder' k as l as l
 
 type family NotHigherOrder'
-   (k :: Symbol) (j :: BindingsMap) (l :: BindingsMap) (j_rec :: BindingsMap) (l_rec :: BindingsMap) :: Bool where
-  NotHigherOrder' _ _ _ '[]                          '[]   = 'True
-  NotHigherOrder' k j l ((_ ':-> 'Var _ _) ': j_rec) l_rec = NotHigherOrder' k j l j_rec l_rec
-  NotHigherOrder' k j _ ((v ':-> 'Fun _ _) ': _    ) _     = TypeError
+   (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap) (as_rec :: BindingsMap) (l_rec :: BindingsMap) :: Bool where
+  NotHigherOrder' _ _ _ '[]                            '[]   = 'True
+  NotHigherOrder' k as l ((_ ':-> 'Var _ _) ': as_rec) l_rec = NotHigherOrder' k as l as_rec l_rec
+  NotHigherOrder' k as _ ((v ':-> 'Fun _ _) ': _     ) _     = TypeError
     (     Text "'fundef': forbidden higher order argument " :<>: ShowType v :<>: Text ","
      :$$: Text "in function definition for " :<>: ShowType k :<>: Text ","
      :$$: Text "when trying to abstract over:"
-     :$$: ShowType j
+     :$$: ShowType as
      :$$: Text "Function definitions can only abstract over variables, not over functions."
     )
-  NotHigherOrder' k j l j_rec ((_ ':-> 'Var _ _) ': l_rec) = NotHigherOrder' k j l j_rec l_rec
-  NotHigherOrder' k j l _     ((v ':-> 'Fun _ _) ': _    ) = TypeError
+  NotHigherOrder' k as l as_rec ((_ ':-> 'Var _ _) ': l_rec) = NotHigherOrder' k as l as_rec l_rec
+  NotHigherOrder' k as l _      ((v ':-> 'Fun _ _) ': _    ) = TypeError
     (     Text "'fundef': unexpected nested function definition inside function " :<>: ShowType k :<>: Text ":"
      :$$: Text "local name " :<>: ShowType v :<>: Text "binds a function."
      :$$: Text "Local bindings for " :<>: ShowType k :<>: Text "are:"
@@ -177,25 +184,25 @@ type family NotHigherOrder'
 
 type family CanFunDef' 
     (k :: Symbol)
+    (as :: BindingsMap)
     (i :: BindingsMap)
-    (j :: BindingsMap)
-    (mbd1 :: Maybe Binding)
-    (mbd2 :: Maybe Binding)
-    (nho :: Bool) 
+    (mb_bd1 :: Maybe Binding)
+    (mb_bd2 :: Maybe Binding)
+    (notHigherOrder :: Bool) 
     :: Bool where
-  CanFunDef' k i j ('Just _) _ _ = TypeError
+  CanFunDef' k as i ('Just _) _ _ = TypeError
     (     Text "'fundef': cannot define a new function with name " :<>: ShowType k :<>: Text ";"
      :$$: Text "that name is already in scope. In scope bindings are:"
      :$$: ShowType i
      :$$: Text "Locally bound variables are:"
-     :$$: ShowType j
+     :$$: ShowType as
     )
-  CanFunDef' k i j _ ('Just _) _ = TypeError
+  CanFunDef' k as i _ ('Just _) _ = TypeError
     (     Text "'fundef': cannot define a new function with name " :<>: ShowType k :<>: Text ";"
      :$$: Text "that name is locally bound as an argument to the function."
      :$$: Text "In scope bindings are:"
      :$$: ShowType i
      :$$: Text "Locally bound variables are:"
-     :$$: ShowType j
+     :$$: ShowType as
     )
   CanFunDef' _ _ _ 'Nothing 'Nothing 'True = 'True
