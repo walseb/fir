@@ -6,12 +6,10 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module TypeClasses.Logic where
+module Math.Logic.Class where
 
 -- base
-import Prelude hiding( Eq(..), (&&), (||), not, and, or, all, any
-                     , Ord(..)
-                     )
+import Prelude hiding (Eq(..), (&&), (||), not, Ord(..))
 import qualified Prelude
 import Data.Coerce(Coercible, coerce)
 

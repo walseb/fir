@@ -2,12 +2,15 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module TypeClasses.Algebra where
+module Math.Algebra.Class where
 
+-- base
 import qualified Prelude
 import Prelude(id, (.), Integer, Rational, Int, Float, Double, Word)
-import TypeClasses.Logic(Ord, Eq((==)))
-import qualified Data.Fixed
+import qualified Data.Fixed as Fixed
+
+-- fir
+import Math.Logic.Class(Ord, Eq((==)))
 
 
 class AdditiveGroup a where
@@ -108,12 +111,12 @@ instance Archimedean Int where
   mod = Prelude.mod
   rem = Prelude.rem
 instance Archimedean Float where
-  mod = Data.Fixed.mod'
+  mod = Fixed.mod'
   rem a m = if signum a == signum m
             then mod a m
             else negate (mod a m)
 instance Archimedean Double where
-  mod = Data.Fixed.mod'
+  mod = Fixed.mod'
   rem a m = if signum a == signum m
             then mod a m
             else negate (mod a m)

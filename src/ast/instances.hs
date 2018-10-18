@@ -19,7 +19,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ViewPatterns           #-}
 
-module FIR where
+module AST.Instances where
 
 -- base
 import Prelude hiding( Eq(..), (&&), (||), not
@@ -30,26 +30,39 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      )
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits(KnownNat, type (+), type (-), KnownSymbol, TypeError, ErrorMessage(..))
+import GHC.TypeLits  ( KnownNat, type (+), type (-)
+                     , KnownSymbol
+                     , TypeError, ErrorMessage(..)
+                     )
 import GHC.TypeNats(type (<=?))
 
 -- fir  
-import AST((:=)(WithIx), AST(..), PrimTy, PrimScalarTy, scalar, S)
-import qualified AST
-import Bindings(Assignment((:->)), CanDef, CanFunDef, Put, Get, Union, Variadic, Binding(Var,Fun), BindingType, Insert)
-import TypeClasses.Logic ( Eq(..), Boolean(..), HasBool(..)
-                         , Ord(..)
+import AST.AST(AST(..), Codensity(..), PrimTy, PrimScalarTy, scalar, S)
+import qualified AST.AST as AST
+import Control.Monad.Indexed ( FunctorIx(fmapIx), MonadIx(..), MonadIxFail(..), (:=)(..) )
+import Data.Type.Bindings( Binding(Var, Fun), BindingType, Assignment((:->))
+                         , CanDef, CanFunDef
+                         , Put, Get
+                         , Union, Insert
+                         , Variadic
                          )
-import TypeClasses.Algebra( AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Signed(..), Archimedean(..), Convert(..) )
-import Indexed( Codensity(Codensity), MonadIx, FunctorIx(fmapIx))
-import Linear( Semimodule(..), Module(..)
-             , Inner(..)
-             , Matrix(..)
-             , V, M
-             , dim
-             , dfoldrV, buildV
-             , pattern V2, pattern V3, pattern V4
-             )
+import Math.Logic.Class ( Eq(..), Boolean(..), HasBool(..)
+                        , Ord(..)
+                        )
+import Math.Algebra.Class ( AdditiveGroup(..)
+                          , Semiring(..), Ring(..)
+                          , DivisionRing(..)
+                          , Signed(..), Archimedean(..)
+                          , Convert(..)
+                          )
+import Math.Linear( Semimodule(..), Module(..)
+                  , Inner(..)
+                  , Matrix(..)
+                  , V, M
+                  , dim
+                  , dfoldrV, buildV
+                  , pattern V2, pattern V3, pattern V4
+                  )
 import qualified SPIRV.PrimOps as SPIRV
 
 ---------------------------------------------------
@@ -110,7 +123,7 @@ functionaliseCodensity :: forall k j ty i. (KnownSymbol k, PrimTy ty, CanFunctio
 functionaliseCodensity = fmapIx ( throughIx (functionalise @j @ty) )
 
 throughIx :: (a -> b) -> (a := i) j -> (b := i) j
-throughIx f (WithIx a) = WithIx (f a)
+throughIx f (AtKey a) = AtKey (f a)
 
 type family VariadicAST as b where
   VariadicAST '[]                 b = AST b
@@ -122,7 +135,7 @@ class CanFunctionalise as b where
 instance CanFunctionalise '[] b where
   functionalise = id
 
-instance (CanFunctionalise as b) => CanFunctionalise ((k ':-> v) ': as) b where
+instance CanFunctionalise as b => CanFunctionalise ((k ':-> v) ': as) b where
   functionalise :: AST (Variadic ((k ':-> v) ': as) b) -> VariadicAST ((k ':-> v) ': as) b
   functionalise f a = functionalise @as @b (f :$ a)
   -- everything happens here ---------------^^^^^^
@@ -130,10 +143,13 @@ instance (CanFunctionalise as b) => CanFunctionalise ((k ':-> v) ': as) b where
 --------------------------------------------------------------------------
 
 instance ScopeIx (Codensity S) where
-  def'   k b   a = Codensity ( \h -> Bind :$ (Def    k b   :$ a) :$ (Lam $ h . WithIx) )
-  defun' k j l f = Codensity ( \h -> Bind :$ (FunDef k j l :$ f) :$ (Lam $ h . WithIx) )
-  get'   k       = Codensity ( \h -> Bind :$  Get    k           :$ (Lam $ h . WithIx) )
-  put'   k     a = Codensity ( \h -> Bind :$ (Put    k     :$ a) :$ (Lam $ h . WithIx) )
+  def'   k b   a = Codensity ( \h -> Bind :$ (Def    k b   :$ a) :$ (Lam $ h . AtKey) )
+  defun' k j l f = Codensity ( \h -> Bind :$ (FunDef k j l :$ f) :$ (Lam $ h . AtKey) )
+  get'   k       = Codensity ( \h -> Bind :$  Get    k           :$ (Lam $ h . AtKey) )
+  put'   k     a = Codensity ( \h -> Bind :$ (Put    k     :$ a) :$ (Lam $ h . AtKey) )
+
+instance MonadIxFail (Codensity S) where
+  fail = error "'fail': pattern match failed in the process of creating AST."
 
 --------------------------------------------------------------------------------------
 -- instances for AST
@@ -186,7 +202,6 @@ instance (PrimScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) 
 
 
 -- numeric conversions
-
 
 -- too lazy to define all instances by hand, so using this hack
 type family DisEq a b where
@@ -288,9 +303,9 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
 instance Syntactic a => Syntactic ( (a := j) i ) where
   type Internal ( (a := j) i ) = (Internal a := j) i
   toAST :: (a := j) i -> AST ( (Internal a := j) i)
-  toAST (WithIx a) = Ix :$ toAST a
+  toAST (AtKey a) = Ix :$ toAST a
   fromAST :: AST ( (Internal a := j) i) -> (a := j) i
-  fromAST (Ix :$ a) = WithIx (fromAST a)
+  fromAST (Ix :$ a) = AtKey (fromAST a)
   fromAST _ = error "help needed"
 
 instance (Syntactic a) => Syntactic (Codensity (m :: (k -> Type) -> (k -> Type)) (a := j) i) where
@@ -298,7 +313,7 @@ instance (Syntactic a) => Syntactic (Codensity (m :: (k -> Type) -> (k -> Type))
   toAST :: Codensity m (a := j) i -> AST (m (Internal a := j) i)
   toAST (Codensity k) = k ( fromAST Pure )
   fromAST :: AST (m (Internal a := j) i) -> Codensity m (a := j) i
-  fromAST a = Codensity ( \k -> fromAST Bind a (k . WithIx) )
+  fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
 
 
 

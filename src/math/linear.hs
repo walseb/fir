@@ -23,7 +23,7 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
-module Linear where
+module Math.Linear where
 
 -- base
 import Prelude hiding(Eq(..), Num(..), Fractional(..), Floating(..), sum)
@@ -45,8 +45,8 @@ import Data.Distributive(Distributive(..))
 
 -- fir
 import Control.Arrow.Strength(strong)
-import TypeClasses.Logic(Eq(Logic,(==)), HasBool, (#.), ifThenElse)
-import TypeClasses.Algebra(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Floating(..))
+import Math.Logic.Class(Eq(Logic,(==)), HasBool, (#.), ifThenElse)
+import Math.Algebra.Class(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Floating(..))
 
 infixr 3 :.
 

@@ -1,5 +1,4 @@
 {-# LANGUAGE GADTs           #-}
-{-# LANGUAGE PatternSynonyms #-}
 
 module SPIRV.PrimOps
   ( PrimOp(..)

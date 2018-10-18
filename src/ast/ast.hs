@@ -6,6 +6,7 @@
 {-# LANGUAGE InstanceSigs         #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -14,7 +15,7 @@
 
 --{-# LANGUAGE NoStarIsType #-} -- for GHC 8.6.1
 
-module AST where
+module AST.AST where
 
 -- base  
 import Data.Kind(Type)
@@ -30,11 +31,13 @@ import Data.Tree(Tree(Node))
 import Control.Monad.State.Lazy(State, put, get, evalState)
 
 -- fir
-import Bindings ( Binding(Var, Fun), BindingType
-                , CanDef, CanFunDef, Get, Put
-                , Insert, Union
-                )
-import Linear(V, M)
+import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..) )
+import Data.Type.Bindings 
+  ( Binding(Var, Fun), BindingType
+  , CanDef, CanFunDef, Get, Put
+  , Insert, Union
+  )
+import Math.Linear(V, M)
 import qualified SPIRV.PrimOps as SPIRV
 import qualified SPIRV.Types   as SPIRV
 import SPIRV.Types ( Signedness(Unsigned, Signed)
@@ -86,18 +89,6 @@ type family Variadic' (n :: Nat) a b geq1 where
   Variadic' _ _ b 'False = b
   Variadic' n a b 'True  = a -> Variadic (n-1) a b
 
-------------------------------------------------
--- Atkey indexing
-
-data (:=) :: Type -> i -> (i -> Type) where
-  WithIx :: a -> (a := i) i
-
-atKey :: (a := j) i -> a
-atKey (WithIx a) = a
-  
-instance Show a => Show ( (a := i) j ) where
-  show (WithIx a) = "WithIx " ++ show a
-
 ------------------------------------------------------------
 -- main AST data type
 
@@ -144,6 +135,29 @@ data AST :: Type -> Type where
 
   -- for printing lambdas
   NamedVar :: String -> AST a
+
+------------------------------------------------ 
+-- codensity indexed monad, specialised with AST return type
+
+-- demonic codensity
+newtype Codensity m a i
+  = Codensity
+    { runCodensity :: forall (b :: k -> Type)
+    . (forall (j :: k). a j -> AST (m b j) ) -> AST (m b i)
+    }
+
+instance FunctorIx (Codensity m) where
+  fmapIx :: ( forall ix.               p ix ->               q ix )
+         -> ( forall ix. (Codensity m) p ix -> (Codensity m) q ix )
+  fmapIx f (Codensity m) = Codensity ( \k -> m ( k . f ) )
+
+instance MonadIx (Codensity m) where
+  returnIx :: p i -> Codensity m p i
+  returnIx a = Codensity ( \k -> k a )
+
+  extendIx :: ( forall ix.               p ix -> (Codensity m) q ix )
+           -> ( forall ix. (Codensity m) p ix -> (Codensity m) q ix )
+  extendIx f (Codensity ma) = Codensity ( \k -> ma ( \a -> runCodensity (f a) k ) )
 
 ------------------------------------------------
 -- convert to explicit AST

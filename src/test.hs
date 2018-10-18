@@ -15,34 +15,17 @@ import Prelude hiding ( Monad(..), Applicative(..) -- for ix monad
                       , Num(..), Fractional(..), Integral(..), Floating(..)
                       )
 
--- fir
-import FIR
-import AST
-import Indexed
-import Bindings
-import Linear
-import TypeClasses.Algebra
-
 -- tree-view
 import Data.Tree.View(drawTree)
 
-------------------------------------------------
--- rebindable syntax
+-- fir
+import AST.AST
+import AST.Instances
+import Control.Monad.Indexed
+import Data.Type.Bindings
+import Math.Linear
+import Math.Algebra.Class
 
-(>>=) :: MonadIx m => m (a := j) i -> (a -> m q j) -> m q i
-c >>= f = extendIx (\(WithIx a) -> f a) c  
-
-(>>) :: MonadIx m => m (a := j) i -> m q j -> m q i
-ma >> mb = ma >>= const mb
-
-return, pure :: (MonadIx m, m ~ Codensity S) => a -> m (a := i) i
-return = returnIx . WithIx
-pure   = returnIx . WithIx
-
-class MonadIx m => MonadIxFail m where
-  fail :: String -> m (a := j) i
-instance MonadIxFail (Codensity S) where
-  fail = error "fail"
 
 ------------------------------------------------
 -- program

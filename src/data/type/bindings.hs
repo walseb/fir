@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Bindings where
+module Data.Type.Bindings where
 
 -- base 
 import Data.Kind(Type)
@@ -112,7 +112,7 @@ type family Put (k :: Symbol) (i :: BindingsMap) :: Type where
 type family PutAt (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding) :: Type where
   PutAt k i 'Nothing = TypeError
     (      Text "'put': no binding named " :<>: ShowType k :<>: Text " is in scope."
-      :$$: Text "To define a new binding, use 'def'."
+      :$$: Text "To bind a new variable, use 'def'."
       :$$: Text "In-scope bindings are:"
       :$$: ShowType i
     )
