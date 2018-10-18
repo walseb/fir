@@ -4,7 +4,7 @@ module SPIRV.Types
   ( Width(..), width
   , Signedness(..), signedness
   , PrimTy(..)
-  , Ty(..)
+  , Ty(..), tyAndSomeTyConArgs, ty
   , ExecutionModel(..)
   , ExecutionMode(..)
   ) where
@@ -46,6 +46,17 @@ data PrimTy where
   Mat      :: Int -> Int -> PrimTy -> PrimTy
   -- todo: records, arrays, opaque types, ...
   deriving ( Show, Eq, Ord )
+
+tyAndSomeTyConArgs :: PrimTy -> (Ty, [Word32])
+tyAndSomeTyConArgs Unit          = (Void  , [ ] )
+tyAndSomeTyConArgs Boolean       = (Bool  , [ ] )
+tyAndSomeTyConArgs (Integer s w) = (Int   , [ width w, signedness s ] )
+tyAndSomeTyConArgs (Floating  w) = (Float , [ width w] )
+tyAndSomeTyConArgs (Vec   n   _) = (Vector, [ fromIntegral n ] ) -- element type is separate
+tyAndSomeTyConArgs (Mat   _ m _) = (Matrix, [ fromIntegral m ] ) -- only number of columns... column type is separate
+
+ty :: PrimTy -> Ty
+ty = fst . tyAndSomeTyConArgs
 
 --------------------------------------------------
 -- execution

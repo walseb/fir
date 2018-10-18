@@ -7,9 +7,7 @@ module SPIRV.PrimOps
   , NumPrimOp(..), FloatPrimOp(..)
   , VecPrimOp(..), MatPrimOp(..)
   , ConvPrimOp(..)
-  , Op(..)
-  , opAndReturnType
-  , op
+  , Op(..), opAndReturnType, op
   ) where
 
 -- base
