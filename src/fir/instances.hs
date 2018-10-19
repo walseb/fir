@@ -39,7 +39,10 @@ import GHC.TypeNats(type (<=?))
 -- fir  
 import FIR.AST(AST(..), Codensity(..), PrimTy, PrimScalarTy, scalar, S)
 import qualified FIR.AST as AST
-import Control.Monad.Indexed ( FunctorIx(fmapIx), MonadIx(..), MonadIxFail(..), (:=)(..), withKey )
+import Control.Monad.Indexed ( FunctorIx(fmapIx)
+                             , MonadIx(..), MonadIxFail(..)
+                             , (:=)(..), withKey
+                             )
 import Data.Type.Bindings( BindingType, Var, Fun
                          , CanDef, CanFunDef
                          , Put, Get
@@ -271,14 +274,21 @@ instance (PrimScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
         => AST (M i j a) -> AST a -> AST (M i j a)
   (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (scalar @a)) (!*)
 
+-- functor functionality
+
+class FunctorAST f where
+  fmapAST :: (Syntactic ret, Internal ret ~ (f a -> f b))
+          => AST (a -> b) -> ret
+
+instance KnownNat n => FunctorAST (V n) where
+  fmapAST = fromAST $ FmapVector (Proxy @n)
+
 instance 
-  TypeError (     Text "The AST datatype does not have a Functor instance."
-             :$$: Text "Cannot map Haskell functions over internal types."
-             -- :$$: Text "To map an _internal_ function over an internal type, use fmapAST."
+  TypeError (     Text "The AST datatype does not have a Functor instance:"
+             :$$: Text "    cannot map Haskell functions over internal types."
+             :$$: Text "To map an internal function over an internal type, use 'fmapAST'."
             ) => Functor AST where
   fmap = error "unreachable"
-
---fmapAST = error "TODO"
 
 ------------------------------------------------
 -- syntactic
@@ -294,6 +304,10 @@ instance Syntactic (AST a) where
   toAST   = id
   fromAST = id
 
+instance Syntactic () where
+  type Internal () = ()
+  toAST   = Lit
+  fromAST = const ()
 
 instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   type Internal (a -> b) = Internal a -> Internal b
@@ -361,13 +375,13 @@ pattern Vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 
 vec2 :: AST a -> AST a -> AST ( V 2 a )
-vec2 = fromAST (MkVector (Proxy @2) )
+vec2 = fromAST $ MkVector (Proxy @2)
 
 vec3 :: AST a -> AST a -> AST a -> AST ( V 3 a )
-vec3 = fromAST (MkVector (Proxy @3) )
+vec3 = fromAST $ MkVector (Proxy @3)
 
 vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
-vec4 = fromAST (MkVector (Proxy @4) )
+vec4 = fromAST $ MkVector (Proxy @4)
 
 {-# COMPLETE Mat22 #-}
 pattern Mat22

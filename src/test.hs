@@ -42,9 +42,7 @@ program ::
      , "position"    :-> Var R (V 3 Float)
      , "gl_Position" :-> Var W (V 3 Float)
      ]    
-    '[ "testFun"     :-> Fun '[ "u" :-> Var R Float
-                              , "v" :-> Var R Float
-                              ]
+    '[ "add11"       :-> Fun '[ "u" :-> Var R Float]
                               Float
      , "main"        :-> Fun '[] ()
      ]
@@ -58,15 +56,14 @@ program = do
   let mvp        = projection !*! view !*! model
       position'  = vec4 px py pz 1
 
-  testFun <- fundef @"testFun" $ do
-    u <- get @"u"
-    v <- get @"v"
-    l <- def @"l" @R @Float 11 -- local variable
-    pure $ u + v + l
+  add11 <- fundef @"add11" $ do
+    u   <- get @"u"
+    _11 <- def @"11" @R @Float 11 -- local variable
+    pure $ u + _11
 
   fundef @"main" $ do
-    ~(Vec4 x y z _) <- def @"pos" @R ( mvp !*^ position' )
-    put @"gl_Position" ( vec3 x y ( testFun x (y + z) ) )
+    ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ fmapAST add11 position' )
+    put @"gl_Position" ( vec3 x y z )
 
   
 test :: IO()

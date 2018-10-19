@@ -131,6 +131,7 @@ data AST :: Type -> Type where
   -- vectors (and matrices)
   MkVector :: KnownNat n => Proxy n -> AST ( Variadic n a ( V n a ) )
   VectorAt :: (KnownNat n, KnownNat i) => Proxy i -> AST ( V n a -> a )
+  FmapVector :: KnownNat n => Proxy n -> AST ( (a -> b) -> (V n a -> V n b) )
 
   -- for printing lambdas
   NamedVar :: String -> AST a
@@ -176,18 +177,19 @@ toTreeArgs (Lam f) as = do
 toTreeArgs (PrimOp op _ ) as 
   = return (Node ("PrimOp " ++ opName ) as)
     where opName = show ( SPIRV.op op )
-toTreeArgs If                as = return (Node "If"   as)
-toTreeArgs Pure              as = return (Node "Pure" as)
-toTreeArgs Bind              as = return (Node "Bind" as)
-toTreeArgs Ix                as = return (Node "Ix"   as)
-toTreeArgs (NamedVar v     ) as = return (Node v      as)
-toTreeArgs (Lit      a     ) as = return (Node ("Lit "     ++ show a          ) as)
-toTreeArgs (Get      px    ) as = return (Node ("Get @"    ++ symbolVal    px ) as)
-toTreeArgs (Put      px    ) as = return (Node ("Put @"    ++ symbolVal    px ) as)
-toTreeArgs (Def      px _  ) as = return (Node ("Def @"    ++ symbolVal    px ) as)
-toTreeArgs (FunDef   px _ _) as = return (Node ("FunDef @" ++ symbolVal    px ) as)
-toTreeArgs (MkVector px    ) as = return (Node ("Vec"      ++ show (natVal px)) as)
-toTreeArgs (VectorAt px    ) as = return (Node ("At "      ++ show (natVal px)) as)
+toTreeArgs If                  as = return (Node "If"   as)
+toTreeArgs Pure                as = return (Node "Pure" as)
+toTreeArgs Bind                as = return (Node "Bind" as)
+toTreeArgs Ix                  as = return (Node "Ix"   as)
+toTreeArgs (NamedVar   v     ) as = return (Node v      as)
+toTreeArgs (Lit        a     ) as = return (Node ("Lit "     ++ show a          ) as)
+toTreeArgs (Get        px    ) as = return (Node ("Get @"    ++ symbolVal    px ) as)
+toTreeArgs (Put        px    ) as = return (Node ("Put @"    ++ symbolVal    px ) as)
+toTreeArgs (Def        px _  ) as = return (Node ("Def @"    ++ symbolVal    px ) as)
+toTreeArgs (FunDef     px _ _) as = return (Node ("FunDef @" ++ symbolVal    px ) as)
+toTreeArgs (MkVector   px    ) as = return (Node ("Vec"      ++ show (natVal px)) as)
+toTreeArgs (VectorAt   px    ) as = return (Node ("At "      ++ show (natVal px)) as)
+toTreeArgs (FmapVector px    ) as = return (Node ("Fmap V"   ++ show (natVal px)) as)
 
 toTree :: AST a -> Tree String
 toTree a = evalState (toTreeArgs a []) 0

@@ -7,7 +7,7 @@ module Control.Monad.Indexed where
 
 -- base
 import Data.Kind(Type)
-import Prelude hiding ( Monad(..) )
+import Prelude hiding ( Applicative(..), Monad(..) )
 
 ------------------------------------------------
 -- indexed monads (à la Conor McBride)
