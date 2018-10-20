@@ -14,7 +14,7 @@ import Prelude hiding( Ordering(..) )
 
 -- fir
 import SPIRV.Operation
-import SPIRV.PrimTy( PrimTy(..), Signedness(..) )
+import SPIRV.PrimTy( PrimTy(..), Signedness(..), Dim )
 
 -------------------------------------------------------------------------------
 -- primitive operations
@@ -25,9 +25,9 @@ data PrimOp where
   OrdOp   :: OrdPrimOp                 -> PrimTy -> PrimOp
   NumOp   :: NumPrimOp                 -> PrimTy -> PrimOp
   FloatOp :: FloatPrimOp               -> PrimTy -> PrimOp
-  VecOp   :: VecPrimOp   -> Int        -> PrimTy -> PrimOp
-  MatOp   :: MatPrimOp   -> Int -> Int -> PrimTy -> PrimOp
-  ConvOp  :: ConvPrimOp      -> PrimTy -> PrimTy -> PrimOp
+  VecOp   :: VecPrimOp   -> Dim        -> PrimTy -> PrimOp
+  MatOp   :: MatPrimOp   -> Dim -> Dim -> PrimTy -> PrimOp
+  ConvOp  :: ConvPrimOp  -> PrimTy     -> PrimTy -> PrimOp
   deriving Show
 
 data BoolPrimOp
@@ -230,7 +230,7 @@ floatingOp FLog     = Log
 floatingOp FSqrt    = Sqrt
 floatingOp FInvsqrt = Invsqrt
 
-vectorOp :: VecPrimOp -> Int -> PrimTy -> (Operation, PrimTy)
+vectorOp :: VecPrimOp -> Dim -> PrimTy -> (Operation, PrimTy)
 -- re-use numeric operations on vectors
 vectorOp AddV   n s            = ( fst $ numericOp Add s, Vector n s )
 vectorOp SubV   n s            = ( fst $ numericOp Sub s, Vector n s )
@@ -242,7 +242,7 @@ vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements m
 vectorOp CrossV n (Floating w) = ( Cross, Vector n (Floating w) )
 vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
 
-matrixOp :: MatPrimOp -> Int -> Int -> PrimTy -> (Operation, PrimTy)
+matrixOp :: MatPrimOp -> Dim -> Dim -> PrimTy -> (Operation, PrimTy)
 matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
 matrixOp MMulV  n _ s = ( MatrixTimesVector, Vector n   s )
 matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vector n   s )

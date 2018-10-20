@@ -24,7 +24,7 @@ import qualified Data.Map.Strict as Map
 import Data.Text(Text)
 
 -- fir
-import CodeGen.Instruction ( Args(..), arity, putArgs, argsList
+import CodeGen.Instruction ( Args(..), arity, putArgs, toArgs
                            , ID(..), Instruction(..)
                            , EntryPoint(..)
                            )
@@ -32,7 +32,6 @@ import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV
 import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
-import qualified SPIRV.PrimTy        as SPIRV
 
 ----------------------------------------------------------------------------
 
@@ -127,7 +126,7 @@ putEntryPoints
                 , resTy     = Just ( ID executionModel )
                 , resID     = Just entryPointID
                 , args      = Arg entryPointName
-                            $ argsList entryPointInterface
+                            $ toArgs entryPointInterface
                 }
       )
 
@@ -142,7 +141,7 @@ putExecutionModes
                 , resID     = Nothing
                 , args      = Arg entryPointID
                             $ Arg executionMode
-                            $ argsList executionModeArgs 
+                            $ toArgs executionModeArgs 
                 }
       )
 
@@ -163,10 +162,8 @@ putBindingAnnotations
 putDecorations :: todo -> Binary.Put
 putDecorations = error "todo"
 
--- assumes the map of types is well-founded,
--- e.g. if a vector type is declared, the component type is too
-putTyDecs :: Map SPIRV.PrimTy Instruction -> Binary.Put
-putTyDecs
+putInstructionsInOrder :: Map a Instruction -> Binary.Put
+putInstructionsInOrder
   = traverse_ ( putInstruction Map.empty )
   . sortBy ( comparing resID )
   . Map.elems

@@ -268,7 +268,7 @@ primOpCapabilities _                               = [ ]
 primTyCapabilities :: PrimTy.PrimTy -> [ Capability ]
 primTyCapabilities (PrimTy.Matrix _ _ ty) = Matrix : primTyCapabilities ty
 primTyCapabilities (PrimTy.Vector n   ty)
-    | n > 4     = Vector16 : primTyCapabilities ty
+    | PrimTy.dim n > 4 = Vector16 : primTyCapabilities ty
     | otherwise =            primTyCapabilities ty
 primTyCapabilities (PrimTy.Integer _ W8 ) = [ Int8  ]
 primTyCapabilities (PrimTy.Integer _ W16) = [ Int16 ]

@@ -31,7 +31,7 @@ import CodeGen.Binary ( putHeader
                       , putBindingAnnotations
                       , putDecorations
                       , putExecutionModes
-                      , putTyDecs
+                      , putInstructionsInOrder
                       )
 import CodeGen.Instruction ( ID(..)
                            , EntryPoint(..)
@@ -57,7 +57,8 @@ putDecs
             putExecutionModes       entryPointsWithIDs
             putBindingAnnotations   knownBindings
             putDecorations          undefined --todo
-            putTyDecs               knownTypes
+            putInstructionsInOrder  knownTypes
+            putInstructionsInOrder  knownConstants
 
 putASM :: CGContext -> CGMonad r -> Either Text ByteString
 putASM context mr

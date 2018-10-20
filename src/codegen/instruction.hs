@@ -40,8 +40,8 @@ putArgs = foldrArgs (Binary.put >>> (>>)) (pure ())
 arity :: Num a => Args -> a
 arity = foldrArgs (const (+1)) 0
 
-argsList :: ( Show a, Binary a ) => [a] -> Args
-argsList = foldr Arg EndArgs
+toArgs :: ( Show a, Binary a, Foldable t ) => t a -> Args
+toArgs = foldr Arg EndArgs
 
 ----------------------------------------------------------------------------
 -- instructions

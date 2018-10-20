@@ -20,6 +20,7 @@ library
       FIR.AST
     , FIR.Instances
     , FIR.Pipeline
+    , FIR.PrimTy
     , CodeGen.Binary
     , CodeGen.CodeGen
     , CodeGen.Declarations
@@ -43,6 +44,7 @@ library
 
   build-depends: 
       base
+        >= 4.11
     , binary
     , bytestring
     , containers
@@ -50,6 +52,10 @@ library
     , transformers
     , tree-view
     , text-utf8
+    --, singletons
+    --    >= 2.5
+    --, exinst
+    --    >= 0.7
     , lens
         >= 4.16
     , distributive

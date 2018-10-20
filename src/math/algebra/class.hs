@@ -8,6 +8,7 @@ module Math.Algebra.Class where
 import qualified Prelude
 import Prelude(id, (.), Integer, Rational, Int, Float, Double, Word)
 import qualified Data.Fixed as Fixed
+import qualified GHC.Float
 
 -- fir
 import Math.Logic.Class(Ord, Eq((==)))
@@ -198,7 +199,7 @@ instance Convert Int Float where
 instance Convert Int Double where
   convert = Prelude.fromIntegral
 instance Convert Float Double where
-  convert = Prelude.realToFrac
+  convert = GHC.Float.float2Double
 
 instance Convert Int Word where
   convert = Prelude.fromIntegral
@@ -211,7 +212,7 @@ instance Convert Float Int where
 instance Convert Double Int where
   convert = Prelude.truncate
 instance Convert Double Float where
-  convert = Prelude.realToFrac
+  convert = GHC.Float.double2Float
 
 
 {-

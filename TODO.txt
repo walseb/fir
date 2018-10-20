@@ -81,3 +81,8 @@ address string issues:
   - use Text for error messages
   - figure out which ByteString to use for SPIR-V internal strings (if any)
   - figure out if the ByteString used in Binary.Put is correct
+
+
+
+
+convert to using Int32 and Word32 everywhere instead of Int & Word

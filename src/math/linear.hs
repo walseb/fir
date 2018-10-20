@@ -8,6 +8,7 @@
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE MagicHash                  #-}
@@ -26,26 +27,40 @@
 module Math.Linear where
 
 -- base
-import Prelude hiding(Eq(..), Num(..), Fractional(..), Floating(..), sum)
+import Prelude hiding( Eq(..), (&&), (||)
+                     , Ord(..)
+                     , Num(..), sum
+                     , Fractional(..), Floating(..)
+                     )
+import qualified Prelude
 import Control.Applicative(liftA2)
 import Control.Arrow(second)
+import Data.Foldable(traverse_)
 import Data.Kind(Type)
 import Data.Type.Equality((:~:)(..))
 import Data.Proxy(Proxy(..))
 import Foreign.Ptr(Ptr, castPtr)
 import Foreign.Storable(Storable(alignment, sizeOf, peek, poke, peekElemOff, pokeElemOff))
 import GHC.Base(Int#, Int(I#), (+#))
-import GHC.TypeLits(Nat, KnownNat, natVal, type (+), type (-))
-import GHC.TypeLits.Compare
-import GHC.TypeNats(type (<=), type (<=?))
+import GHC.TypeLits.Compare((:<=?)(LE,NLE), (%<=?))
+import GHC.TypeNats( Nat, KnownNat, natVal
+                   , type (+), type (-)
+                   , type (<=), type (<=?)
+                   )
+import Numeric.Natural(Natural)
 import Unsafe.Coerce(unsafeCoerce)
+
+-- binary
+import Data.Binary(Binary(put,get))
 
 -- distributive
 import Data.Distributive(Distributive(..))
 
 -- fir
 import Control.Arrow.Strength(strong)
-import Math.Logic.Class(Eq(Logic,(==)), HasBool, (#.), ifThenElse)
+import Math.Logic.Class( Eq(Logic,(==)), Boolean(..), HasBool(..), (#.), ifThenElse
+                       , Ord(..)
+                       )
 import Math.Algebra.Class(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Floating(..))
 
 infixr 3 :.
@@ -58,6 +73,19 @@ deriving instance KnownNat n => Functor     (V n)
 deriving instance KnownNat n => Foldable    (V n)
 deriving instance KnownNat n => Traversable (V n)
 deriving instance (KnownNat n, Show a) => Show (V n a)
+
+deriving instance (KnownNat n, Prelude.Eq  a) => Prelude.Eq  (V n a)
+deriving instance (KnownNat n, Prelude.Ord a) => Prelude.Ord (V n a)
+
+instance (KnownNat n, Binary a) => Binary (V n a) where
+  put = traverse_ put
+  get = case Proxy @1 %<=? Proxy @n of
+            LE Refl   -> liftA2 (:.) 
+                           get 
+                           $ get @(V (n-1) a)
+            NLE nle _ ->
+              case deduceZero nle of
+                   Refl -> pure Nil
 
 instance KnownNat n => Distributive (V n) where
   distribute :: Functor f => f (V n a) -> V n (f a)
@@ -78,6 +106,25 @@ instance KnownNat n => Applicative (V n) where
   _         <*> _         = error "unreachable"
 
 
+instance (KnownNat n, Eq a) => Eq (V n a) where
+  type Logic (V n a) = Logic a
+  (==) = (foldr (&&) true .) . ( liftA2 (==) )
+
+instance (KnownNat n, Ord a) => Ord (V n a) where
+  type Compare (V n a) = Compare a
+  compare = error "todo"
+
+  Nil <= Nil = true
+  (a :. as) <= (b :. bs) = a < b || (a <= b && as <= bs)
+  _ <= _ = error "unreachable"
+
+  Nil < Nil = false
+  (a :. as) <  (b :. bs) = a < b || (a <= b && as <  bs)
+  _ < _ = error "unreachable"
+
+  min = liftA2 min
+  max = liftA2 max
+
 instance (KnownNat n, Semigroup a) => Semigroup (V n a) where
   (<>) = liftA2 (<>)
 
@@ -96,7 +143,7 @@ headTailV (a :. as) = ( a, as )
 instance (KnownNat n, Storable a) => Storable (V n a) where
   sizeOf :: V n a -> Int
   sizeOf _ = n * sizeOf (undefined :: a)
-    where n = fromInteger $ natVal (Proxy @n)
+    where n = fromIntegral $ natVal (Proxy @n)
 
   alignment _ = alignment (undefined :: a)
   
@@ -110,9 +157,10 @@ instance (KnownNat n, Storable a) => Storable (V n a) where
   peek :: Ptr (V n a) -> IO (V n a)
   peek ptr = traverse (peekElemOff (castPtr ptr)) ixVec
       where ixVec :: V n Int
-            ixVec = unfold pred (fromInteger $ natVal (Proxy @n))
+            ixVec = unfold pred (fromIntegral $ natVal (Proxy @n))
 
-
+-----------------------------------------------------------
+-- todo: temporary workaround
 newtype Sum a = Sum { getSum :: a }
 instance AdditiveGroup a => Semigroup (Sum a) where
   (Sum a) <> (Sum b) = Sum (a + b)
@@ -121,6 +169,8 @@ instance AdditiveGroup a => Monoid (Sum a) where
 
 sum :: (AdditiveGroup a, Traversable t) => t a -> a
 sum = getSum #. foldMap Sum
+-----------------------------------------------------------
+
 
 
 -- TODO: indexing is slightly off, I'm doing {0, ..., n} instead of {1, ..., n}
@@ -194,8 +244,8 @@ pattern V4 x y z w = x :. y :. z :. w :. Nil
 
 ------------------------------------------------------------------
 
-dim :: forall n. KnownNat n => Int
-dim = fromInteger ( natVal ( Proxy @n ) )
+dim :: forall n. KnownNat n => Natural
+dim = natVal ( Proxy @n )
 
 ------------------------------------------------------------------
 -- type classes for vector operations
@@ -224,8 +274,8 @@ class Module v => Cross v where
   (^×^), cross :: OfDim v 3 -> OfDim v 3 -> OfDim v 3
   (^×^) = cross
 
-class    (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
-instance (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
+class    (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
+instance (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
 
 
 ------------------------------------------------------------------
@@ -309,38 +359,36 @@ rotateAroundAxis n theta v = cos theta *^ v ^+^ sin theta *^ (n ^×^ v)
 ------------------------------------------------------------------
 -- specific implementation of matrices using nested vectors
 
-type M n m a = V n (V m a)
-
-identityMat :: forall n a. (KnownNat n, Ring a) => M n n a
+identityMat :: forall n a. (KnownNat n, Ring a) => V n (V n a)
 identityMat =
   case (Proxy :: Proxy 1) %<=? (Proxy :: Proxy n) of
-       LE Refl   -> (1 :. pure 0) :. fmap (0:.) (identityMat :: M (n-1) (n-1) a)
+       LE Refl   -> (1 :. pure 0) :. fmap (0:.) (identityMat :: V (n-1) (V (n-1) a) )
        NLE nle _ -> case deduceZero nle of
                          Refl -> Nil
 
-newtype WrappedMatrix m n a k = WrappedMatrix { wrappedMatrix :: M m (n+k) a }
+newtype WrappedMatrix m n a k = WrappedMatrix { wrappedMatrix :: V m (V (n+k) a) }
 
 addCol' :: (KnownNat m, KnownNat n, KnownNat k) => WrappedMatrix m n a k -> V m a -> WrappedMatrix m n a (k+1)
 addCol' WrappedMatrix { wrappedMatrix = mat } col = WrappedMatrix { wrappedMatrix = liftA2 (:.) col mat }
 
-addCol :: forall a m n. (KnownNat m, KnownNat n) => M m n a -> V m a -> M m (n+1) a
+addCol :: forall a m n. (KnownNat m, KnownNat n) => V m (V n a) -> V m a -> V m (V (n+1) a)
 addCol mat v = wrappedMatrix $ addCol' (WrappedMatrix { wrappedMatrix = mat } :: WrappedMatrix m n a 0) v
 
-addCols :: (KnownNat m, KnownNat n, KnownNat l) => M m n a -> V l (V m a) -> M m (n+l) a
+addCols :: (KnownNat m, KnownNat n, KnownNat l) => V m (V n a) -> V l (V m a) -> V m (V (n+l) a)
 addCols mat cols = wrappedMatrix $ dfoldrV (flip addCol') (WrappedMatrix mat) cols
 
-rowMatrix :: KnownNat n => V n a -> M 1 n a
+rowMatrix :: KnownNat n => V n a -> V 1 (V n a)
 rowMatrix = (:. Nil)
 
-columnMatrix :: KnownNat n => V n a -> M n 1 a
+columnMatrix :: KnownNat n => V n a -> V n (V 1 a)
 columnMatrix = fmap (:. Nil)
 
 blockSum :: forall m1 m2 n1 n2 a. (KnownNat m1, KnownNat m2, KnownNat n1, KnownNat n2, Semiring a) 
-         => M m1 n1 a -> M m2 n2 a -> M (m1+m2) (n1+n2) a
+         => V m1 (V n1 a)-> V m2 (V n2 a) -> V (m1+m2) (V (n1+n2) a)
 blockSum mat1 mat2 = fmap (<++> pure zero) mat1 <++> fmap (pure zero <++>) mat2
 
-fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> M m l a
-fromColumns = addCols ( pure Nil :: M m 0 a)
+fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> V m (V l a)
+fromColumns = addCols ( pure Nil :: V m (V 0 a))
 
 
 ------------------------------------------------------------------
@@ -372,18 +420,32 @@ class Module (Vector m) => Matrix m where
   identity = diag 1
   (*!) = flip (!*) -- SPIRV defines MatrixTimesScalar
 
+newtype M m n a = M { unM :: V m (V n a) }
+deriving instance (KnownNat m, KnownNat n, Prelude.Eq  a) => Prelude.Eq  (M m n a)
+deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
+deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
+deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
+deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
+deriving instance (KnownNat m, KnownNat n) => Functor     (M m n)
+deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
+deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
+deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
+
 instance Ring a => Matrix (M 0 0 a) where
   type Vector (M 0 0 a) = V 0 a
   type OfDims (M 0 0 a) i j = M i j a
-  identity = identityMat
+  identity = M identityMat
   diag a = a *! identity
-  transpose = distribute
-  (!+!) = liftA2 ( liftA2 (+) )
-  (!-!) = liftA2 ( liftA2 (-) )
-  konst = pure . pure
-  m !* a = liftA2 ( liftA2 (*) ) (konst a) m
-  m !*^ v = fmap (\row -> sum $ liftA2 (*) row v) m
-  v ^*! m = fmap (\row -> sum $ liftA2 (*) row v) (transpose m)
-  m !*! n = fmap (\row -> fmap (sum . liftA2 (*) row) (transpose n)) m
+  transpose (M m) = M ( distribute m )
+  (M m1) !+! (M m2) = M $ liftA2 ( liftA2 (+) ) m1 m2
+  (M m1) !-! (M m2) = M $ liftA2 ( liftA2 (-) ) m1 m2
+  konst = M . pure . pure
+  (M m) !* a = M $ liftA2 ( liftA2 (*) ) ka m
+    where M ka = konst a
+  (M m) !*^ v = fmap (\row -> sum $ liftA2 (*) row v) m
+  v ^*! m = fmap (\row -> sum $ liftA2 (*) row v) mt
+    where M mt = transpose m
+  (M m) !*! n = M $ fmap (\row -> fmap (sum . liftA2 (*) row) nt) m
+    where M nt = transpose n
   determinant = error "todo"
   inverse     = error "todo"

@@ -1,17 +1,13 @@
-{-# LANGUAGE AllowAmbiguousTypes  #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE InstanceSigs         #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE InstanceSigs           #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 
 module FIR.AST where
@@ -19,9 +15,8 @@ module FIR.AST where
 -- base  
 import Data.Kind(Type)
 import Data.Proxy(Proxy)
-import GHC.TypeLits( Nat, KnownNat, natVal, type (-)
-                   , KnownSymbol, symbolVal)
-import GHC.TypeNats(type (<=?))
+import GHC.TypeLits(KnownSymbol, symbolVal)
+import GHC.TypeNats (Nat, KnownNat, natVal, type (-), type (<=?))             
 
 -- containers
 import Data.Tree(Tree(Node))
@@ -30,6 +25,7 @@ import Data.Tree(Tree(Node))
 import Control.Monad.State.Lazy(State, put, get, evalState)
 
 -- fir
+import FIR.PrimTy(PrimTy)
 import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..) )
 import Data.Type.Bindings 
   ( BindingType, Var, Fun
@@ -38,44 +34,6 @@ import Data.Type.Bindings
   )
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
-import qualified SPIRV.PrimTy as SPIRV
-import SPIRV.PrimTy ( Signedness(Unsigned, Signed)
-                    , Width(W16, W32)
-                    )
-
-
-------------------------------------------------------------
--- primitive types, which can be internalised in the AST
-
-class Show ty => PrimTy ty     where 
-instance         PrimTy ()     where
-instance         PrimTy Bool   where
-instance         PrimTy Word   where
-instance         PrimTy Int    where
-instance         PrimTy Float  where
-instance         PrimTy Double where
-
-
-class PrimTy a => PrimScalarTy a where
-  scalar :: SPIRV.PrimTy
-
-instance PrimScalarTy Word where
-  scalar = SPIRV.Integer Unsigned W32
-instance PrimScalarTy Int where
-  scalar = SPIRV.Integer Signed   W32
-instance PrimScalarTy Float where
-  scalar = SPIRV.Floating         W16
-instance PrimScalarTy Double where
-  scalar = SPIRV.Floating         W32
-
-instance ( PrimScalarTy a
-         , KnownNat n
-         ) => PrimTy (V n a) where
-
-instance ( PrimScalarTy a
-         , KnownNat m
-         , KnownNat n
-         ) => PrimTy (M m n a) where
 
 ------------------------------------------------------------
 
@@ -133,6 +91,9 @@ data AST :: Type -> Type where
   VectorAt :: (KnownNat n, KnownNat i) => Proxy i -> AST ( V n a -> a )
   FmapVector :: KnownNat n => Proxy n -> AST ( (a -> b) -> (V n a -> V n b) )
 
+  Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
+  UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
+
   -- for printing lambdas
   NamedVar :: String -> AST a
 
@@ -177,11 +138,13 @@ toTreeArgs (Lam f) as = do
 toTreeArgs (PrimOp op _ ) as 
   = return (Node ("PrimOp " ++ opName ) as)
     where opName = show ( SPIRV.op op )
-toTreeArgs If                  as = return (Node "If"   as)
-toTreeArgs Pure                as = return (Node "Pure" as)
-toTreeArgs Bind                as = return (Node "Bind" as)
-toTreeArgs Ix                  as = return (Node "Ix"   as)
-toTreeArgs (NamedVar   v     ) as = return (Node v      as)
+toTreeArgs If                  as = return (Node "If"    as)
+toTreeArgs Pure                as = return (Node "Pure"  as)
+toTreeArgs Bind                as = return (Node "Bind"  as)
+toTreeArgs Ix                  as = return (Node "Ix"    as)
+toTreeArgs Mat                 as = return (Node "Mat"   as)
+toTreeArgs UnMat               as = return (Node "UnMat" as)
+toTreeArgs (NamedVar   v     ) as = return (Node v       as)
 toTreeArgs (Lit        a     ) as = return (Node ("Lit "     ++ show a          ) as)
 toTreeArgs (Get        px    ) as = return (Node ("Get @"    ++ symbolVal    px ) as)
 toTreeArgs (Put        px    ) as = return (Node ("Put @"    ++ symbolVal    px ) as)

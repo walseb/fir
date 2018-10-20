@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Math.Logic.Class where
 
@@ -14,15 +15,15 @@ import qualified Prelude
 import Data.Coerce(Coercible, coerce)
 
 
+infixr 3 &&
+infixr 2 ||
+
 class Boolean b where
   true  :: b
   false :: b
   (&&)  :: b -> b -> b
   (||)  :: b -> b -> b
   not   :: b -> b
-
-class Boolean b => HasBool b a where
-  bool :: b -> a -> a -> a
 
 instance Boolean Bool where
   true  = True
@@ -31,26 +32,17 @@ instance Boolean Bool where
   (||)  = (Prelude.||)
   not   = Prelude.not
 
-instance HasBool Bool a where
-  bool True  x _ = x
-  bool False _ y = y
+infix 4 ==
+infix 4 /=
 
-class (HasBool (Logic a) a) => Eq a where
+class Boolean (Logic a) => Eq a where
   type Logic a
   (==) :: a -> a -> Logic a
   (/=) :: a -> a -> Logic a
   a /= b = not (a == b)
 
-instance Eq Float where
-  type Logic Float = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-instance Eq Double where
-  type Logic Double = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-instance Eq Int where
-  type Logic Int = Bool
+instance Eq () where
+  type Logic () = Bool
   (==) = (Prelude.==)
   (/=) = (Prelude./=)
 instance Eq Bool where
@@ -61,9 +53,28 @@ instance Eq Word where
   type Logic Word = Bool
   (==) = (Prelude.==)
   (/=) = (Prelude./=)
+instance Eq Int where
+  type Logic Int = Bool
+  (==) = (Prelude.==)
+  (/=) = (Prelude./=)
+instance Eq Float where
+  type Logic Float = Bool
+  (==) = (Prelude.==)
+  (/=) = (Prelude./=)
+instance Eq Double where
+  type Logic Double = Bool
+  (==) = (Prelude.==)
+  (/=) = (Prelude./=)
+
+class Boolean b => HasBool b a where
+  bool :: b -> a -> a -> a
 
 ifThenElse :: HasBool b a => b -> a -> a -> a
 ifThenElse = bool
+
+instance HasBool Bool a where
+  bool True  x _ = x
+  bool False _ y = y
 
 newtype All b = All { getAll :: b }
 newtype Any b = Any { getAny :: b }
@@ -78,6 +89,7 @@ instance Boolean b => Semigroup (Any b) where
 instance Boolean b => Monoid (Any b) where
   mempty = coerce (false @b)
 
+-- from Data.Functor.Utils
 {-# INLINE (#.) #-}
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
 (#.) _f = coerce
@@ -94,6 +106,11 @@ any p = getAny #. foldMap (Any #. p)
 all :: (Foldable t, Boolean b) => (a -> b) -> t a -> b
 all p = getAll #. foldMap (All #. p)
 
+infix 4 <=
+infix 4 <
+infix 4 >=
+infix 4 >
+
 class Eq a => Ord a where
   type Compare a
   compare :: a -> a -> Compare a
@@ -104,6 +121,36 @@ class Eq a => Ord a where
   max     :: a -> a -> a
   min     :: a -> a -> a
 
+  (>=) = flip (>=)
+  (>)  = flip (<)
+
+instance Ord () where
+  type Compare () = Prelude.Ordering
+  compare = Prelude.compare
+  (<=) = (Prelude.<=)
+  (>=) = (Prelude.>=)
+  (<)  = (Prelude.<)
+  (>)  = (Prelude.>)
+  min  = Prelude.min
+  max  = Prelude.max
+instance Ord Bool where
+  type Compare Bool = Prelude.Ordering
+  compare = Prelude.compare
+  (<=) = (Prelude.<=)
+  (>=) = (Prelude.>=)
+  (<)  = (Prelude.<)
+  (>)  = (Prelude.>)
+  min  = Prelude.min
+  max  = Prelude.max
+instance Ord Word where
+  type Compare Word = Prelude.Ordering
+  compare = Prelude.compare
+  (<=) = (Prelude.<=)
+  (>=) = (Prelude.>=)
+  (<)  = (Prelude.<)
+  (>)  = (Prelude.>)
+  min  = Prelude.min
+  max  = Prelude.max
 instance Ord Int where
   type Compare Int = Prelude.Ordering
   compare = Prelude.compare
@@ -131,21 +178,5 @@ instance Ord Double where
   (>)  = (Prelude.>)
   min  = Prelude.min
   max  = Prelude.max
-instance Ord Word where
-  type Compare Word = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
-instance Ord Bool where
-  type Compare Bool = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
+
+

@@ -1,23 +1,25 @@
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise       #-}
 
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE InstanceSigs           #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PatternSynonyms        #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE ViewPatterns           #-}
+{-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE InstanceSigs               #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeFamilyDependencies     #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 module FIR.Instances where
 
@@ -30,15 +32,12 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      )
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits  ( KnownNat, type (+), type (-)
-                     , KnownSymbol
+import GHC.TypeLits  ( KnownSymbol
                      , TypeError, ErrorMessage(..)
                      )
-import GHC.TypeNats(type (<=?))
+import GHC.TypeNats(KnownNat, type (+), type (-), type (<=?))
 
 -- fir  
-import FIR.AST(AST(..), Codensity(..), PrimTy, PrimScalarTy, scalar, S)
-import qualified FIR.AST as AST
 import Control.Monad.Indexed ( FunctorIx(fmapIx)
                              , MonadIx(..), MonadIxFail(..)
                              , (:=)(..), withKey
@@ -49,6 +48,9 @@ import Data.Type.Bindings( BindingType, Var, Fun
                          , Union, Insert
                          , Variadic
                          )
+import FIR.AST(AST(..), Codensity(..), S)
+import qualified FIR.AST as AST
+import FIR.PrimTy(PrimTy, primTy, PrimScalarTy)
 import Math.Logic.Class ( Eq(..), Boolean(..), HasBool(..)
                         , Ord(..)
                         )
@@ -62,11 +64,12 @@ import Math.Linear( Semimodule(..), Module(..)
                   , Inner(..)
                   , Matrix(..)
                   , V, M
-                  , dim
                   , dfoldrV, buildV
                   , pattern V2, pattern V3, pattern V4
                   )
+import qualified Math.Linear
 import qualified SPIRV.PrimOp as SPIRV
+import qualified SPIRV.PrimTy as SPIRV
 
 ---------------------------------------------------
 
@@ -168,38 +171,38 @@ instance PrimTy a => HasBool (AST Bool) (AST a) where
 
 instance (PrimScalarTy a, Eq a , Logic a ~ Bool) => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)
-  (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (scalar @a)) (==)
-  (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (scalar @a)) (/=)
+  (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (primTy @a)) (==)
+  (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) (/=)
 
 instance (PrimScalarTy a, Ord a, Logic a ~ Bool) => Ord (AST a) where
   type Compare (AST a) = AST Int
   compare = error "todo"
-  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (scalar @a)) (<=)
-  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (scalar @a)) (>=)
-  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (scalar @a)) (<)
-  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (scalar @a)) (>)
-  min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (scalar @a)) min
-  max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (scalar @a)) max
+  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) (<=)
+  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (primTy @a)) (>=)
+  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (primTy @a)) (<)
+  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (primTy @a)) (>)
+  min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (primTy @a)) min
+  max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (primTy @a)) max
 
 -- numeric operations
 instance (PrimScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
-  (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalar @a)) (+)
+  (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (primTy @a)) (+)
   zero   = Lit (zero :: a)
 instance (PrimScalarTy a, Semiring a) => Semiring (AST a) where
-  (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (scalar @a)) (*)  
+  (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (primTy @a)) (*)  
 instance (PrimScalarTy a, Ring a) => Ring (AST a) where
-  (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (scalar @a)) (-)
-  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (scalar @a)) negate
+  (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (primTy @a)) (-)
+  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (primTy @a)) negate
   fromInteger = Lit . fromInteger
 instance (PrimScalarTy a, Signed a) => Signed (AST a) where
-  abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (scalar @a)) abs
-  signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (scalar @a)) signum
+  abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (primTy @a)) abs
+  signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (primTy @a)) signum
 instance (PrimScalarTy a, DivisionRing a) => DivisionRing (AST a) where
-  (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (scalar @a)) (/)
+  (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (primTy @a)) (/)
   fromRational = Lit . fromRational
 instance (PrimScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) where
-  mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (scalar @a)) mod
-  rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (scalar @a)) rem
+  mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (primTy @a)) mod
+  rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (primTy @a)) rem
 
 
 -- numeric conversions
@@ -211,7 +214,11 @@ type family DisEq a b where
 
 instance (PrimScalarTy a, PrimScalarTy b, Convert a b, DisEq a b ~ 'True)
          => Convert (AST a) (AST b) where
-  convert = fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalar @a) (scalar @b)) convert
+  convert = fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (primTy @a) (primTy @b)) convert
+
+
+dim :: forall n. KnownNat n => SPIRV.Dim
+dim = SPIRV.toDim ( Math.Linear.dim @n )
 
 -- vectors
 instance (PrimScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
@@ -220,22 +227,23 @@ instance (PrimScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
 
   (^+^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (dim @n) (scalar @a)) (^+^)
+  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (dim @n) (primTy @a)) (^+^)
 
   (^*) :: forall n. KnownNat n
         => AST (V n a) -> AST a -> AST (V n a)
-  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (dim @n) (scalar @a)) (^*)
+  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (dim @n) (primTy @a)) (^*)
 
 instance (PrimScalarTy a, Ring a) => Module (AST (V 0 a)) where
   (^-^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (dim @n) (scalar @a)) (^-^)
+  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (dim @n) (primTy @a)) (^-^)
 
 instance (PrimScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
-  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (dim @0) (scalar @a)) (^.^)
+  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (dim @0) (primTy @a)) (^.^)
 
 
 -- matrices
+
 instance (PrimScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
   type Vector (AST (M 0 0 a)) = AST (V 0 a)
   type OfDims (AST (M 0 0 a)) m n = AST (M m n a)
@@ -245,34 +253,35 @@ instance (PrimScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
 
   transpose :: forall n m. (KnownNat n, KnownNat m)
             => AST (M n m a) -> AST (M m n a)
-  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (dim @m) (dim @n) (scalar @a)) transpose
+  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (dim @m) (dim @n) (primTy @a)) transpose
 
   inverse :: forall n. KnownNat n
             => AST (M n n a) -> AST (M n n a)
-  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (dim @n) (dim @n) (scalar @a)) inverse
+  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (dim @n) (dim @n) (primTy @a)) inverse
   
   determinant :: forall n. KnownNat n
               => AST (M n n a) -> AST a
-  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (dim @0) (dim @0) (scalar @a)) determinant
+  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (dim @0) (dim @0) (primTy @a)) determinant
 
   (!+!) = error "todo"
   (!-!) = error "todo"
 
   (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
         => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
-  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (dim @i) (dim @k) (scalar @a)) (!*!)
+  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (dim @i) (dim @k) (primTy @a)) (!*!)
 
   (^*!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (V i a) -> AST (M i j a) -> AST (V j a)
-  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (dim @j) (dim @0) (scalar @a)) (^*!)
+  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (dim @j) (dim @0) (primTy @a)) (^*!)
 
   (!*^) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (V j a) -> AST (V i a)
-  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (dim @i) (dim @0) (scalar @a)) (!*^)
+  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (dim @i) (dim @0) (primTy @a)) (!*^)
 
   (!*) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST a -> AST (M i j a)
-  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (scalar @a)) (!*)
+  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (primTy @a)) (!*)
+
 
 -- functor functionality
 
@@ -358,6 +367,8 @@ instance (KnownNat n, Syntactic a) => Syntactic (V n a) where
   fromAST :: AST (V n (Internal a)) -> V n a
   fromAST = buildV ( \i v -> fromAST ( VectorAt i :$ v) )
 
+deriving instance (KnownNat m, KnownNat n, Syntactic a) => Syntactic (Math.Linear.M m n a)
+
 -- these patterns and constructors could be generalised to have types such as:
 -- Vec2 :: Syntactic a => a -> a -> AST ( V 2 (Internal a) )
 -- but this leads to poor type-inference
@@ -383,6 +394,8 @@ vec3 = fromAST $ MkVector (Proxy @3)
 vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 vec4 = fromAST $ MkVector (Proxy @4)
 
+
+
 {-# COMPLETE Mat22 #-}
 pattern Mat22
   :: AST a -> AST a
@@ -390,7 +403,7 @@ pattern Mat22
   -> AST ( M 2 2 a )
 pattern Mat22 a11 a12
               a21 a22
-  <- ( fromAST
+  <- ( fromAST . ( UnMat :$ )
        -> V2 ( V2 a11 a12 )
              ( V2 a21 a22 )
      )
@@ -402,7 +415,7 @@ pattern Mat23
   -> AST ( M 2 3 a )
 pattern Mat23 a11 a12 a13
               a21 a22 a23
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V2 ( V3 a11 a12 a13 )
               ( V3 a21 a22 a23 )
       )
@@ -414,7 +427,7 @@ pattern Mat24
   -> AST ( M 2 4 a )
 pattern Mat24 a11 a12 a13 a14
               a21 a22 a23 a24
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V2 ( V4 a11 a12 a13 a14 )
               ( V4 a21 a22 a23 a24 )
       )
@@ -428,7 +441,7 @@ pattern Mat32
 pattern Mat32 a11 a12
               a21 a22
               a31 a32
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V3 ( V2 a11 a12 )
               ( V2 a21 a22 )
               ( V2 a31 a32 )
@@ -443,7 +456,7 @@ pattern Mat33
 pattern Mat33 a11 a12 a13
               a21 a22 a23
               a31 a32 a33
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V3 ( V3 a11 a12 a13 )
               ( V3 a21 a22 a23 )
               ( V3 a31 a32 a33 )
@@ -458,7 +471,7 @@ pattern Mat34
 pattern Mat34 a11 a12 a13 a14
               a21 a22 a23 a24
               a31 a32 a33 a34
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V3 ( V4 a11 a12 a13 a14 )
               ( V4 a21 a22 a23 a24 )
               ( V4 a31 a32 a33 a34 )
@@ -475,7 +488,7 @@ pattern Mat42 a11 a12
               a21 a22
               a31 a32
               a41 a42
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V4 ( V2 a11 a12 )
               ( V2 a21 a22 )
               ( V2 a31 a32 )
@@ -493,7 +506,7 @@ pattern Mat43 a11 a12 a13
               a21 a22 a23
               a31 a32 a33
               a41 a42 a43
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V4 ( V3 a11 a12 a13 )
               ( V3 a21 a22 a23 )
               ( V3 a31 a32 a33 )
@@ -511,7 +524,7 @@ pattern Mat44 a11 a12 a13 a14
               a21 a22 a23 a24
               a31 a32 a33 a34
               a41 a42 a43 a44
-   <- ( fromAST
+   <- ( fromAST . ( UnMat :$ )
         -> V4 ( V4 a11 a12 a13 a14 )
               ( V4 a21 a22 a23 a24 )
               ( V4 a31 a32 a33 a34 )
@@ -524,7 +537,7 @@ mat22
   -> AST ( M 2 2 a )
 mat22 a11 a12
       a21 a22
-  = vec2
+  = Mat :$ vec2
       ( vec2 a11 a12 )
       ( vec2 a21 a22 )
 
@@ -534,7 +547,7 @@ mat23
   -> AST ( M 2 3 a )
 mat23 a11 a12 a13
       a21 a22 a23
-  = vec2
+  = Mat :$ vec2
       ( vec3 a11 a12 a13 )
       ( vec3 a21 a22 a23 )
 
@@ -544,7 +557,7 @@ mat24
   -> AST ( M 2 4 a )
 mat24 a11 a12 a13 a14
       a21 a22 a23 a24
-  = vec2
+  = Mat :$ vec2
       ( vec4 a11 a12 a13 a14 )
       ( vec4 a21 a22 a23 a24 )
 
@@ -556,7 +569,7 @@ mat32
 mat32 a11 a12
       a21 a22
       a31 a32
-  = vec3
+  = Mat :$ vec3
       ( vec2 a11 a12 )
       ( vec2 a21 a22 )
       ( vec2 a31 a32 )
@@ -569,7 +582,7 @@ mat33
 mat33 a11 a12 a13
       a21 a22 a23
       a31 a32 a33
-  = vec3
+  = Mat :$ vec3
       ( vec3 a11 a12 a13 )
       ( vec3 a21 a22 a23 )
       ( vec3 a31 a32 a33 )
@@ -582,7 +595,7 @@ mat34
 mat34 a11 a12 a13 a14
       a21 a22 a23 a24
       a31 a32 a33 a34
-  = vec3
+  = Mat :$ vec3
       ( vec4 a11 a12 a13 a14 )
       ( vec4 a21 a22 a23 a24 )
       ( vec4 a31 a32 a33 a34 )
@@ -597,7 +610,7 @@ mat42 a11 a12
       a21 a22
       a31 a32
       a41 a42
-  = vec4
+  = Mat :$ vec4
       ( vec2 a11 a12 )
       ( vec2 a21 a22 )
       ( vec2 a31 a32 )
@@ -613,7 +626,7 @@ mat43 a11 a12 a13
       a21 a22 a23
       a31 a32 a33
       a41 a42 a43
-  = vec4
+  = Mat :$ vec4
       ( vec3 a11 a12 a13 )
       ( vec3 a21 a22 a23 )
       ( vec3 a31 a32 a33 )
@@ -629,7 +642,7 @@ mat44 a11 a12 a13 a14
       a21 a22 a23 a24
       a31 a32 a33 a34
       a41 a42 a43 a44
-  = vec4
+  = Mat :$ vec4
       ( vec4 a11 a12 a13 a14 )
       ( vec4 a21 a22 a23 a24 )
       ( vec4 a31 a32 a33 a34 )

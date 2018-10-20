@@ -43,6 +43,7 @@ import CodeGen.Instruction( ID(ID)
                           , Instruction
                           , EntryPoint
                           )
+import FIR.PrimTy(AConstant)
 import qualified SPIRV.Capability as SPIRV
 import qualified SPIRV.Extension  as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV
@@ -58,8 +59,9 @@ data CGState
     { currentID          :: ID
     , neededCapabilities :: [ SPIRV.Capability ]
     , knownExtInsts      :: Map SPIRV.ExtInst Instruction
-    , knownTypes         :: Map SPIRV.PrimTy  Instruction
     , knownBindings      :: Map Text          ID
+    , knownTypes         :: Map SPIRV.PrimTy  Instruction
+    , knownConstants     :: Map AConstant     Instruction    
     }
 
 initialState :: CGState
@@ -67,8 +69,9 @@ initialState = CGState
   { currentID          = ID 1
   , neededCapabilities = [] 
   , knownExtInsts      = Map.empty
+  , knownBindings      = Map.empty
   , knownTypes         = Map.empty
-  , knownBindings      = Map.empty 
+  , knownConstants     = Map.empty  
   }
 
 data CGContext
@@ -105,17 +108,23 @@ _knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )
 _knownExtInst :: SPIRV.ExtInst -> Lens' CGState (Maybe Instruction)
 _knownExtInst ext = _knownExtInsts . at ext
 
+_knownBindings :: Lens' CGState (Map Text ID)
+_knownBindings = lens knownBindings ( \s v -> s { knownBindings = v } )
+
+_knownBinding :: Text -> Lens' CGState (Maybe ID)
+_knownBinding binding = _knownBindings . at binding
+
 _knownTypes :: Lens' CGState (Map SPIRV.PrimTy Instruction)
 _knownTypes = lens knownTypes ( \s v -> s { knownTypes = v } )
 
 _knownType :: SPIRV.PrimTy -> Lens' CGState (Maybe Instruction)
 _knownType primTy = _knownTypes . at primTy
 
-_knownBindings :: Lens' CGState (Map Text ID)
-_knownBindings = lens knownBindings ( \s v -> s { knownBindings = v } )
+_knownConstants :: Lens' CGState (Map AConstant Instruction)
+_knownConstants = lens knownConstants ( \s v -> s { knownConstants = v } )
 
-_knownBinding :: Text -> Lens' CGState (Maybe ID)
-_knownBinding binding = _knownBindings . at binding
+_knownConstant :: AConstant -> Lens' CGState (Maybe Instruction)
+_knownConstant constant = _knownConstants . at constant
 
 ----------------------------------------------------------------------------
 -- fresh name generation
@@ -143,19 +152,19 @@ instance (MonadState s m, HasSupply v s, Enum v) => MonadFresh v (FreshSuccT s m
   fresh = supply <<%= succ -- <<%= means: "modify, and return the _old_ value"
 
 create :: ( MonadFresh v m, MonadState s m )
-       => Lens' s (Maybe a) -> (v -> a) -> m v
+       => Lens' s (Maybe a) -> (v -> m a) -> m v
 create _key mk
   = do v <- fresh
-       let a = mk v
+       a <- mk v
        assign _key ( Just a )
        pure v
 
 createRec :: ( MonadFresh v m, MonadState s m )
-          => Lens' s (Maybe a) -> m b -> (b -> v -> a) -> m v
+          => Lens' s (Maybe a) -> m b -> (b -> v -> m a) -> m v
 createRec _key before mk
   = do b <- before
        v <- fresh
-       let a = mk b v
+       a <- mk b v
        assign _key ( Just a )
        pure v
 
@@ -165,7 +174,7 @@ tryToUseWith _key f creation =
   use _key >>= maybe creation (pure . f)
 
 tryToUse :: ( MonadFresh v m, MonadState s m )
-         => Lens' s (Maybe a) -> (a -> v) -> (v -> a) -> m v
+         => Lens' s (Maybe a) -> (a -> v) -> (v -> m a) -> m v
 tryToUse _key f mk = tryToUseWith _key f (create _key mk)
 
 ----------------------------------------------------------------------------
