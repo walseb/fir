@@ -20,7 +20,9 @@ import Data.Tree.View(drawTree)
 
 -- fir
 import FIR.AST
+import FIR.Builtin
 import FIR.Instances
+import FIR.Program
 import Control.Monad.Indexed
 import Data.Type.Bindings
 import Math.Linear
@@ -31,20 +33,15 @@ import Math.Algebra.Class
 -- program
 
 
-type Program i j a
-  = Codensity S (AST a := Union (FromList i) (FromList j)) (FromList i)
-
 program ::
   Program
     '[ "model"       :-> Var R (M 4 4 Float)
      , "view"        :-> Var R (M 4 4 Float)
      , "projection"  :-> Var R (M 4 4 Float)
      , "position"    :-> Var R (V 3 Float)
-     , "gl_Position" :-> Var W (V 3 Float)
-     ]    
+     ]
     '[ "add11"       :-> Fun '[ "u" :-> Var R Float]
                               Float
-     , "main"        :-> Fun '[] ()
      ]
     ()
 program = do
@@ -61,9 +58,9 @@ program = do
     _11 <- def @"11" @R @Float 11 -- local variable
     pure $ u + _11
 
-  fundef @"main" $ do
+  entryPoint @Vertex $ do
     ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ fmapAST add11 position' )
-    put @"gl_Position" ( vec3 x y z )
+    put @"gl_Position" ( vec4 x y z 1 )
 
   
 test :: IO()

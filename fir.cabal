@@ -17,11 +17,7 @@ library
       src
 
   exposed-modules:
-      FIR.AST
-    , FIR.Instances
-    , FIR.Pipeline
-    , FIR.PrimTy
-    , CodeGen.Binary
+      CodeGen.Binary
     , CodeGen.CodeGen
     , CodeGen.Declarations
     , CodeGen.Instruction
@@ -30,6 +26,12 @@ library
     , Control.Monad.Indexed
     , Data.Type.Bindings
     , Deriving.Prelude
+    , FIR.AST
+    , FIR.Binding
+    , FIR.Builtin
+    , FIR.Instances
+    , FIR.PrimTy
+    , FIR.Program
     , Math.Algebra.Class
     , Math.Logic.Class
     , Math.Linear

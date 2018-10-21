@@ -43,13 +43,15 @@ import Control.Monad.Indexed ( FunctorIx(fmapIx)
                              , (:=)(..), withKey
                              )
 import Data.Type.Bindings( BindingType, Var, Fun
-                         , CanDef, CanFunDef
-                         , Put, Get
                          , Union, Insert
                          , Variadic
                          )
 import FIR.AST(AST(..), Codensity(..), S)
 import qualified FIR.AST as AST
+import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
+                   , Put, Get
+                   )
+import FIR.Builtin(StageBuiltins, KnownStage)
 import FIR.PrimTy(PrimTy, primTy, PrimScalarTy)
 import Math.Logic.Class ( Eq(..), Boolean(..), HasBool(..)
                         , Ord(..)
@@ -77,7 +79,7 @@ class MonadIx m => ScopeIx m where
 
   def' :: forall k perms a i. 
           ( KnownSymbol k
-          , CanDef k i ~ 'True
+          , ValidDef k i ~ 'True
           , PrimTy a
           )
        => Proxy k
@@ -87,14 +89,20 @@ class MonadIx m => ScopeIx m where
 
   defun' :: forall k as b l i. 
             ( KnownSymbol k
-            , CanFunDef k as i l ~ 'True
+            , ValidFunDef k as i l ~ 'True
             , PrimTy b
             )
          => Proxy k
-         -> Proxy as
+         -> Proxy as         
          -> Proxy l
          -> AST (S (b := l) (Union i as))
          -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
+
+  entry' :: forall s l i. ( KnownStage s, ValidEntryPoint s i l ~ 'True )
+         => Proxy s        
+         -> Proxy l
+         -> AST (S (() := l) (Union i (StageBuiltins s)))
+         -> m (AST () := i) i
 
   get' :: forall k a i. (KnownSymbol k, Get k i ~ a)
        => Proxy k
@@ -105,15 +113,20 @@ class MonadIx m => ScopeIx m where
        -> AST a
        -> m (AST () := i) i
   
-def :: forall k perms a i m. (ScopeIx m, KnownSymbol k, CanDef k i ~ 'True, PrimTy a)
+def :: forall k perms a i m. (ScopeIx m, KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
     => AST a
     -> m (AST a := Insert k (Var perms a) i) i 
 def = def' @m @k @perms @a @i Proxy Proxy
 
-defun :: forall k as b l i m. (ScopeIx m, KnownSymbol k, CanFunDef k as i l ~ 'True, PrimTy b)
+defun :: forall k as b l i m. (ScopeIx m, KnownSymbol k, ValidFunDef k as i l ~ 'True, PrimTy b)
         => AST (S (b := l) (Union i as))
         -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
 defun = defun' @m @k @as @b @l @i Proxy Proxy Proxy
+
+entry :: forall s l i m. (ScopeIx m, KnownStage s, ValidEntryPoint s i l ~ 'True)
+        => AST (S (() := l) (Union i (StageBuiltins s)))
+        -> m (AST () := i) i
+entry = entry' @m @s @l @i Proxy Proxy
 
 get :: forall k a i m. (ScopeIx m, KnownSymbol k, Get k i ~ a)
      => m (AST a := i) i
@@ -131,12 +144,18 @@ put = put' @m @k @a @i Proxy
 
 fundef :: forall k as b f l i. 
           ( KnownSymbol k, PrimTy b
-          , CanFunDef k as i l ~ 'True          
+          , ValidFunDef k as i l ~ 'True
           , Syntactic f, Internal f ~ Variadic as b
           )
        => Codensity S (AST b := l) (Union i as) 
        -> Codensity S (f := Insert k (Fun as b) i) i
-fundef = fmapIx (fromAST `withKey`) . defun @k @as . toAST
+fundef = fmapIx (fromAST `withKey`) . defun @k @as @b @l @i . toAST
+-- normal function definitions have no additional variables ^^^^^^
+
+entryPoint :: forall s l i. ( KnownStage s, ValidEntryPoint s i l ~ 'True )
+       => Codensity S (AST () := l) (Union i (StageBuiltins s))
+       -> Codensity S (AST () := i) i
+entryPoint = fmapIx (fromAST `withKey`) . entry @s @l @i . toAST
 
 --------------------------------------------------------------------------
 
@@ -144,6 +163,7 @@ fundef = fmapIx (fromAST `withKey`) . defun @k @as . toAST
 instance (m ~ Codensity S) => ScopeIx m where
   def'   k b   a = Codensity ( \h -> Bind :$ (Def    k b   :$ a) :$ (Lam $ h . AtKey) )
   defun' k j l f = Codensity ( \h -> Bind :$ (FunDef k j l :$ f) :$ (Lam $ h . AtKey) )
+  entry' k j   f = Codensity ( \h -> Bind :$ (Entry  k j   :$ f) :$ (Lam $ h . AtKey) )
   get'   k       = Codensity ( \h -> Bind :$  Get    k           :$ (Lam $ h . AtKey) )
   put'   k     a = Codensity ( \h -> Bind :$ (Put    k     :$ a) :$ (Lam $ h . AtKey) )
 
