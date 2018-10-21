@@ -1,25 +1,32 @@
-{-# LANGUAGE DerivingVia           #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingVia            #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 module Math.Algebra.Class where
 
 -- base
-import Prelude((.), Integer, Rational, Int, Float, Double, Word)
+import Prelude( id, (.)
+              , Integer, Rational
+              , Word, Int
+              , Float, Double
+              )
 import qualified Prelude
 import Data.Coerce(coerce)
 import Data.Int(Int8, Int16, Int32, Int64)
+import Data.Kind(Type)
 import qualified Data.Fixed as Fixed
 import Data.Word(Word8, Word16, Word32, Word64)
-import qualified GHC.Float
+import qualified GHC.Float as Float
 
 -- half
 import Numeric.Half(Half)
+import qualified Numeric.Half as Half
 
 -- fir
 import Deriving.Prelude(Prelude(..)) -- newtype for deriving Prelude instances
@@ -212,63 +219,191 @@ deriving via Prelude Float  instance Floating Float
 deriving via Prelude Double instance Floating Double
 
 
-{-
-class Convert a b where
-  convert :: a -> b
 
-instance Convert Word Word where
-  convert = id
-instance Convert Int Int where
-  convert = id
-instance Convert Float Float where
-  convert = id
-instance Convert Double Double where
+type family Arr (domCod :: (Type,Type)) = (arr :: Type) | arr -> domCod where
+  Arr '(dom, cod) = dom -> cod
+
+class Convert (c :: (Type,Type)) where
+  convert :: Arr c
+
+instance Convert '(a,a) where
   convert = id
 
-instance Convert Word Int where
-  convert = Prelude.fromIntegral
-instance Convert Word Float where
-  convert = Prelude.fromIntegral
-instance Convert Word Double where
-  convert = Prelude.fromIntegral
-instance Convert Int Float where
-  convert = Prelude.fromIntegral
-instance Convert Int Double where
-  convert = Prelude.fromIntegral
-instance Convert Float Double where
-  convert = GHC.Float.float2Double
 
-instance Convert Int Word where
-  convert = Prelude.fromIntegral
-instance Convert Float Word where
-  convert = Prelude.truncate
-instance Convert Double Word where
-  convert = Prelude.truncate
-instance Convert Float Int where
-  convert = Prelude.truncate
-instance Convert Double Int where
-  convert = Prelude.truncate
-instance Convert Double Float where
-  convert = GHC.Float.double2Float
+-- fromIntegral conversions
+instance (Prelude.Integral a, Prelude.Num b) => Convert '((Prelude a), b) where
+  convert (Prelude a) = Prelude.fromIntegral a
+
+-- to unsigned integers
+deriving via '(Prelude Word16, Word8 ) instance Convert '(Word16, Word8 )
+deriving via '(Prelude Word32, Word8 ) instance Convert '(Word32, Word8 )
+deriving via '(Prelude Word64, Word8 ) instance Convert '(Word64, Word8 )
+deriving via '(Prelude Word  , Word8 ) instance Convert '(Word  , Word8 )
+deriving via '(Prelude Int8  , Word8 ) instance Convert '(Int8  , Word8 )
+deriving via '(Prelude Int16 , Word8 ) instance Convert '(Int16 , Word8 )
+deriving via '(Prelude Int32 , Word8 ) instance Convert '(Int32 , Word8 )
+deriving via '(Prelude Int64 , Word8 ) instance Convert '(Int64 , Word8 )
+deriving via '(Prelude Int   , Word8 ) instance Convert '(Int   , Word8 )
+deriving via '(Prelude Word8 , Word16) instance Convert '(Word8 , Word16)
+deriving via '(Prelude Word32, Word16) instance Convert '(Word32, Word16)
+deriving via '(Prelude Word64, Word16) instance Convert '(Word64, Word16)
+deriving via '(Prelude Word  , Word16) instance Convert '(Word  , Word16)
+deriving via '(Prelude Int8  , Word16) instance Convert '(Int8  , Word16)
+deriving via '(Prelude Int16 , Word16) instance Convert '(Int16 , Word16)
+deriving via '(Prelude Int32 , Word16) instance Convert '(Int32 , Word16)
+deriving via '(Prelude Int64 , Word16) instance Convert '(Int64 , Word16)
+deriving via '(Prelude Int   , Word16) instance Convert '(Int   , Word16)
+deriving via '(Prelude Word8 , Word32) instance Convert '(Word8 , Word32)
+deriving via '(Prelude Word16, Word32) instance Convert '(Word16, Word32)
+deriving via '(Prelude Word64, Word32) instance Convert '(Word64, Word32)
+deriving via '(Prelude Word  , Word32) instance Convert '(Word  , Word32)
+deriving via '(Prelude Int8  , Word32) instance Convert '(Int8  , Word32)
+deriving via '(Prelude Int16 , Word32) instance Convert '(Int16 , Word32)
+deriving via '(Prelude Int32 , Word32) instance Convert '(Int32 , Word32)
+deriving via '(Prelude Int64 , Word32) instance Convert '(Int64 , Word32)
+deriving via '(Prelude Int   , Word32) instance Convert '(Int   , Word32)
+deriving via '(Prelude Word8 , Word64) instance Convert '(Word8 , Word64)
+deriving via '(Prelude Word16, Word64) instance Convert '(Word16, Word64)
+deriving via '(Prelude Word32, Word64) instance Convert '(Word32, Word64)
+deriving via '(Prelude Word  , Word64) instance Convert '(Word  , Word64)
+deriving via '(Prelude Int8  , Word64) instance Convert '(Int8  , Word64)
+deriving via '(Prelude Int16 , Word64) instance Convert '(Int16 , Word64)
+deriving via '(Prelude Int32 , Word64) instance Convert '(Int32 , Word64)
+deriving via '(Prelude Int64 , Word64) instance Convert '(Int64 , Word64)
+deriving via '(Prelude Int   , Word64) instance Convert '(Int   , Word64)
+deriving via '(Prelude Word8 , Word  ) instance Convert '(Word8 , Word  )
+deriving via '(Prelude Word16, Word  ) instance Convert '(Word16, Word  )
+deriving via '(Prelude Word32, Word  ) instance Convert '(Word32, Word  )
+deriving via '(Prelude Word64, Word  ) instance Convert '(Word64, Word  )
+deriving via '(Prelude Int8  , Word  ) instance Convert '(Int8  , Word  )
+deriving via '(Prelude Int16 , Word  ) instance Convert '(Int16 , Word  )
+deriving via '(Prelude Int32 , Word  ) instance Convert '(Int32 , Word  )
+deriving via '(Prelude Int64 , Word  ) instance Convert '(Int64 , Word  )
+deriving via '(Prelude Int   , Word  ) instance Convert '(Int   , Word  )
+-- to signed integers
+deriving via '(Prelude Word8 , Int8  ) instance Convert '(Word8 , Int8  )
+deriving via '(Prelude Word16, Int8  ) instance Convert '(Word16, Int8  )
+deriving via '(Prelude Word32, Int8  ) instance Convert '(Word32, Int8  )
+deriving via '(Prelude Word64, Int8  ) instance Convert '(Word64, Int8  )
+deriving via '(Prelude Word  , Int8  ) instance Convert '(Word  , Int8  )
+deriving via '(Prelude Int16 , Int8  ) instance Convert '(Int16 , Int8  )
+deriving via '(Prelude Int32 , Int8  ) instance Convert '(Int32 , Int8  )
+deriving via '(Prelude Int64 , Int8  ) instance Convert '(Int64 , Int8  )
+deriving via '(Prelude Int   , Int8  ) instance Convert '(Int   , Int8  )
+deriving via '(Prelude Word8 , Int16 ) instance Convert '(Word8 , Int16 )
+deriving via '(Prelude Word16, Int16 ) instance Convert '(Word16, Int16 )
+deriving via '(Prelude Word32, Int16 ) instance Convert '(Word32, Int16 )
+deriving via '(Prelude Word64, Int16 ) instance Convert '(Word64, Int16 )
+deriving via '(Prelude Word  , Int16 ) instance Convert '(Word  , Int16 )
+deriving via '(Prelude Int8  , Int16 ) instance Convert '(Int8  , Int16 )
+deriving via '(Prelude Int32 , Int16 ) instance Convert '(Int32 , Int16 )
+deriving via '(Prelude Int64 , Int16 ) instance Convert '(Int64 , Int16 )
+deriving via '(Prelude Int   , Int16 ) instance Convert '(Int   , Int16 )
+deriving via '(Prelude Word8 , Int32 ) instance Convert '(Word8 , Int32 )
+deriving via '(Prelude Word16, Int32 ) instance Convert '(Word16, Int32 )
+deriving via '(Prelude Word32, Int32 ) instance Convert '(Word32, Int32 )
+deriving via '(Prelude Word64, Int32 ) instance Convert '(Word64, Int32 )
+deriving via '(Prelude Word  , Int32 ) instance Convert '(Word  , Int32 )
+deriving via '(Prelude Int8  , Int32 ) instance Convert '(Int8  , Int32 )
+deriving via '(Prelude Int16 , Int32 ) instance Convert '(Int16 , Int32 )
+deriving via '(Prelude Int64 , Int32 ) instance Convert '(Int64 , Int32 )
+deriving via '(Prelude Int   , Int32 ) instance Convert '(Int   , Int32 )
+deriving via '(Prelude Word8 , Int64 ) instance Convert '(Word8 , Int64 )
+deriving via '(Prelude Word16, Int64 ) instance Convert '(Word16, Int64 )
+deriving via '(Prelude Word32, Int64 ) instance Convert '(Word32, Int64 )
+deriving via '(Prelude Word64, Int64 ) instance Convert '(Word64, Int64 )
+deriving via '(Prelude Word  , Int64 ) instance Convert '(Word  , Int64 )
+deriving via '(Prelude Int8  , Int64 ) instance Convert '(Int8  , Int64 )
+deriving via '(Prelude Int16 , Int64 ) instance Convert '(Int16 , Int64 )
+deriving via '(Prelude Int32 , Int64 ) instance Convert '(Int32 , Int64 )
+deriving via '(Prelude Int   , Int64 ) instance Convert '(Int   , Int64 )
+deriving via '(Prelude Word8 , Int   ) instance Convert '(Word8 , Int   )
+deriving via '(Prelude Word16, Int   ) instance Convert '(Word16, Int   )
+deriving via '(Prelude Word32, Int   ) instance Convert '(Word32, Int   )
+deriving via '(Prelude Word64, Int   ) instance Convert '(Word64, Int   )
+deriving via '(Prelude Word  , Int   ) instance Convert '(Word  , Int   )
+deriving via '(Prelude Int8  , Int   ) instance Convert '(Int8  , Int   )
+deriving via '(Prelude Int16 , Int   ) instance Convert '(Int16 , Int   )
+deriving via '(Prelude Int32 , Int   ) instance Convert '(Int32 , Int   )
+deriving via '(Prelude Int64 , Int   ) instance Convert '(Int64 , Int   )
+-- to floating point
+deriving via '(Prelude Word8 , Half  ) instance Convert '(Word8 , Half  )
+deriving via '(Prelude Word16, Half  ) instance Convert '(Word16, Half  )
+deriving via '(Prelude Word32, Half  ) instance Convert '(Word32, Half  )
+deriving via '(Prelude Word64, Half  ) instance Convert '(Word64, Half  )
+deriving via '(Prelude Word  , Half  ) instance Convert '(Word  , Half  )
+deriving via '(Prelude Int8  , Half  ) instance Convert '(Int8  , Half  )
+deriving via '(Prelude Int16 , Half  ) instance Convert '(Int16 , Half  )
+deriving via '(Prelude Int32 , Half  ) instance Convert '(Int32 , Half  )
+deriving via '(Prelude Int64 , Half  ) instance Convert '(Int64 , Half  )
+deriving via '(Prelude Word8 , Float ) instance Convert '(Word8 , Float )
+deriving via '(Prelude Word16, Float ) instance Convert '(Word16, Float )
+deriving via '(Prelude Word32, Float ) instance Convert '(Word32, Float )
+deriving via '(Prelude Word64, Float ) instance Convert '(Word64, Float )
+deriving via '(Prelude Word  , Float ) instance Convert '(Word  , Float )
+deriving via '(Prelude Int8  , Float ) instance Convert '(Int8  , Float )
+deriving via '(Prelude Int16 , Float ) instance Convert '(Int16 , Float )
+deriving via '(Prelude Int32 , Float ) instance Convert '(Int32 , Float )
+deriving via '(Prelude Int64 , Float ) instance Convert '(Int64 , Float )
+deriving via '(Prelude Word8 , Double) instance Convert '(Word8 , Double)
+deriving via '(Prelude Word16, Double) instance Convert '(Word16, Double)
+deriving via '(Prelude Word32, Double) instance Convert '(Word32, Double)
+deriving via '(Prelude Word64, Double) instance Convert '(Word64, Double)
+deriving via '(Prelude Word  , Double) instance Convert '(Word  , Double)
+deriving via '(Prelude Int8  , Double) instance Convert '(Int8  , Double)
+deriving via '(Prelude Int16 , Double) instance Convert '(Int16 , Double)
+deriving via '(Prelude Int32 , Double) instance Convert '(Int32 , Double)
+deriving via '(Prelude Int64 , Double) instance Convert '(Int64 , Double)
 
 
-class Round a b where
-  round, truncate, ceiling, floor :: a -> b
+-- truncation conversions
+instance (Prelude.RealFrac a, Prelude.Integral b) => Convert '(a, Prelude b) where
+  convert = Prelude . Prelude.truncate
 
-instance Round Float Float where
-  round    = fromIntegral . Prelude.round
-  truncate = fromIntegral . Prelude.truncate
-  ceiling  = fromIntegral . Prelude.ceiling
-  floor    = fromIntegral . Prelude.floor
-instance Round Double Double where
-  round    = fromIntegral . Prelude.round
-  truncate = fromIntegral . Prelude.truncate
-  ceiling  = fromIntegral . Prelude.ceiling
-  floor    = fromIntegral . Prelude.floor
-instance Round Double Double where
-  round    = fromIntegral . Prelude.round
-  truncate = fromIntegral . Prelude.truncate
-  ceiling  = fromIntegral . Prelude.ceiling
-  floor    = fromIntegral . Prelude.floor
--}
+-- to unsigned integers
+deriving via '(Half  , Prelude Word8 ) instance Convert '(Half  , Word8 )
+deriving via '(Half  , Prelude Word16) instance Convert '(Half  , Word16)
+deriving via '(Half  , Prelude Word32) instance Convert '(Half  , Word32)
+deriving via '(Half  , Prelude Word64) instance Convert '(Half  , Word64)
+deriving via '(Half  , Prelude Word  ) instance Convert '(Half  , Word  )
+deriving via '(Float , Prelude Word8 ) instance Convert '(Float , Word8 )
+deriving via '(Float , Prelude Word16) instance Convert '(Float , Word16)
+deriving via '(Float , Prelude Word32) instance Convert '(Float , Word32)
+deriving via '(Float , Prelude Word64) instance Convert '(Float , Word64)
+deriving via '(Float , Prelude Word  ) instance Convert '(Float , Word  )
+deriving via '(Double, Prelude Word8 ) instance Convert '(Double, Word8 )
+deriving via '(Double, Prelude Word16) instance Convert '(Double, Word16)
+deriving via '(Double, Prelude Word32) instance Convert '(Double, Word32)
+deriving via '(Double, Prelude Word64) instance Convert '(Double, Word64)
+deriving via '(Double, Prelude Word  ) instance Convert '(Double, Word  )
+-- to signed integers
+deriving via '(Half  , Prelude Int8  ) instance Convert '(Half  , Int8  )
+deriving via '(Half  , Prelude Int16 ) instance Convert '(Half  , Int16 )
+deriving via '(Half  , Prelude Int32 ) instance Convert '(Half  , Int32 )
+deriving via '(Half  , Prelude Int64 ) instance Convert '(Half  , Int64 )
+deriving via '(Half  , Prelude Int   ) instance Convert '(Half  , Int   )
+deriving via '(Float , Prelude Int8  ) instance Convert '(Float , Int8  )
+deriving via '(Float , Prelude Int16 ) instance Convert '(Float , Int16 )
+deriving via '(Float , Prelude Int32 ) instance Convert '(Float , Int32 )
+deriving via '(Float , Prelude Int64 ) instance Convert '(Float , Int64 )
+deriving via '(Float , Prelude Int   ) instance Convert '(Float , Int   )
+deriving via '(Double, Prelude Int8  ) instance Convert '(Double, Int8  )
+deriving via '(Double, Prelude Int16 ) instance Convert '(Double, Int16 )
+deriving via '(Double, Prelude Int32 ) instance Convert '(Double, Int32 )
+deriving via '(Double, Prelude Int64 ) instance Convert '(Double, Int64 )
+deriving via '(Double, Prelude Int   ) instance Convert '(Double, Int   )
 
+
+-- floating conversions
+instance Convert '(Half  , Float ) where
+  convert = Half.fromHalf
+instance Convert '(Half  , Double) where
+  convert = Float.float2Double . Half.fromHalf
+instance Convert '(Float , Double) where
+  convert = Float.float2Double
+instance Convert '(Float , Half  ) where
+  convert = Half.toHalf
+instance Convert '(Double, Half  ) where
+  convert = Half.toHalf . Float.double2Float
+instance Convert '(Double, Float ) where
+  convert = Float.double2Float

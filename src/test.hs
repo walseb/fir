@@ -11,6 +11,7 @@
 module Test where
 
 -- base
+import Data.Int(Int32)
 import Prelude hiding ( Monad(..), Applicative(..) -- for ix monad
                       , Num(..), Fractional(..), Integral(..), Floating(..)
                       )
@@ -55,12 +56,15 @@ program = do
 
   add11 <- fundef @"add11" $ do
     u   <- get @"u"
-    _11 <- def @"11" @R @Float 11 -- local variable
+    _11 <- def @"11" @R 11 -- local variable
     pure $ u + _11
+
+  let _14 :: AST Int32
+      _14 = convert ( add11 :$ 3 )
 
   entryPoint @Vertex $ do
     ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ fmapAST add11 position' )
-    put @"gl_Position" ( vec4 x y z 1 )
+    put @"gl_Position" ( vec4 x y z (convert _14) )
 
   
 test :: IO()

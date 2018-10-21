@@ -32,10 +32,12 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      )
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
+import Data.Type.Equality((:~:)(Refl), testEquality)
 import GHC.TypeLits  ( KnownSymbol
                      , TypeError, ErrorMessage(..)
                      )
 import GHC.TypeNats(KnownNat, type (+), type (-), type (<=?))
+import Type.Reflection(typeRep)
 
 -- fir  
 import Control.Monad.Indexed ( FunctorIx(fmapIx)
@@ -60,7 +62,7 @@ import Math.Algebra.Class ( AdditiveGroup(..)
                           , Semiring(..), Ring(..)
                           , DivisionRing(..)
                           , Signed(..), Archimedean(..)
-                          --, Convert(..)
+                          , Convert(..)
                           )
 import Math.Linear( Semimodule(..), Module(..)
                   , Inner(..)
@@ -224,12 +226,15 @@ instance (PrimScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) 
   mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (primTy @a)) mod
   rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (primTy @a)) rem
 
-{-
+
 -- numeric conversions
-instance (PrimScalarTy a, PrimScalarTy b, Convert a b, DisEq a b ~ 'True)
-         => Convert (AST a) (AST b) where
-  convert = fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (primTy @a) (primTy @b)) convert
--}
+instance (PrimScalarTy a, PrimScalarTy b, Convert '(a,b))
+         => Convert '((AST a),(AST b)) where
+  convert = case testEquality (typeRep @a) (typeRep @b) of
+    Just Refl -> id
+    _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (primTy @a) (primTy @b)) convert
+
+
 
 dim :: forall n. KnownNat n => SPIRV.Dim
 dim = SPIRV.toDim ( Math.Linear.dim @n )
