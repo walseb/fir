@@ -254,5 +254,3 @@ modelBuiltins Kernel                 Input  = [ NumWorkgroups, WorkgroupSize
                                               ]
 modelBuiltins Kernel                 Output = [ ]
 modelBuiltins _                      _      = [ ]
-
-                                    

@@ -29,6 +29,7 @@ library
     , Control.Arrow.Strength
     , Control.Monad.Indexed
     , Data.Type.Bindings
+    , Deriving.Prelude
     , Math.Algebra.Class
     , Math.Logic.Class
     , Math.Linear
@@ -44,7 +45,7 @@ library
 
   build-depends: 
       base
-        >= 4.11
+        >= 4.12
     , binary
     , bytestring
     , containers
@@ -56,6 +57,8 @@ library
     --    >= 2.5
     --, exinst
     --    >= 0.7
+    , half
+        >= 0.3
     , lens
         >= 4.16
     , distributive

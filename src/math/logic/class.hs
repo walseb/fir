@@ -1,8 +1,10 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DerivingVia           #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
@@ -10,9 +12,22 @@
 module Math.Logic.Class where
 
 -- base
-import Prelude hiding (Eq(..), (&&), (||), not, Ord(..))
+import Prelude( Bool(..)
+              , Int, Word, Float, Double
+              , Semigroup, Monoid
+              , Foldable(..)
+              , flip
+              )
 import qualified Prelude
 import Data.Coerce(Coercible, coerce)
+import Data.Int(Int8,Int16,Int32,Int64)
+import Data.Word(Word8,Word16,Word32,Word64)
+
+-- half
+import Numeric.Half(Half)
+
+-- fir
+import Deriving.Prelude(Prelude(..)) -- newtype for deriving Prelude instances
 
 
 infixr 3 &&
@@ -35,46 +50,59 @@ instance Boolean Bool where
 infix 4 ==
 infix 4 /=
 
-class Boolean (Logic a) => Eq a where
-  type Logic a
-  (==) :: a -> a -> Logic a
-  (/=) :: a -> a -> Logic a
-  a /= b = not (a == b)
-
-instance Eq () where
-  type Logic () = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-instance Eq Bool where
-  type Logic Bool = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-instance Eq Word where
-  type Logic Word = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-instance Eq Int where
-  type Logic Int = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-instance Eq Float where
-  type Logic Float = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-instance Eq Double where
-  type Logic Double = Bool
-  (==) = (Prelude.==)
-  (/=) = (Prelude./=)
-
 class Boolean b => HasBool b a where
   bool :: b -> a -> a -> a
 
 ifThenElse :: HasBool b a => b -> a -> a -> a
 ifThenElse = bool
 
-instance HasBool Bool a where
+instance HasBool Bool (Prelude a) where
   bool True  x _ = x
   bool False _ y = y
+
+deriving via Prelude ()     instance HasBool Bool ()
+deriving via Prelude Bool   instance HasBool Bool Bool
+deriving via Prelude Word8  instance HasBool Bool Word8
+deriving via Prelude Word16 instance HasBool Bool Word16
+deriving via Prelude Word32 instance HasBool Bool Word32
+deriving via Prelude Word64 instance HasBool Bool Word64
+deriving via Prelude Word   instance HasBool Bool Word
+deriving via Prelude Int8   instance HasBool Bool Int8
+deriving via Prelude Int16  instance HasBool Bool Int16
+deriving via Prelude Int32  instance HasBool Bool Int32
+deriving via Prelude Int64  instance HasBool Bool Int64
+deriving via Prelude Int    instance HasBool Bool Int
+deriving via Prelude Half   instance HasBool Bool Half
+deriving via Prelude Float  instance HasBool Bool Float
+deriving via Prelude Double instance HasBool Bool Double
+
+class HasBool (Logic a) a => Eq a where
+  type Logic a
+  (==) :: a -> a -> Logic a
+  (/=) :: a -> a -> Logic a
+  a /= b = not (a == b)
+
+instance Prelude.Eq a => Eq (Prelude a) where
+  type Logic (Prelude a) = Bool
+  (==) = coerce ( (Prelude.==) :: a -> a -> Bool )
+  (/=) = coerce ( (Prelude./=) :: a -> a -> Bool )
+
+deriving via Prelude ()     instance Eq ()
+deriving via Prelude Bool   instance Eq Bool
+deriving via Prelude Word8  instance Eq Word8
+deriving via Prelude Word16 instance Eq Word16
+deriving via Prelude Word32 instance Eq Word32
+deriving via Prelude Word64 instance Eq Word64
+deriving via Prelude Word   instance Eq Word
+deriving via Prelude Int8   instance Eq Int8
+deriving via Prelude Int16  instance Eq Int16
+deriving via Prelude Int32  instance Eq Int32
+deriving via Prelude Int64  instance Eq Int64
+deriving via Prelude Int    instance Eq Int
+deriving via Prelude Half   instance Eq Half
+deriving via Prelude Float  instance Eq Float
+deriving via Prelude Double instance Eq Double
+
 
 newtype All b = All { getAll :: b }
 newtype Any b = Any { getAny :: b }
@@ -112,8 +140,8 @@ infix 4 >=
 infix 4 >
 
 class Eq a => Ord a where
-  type Compare a
-  compare :: a -> a -> Compare a
+  type Ordering a
+  compare :: a -> a -> Ordering a
   (<=)    :: a -> a -> Logic a
   (>=)    :: a -> a -> Logic a
   (<)     :: a -> a -> Logic a
@@ -124,59 +152,29 @@ class Eq a => Ord a where
   (>=) = flip (>=)
   (>)  = flip (<)
 
-instance Ord () where
-  type Compare () = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
-instance Ord Bool where
-  type Compare Bool = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
-instance Ord Word where
-  type Compare Word = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
-instance Ord Int where
-  type Compare Int = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
-instance Ord Float where
-  type Compare Float = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
-instance Ord Double where
-  type Compare Double = Prelude.Ordering
-  compare = Prelude.compare
-  (<=) = (Prelude.<=)
-  (>=) = (Prelude.>=)
-  (<)  = (Prelude.<)
-  (>)  = (Prelude.>)
-  min  = Prelude.min
-  max  = Prelude.max
 
+instance Prelude.Ord a => Ord (Prelude a) where
+  type Ordering (Prelude a) = Prelude.Ordering
+  compare = coerce ( Prelude.compare :: a -> a -> Prelude.Ordering )
+  (<=)    = coerce ( (Prelude.<=)    :: a -> a -> Bool )
+  (>=)    = coerce ( (Prelude.>=)    :: a -> a -> Bool )
+  (<)     = coerce ( (Prelude.<)     :: a -> a -> Bool )
+  (>)     = coerce ( (Prelude.>)     :: a -> a -> Bool )
+  max     = coerce ( Prelude.max     :: a -> a -> a )
+  min     = coerce ( Prelude.min     :: a -> a -> a )
 
+deriving via Prelude ()     instance Ord ()
+deriving via Prelude Bool   instance Ord Bool
+deriving via Prelude Word8  instance Ord Word8
+deriving via Prelude Word16 instance Ord Word16
+deriving via Prelude Word32 instance Ord Word32
+deriving via Prelude Word64 instance Ord Word64
+deriving via Prelude Word   instance Ord Word
+deriving via Prelude Int8   instance Ord Int8
+deriving via Prelude Int16  instance Ord Int16
+deriving via Prelude Int32  instance Ord Int32
+deriving via Prelude Int64  instance Ord Int64
+deriving via Prelude Int    instance Ord Int
+deriving via Prelude Half   instance Ord Half
+deriving via Prelude Float  instance Ord Float
+deriving via Prelude Double instance Ord Double

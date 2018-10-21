@@ -58,7 +58,7 @@ import Math.Algebra.Class ( AdditiveGroup(..)
                           , Semiring(..), Ring(..)
                           , DivisionRing(..)
                           , Signed(..), Archimedean(..)
-                          , Convert(..)
+                          --, Convert(..)
                           )
 import Math.Linear( Semimodule(..), Module(..)
                   , Inner(..)
@@ -175,7 +175,7 @@ instance (PrimScalarTy a, Eq a , Logic a ~ Bool) => Eq (AST a) where
   (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) (/=)
 
 instance (PrimScalarTy a, Ord a, Logic a ~ Bool) => Ord (AST a) where
-  type Compare (AST a) = AST Int
+  type Ordering (AST a) = AST Int
   compare = error "todo"
   (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) (<=)
   (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (primTy @a)) (>=)
@@ -204,18 +204,12 @@ instance (PrimScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) 
   mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (primTy @a)) mod
   rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (primTy @a)) rem
 
-
+{-
 -- numeric conversions
-
--- too lazy to define all instances by hand, so using this hack
-type family DisEq a b where
-  DisEq a a = 'False
-  DisEq a b = 'True
-
 instance (PrimScalarTy a, PrimScalarTy b, Convert a b, DisEq a b ~ 'True)
          => Convert (AST a) (AST b) where
   convert = fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (primTy @a) (primTy @b)) convert
-
+-}
 
 dim :: forall n. KnownNat n => SPIRV.Dim
 dim = SPIRV.toDim ( Math.Linear.dim @n )

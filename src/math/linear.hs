@@ -31,6 +31,7 @@ import Prelude hiding( Eq(..), (&&), (||)
                      , Ord(..)
                      , Num(..), sum
                      , Fractional(..), Floating(..)
+                     , Ordering(..)
                      )
 import qualified Prelude
 import Control.Applicative(liftA2)
@@ -106,12 +107,15 @@ instance KnownNat n => Applicative (V n) where
   _         <*> _         = error "unreachable"
 
 
+instance (KnownNat n, HasBool b a) => HasBool b (V n a) where
+  bool b = liftA2 ( bool b )
+
 instance (KnownNat n, Eq a) => Eq (V n a) where
   type Logic (V n a) = Logic a
   (==) = (foldr (&&) true .) . ( liftA2 (==) )
 
 instance (KnownNat n, Ord a) => Ord (V n a) where
-  type Compare (V n a) = Compare a
+  type Ordering (V n a) = Ordering a
   compare = error "todo"
 
   Nil <= Nil = true
@@ -423,6 +427,7 @@ class Module (Vector m) => Matrix m where
 newtype M m n a = M { unM :: V m (V n a) }
 deriving instance (KnownNat m, KnownNat n, Prelude.Eq  a) => Prelude.Eq  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
+deriving instance (KnownNat m, KnownNat n, HasBool b a) => HasBool b (M m n a)
 deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
 deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
