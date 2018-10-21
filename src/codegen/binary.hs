@@ -45,7 +45,7 @@ putInstruction extInsts
   Instruction { operation = op, resTy = opResTy, resID = opResID, args = opArgs }
     = case op of
 
-      SPIRV.Op.OpCode opCode ->
+      SPIRV.Op.Code opCode ->
         let n = 1                          -- OpCode and number of arguments
               + maybe 0 (const 1) opResTy  -- result type + ID, if operation produces a result
               + maybe 0 (const 1) opResID
@@ -55,7 +55,7 @@ putInstruction extInsts
               traverse_ Binary.put opResID
               putArgs opArgs
            
-      SPIRV.Op.ExtOpCode ext extOpCode ->
+      SPIRV.Op.ExtCode ext extOpCode ->
         case resID <$> Map.lookup ext extInsts of
           Nothing    -> pure ()
           Just extID ->
