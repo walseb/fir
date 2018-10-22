@@ -146,9 +146,10 @@ constID a =
         SBool -> 
           create _knownAConstant
             $ mkConstantInstruction
-                ( case a of { True  -> SPIRV.Op.ConstantTrue
-                            ; False -> SPIRV.Op.ConstantFalse
-                            } )
+                ( if a
+                  then SPIRV.Op.ConstantTrue
+                  else SPIRV.Op.ConstantFalse
+                )
                 SPIRV.Boolean
                 EndArgs
 

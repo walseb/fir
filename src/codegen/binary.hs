@@ -65,8 +65,7 @@ putInstruction extInsts
                 , resTy     = opResTy
                 , resID     = opResID
                 , args      = Arg extID
-                            $ Arg extOpCode
-                            $ opArgs
+                            $ Arg extOpCode opArgs
                 }
 
 

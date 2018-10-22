@@ -112,7 +112,7 @@ instance (KnownNat n, HasBool b a) => HasBool b (V n a) where
 
 instance (KnownNat n, Eq a) => Eq (V n a) where
   type Logic (V n a) = Logic a
-  (==) = (foldr (&&) true .) . ( liftA2 (==) )
+  (==) = (foldr (&&) true .) . liftA2 (==)
 
 instance (KnownNat n, Ord a) => Ord (V n a) where
   type Ordering (V n a) = Ordering a
