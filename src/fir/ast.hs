@@ -75,9 +75,8 @@ data AST :: Type -> Type where
                -> S ( a := Insert k (Var perms a) i) i
              )
   FunDef :: forall k as b l i. (KnownSymbol k, ValidFunDef k as i l ~ 'True, PrimTy b)
-         => Proxy k 
-         -> Proxy as -- function arguments         
-         -> Proxy l  -- state at end of function definition
+         => Proxy k
+         -> Proxy as -- function arguments
          -> AST (    S (b := l) (Union i as)
                   -> S (BindingType (Fun as b) := Insert k (Fun as b) i) i
                 )
@@ -86,8 +85,7 @@ data AST :: Type -> Type where
   -- this function definition is not added to the index of items in scope
   -- ( it is not allowed to be called )
   Entry :: forall s l i. (KnownStage s, ValidEntryPoint s i l ~ 'True)
-         => Proxy s       
-         -> Proxy l  -- state at end of function definition
+         => Proxy s
          -> AST (    S (() := l) (Union i (StageBuiltins s))
                   -> S (() := i) i
                 )
@@ -162,11 +160,11 @@ toTreeArgs (Lit        a )  as = return (Node ("Lit "     ++ show a ) as)
 toTreeArgs (MkVector   px ) as = return (Node ("Vec"      ++ show (natVal px)) as)
 toTreeArgs (VectorAt   px ) as = return (Node ("At "      ++ show (natVal px)) as)
 toTreeArgs (FmapVector px ) as = return (Node ("Fmap V"   ++ show (natVal px)) as)
-toTreeArgs (Get    px    ) as = return (Node ("Get @"    ++ symbolVal px ) as)
-toTreeArgs (Put    px    ) as = return (Node ("Put @"    ++ symbolVal px ) as)
-toTreeArgs (Def    px _  ) as = return (Node ("Def @"    ++ symbolVal px ) as)
-toTreeArgs (FunDef px _ _) as = return (Node ("FunDef @" ++ symbolVal px ) as)
-toTreeArgs (Entry  px _  ) as = return (Node ("Entry @"  ++ show (stageVal px)) as)
+toTreeArgs (Get    px   ) as = return (Node ("Get @"    ++ symbolVal px ) as)
+toTreeArgs (Put    px   ) as = return (Node ("Put @"    ++ symbolVal px ) as)
+toTreeArgs (Def    px _ ) as = return (Node ("Def @"    ++ symbolVal px ) as)
+toTreeArgs (FunDef px _ ) as = return (Node ("FunDef @" ++ symbolVal px ) as)
+toTreeArgs (Entry  px   ) as = return (Node ("Entry @"  ++ show (stageVal px)) as)
 
 toTree :: AST a -> Tree String
 toTree a = evalState (toTreeArgs a []) 0

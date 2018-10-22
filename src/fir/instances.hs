@@ -95,14 +95,12 @@ class MonadIx m => ScopeIx m where
             , PrimTy b
             )
          => Proxy k
-         -> Proxy as         
-         -> Proxy l
+         -> Proxy as
          -> AST (S (b := l) (Union i as))
          -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
 
   entry' :: forall s l i. ( KnownStage s, ValidEntryPoint s i l ~ 'True )
-         => Proxy s        
-         -> Proxy l
+         => Proxy s
          -> AST (S (() := l) (Union i (StageBuiltins s)))
          -> m (AST () := i) i
 
@@ -123,12 +121,12 @@ def = def' @m @k @perms @a @i Proxy Proxy
 defun :: forall k as b l i m. (ScopeIx m, KnownSymbol k, ValidFunDef k as i l ~ 'True, PrimTy b)
         => AST (S (b := l) (Union i as))
         -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
-defun = defun' @m @k @as @b @l @i Proxy Proxy Proxy
+defun = defun' @m @k @as @b @l @i Proxy Proxy
 
 entry :: forall s l i m. (ScopeIx m, KnownStage s, ValidEntryPoint s i l ~ 'True)
         => AST (S (() := l) (Union i (StageBuiltins s)))
         -> m (AST () := i) i
-entry = entry' @m @s @l @i Proxy Proxy
+entry = entry' @m @s @l @i Proxy
 
 get :: forall k a i m. (ScopeIx m, KnownSymbol k, Get k i ~ a)
      => m (AST a := i) i
@@ -163,11 +161,11 @@ entryPoint = fmapIx (fromAST `withKey`) . entry @s @l @i . toAST
 
 -- force uniqueness of ScopeIx instance to improve type inference
 instance (m ~ Codensity S) => ScopeIx m where
-  def'   k b   a = Codensity ( \h -> Bind :$ (Def    k b   :$ a) :$ (Lam $ h . AtKey) )
-  defun' k j l f = Codensity ( \h -> Bind :$ (FunDef k j l :$ f) :$ (Lam $ h . AtKey) )
-  entry' k j   f = Codensity ( \h -> Bind :$ (Entry  k j   :$ f) :$ (Lam $ h . AtKey) )
-  get'   k       = Codensity ( \h -> Bind :$  Get    k           :$ (Lam $ h . AtKey) )
-  put'   k     a = Codensity ( \h -> Bind :$ (Put    k     :$ a) :$ (Lam $ h . AtKey) )
+  def'   k b a = Codensity ( \h -> Bind :$ (Def    k b :$ a) :$ (Lam $ h . AtKey) )
+  defun' k j f = Codensity ( \h -> Bind :$ (FunDef k j :$ f) :$ (Lam $ h . AtKey) )
+  entry' k   f = Codensity ( \h -> Bind :$ (Entry  k   :$ f) :$ (Lam $ h . AtKey) )
+  get'   k     = Codensity ( \h -> Bind :$  Get    k         :$ (Lam $ h . AtKey) )
+  put'   k   a = Codensity ( \h -> Bind :$ (Put    k   :$ a) :$ (Lam $ h . AtKey) )
 
 instance TypeError (     Text "Failable pattern detected in AST construction."
                     :$$: Text "Only irrefutable patterns are supported."
