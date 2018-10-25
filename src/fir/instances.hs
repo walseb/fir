@@ -54,7 +54,7 @@ import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Put, Get
                    )
 import FIR.Builtin(StageBuiltins, KnownStage)
-import FIR.PrimTy(PrimTy, primTy, PrimScalarTy)
+import FIR.PrimTy(PrimTy, primTy, ScalarTy, scalarTy)
 import Math.Logic.Class ( Eq(..), Boolean(..), HasBool(..)
                         , Ord(..)
                         )
@@ -104,13 +104,13 @@ class MonadIx m => ScopeIx m where
          -> AST (S (() := l) (Union i (StageBuiltins s)))
          -> m (AST () := i) i
 
-  get' :: forall k a i. (KnownSymbol k, Get k i ~ a)
+  get' :: forall k i. KnownSymbol k
        => Proxy k
-       -> m (AST a := i) i
+       -> m (AST (Get k i) := i) i
 
-  put' :: forall k a i. (KnownSymbol k, Put k i ~ a, PrimTy a)
+  put' :: forall k i. (KnownSymbol k, PrimTy (Put k i))
        => Proxy k
-       -> AST a
+       -> AST (Put k i)
        -> m (AST () := i) i
   
 def :: forall k perms a i m. (ScopeIx m, KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
@@ -128,13 +128,13 @@ entry :: forall s l i m. (ScopeIx m, KnownStage s, ValidEntryPoint s i l ~ 'True
         -> m (AST () := i) i
 entry = entry' @m @s @l @i Proxy
 
-get :: forall k a i m. (ScopeIx m, KnownSymbol k, Get k i ~ a)
-     => m (AST a := i) i
-get = get' @m @k @a @i Proxy
+get :: forall k i m. (ScopeIx m, KnownSymbol k)
+     => m (AST (Get k i) := i) i
+get = get' @m @k @i Proxy
 
-put :: forall k a i m. (ScopeIx m, KnownSymbol k, Put k i ~ a, PrimTy a)
-     => AST a -> m (AST () := i) i
-put = put' @m @k @a @i Proxy
+put :: forall k i m. (ScopeIx m, KnownSymbol k, PrimTy (Put k i))
+     => AST (Put k i) -> m (AST () := i) i
+put = put' @m @k @i Proxy
 
 ---------------------------------------------------
 -- specialise function definition to work with the codensity representation
@@ -189,12 +189,12 @@ instance Boolean (AST Bool) where
 instance PrimTy a => HasBool (AST Bool) (AST a) where
   bool = fromAST If
 
-instance (PrimScalarTy a, Eq a , Logic a ~ Bool) => Eq (AST a) where
+instance (PrimTy a, Eq a, Logic a ~ Bool) => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)
   (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (primTy @a)) (==)
   (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) (/=)
 
-instance (PrimScalarTy a, Ord a, Logic a ~ Bool) => Ord (AST a) where
+instance (PrimTy a, Ord a, Logic a ~ Bool) => Ord (AST a) where
   type Ordering (AST a) = AST Int
   compare = error "todo"
   (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) (<=)
@@ -205,32 +205,32 @@ instance (PrimScalarTy a, Ord a, Logic a ~ Bool) => Ord (AST a) where
   max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (primTy @a)) max
 
 -- numeric operations
-instance (PrimScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
-  (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (primTy @a)) (+)
+instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
+  (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalarTy @a)) (+)
   zero   = Lit (zero :: a)
-instance (PrimScalarTy a, Semiring a) => Semiring (AST a) where
-  (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (primTy @a)) (*)  
-instance (PrimScalarTy a, Ring a) => Ring (AST a) where
-  (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (primTy @a)) (-)
-  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (primTy @a)) negate
+instance (ScalarTy a, Semiring a) => Semiring (AST a) where
+  (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (scalarTy @a)) (*)
+instance (ScalarTy a, Ring a) => Ring (AST a) where
+  (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (scalarTy @a)) (-)
+  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (scalarTy @a)) negate
   fromInteger = Lit . fromInteger
-instance (PrimScalarTy a, Signed a) => Signed (AST a) where
-  abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (primTy @a)) abs
-  signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (primTy @a)) signum
-instance (PrimScalarTy a, DivisionRing a) => DivisionRing (AST a) where
-  (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (primTy @a)) (/)
+instance (ScalarTy a, Signed a) => Signed (AST a) where
+  abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (scalarTy @a)) abs
+  signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (scalarTy @a)) signum
+instance (ScalarTy a, DivisionRing a) => DivisionRing (AST a) where
+  (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (scalarTy @a)) (/)
   fromRational = Lit . fromRational
-instance (PrimScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) where
-  mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (primTy @a)) mod
-  rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (primTy @a)) rem
+instance (ScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) where
+  mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (scalarTy @a)) mod
+  rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (scalarTy @a)) rem
 
 
 -- numeric conversions
-instance (PrimScalarTy a, PrimScalarTy b, Convert '(a,b))
+instance (ScalarTy a, ScalarTy b, Convert '(a,b))
          => Convert '((AST a),(AST b)) where
   convert = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> id
-    _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (primTy @a) (primTy @b)) convert
+    _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)) convert
 
 
 
@@ -238,30 +238,30 @@ dim :: forall n. KnownNat n => SPIRV.Dim
 dim = SPIRV.toDim ( Math.Linear.dim @n )
 
 -- vectors
-instance (PrimScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
+instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
   type Scalar (AST (V 0 a))   = AST a
   type OfDim  (AST (V 0 a)) n = AST (V n a)
 
   (^+^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (dim @n) (primTy @a)) (^+^)
+  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (dim @n) (scalarTy @a)) (^+^)
 
   (^*) :: forall n. KnownNat n
         => AST (V n a) -> AST a -> AST (V n a)
-  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (dim @n) (primTy @a)) (^*)
+  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (dim @n) (scalarTy @a)) (^*)
 
-instance (PrimScalarTy a, Ring a) => Module (AST (V 0 a)) where
+instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
   (^-^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (dim @n) (primTy @a)) (^-^)
+  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (dim @n) (scalarTy @a)) (^-^)
 
-instance (PrimScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
-  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (dim @0) (primTy @a)) (^.^)
+instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
+  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (dim @0) (scalarTy @a)) (^.^)
 
 
 -- matrices
 
-instance (PrimScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
+instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
   type Vector (AST (M 0 0 a)) = AST (V 0 a)
   type OfDims (AST (M 0 0 a)) m n = AST (M m n a)
 
@@ -270,34 +270,34 @@ instance (PrimScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
 
   transpose :: forall n m. (KnownNat n, KnownNat m)
             => AST (M n m a) -> AST (M m n a)
-  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (dim @m) (dim @n) (primTy @a)) transpose
+  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (dim @m) (dim @n) (scalarTy @a)) transpose
 
   inverse :: forall n. KnownNat n
             => AST (M n n a) -> AST (M n n a)
-  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (dim @n) (dim @n) (primTy @a)) inverse
+  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (dim @n) (dim @n) (scalarTy @a)) inverse
   
   determinant :: forall n. KnownNat n
               => AST (M n n a) -> AST a
-  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (dim @0) (dim @0) (primTy @a)) determinant
+  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (dim @0) (dim @0) (scalarTy @a)) determinant
 
   (!+!) = error "todo"
   (!-!) = error "todo"
 
   (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
         => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
-  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (dim @i) (dim @k) (primTy @a)) (!*!)
+  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (dim @i) (dim @k) (scalarTy @a)) (!*!)
 
   (^*!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (V i a) -> AST (M i j a) -> AST (V j a)
-  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (dim @j) (dim @0) (primTy @a)) (^*!)
+  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (dim @j) (dim @0) (scalarTy @a)) (^*!)
 
   (!*^) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (V j a) -> AST (V i a)
-  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (dim @i) (dim @0) (primTy @a)) (!*^)
+  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (dim @i) (dim @0) (scalarTy @a)) (!*^)
 
   (!*) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST a -> AST (M i j a)
-  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (primTy @a)) (!*)
+  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (scalarTy @a)) (!*)
 
 
 -- functor functionality

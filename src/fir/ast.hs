@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -40,7 +41,7 @@ import qualified SPIRV.PrimOp as SPIRV
 
 ------------------------------------------------------------
 
-data S a i
+data S p i
 
 type family Variadic (n :: Nat) a b = r where
   Variadic n a b = Variadic' n a b (1 <=? n)
@@ -62,8 +63,8 @@ data AST :: Type -> Type where
   If :: PrimTy a => AST (Bool -> a -> a -> a)
 
   -- (indexed) monadic operations
-  Pure :: AST (a i -> m a i)
-  Bind :: AST (m (a := j) i -> (a -> m b j) -> m b i) -- angelic bind
+  Pure :: AST (p i -> m p i)
+  Bind :: AST (m (a := j) i -> (a -> m q j) -> m q i) -- angelic bind
 
   Ix :: AST (a -> (a := i) i) -- hack, would be solved if we could have
                               -- Pure :: AST (a -> m (a := i) i)
@@ -90,12 +91,12 @@ data AST :: Type -> Type where
                   -> S (() := i) i
                 )
 
-  Get    :: forall k a i. (KnownSymbol k, Get k i ~ a)
+  Get    :: forall k i. KnownSymbol k
          => Proxy k
-         -> AST ( S (a := i) i)
-  Put    :: forall k a i. (KnownSymbol k, Put k i ~ a, PrimTy a)
+         -> AST ( S (Get k i := i) i)
+  Put    :: forall k i. (KnownSymbol k, PrimTy (Put k i))
          => Proxy k
-         -> AST ( a -> S (():= i) i )
+         -> AST ( Put k i -> S (():= i) i )
 
   -- vectors (and matrices)
   MkVector :: KnownNat n => Proxy n -> AST ( Variadic n a ( V n a ) )
@@ -112,10 +113,10 @@ data AST :: Type -> Type where
 -- codensity indexed monad, specialised with AST return type
 
 -- demonic codensity
-newtype Codensity m a i
+newtype Codensity m p i
   = Codensity
-    { runCodensity :: forall (b :: k -> Type)
-    . (forall (j :: k). a j -> AST (m b j) ) -> AST (m b i)
+    { runCodensity :: forall (q :: k -> Type)
+    . (forall (j :: k). p j -> AST (m q j) ) -> AST (m q i)
     }
 
 instance FunctorIx (Codensity m) where
@@ -132,7 +133,7 @@ instance MonadIx (Codensity m) where
   extendIx f (Codensity ma) = Codensity ( \k -> ma ( \a -> runCodensity (f a) k ) )
 
 ------------------------------------------------
--- convert to explicit AST
+-- display AST for viewing
 
 toTreeArgs :: AST a -> [Tree String] -> State Int (Tree String)
 toTreeArgs (f :$ a) as = do

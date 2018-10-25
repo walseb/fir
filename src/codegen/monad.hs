@@ -43,6 +43,7 @@ import CodeGen.Instruction( ID(ID)
                           , Instruction
                           , EntryPoint
                           )
+import FIR.Builtin(Stage)
 import FIR.PrimTy(AConstant)
 import qualified SPIRV.Capability as SPIRV
 import qualified SPIRV.Extension  as SPIRV
@@ -57,18 +58,28 @@ import qualified SPIRV.PrimTy     as SPIRV
 data CGState
   = CGState
     { currentID          :: ID
+    , functionContext    :: FunctionContext
     , neededCapabilities :: [ SPIRV.Capability ]
     , knownExtInsts      :: Map SPIRV.ExtInst Instruction
+    , annotations        :: [Instruction]
     , knownBindings      :: Map Text          ID
     , knownTypes         :: Map SPIRV.PrimTy  Instruction
     , knownConstants     :: Map AConstant     Instruction    
     }
 
+data FunctionContext
+  = TopLevel
+  | Function [Text] -- argument names
+  | EntryPoint Stage
+  deriving ( Eq, Show )
+
 initialState :: CGState
 initialState = CGState
   { currentID          = ID 1
-  , neededCapabilities = [] 
+  , functionContext    = TopLevel
+  , neededCapabilities = []
   , knownExtInsts      = Map.empty
+  , annotations        = []
   , knownBindings      = Map.empty
   , knownTypes         = Map.empty
   , knownConstants     = Map.empty  
@@ -101,6 +112,9 @@ putCG = lift . lift . lift . lift . Binary.put -- apologies
 
 _currentID :: Lens' CGState ID
 _currentID = lens currentID ( \s v -> s { currentID = v } )
+
+_functionContext :: Lens' CGState FunctionContext
+_functionContext = lens functionContext ( \s v -> s { functionContext = v } )
 
 _knownExtInsts :: Lens' CGState (Map SPIRV.ExtInst Instruction)
 _knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )

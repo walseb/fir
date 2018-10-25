@@ -70,3 +70,16 @@ address string issues:
   - use Text for error messages
   - figure out which ByteString to use for SPIR-V internal strings (if any)
   - figure out if the ByteString used in Binary.Put is correct
+
+
+
+
+entry point definition:
+  add entry points to the indexing, so that entry points have names
+  this allows e.g. multiple Vertex entry points (with different names)
+
+
+figure out how to overload function composition for internal functions
+
+
+split out scalars from primitive type definition (& singletons)

@@ -42,61 +42,94 @@ import SPIRV.PrimTy ( Signedness(Unsigned, Signed)
 ------------------------------------------------------------
 -- primitive types, which can be internalised in the AST
 
+type family ScalarName (ty :: Type) = (r :: SPIRV.ScalarTy ) | r -> ty where
+  ScalarName Word8     = SPIRV.Integer Unsigned W8
+  ScalarName Word16    = SPIRV.Integer Unsigned W16
+  ScalarName Word32    = SPIRV.Integer Unsigned W32
+  ScalarName Word64    = SPIRV.Integer Unsigned W64
+  ScalarName Int8      = SPIRV.Integer Signed   W8
+  ScalarName Int16     = SPIRV.Integer Signed   W16
+  ScalarName Int32     = SPIRV.Integer Signed   W32
+  ScalarName Int64     = SPIRV.Integer Signed   W64
+  ScalarName Half      = SPIRV.Floating         W16
+  ScalarName Float     = SPIRV.Floating         W32
+  ScalarName Double    = SPIRV.Floating         W64
+
 -- names for the primitive types which can be represented internally
 type family TyName (ty :: Type) = (r :: SPIRV.PrimTy) | r -> ty where
   TyName ()        = SPIRV.Unit
   TyName Bool      = SPIRV.Boolean
-  TyName Word8     = SPIRV.Integer Unsigned W8
-  TyName Word16    = SPIRV.Integer Unsigned W16
-  TyName Word32    = SPIRV.Integer Unsigned W32
-  TyName Word64    = SPIRV.Integer Unsigned W64
-  TyName Int8      = SPIRV.Integer Signed   W8
-  TyName Int16     = SPIRV.Integer Signed   W16
-  TyName Int32     = SPIRV.Integer Signed   W32
-  TyName Int64     = SPIRV.Integer Signed   W64
-  TyName Half      = SPIRV.Floating         W16
-  TyName Float     = SPIRV.Floating         W32
-  TyName Double    = SPIRV.Floating         W64
-  TyName (V n   a) = SPIRV.Vector (ToDim n)           (TyName a)
-  TyName (M m n a) = SPIRV.Matrix (ToDim m) (ToDim n) (TyName a)
+  TyName Word8     = SPIRV.Scalar ( ScalarName Word8  )
+  TyName Word16    = SPIRV.Scalar ( ScalarName Word16 )
+  TyName Word32    = SPIRV.Scalar ( ScalarName Word32 )
+  TyName Word64    = SPIRV.Scalar ( ScalarName Word64 )
+  TyName Int8      = SPIRV.Scalar ( ScalarName Int8   )
+  TyName Int16     = SPIRV.Scalar ( ScalarName Int16  )
+  TyName Int32     = SPIRV.Scalar ( ScalarName Int32  )
+  TyName Int64     = SPIRV.Scalar ( ScalarName Int64  )
+  TyName Half      = SPIRV.Scalar ( ScalarName Half   )
+  TyName Float     = SPIRV.Scalar ( ScalarName Float  )
+  TyName Double    = SPIRV.Scalar ( ScalarName Double )
+  TyName (V n   a) = SPIRV.Vector (ToDim n)           (ScalarName a)
+  TyName (M m n a) = SPIRV.Matrix (ToDim m) (ToDim n) (ScalarName a)
+
+data SScalarTy :: Type -> Type where
+  SWord8  :: SScalarTy Word8
+  SWord16 :: SScalarTy Word16
+  SWord32 :: SScalarTy Word32
+  SWord64 :: SScalarTy Word64
+  SInt8   :: SScalarTy Int8
+  SInt16  :: SScalarTy Int16
+  SInt32  :: SScalarTy Int32
+  SInt64  :: SScalarTy Int64
+  SHalf   :: SScalarTy Half
+  SFloat  :: SScalarTy Float
+  SDouble :: SScalarTy Double
 
 -- corresponding singletons
 data SPrimTy :: Type -> Type where
   SUnit   :: SPrimTy ()
   SBool   :: SPrimTy Bool
-  SWord8  :: SPrimTy Word8
-  SWord16 :: SPrimTy Word16
-  SWord32 :: SPrimTy Word32
-  SWord64 :: SPrimTy Word64
-  SInt8   :: SPrimTy Int8
-  SInt16  :: SPrimTy Int16
-  SInt32  :: SPrimTy Int32
-  SInt64  :: SPrimTy Int64
-  SHalf   :: SPrimTy Half
-  SFloat  :: SPrimTy Float
-  SDouble :: SPrimTy Double
-  SVector :: (KnownNat n, PrimScalarTy a)
-          => Proxy n -> SPrimTy a -> SPrimTy (V n a)
-  SMatrix :: (KnownNat m, KnownNat n, PrimScalarTy a, Ring a)
-          => Proxy m -> Proxy n -> SPrimTy a -> SPrimTy (M m n a)
+  SScalar :: ScalarTy a
+          => SScalarTy a -> SPrimTy a
+  SVector :: (KnownNat n, ScalarTy a)
+          => Proxy n -> SScalarTy a -> SPrimTy (V n a)
+  SMatrix :: (KnownNat m, KnownNat n, ScalarTy a, Ring a)
+          => Proxy m -> Proxy n -> SScalarTy a -> SPrimTy (M m n a)
 
--- associated function on singletons (should not need to write this)
-sTyName :: SPrimTy a -> SPIRV.SPrimTy (TyName a)
-sTyName SUnit           = SPIRV.SUnit
-sTyName SBool           = SPIRV.SBoolean
-sTyName SWord8          = SPIRV.SInteger SUnsigned SW8
-sTyName SWord16         = SPIRV.SInteger SUnsigned SW16
-sTyName SWord32         = SPIRV.SInteger SUnsigned SW32
-sTyName SWord64         = SPIRV.SInteger SUnsigned SW64
-sTyName SInt8           = SPIRV.SInteger SSigned   SW8
-sTyName SInt16          = SPIRV.SInteger SSigned   SW16
-sTyName SInt32          = SPIRV.SInteger SSigned   SW32
-sTyName SInt64          = SPIRV.SInteger SSigned   SW64
-sTyName SHalf           = SPIRV.SFloating          SW16
-sTyName SFloat          = SPIRV.SFloating          SW32
-sTyName SDouble         = SPIRV.SFloating          SW64
-sTyName (SVector n   a) = SPIRV.SVector (natSDim n) (sTyName a)
-sTyName (SMatrix m n a) = SPIRV.SMatrix (natSDim m) (natSDim n) (sTyName a)
+
+
+-- associated functions on singletons
+
+sScalarName :: SScalarTy ty -> SPIRV.SScalarTy (ScalarName ty)
+sScalarName SWord8  = SPIRV.SInteger SUnsigned SW8
+sScalarName SWord16 = SPIRV.SInteger SUnsigned SW16
+sScalarName SWord32 = SPIRV.SInteger SUnsigned SW32
+sScalarName SWord64 = SPIRV.SInteger SUnsigned SW64
+sScalarName SInt8   = SPIRV.SInteger SSigned   SW8
+sScalarName SInt16  = SPIRV.SInteger SSigned   SW16
+sScalarName SInt32  = SPIRV.SInteger SSigned   SW32
+sScalarName SInt64  = SPIRV.SInteger SSigned   SW64
+sScalarName SHalf   = SPIRV.SFloating          SW16
+sScalarName SFloat  = SPIRV.SFloating          SW32
+sScalarName SDouble = SPIRV.SFloating          SW64
+
+sTyName :: SPrimTy ty -> SPIRV.SPrimTy (TyName ty)
+sTyName SUnit             = SPIRV.SUnit
+sTyName SBool             = SPIRV.SBoolean
+sTyName (SScalar SWord8 ) = SPIRV.SScalar ( sScalarName SWord8  )
+sTyName (SScalar SWord16) = SPIRV.SScalar ( sScalarName SWord16 )
+sTyName (SScalar SWord32) = SPIRV.SScalar ( sScalarName SWord32 )
+sTyName (SScalar SWord64) = SPIRV.SScalar ( sScalarName SWord64 )
+sTyName (SScalar SInt8  ) = SPIRV.SScalar ( sScalarName SInt8   )
+sTyName (SScalar SInt16 ) = SPIRV.SScalar ( sScalarName SInt16  )
+sTyName (SScalar SInt32 ) = SPIRV.SScalar ( sScalarName SInt32  )
+sTyName (SScalar SInt64 ) = SPIRV.SScalar ( sScalarName SInt64  )
+sTyName (SScalar SHalf  ) = SPIRV.SScalar ( sScalarName SHalf   )
+sTyName (SScalar SFloat ) = SPIRV.SScalar ( sScalarName SFloat  )
+sTyName (SScalar SDouble) = SPIRV.SScalar ( sScalarName SDouble )
+sTyName (SVector n   a  ) = SPIRV.SVector (natSDim n) (sScalarName a)
+sTyName (SMatrix m n a  ) = SPIRV.SMatrix (natSDim m) (natSDim n) (sScalarName a)
 
 
 class ( Show ty                    -- for convenience
@@ -106,32 +139,59 @@ class ( Show ty                    -- for convenience
     => PrimTy ty where
   primTySing :: SPrimTy ty
 
-instance PrimTy ()     where
+class PrimTy ty => ScalarTy ty where
+  scalarTySing :: SScalarTy ty
+
+instance PrimTy ()   where
   primTySing = SUnit
-instance PrimTy Bool   where
+instance PrimTy Bool where
   primTySing = SBool
-instance PrimTy Word8 where
-  primTySing = SWord8
+
+instance ScalarTy Word8  where
+  scalarTySing = SWord8
+instance ScalarTy Word16 where
+  scalarTySing = SWord16
+instance ScalarTy Word32 where
+  scalarTySing = SWord32
+instance ScalarTy Word64 where
+  scalarTySing = SWord64
+instance ScalarTy Int8   where
+  scalarTySing = SInt8
+instance ScalarTy Int16  where
+  scalarTySing = SInt16
+instance ScalarTy Int32  where
+  scalarTySing = SInt32
+instance ScalarTy Int64  where
+  scalarTySing = SInt64
+instance ScalarTy Half   where
+  scalarTySing = SHalf
+instance ScalarTy Float  where
+  scalarTySing = SFloat
+instance ScalarTy Double where
+  scalarTySing = SDouble
+
+instance PrimTy Word8  where
+  primTySing = SScalar SWord8
 instance PrimTy Word16 where
-  primTySing = SWord16
+  primTySing = SScalar SWord16
 instance PrimTy Word32 where
-  primTySing = SWord32
+  primTySing = SScalar SWord32
 instance PrimTy Word64 where
-  primTySing = SWord64
-instance PrimTy Int8  where
-  primTySing = SInt8
+  primTySing = SScalar SWord64
+instance PrimTy Int8   where
+  primTySing = SScalar SInt8
 instance PrimTy Int16  where
-  primTySing = SInt16
+  primTySing = SScalar SInt16
 instance PrimTy Int32  where
-  primTySing = SInt32
+  primTySing = SScalar SInt32
 instance PrimTy Int64  where
-  primTySing = SInt64
+  primTySing = SScalar SInt64
 instance PrimTy Half   where
-  primTySing = SHalf
+  primTySing = SScalar SHalf
 instance PrimTy Float  where
-  primTySing = SFloat
+  primTySing = SScalar SFloat
 instance PrimTy Double where
-  primTySing = SDouble
+  primTySing = SScalar SDouble
 
 
 instance Binary Half where
@@ -139,14 +199,23 @@ instance Binary Half where
   put = error "todo"
 
 
-instance TypeError 
+instance TypeError
   ( Text "Use a specific width unsigned integer type instead of 'Word' (recommended: 'Word32')." )
     => PrimTy Word where
   primTySing = error "unreachable" 
-instance TypeError 
+instance TypeError
   ( Text "Use a specific width signed integer type instead of 'Int' (recommended: 'Int32')." )
     => PrimTy Int where
   primTySing = error "unreachable"
+instance TypeError
+  ( Text "Use a specific width unsigned integer type instead of 'Word' (recommended: 'Word32')." )
+    => ScalarTy Word where
+  scalarTySing = error "unreachable" 
+instance TypeError
+  ( Text "Use a specific width signed integer type instead of 'Int' (recommended: 'Int32')." )
+    => ScalarTy Int where
+  scalarTySing = error "unreachable"
+
 
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
 primTy = SPIRV.fromSPrimTy $ sTyName ( primTySing @ty )
@@ -154,42 +223,26 @@ primTy = SPIRV.fromSPrimTy $ sTyName ( primTySing @ty )
 sPrimTy :: SPrimTy a -> SPIRV.PrimTy
 sPrimTy = SPIRV.fromSPrimTy . sTyName
 
+scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
+scalarTy = SPIRV.fromSScalarTy $ sScalarName ( scalarTySing @ty )
+
+sScalarTy :: SScalarTy a -> SPIRV.ScalarTy
+sScalarTy = SPIRV.fromSScalarTy . sScalarName
+
 primTyPx :: forall ty. PrimTy ty => Proxy ty -> SPIRV.PrimTy
 primTyPx _ = primTy @ty
 
-class PrimTy a => PrimScalarTy a where
-
--- not making Bool a scalar type, contrary to SPIR-V spec
-instance PrimScalarTy Word8  where
-instance PrimScalarTy Word16 where
-instance PrimScalarTy Word32 where
-instance PrimScalarTy Word64 where
-instance PrimScalarTy Int8   where
-instance PrimScalarTy Int16  where
-instance PrimScalarTy Int32  where
-instance PrimScalarTy Int64  where
-instance PrimScalarTy Half   where
-instance PrimScalarTy Float  where
-instance PrimScalarTy Double where
-
-instance TypeError 
-  ( Text "Use a specific width unsigned integer type instead of 'Word' (recommended: 'Word32')." )
-    => PrimScalarTy Word where
-instance TypeError 
-  ( Text "Use a specific width signed integer type instead of 'Int' (recommended: 'Int32')." )
-    => PrimScalarTy Int where
-
-instance ( PrimScalarTy a
+instance ( PrimTy a, ScalarTy a
          , KnownNat n--, 2 <= n, n <= 4
          ) => PrimTy (V n a) where
-  primTySing = SVector (Proxy @n) (primTySing @a)
+  primTySing = SVector (Proxy @n) (scalarTySing @a)
 
-instance ( PrimScalarTy a
+instance ( PrimTy a, ScalarTy a
          , Ring a
          , KnownNat m--, 2 <= m, m <= 4
          , KnownNat n--, 2 <= n, n <= 4
          ) => PrimTy (M m n a) where
-  primTySing = SMatrix (Proxy @m) (Proxy @n) (primTySing @a)
+  primTySing = SMatrix (Proxy @m) (Proxy @n) (scalarTySing @a)
 
 ------------------------------------------------------------
 -- dependent pair

@@ -266,15 +266,15 @@ primOpCapabilities ( PrimOp.MatOp _ _ _ _        ) = [ Matrix ]
 primOpCapabilities _                               = [ ]
 
 primTyCapabilities :: PrimTy.PrimTy -> [ Capability ]
-primTyCapabilities (PrimTy.Matrix _ _ ty) = Matrix : primTyCapabilities ty
-primTyCapabilities (PrimTy.Vector n   ty)
-    | PrimTy.dim n > 4 = Vector16 : primTyCapabilities ty
-    | otherwise =            primTyCapabilities ty
-primTyCapabilities (PrimTy.Integer _ W8 ) = [ Int8  ]
-primTyCapabilities (PrimTy.Integer _ W16) = [ Int16 ]
-primTyCapabilities (PrimTy.Integer _ W64) = [ Int64 ]
-primTyCapabilities (PrimTy.Integer _ _  ) = [ ]
-primTyCapabilities (PrimTy.Floating  W16) = [ Float16 ]
-primTyCapabilities (PrimTy.Floating  W64) = [ Float64 ]
-primTyCapabilities (PrimTy.Floating  _  ) = [ ]
-primTyCapabilities _                      = [ ]
+primTyCapabilities ( PrimTy.Matrix _ _ ty ) = Matrix : primTyCapabilities (PrimTy.Scalar ty)
+primTyCapabilities ( PrimTy.Vector n   ty )
+    | PrimTy.dim n > 4 = Vector16 : primTyCapabilities (PrimTy.Scalar ty)
+    | otherwise =            primTyCapabilities (PrimTy.Scalar ty)
+primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ W8 ) ) = [ Int8  ]
+primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ W16) ) = [ Int16 ]
+primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ W64) ) = [ Int64 ]
+primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ _  ) ) = [ ]
+primTyCapabilities ( PrimTy.Scalar (PrimTy.Floating  W16) ) = [ Float16 ]
+primTyCapabilities ( PrimTy.Scalar (PrimTy.Floating  W64) ) = [ Float64 ]
+primTyCapabilities ( PrimTy.Scalar (PrimTy.Floating  _  ) ) = [ ]
+primTyCapabilities _                                        = [ ]

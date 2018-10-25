@@ -99,8 +99,7 @@ type family ValidFunDef
       :: Bool where          -- ( it is the total state at the end of the function definition )  
   ValidFunDef k as i l 
       = NoFunctionNameConflict k as i  
-          ( Lookup k i  )    --
-          ( Lookup k as )    -- check that function name is not already in use
+          ( Lookup k i  )    -- check that function name is not already in use
           ( NotHigherOrder k as (Remove i (Remove as l)) )
   --           ╱               └━━━━━━┬━━━━━━┘
   --         ╱                             │
@@ -133,29 +132,20 @@ type family NotHigherOrder'
     )
 
 type family NoFunctionNameConflict
-      ( k      :: Symbol        )
-      ( as     :: BindingsMap   )
-      ( i      :: BindingsMap   )
-      ( mb_bd1 :: Maybe Binding ) -- conflict with in-scope variables?
-      ( mb_bd2 :: Maybe Binding ) -- conflict with function arguments?
-      ( notHO  :: Bool          )
+      ( k     :: Symbol        )
+      ( as    :: BindingsMap   )
+      ( i     :: BindingsMap   )
+      ( mb_bd :: Maybe Binding ) -- conflict with in-scope variables?
+      ( notHO :: Bool          )
       :: Bool where
-  NoFunctionNameConflict k as i ('Just _) _ _ = TypeError
+  NoFunctionNameConflict k as i ('Just _) _ = TypeError
     (     Text "'fundef': cannot define a new function with name " :<>: ShowType k :<>: Text ";"
      :$$: Text "that name is already in scope. In scope bindings are:"
      :$$: ShowType i
      :$$: Text "Locally bound variables are:"
      :$$: ShowType as
     )
-  NoFunctionNameConflict k as i _ ('Just _) _ = TypeError
-    (     Text "'fundef': cannot define a new function with name " :<>: ShowType k :<>: Text ";"
-     :$$: Text "that name is locally bound as an argument to the function."
-     :$$: Text "In scope bindings are:"
-     :$$: ShowType i
-     :$$: Text "Locally bound variables are:"
-     :$$: ShowType as
-    )
-  NoFunctionNameConflict _ _ _ 'Nothing 'Nothing 'True = 'True
+  NoFunctionNameConflict _ _ _ 'Nothing 'True = 'True
 
 ------------------------------------------------------------------------------------------------
 -- constraints for 'entryPoint'

@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
@@ -54,7 +55,7 @@ program = do
   let mvp        = projection !*! view !*! model
       position'  = vec4 px py pz 1
 
-  add11 <- fundef @"add11" $ do
+  add11 <- fundef @"add11" do
     u   <- get @"u"
     _11 <- def @"11" @R 11 -- local variable
     pure $ u + _11
@@ -62,10 +63,10 @@ program = do
   let _14 :: AST Int32
       _14 = convert ( add11 :$ 3 )
 
-  entryPoint @Vertex $ do
+  entryPoint @Vertex do
     ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ fmapAST add11 position' )
     put @"gl_Position" ( vec4 x y z (convert _14) )
 
   
-test :: IO()
+test :: IO ()
 test = drawTree . toTree . toAST $ program

@@ -3,6 +3,7 @@
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
 
 module SPIRV.PrimTy where
 
@@ -17,7 +18,7 @@ import Prelude hiding (Integer, Floating)
 import Unsafe.Coerce(unsafeCoerce)
 
 -- fir
-import SPIRV.Operation
+import SPIRV.Operation hiding(Function)
 
 --------------------------------------------------
 -- SPIR-V types
@@ -74,26 +75,32 @@ type family ToDim (n :: Nat) = (d :: Dim) | d -> n where
     ( Text "Error: dimension must be 2, 3 or 4 (given: "
      :<>: ShowType n :<>: Text ")" ) -}
 
+data ScalarTy where
+  Integer  :: Signedness -> Width -> ScalarTy
+  Floating ::               Width -> ScalarTy
+  deriving ( Show, Eq, Ord )
+
 data PrimTy where
-  Unit     ::                         PrimTy -- known as Void in the SPIR-V specification
-  Boolean  ::                         PrimTy
-  Integer  :: Signedness -> Width  -> PrimTy
-  Floating ::               Width  -> PrimTy
-  Vector   :: Dim        -> PrimTy -> PrimTy
-  Matrix   :: Dim -> Dim -> PrimTy -> PrimTy
+  Unit     ::                           PrimTy -- known as Void in the SPIR-V specification
+  Boolean  ::                           PrimTy
+  Scalar   ::               ScalarTy -> PrimTy
+  Vector   :: Dim        -> ScalarTy -> PrimTy
+  Matrix   :: Dim -> Dim -> ScalarTy -> PrimTy
+  Function :: [ PrimTy ] -> PrimTy   -> PrimTy
   -- todo: records, arrays, opaque types, ...
   deriving ( Show, Eq, Ord )
 
-tyAndSomeTyConArgs :: PrimTy -> (Operation, [Word32])
-tyAndSomeTyConArgs Unit           = ( TypeVoid  , [ ] )
-tyAndSomeTyConArgs Boolean        = ( TypeBool  , [ ] )
-tyAndSomeTyConArgs (Integer  s w) = ( TypeInt   , [ width w, signedness s ] )
-tyAndSomeTyConArgs (Floating   w) = ( TypeFloat , [ width w ] )
-tyAndSomeTyConArgs (Vector n   _) = ( TypeVector, [ dim n ] ) -- element type is provided separately
-tyAndSomeTyConArgs (Matrix _ m _) = ( TypeMatrix, [ dim m ] ) -- only number of columns... column type is provided separately
+tyAndStaticTyConArgs :: PrimTy -> (Operation, [Word32])
+tyAndStaticTyConArgs Unit    = ( TypeVoid    , [ ] )
+tyAndStaticTyConArgs Boolean = ( TypeBool    , [ ] )
+tyAndStaticTyConArgs (Scalar (Integer  s w)) = ( TypeInt     , [ width w, signedness s ] )
+tyAndStaticTyConArgs (Scalar (Floating   w)) = ( TypeFloat   , [ width w ] )
+tyAndStaticTyConArgs (Vector n   _) = ( TypeVector  , [ dim n ] ) -- element type ID is provided separately
+tyAndStaticTyConArgs (Matrix _ m _) = ( TypeMatrix  , [ dim m ] ) -- only number of columns... column type ID is provided separately
+tyAndStaticTyConArgs (Function _ _) = ( TypeFunction, [] ) -- can't know return type and parameter type IDs statically
 
 ty :: PrimTy -> Operation
-ty = fst . tyAndSomeTyConArgs
+ty = fst . tyAndStaticTyConArgs
 
 
 ------------------------------------------------------------
@@ -121,7 +128,7 @@ sDim SD3 = D3
 sDim SD4 = D4
 
 -- GHC.TypeNats does not export the 'natSing' method of 'KnownNat'
--- so we have to work-around it
+-- so we have to work around it
 natSDim :: KnownNat n => Proxy n -> SDim (ToDim n)
 natSDim px = case natVal px of
              2 -> unsafeCoerce SD2
@@ -129,14 +136,22 @@ natSDim px = case natVal px of
              4 -> unsafeCoerce SD4
              _ -> error "stuck"
 
+data SScalarTy :: ScalarTy -> Type where
+  SInteger  :: SSignedness s -> SWidth w -> SScalarTy (Integer  s w)
+  SFloating ::                  SWidth w -> SScalarTy (Floating   w)
+
 -- singleton types for PrimTy
 data SPrimTy :: PrimTy -> Type where
-  SUnit     ::                                  SPrimTy Unit
-  SBoolean  ::                                  SPrimTy Boolean
-  SInteger  :: SSignedness s ->     SWidth w -> SPrimTy (Integer  s w)
-  SFloating ::                      SWidth w -> SPrimTy (Floating   w)
-  SVector   :: SDim n ->           SPrimTy a -> SPrimTy (Vector n a  )
-  SMatrix   :: SDim m -> SDim n -> SPrimTy a -> SPrimTy (Matrix m n a)
+  SUnit     ::                                    SPrimTy Unit
+  SBoolean  ::                                    SPrimTy Boolean
+  SScalar   ::                     SScalarTy a -> SPrimTy (Scalar     a)
+  SVector   :: SDim n ->           SScalarTy a -> SPrimTy (Vector n   a)
+  SMatrix   :: SDim m -> SDim n -> SScalarTy a -> SPrimTy (Matrix m n a)
+  SFunction :: SPrimTys as      -> SPrimTy   b -> SPrimTy (Function as b) 
+
+data SPrimTys :: [PrimTy] -> Type where
+  SNil  :: SPrimTys '[]
+  SCons :: SPrimTy a -> SPrimTys as -> SPrimTys (a ': as)
 
 
 -- reification
@@ -156,10 +171,18 @@ fromSDim SD2 = D2
 fromSDim SD3 = D3
 fromSDim SD4 = D4
 
-fromSPrimTy :: SPrimTy primTy -> PrimTy
-fromSPrimTy SUnit           = Unit
-fromSPrimTy SBoolean        = Boolean
-fromSPrimTy (SInteger  s w) = Integer (fromSSignedness s) (fromSWidth w)
-fromSPrimTy (SFloating   w) = Floating                    (fromSWidth w)
-fromSPrimTy (SVector n   a) = Vector (fromSDim n)              (fromSPrimTy a)
-fromSPrimTy (SMatrix m n a) = Matrix (fromSDim m) (fromSDim n) (fromSPrimTy a)
+fromSScalarTy :: SScalarTy a -> ScalarTy
+fromSScalarTy (SInteger  s w) = Integer (fromSSignedness s) (fromSWidth w)
+fromSScalarTy (SFloating   w) = Floating                    (fromSWidth w)
+
+fromSPrimTy :: SPrimTy ty -> PrimTy
+fromSPrimTy SUnit            = Unit
+fromSPrimTy SBoolean         = Boolean
+fromSPrimTy (SScalar     a ) = Scalar (fromSScalarTy a)
+fromSPrimTy (SVector n   a ) = Vector (fromSDim n)              (fromSScalarTy a)
+fromSPrimTy (SMatrix m n a ) = Matrix (fromSDim m) (fromSDim n) (fromSScalarTy a)
+fromSPrimTy (SFunction as b) = Function (fromSPrimTys as) (fromSPrimTy b)
+
+fromSPrimTys :: SPrimTys as -> [PrimTy]
+fromSPrimTys SNil         = []
+fromSPrimTys (SCons a as) = fromSPrimTy a : fromSPrimTys as

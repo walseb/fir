@@ -10,6 +10,7 @@ module CodeGen.CodeGen where
 -- base
 import Data.Maybe(fromJust)
 import Data.Word(Word32)
+import GHC.TypeLits(symbolVal)
 
 -- bytestring
 import Data.ByteString.Lazy(ByteString)
@@ -18,18 +19,21 @@ import Data.ByteString.Lazy(ByteString)
 import Control.Monad.State.Class(MonadState)
 
 -- lens
-import Control.Lens(Lens')
+import Control.Lens(Lens', assign, (<<%=))
 
 -- text-utf8
 import Data.Text(Text)
+import qualified Data.Text as Text
 
 -- fir
 import CodeGen.Monad( CGState, CGContext
                     , CGMonad
                     , MonadFresh
+                    , FunctionContext(Function)
                     , create, createRec
                     , tryToUse, tryToUseWith
                     , _knownExtInst
+                    , _knownBinding
                     , _knownType
                     , _knownConstant
                     )
@@ -38,7 +42,12 @@ import CodeGen.Instruction ( Args(..), prependArg, toArgs
                            )
 import CodeGen.Declarations(putASM)
 import FIR.AST(AST(..))
-import FIR.PrimTy(PrimTy(primTySing), primTy, sPrimTy, SPrimTy(..), aConstant)
+import FIR.Instances(Syntactic(toAST,fromAST))
+import FIR.PrimTy( PrimTy(primTySing), primTy, sPrimTy
+                 , SPrimTy(..)
+                 , aConstant
+                 , scalarTy, sScalarTy
+                 )
 import Math.Linear(M(unM), Matrix(transpose))
 import qualified SPIRV.Extension as SPIRV
 import qualified SPIRV.Operation as SPIRV.Op
@@ -47,8 +56,8 @@ import qualified SPIRV.PrimTy    as SPIRV
 ----------------------------------------------------------------------------
 -- main code generator
 
-codeGen :: AST a -> CGMonad ()
-codeGen = error "nope"
+codeGen :: AST a -> CGMonad ID
+codeGen _ = error "TODO"
 
 runCodeGen :: CGContext -> AST a -> Either Text ByteString
 runCodeGen context = putASM context . codeGen
@@ -58,18 +67,18 @@ runCodeGen context = putASM context . codeGen
 
 -- get extended instruction set ID (or create one if none exist)
 extInstID :: (MonadState CGState m, MonadFresh ID m)
-           => SPIRV.ExtInst -> m ID
+          => SPIRV.ExtInst -> m ID
 extInstID extInst = 
   tryToUse ( _knownExtInst extInst )
     ( fromJust . resID ) -- ExtInstImport instruction always has a result ID
-    ( \ v -> pure $ Instruction
+    ( \ v -> pure Instruction
       { operation = SPIRV.Op.ExtInstImport
       , resTy     = Nothing
       , resID     = Just v
       , args      = Arg ( SPIRV.extInstName extInst ) -- TODO: 'Put' instance for strings might be wrong
                     EndArgs 
       }
-  )
+    )
 
 -- get an ID for a given type ( result ID of corresponding type constructor instruction )
 -- ( if one is known use it, otherwise recursively create fresh IDs for necessary types )
@@ -87,7 +96,7 @@ typeID ty =
         
         SPIRV.Vector _ a ->
           createRec _knownPrimTy
-            ( typeID a ) -- element type
+            ( typeID (SPIRV.Scalar a) ) -- element type
             ( \ eltID -> pure . prependArg eltID . mkTyConInstruction )
         
         _ -> create _knownPrimTy ( pure . mkTyConInstruction )
@@ -96,18 +105,18 @@ typeID ty =
         _knownPrimTy = _knownType ty
 
         op :: SPIRV.Op.Operation
-        someTyConArgs :: [Word32]
-        (op, someTyConArgs) = SPIRV.tyAndSomeTyConArgs ty
+        staticTyConArgs :: [Word32]
+        (op, staticTyConArgs) = SPIRV.tyAndStaticTyConArgs ty
 
         mkTyConInstruction :: ID -> Instruction
         mkTyConInstruction v = Instruction
            { operation = op
            , resTy     = Nothing
            , resID     = Just v
-           , args      = toArgs someTyConArgs
+           , args      = toArgs staticTyConArgs
            }
 
-constID :: forall m a. 
+constID :: forall m a.
            ( MonadState CGState m, MonadFresh ID m
            , PrimTy a
            )
@@ -125,7 +134,7 @@ constID a =
                           ( SPIRV.Matrix 
                               (SPIRV.sDim $ SPIRV.natSDim m) 
                               (SPIRV.sDim $ SPIRV.natSDim n)
-                              (sPrimTy eltTySing)
+                              (sScalarTy eltTySing)
                           )
                           cols
 
@@ -136,9 +145,12 @@ constID a =
                           SPIRV.Op.ConstantComposite
                             ( SPIRV.Vector 
                                 (SPIRV.sDim $ SPIRV.natSDim n) 
-                                (sPrimTy eltTySing)
+                                (sScalarTy eltTySing)
                             ) 
                             elts
+
+        SScalar _ -> create _knownAConstant 
+              ( mkConstantInstruction SPIRV.Op.Constant (SPIRV.Scalar (scalarTy @a)) (Arg a EndArgs) )
 
         SUnit -> error "Error: 'constId' called on Unit type.\n\
                        \Unit has a unique value, and as such does not need to be constructed."
@@ -153,9 +165,6 @@ constID a =
                 SPIRV.Boolean
                 EndArgs
 
-        -- scalar (by elimination)
-        _ -> create _knownAConstant 
-              ( mkConstantInstruction SPIRV.Op.Constant (primTy @a) (Arg a EndArgs) )
 
   where _knownAConstant :: Lens' CGState (Maybe Instruction)
         _knownAConstant = _knownConstant ( aConstant a )

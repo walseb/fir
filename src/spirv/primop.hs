@@ -10,24 +10,25 @@ module SPIRV.PrimOp
   ) where
 
 -- base
+import Control.Arrow(second)
 import Prelude hiding( Ordering(..) )
 
 -- fir
 import SPIRV.Operation
-import SPIRV.PrimTy( PrimTy(..), Signedness(..), Dim )
+import SPIRV.PrimTy( PrimTy(..), ScalarTy(..), Signedness(..), Dim )
 
 -------------------------------------------------------------------------------
 -- primitive operations
 
 data PrimOp where
-  BoolOp  :: BoolPrimOp                          -> PrimOp
-  EqOp    :: EqPrimOp                  -> PrimTy -> PrimOp
-  OrdOp   :: OrdPrimOp                 -> PrimTy -> PrimOp
-  NumOp   :: NumPrimOp                 -> PrimTy -> PrimOp
-  FloatOp :: FloatPrimOp               -> PrimTy -> PrimOp
-  VecOp   :: VecPrimOp   -> Dim        -> PrimTy -> PrimOp
-  MatOp   :: MatPrimOp   -> Dim -> Dim -> PrimTy -> PrimOp
-  ConvOp  :: ConvPrimOp  -> PrimTy     -> PrimTy -> PrimOp
+  BoolOp  :: BoolPrimOp                            -> PrimOp
+  EqOp    :: EqPrimOp                  -> PrimTy   -> PrimOp
+  OrdOp   :: OrdPrimOp                 -> PrimTy   -> PrimOp
+  NumOp   :: NumPrimOp                 -> ScalarTy -> PrimOp
+  FloatOp :: FloatPrimOp               -> ScalarTy -> PrimOp
+  VecOp   :: VecPrimOp   -> Dim        -> ScalarTy -> PrimOp
+  MatOp   :: MatPrimOp   -> Dim -> Dim -> ScalarTy -> PrimOp
+  ConvOp  :: ConvPrimOp  -> ScalarTy   -> ScalarTy -> PrimOp
   deriving Show
 
 data BoolPrimOp
@@ -129,17 +130,17 @@ opAndReturnType (EqOp eqOp s)
 opAndReturnType (OrdOp ordOp s)
   = orderOp ordOp s
 opAndReturnType (NumOp numOp s)
-  = numericOp numOp s
+  = second Scalar (numericOp numOp s)
 opAndReturnType (FloatOp flOp s)
   = ( floatingOp flOp
-    , s -- should be a Floating type always
+    , Scalar s -- should be a Floating type always
     )
 opAndReturnType (VecOp vecOp n s)
   = vectorOp vecOp n s
 opAndReturnType (MatOp matOp n m s)
   = matrixOp matOp n m s
 opAndReturnType (ConvOp cOp s1 s2)
-  = convOp cOp s1 s2
+  = second Scalar (convOp cOp s1 s2)
 
 op :: PrimOp -> Operation
 op = fst . opAndReturnType
@@ -150,34 +151,34 @@ booleanOp And = LogicalAnd
 booleanOp Not = LogicalNot
 
 equalityOp :: EqPrimOp -> PrimTy -> Operation
-equalityOp Equal    (Floating  _) = FOrdEqual -- not reflexive!
-equalityOp Equal    (Integer _ _) = IEqual
-equalityOp NotEqual (Floating  _) = FOrdNotEqual
-equalityOp NotEqual (Integer _ _) = INotEqual
+equalityOp Equal    (Scalar (Floating  _)) = FOrdEqual -- not reflexive!
+equalityOp Equal    (Scalar (Integer _ _)) = IEqual
+equalityOp NotEqual (Scalar (Floating  _)) = FOrdNotEqual
+equalityOp NotEqual (Scalar (Integer _ _)) = INotEqual
 equalityOp primOp ty = error $ "unsupported type " ++ show ty ++ " with equality operation " ++ show primOp
 
 orderOp :: OrdPrimOp -> PrimTy -> (Operation, PrimTy)
-orderOp GT  (Integer Unsigned _) = ( UGreaterThan        , Boolean )
-orderOp GT  (Integer Signed   _) = ( SGreaterThan        , Boolean )
-orderOp GT  (Floating         _) = ( FOrdGreaterThan     , Boolean )
-orderOp GTE (Integer Unsigned _) = ( UGreaterThanEqual   , Boolean )
-orderOp GTE (Integer Signed   _) = ( SGreaterThanEqual   , Boolean )
-orderOp GTE (Floating         _) = ( FOrdGreaterThanEqual, Boolean )
-orderOp LT  (Integer Unsigned _) = ( ULessThan           , Boolean )
-orderOp LT  (Integer Signed   _) = ( SLessThan           , Boolean )
-orderOp LT  (Floating         _) = ( FOrdLessThan        , Boolean )
-orderOp LTE (Integer Unsigned _) = ( ULessThanEqual      , Boolean )
-orderOp LTE (Integer Signed   _) = ( SLessThanEqual      , Boolean )
-orderOp LTE (Floating         _) = ( FOrdLessThanEqual   , Boolean )
-orderOp Min (Integer Unsigned w) = ( UMin , Integer Unsigned w )
-orderOp Min (Integer Signed   w) = ( SMin , Integer Signed   w )
-orderOp Min (Floating         w) = ( FMin , Floating         w )
-orderOp Max (Integer Unsigned w) = ( UMax , Integer Unsigned w )
-orderOp Max (Integer Signed   w) = ( SMax , Integer Signed   w )
-orderOp Max (Floating         w) = ( FMax , Floating         w )
+orderOp GT  (Scalar (Integer Unsigned _)) = ( UGreaterThan        , Boolean )
+orderOp GT  (Scalar (Integer Signed   _)) = ( SGreaterThan        , Boolean )
+orderOp GT  (Scalar (Floating         _)) = ( FOrdGreaterThan     , Boolean )
+orderOp GTE (Scalar (Integer Unsigned _)) = ( UGreaterThanEqual   , Boolean )
+orderOp GTE (Scalar (Integer Signed   _)) = ( SGreaterThanEqual   , Boolean )
+orderOp GTE (Scalar (Floating         _)) = ( FOrdGreaterThanEqual, Boolean )
+orderOp LT  (Scalar (Integer Unsigned _)) = ( ULessThan           , Boolean )
+orderOp LT  (Scalar (Integer Signed   _)) = ( SLessThan           , Boolean )
+orderOp LT  (Scalar (Floating         _)) = ( FOrdLessThan        , Boolean )
+orderOp LTE (Scalar (Integer Unsigned _)) = ( ULessThanEqual      , Boolean )
+orderOp LTE (Scalar (Integer Signed   _)) = ( SLessThanEqual      , Boolean )
+orderOp LTE (Scalar (Floating         _)) = ( FOrdLessThanEqual   , Boolean )
+orderOp Min (Scalar (Integer Unsigned w)) = ( UMin , Scalar (Integer Unsigned w) )
+orderOp Min (Scalar (Integer Signed   w)) = ( SMin , Scalar (Integer Signed   w) )
+orderOp Min (Scalar (Floating         w)) = ( FMin , Scalar (Floating         w) )
+orderOp Max (Scalar (Integer Unsigned w)) = ( UMax , Scalar (Integer Unsigned w) )
+orderOp Max (Scalar (Integer Signed   w)) = ( SMax , Scalar (Integer Signed   w) )
+orderOp Max (Scalar (Floating         w)) = ( FMax , Scalar (Floating         w) )
 orderOp primOp ty = error $ "unsupported type " ++ show ty ++ " with order operation " ++ show primOp
 
-numericOp :: NumPrimOp -> PrimTy -> (Operation, PrimTy)
+numericOp :: NumPrimOp -> ScalarTy -> (Operation, ScalarTy)
 -- additive group
 numericOp Add  (Floating         w) = ( FAdd   , Floating         w )
 numericOp Add  (Integer s        w) = ( IAdd   , Integer s        w )
@@ -208,7 +209,6 @@ numericOp Mod  (Integer Unsigned w) = ( UMod   , Integer Unsigned w )
 numericOp Rem  (Floating         w) = ( FRem   , Floating         w )
 numericOp Rem  (Integer Signed   w) = ( SRem   , Integer Signed   w )
 numericOp Rem  (Integer Unsigned w) = ( UMod   , Integer Unsigned w ) -- URem pointless for unsigned type
-numericOp primOp ty = error $ "unsupported type " ++ show ty ++ " with numeric operation " ++ show primOp
 
 floatingOp :: FloatPrimOp -> Operation
 floatingOp FSin     = Sin
@@ -230,29 +230,29 @@ floatingOp FLog     = Log
 floatingOp FSqrt    = Sqrt
 floatingOp FInvsqrt = Invsqrt
 
-vectorOp :: VecPrimOp -> Dim -> PrimTy -> (Operation, PrimTy)
+vectorOp :: VecPrimOp -> Dim -> ScalarTy -> (Operation, PrimTy)
 -- re-use numeric operations on vectors
 vectorOp AddV   n s            = ( fst $ numericOp Add s, Vector n s )
 vectorOp SubV   n s            = ( fst $ numericOp Sub s, Vector n s )
 vectorOp NegV   n s            = ( fst $ numericOp Neg s, Vector n s )
-vectorOp DotV   _ (Floating w) = ( Dot, Floating w )
+vectorOp DotV   _ (Floating w) = ( Dot, Scalar (Floating w) )
 vectorOp DotV   _ _            = error "Dot product: vector elements must be of floating-point type."
 vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Floating w) )
 vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements must be of floating-point type (sorry!)."
 vectorOp CrossV n (Floating w) = ( Cross, Vector n (Floating w) )
 vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
 
-matrixOp :: MatPrimOp -> Dim -> Dim -> PrimTy -> (Operation, PrimTy)
+matrixOp :: MatPrimOp -> Dim -> Dim -> ScalarTy -> (Operation, PrimTy)
 matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
 matrixOp MMulV  n _ s = ( MatrixTimesVector, Vector n   s )
 matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vector n   s )
 matrixOp MMulM  n m s = ( MatrixTimesMatrix, Matrix n m s )
 matrixOp Transp n m s = ( Transpose        , Matrix n m s )
-matrixOp Det    _ _ s = ( Determinant      ,            s )
+matrixOp Det    _ _ s = ( Determinant      , Scalar     s )
 matrixOp Inv    n m s = ( MatrixInverse    , Matrix n m s )
 matrixOp Out    n m s = ( OuterProduct     , Matrix n m s )
 
-convOp :: ConvPrimOp -> PrimTy -> PrimTy -> (Operation, PrimTy)
+convOp :: ConvPrimOp -> ScalarTy -> ScalarTy -> (Operation, ScalarTy)
 convOp Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF   , Floating         w )
 convOp Convert (Integer Unsigned _) (Floating         w) = ( ConvertUToF   , Floating         w )
 convOp Convert (Floating         _) (Integer Signed   w) = ( ConvertFToS   , Integer Signed   w )
