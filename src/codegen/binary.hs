@@ -19,19 +19,28 @@ import qualified Data.Binary.Put as Binary
 -- containers
 import Data.Map.Strict(Map)
 import qualified Data.Map.Strict as Map
+import Data.Set(Set)
+import qualified Data.Set as Set
 
 -- text
 import Data.Text(Text)
 
+-- transformers
+import Control.Monad.Except(ExceptT)
+import Control.Monad.Trans.Class(lift)
+
 -- fir
 import CodeGen.Instruction ( Args(..), arity, putArgs, toArgs
                            , ID(..), Instruction(..)
-                           , EntryPoint(..)
                            )
+import CodeGen.Monad(note)
+import FIR.Builtin(Stage, executionModel)
 import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV
 import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
+import qualified SPIRV.PrimTy        as SPIRV
+import qualified SPIRV.Storage       as SPIRV
 
 ----------------------------------------------------------------------------
 
@@ -80,18 +89,20 @@ putHeader bound
       , 0            -- always 0
       ]
 
-putCapabilities :: [SPIRV.Capability] -> Binary.Put
+putCapabilities :: Set SPIRV.Capability -> Binary.Put
 putCapabilities
-  = traverse_
-      ( \cap -> putInstruction Map.empty 
-        Instruction 
-          { operation = SPIRV.Op.Capability
-          , resTy     = Nothing
-          , resID     = Nothing
-          , args      = Arg cap
-                        EndArgs
-          }
-      )
+  = Set.foldr' ( \cap p -> p >> putCap cap ) (pure ()) -- traverse_ for sets
+      where 
+        putCap :: SPIRV.Capability -> Binary.Put
+        putCap cap 
+          = putInstruction Map.empty 
+              Instruction 
+                { operation = SPIRV.Op.Capability
+                , resTy     = Nothing
+                , resID     = Nothing
+                , args      = Arg cap
+                              EndArgs
+                }
 
 putExtendedInstructions :: Map SPIRV.ExtInst Instruction -> Binary.Put
 putExtendedInstructions
@@ -109,41 +120,37 @@ putMemoryModel
                     EndArgs
         }
 
-putEntryPoints :: Map Text (EntryPoint ID) -> Binary.Put
-putEntryPoints
-  = traverse_
-      ( \ EntryPoint { entryPointName
-                     , entryPointModel = SPIRV.ExecutionModel executionModel
-                     , entryPointID
-                     , entryPointInterface
-                     }
-         -> putInstruction Map.empty
-              Instruction
-                { operation = SPIRV.Op.EntryPoint
-                -- slight kludge to account for unusual parameters for OpEntryPoint
-                -- instead of result type, resTy field holds the ExecutionModel value
-                , resTy     = Just ( ID executionModel )
-                , resID     = Just entryPointID
-                , args      = Arg entryPointName
-                            $ toArgs entryPointInterface
-                }
-      )
+putEntryPoint :: Stage -> Text -> ID -> [ID] -> Binary.Put
+putEntryPoint stage stageName entryPointID interface
+  = putInstruction Map.empty
+      Instruction
+        { operation = SPIRV.Op.EntryPoint
+        -- slight kludge to account for unusual parameters for OpEntryPoint
+        -- instead of result type, resTy field holds the ExecutionModel value
+        , resTy     = Just ( ID executionID )
+        , resID     = Just entryPointID
+        , args      = Arg stageName
+                    $ toArgs interface
+        }
+    where SPIRV.ExecutionModel executionID = executionModel stage
 
-putExecutionModes :: Map Text (EntryPoint ID) -> Binary.Put
-putExecutionModes
-  = traverse_
-      ( \ EntryPoint { entryPointID, executionMode, executionModeArgs }
-         -> putInstruction Map.empty
-              Instruction
-                { operation = SPIRV.Op.ExecutionMode
-                , resTy     = Nothing
-                , resID     = Nothing
-                , args      = Arg entryPointID
-                            $ Arg executionMode
-                            $ toArgs executionModeArgs 
-                }
+putEntryPoints :: Map Text ID -> Map (Stage, Text) (Set Text) -> ExceptT Text Binary.PutM ()
+putEntryPoints bindings
+  = traverseWithKey_
+      ( \(stage, stageName) builtins -> do
+        builtin_IDs <- 
+          traverse 
+            ( \builtin -> 
+              note
+                ( "putEntryPoints: builtin " <> builtin <> " not bound to any ID." )
+                ( Map.lookup builtin bindings) 
+            )
+            (Set.toList builtins)
+        entryPointID <- note
+                     ( "putEntryPoints: entry point " <> stageName <> "not bound to any ID." )
+                     ( Map.lookup stageName bindings ) 
+        lift ( putEntryPoint stage stageName entryPointID builtin_IDs )
       )
-
 
 putBindingAnnotations :: Map Text ID -> Binary.Put
 putBindingAnnotations
@@ -169,4 +176,24 @@ putInstructionsInOrder
 
 -- TODO: debug instructions
 -- annotations (decorations)
--- global variables
+
+putGlobals :: Map SPIRV.PrimTy Instruction
+           -> Map Text (ID, (SPIRV.PrimTy,SPIRV.StorageClass))          
+           -> ExceptT Text Binary.PutM ()
+putGlobals typeIDs
+  = traverse_
+      ( \(globalID, (ty, storage)) -> 
+        do let ptrTy = SPIRV.Pointer storage ty
+           ptrTyID 
+             <- note
+                  ( error ( "putGlobals: pointer type " ++ show ptrTy ++ " not bound to any ID." ) )
+                  ( resTy =<< Map.lookup ptrTy typeIDs )
+           lift $ putInstruction Map.empty
+                 Instruction
+                   { operation = SPIRV.Op.Variable
+                   , resTy = Just ptrTyID
+                   , resID = Just globalID
+                   , args  = Arg storage EndArgs
+                   }
+      )
+                

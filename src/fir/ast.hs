@@ -25,23 +25,25 @@ import Data.Tree(Tree(Node))
 -- mtl
 import Control.Monad.State.Lazy(State, put, get, evalState)
 
+-- tree-view
+import Data.Tree.View(showTree)
+
 -- fir
 import Data.Type.Bindings 
   ( BindingType, Var, Fun
   , Insert, Union
   )
-import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..) )
+import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..)
+                            , Id )
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Get, Put
                    )
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
-import FIR.PrimTy(PrimTy)
+import FIR.PrimTy(PrimTy, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
 
 ------------------------------------------------------------
-
-data S p i
 
 type family Variadic (n :: Nat) a b = r where
   Variadic n a b = Variadic' n a b (1 <=? n)
@@ -63,40 +65,46 @@ data AST :: Type -> Type where
   If :: PrimTy a => AST (Bool -> a -> a -> a)
 
   -- (indexed) monadic operations
-  Pure :: AST (p i -> m p i)
-  Bind :: AST (m (a := j) i -> (a -> m q j) -> m q i) -- angelic bind
+  -- (specialised to the identity indexed monad)
+  Pure :: AST (p i -> Id p i)
+  Bind :: AST (Id (a := j) i -> (a -> Id q j) -> Id q i) -- angelic bind
 
-  Ix :: AST (a -> (a := i) i) -- hack, would be solved if we could have
-                              -- Pure :: AST (a -> m (a := i) i)
+  MkAtKey :: AST (a -> (a := i) i) -- hack, would be solved if we could have
+                                   -- Pure :: AST (a -> m (a := i) i)
+  RunAtKey :: AST ( (a := j) i -> a )
+  RunId :: AST (Id p i -> p i)
 
-  Def :: forall k perms a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
+  Def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
       => Proxy k
-      -> Proxy perms
+      -> Proxy ps
       -> AST (    a
-               -> S ( a := Insert k (Var perms a) i) i
+               -> Id ( a := Insert k (Var ps a) i) i
              )
-  FunDef :: forall k as b l i. (KnownSymbol k, ValidFunDef k as i l ~ 'True, PrimTy b)
+  FunDef :: forall k as b l i. (KnownSymbol k, KnownVars as, PrimTy b, ValidFunDef k as i l ~ 'True)
          => Proxy k
          -> Proxy as -- function arguments
-         -> AST (    S (b := l) (Union i as)
-                  -> S (BindingType (Fun as b) := Insert k (Fun as b) i) i
+         -> Proxy b
+         -> AST (    Id (b := l) (Union i as)
+                  -> Id (BindingType (Fun as b) := Insert k (Fun as b) i) i
                 )
   -- entry point: a function definition, with no arguments and Unit return type
   -- it is given access to addtional builtins
   -- this function definition is not added to the index of items in scope
   -- ( it is not allowed to be called )
-  Entry :: forall s l i. (KnownStage s, ValidEntryPoint s i l ~ 'True)
-         => Proxy s
-         -> AST (    S (() := l) (Union i (StageBuiltins s))
-                  -> S (() := i) i
+  -- TODO: add a special "entry point" binding instead of nothing
+  Entry :: forall k s l i. (KnownSymbol k, KnownStage s, ValidEntryPoint s i l ~ 'True)
+         => Proxy k
+         -> Proxy s
+         -> AST (    Id (() := l) (Union i (StageBuiltins s))
+                  -> Id (() := i) i
                 )
 
   Get    :: forall k i. KnownSymbol k
          => Proxy k
-         -> AST ( S (Get k i := i) i)
+         -> AST ( Id (Get k i := i) i)
   Put    :: forall k i. (KnownSymbol k, PrimTy (Put k i))
          => Proxy k
-         -> AST ( Put k i -> S (():= i) i )
+         -> AST ( Put k i -> Id (():= i) i )
 
   -- vectors (and matrices)
   MkVector :: KnownNat n => Proxy n -> AST ( Variadic n a ( V n a ) )
@@ -150,26 +158,28 @@ toTreeArgs (Lam f) as = do
 toTreeArgs (PrimOp op _ ) as 
   = return (Node ("PrimOp " ++ opName ) as)
     where opName = show ( SPIRV.op op )
-toTreeArgs If    as = return (Node "If"    as)
-toTreeArgs Pure  as = return (Node "Pure"  as)
-toTreeArgs Bind  as = return (Node "Bind"  as)
-toTreeArgs Ix    as = return (Node "Ix"    as)
-toTreeArgs Mat   as = return (Node "Mat"   as)
-toTreeArgs UnMat as = return (Node "UnMat" as)
-toTreeArgs (NamedVar   v )  as = return (Node v as)
-toTreeArgs (Lit        a )  as = return (Node ("Lit "     ++ show a ) as)
-toTreeArgs (MkVector   px ) as = return (Node ("Vec"      ++ show (natVal px)) as)
-toTreeArgs (VectorAt   px ) as = return (Node ("At "      ++ show (natVal px)) as)
-toTreeArgs (FmapVector px ) as = return (Node ("Fmap V"   ++ show (natVal px)) as)
-toTreeArgs (Get    px   ) as = return (Node ("Get @"    ++ symbolVal px ) as)
-toTreeArgs (Put    px   ) as = return (Node ("Put @"    ++ symbolVal px ) as)
-toTreeArgs (Def    px _ ) as = return (Node ("Def @"    ++ symbolVal px ) as)
-toTreeArgs (FunDef px _ ) as = return (Node ("FunDef @" ++ symbolVal px ) as)
-toTreeArgs (Entry  px   ) as = return (Node ("Entry @"  ++ show (stageVal px)) as)
+toTreeArgs If       as = return (Node "If"       as)
+toTreeArgs Pure     as = return (Node "Pure"     as)
+toTreeArgs Bind     as = return (Node "Bind"     as)
+toTreeArgs MkAtKey  as = return (Node "MkAtKey"  as)
+toTreeArgs RunAtKey as = return (Node "RunAtKey" as)
+toTreeArgs RunId    as = return (Node "RunId"    as)
+toTreeArgs Mat      as = return (Node "Mat"      as)
+toTreeArgs UnMat    as = return (Node "UnMat"    as)
+toTreeArgs (NamedVar   v ) as = return (Node v as)
+toTreeArgs (Lit        a ) as = return (Node ("Lit "     ++ show a ) as)
+toTreeArgs (MkVector   n ) as = return (Node ("Vec"      ++ show (natVal n)) as)
+toTreeArgs (VectorAt   n ) as = return (Node ("At "      ++ show (natVal n)) as)
+toTreeArgs (FmapVector n ) as = return (Node ("Fmap V"   ++ show (natVal n)) as)
+toTreeArgs (Get    k     ) as = return (Node ("Get @"    ++ symbolVal k ) as)
+toTreeArgs (Put    k     ) as = return (Node ("Put @"    ++ symbolVal k ) as)
+toTreeArgs (Def    k _   ) as = return (Node ("Def @"    ++ symbolVal k ) as)
+toTreeArgs (FunDef k _ _ ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
+toTreeArgs (Entry  _ s   ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
 
 toTree :: AST a -> Tree String
 toTree a = evalState (toTreeArgs a []) 0
 
 instance Show (AST a) where
-  show = show . toTree
+  show = showTree . toTree
 

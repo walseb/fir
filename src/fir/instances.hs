@@ -8,7 +8,6 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs               #-}
-{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE PolyKinds                  #-}
@@ -30,7 +29,6 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      , Integral(..)
                      , Fractional(..), fromRational
                      )
-import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
 import GHC.TypeLits  ( KnownSymbol
@@ -38,23 +36,20 @@ import GHC.TypeLits  ( KnownSymbol
                      )
 import GHC.TypeNats(KnownNat, type (+), type (-), type (<=?))
 import Type.Reflection(typeRep)
+import Unsafe.Coerce(unsafeCoerce)
 
 -- fir  
-import Control.Monad.Indexed ( FunctorIx(fmapIx)
-                             , MonadIx(..), MonadIxFail(..)
-                             , (:=)(..), withKey
-                             )
+import Control.Monad.Indexed ((:=)(..), Id(Id))
 import Data.Type.Bindings( BindingType, Var, Fun
                          , Union, Insert
-                         , Variadic
                          )
-import FIR.AST(AST(..), Codensity(..), S)
+import FIR.AST(AST(..), Codensity(..))
 import qualified FIR.AST as AST
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Put, Get
                    )
 import FIR.Builtin(StageBuiltins, KnownStage)
-import FIR.PrimTy(PrimTy, primTy, ScalarTy, scalarTy)
+import FIR.PrimTy(PrimTy, primTy, ScalarTy, scalarTy, KnownVars)
 import Math.Logic.Class ( Eq(..), Boolean(..), HasBool(..)
                         , Ord(..)
                         )
@@ -75,105 +70,32 @@ import qualified Math.Linear
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 
----------------------------------------------------
-
-class MonadIx m => ScopeIx m where
-
-  def' :: forall k perms a i. 
-          ( KnownSymbol k
-          , ValidDef k i ~ 'True
-          , PrimTy a
-          )
-       => Proxy k
-       -> Proxy perms
-       -> AST a
-       -> m (AST a := Insert k (Var perms a) i) i
-
-  defun' :: forall k as b l i. 
-            ( KnownSymbol k
-            , ValidFunDef k as i l ~ 'True
-            , PrimTy b
-            )
-         => Proxy k
-         -> Proxy as
-         -> AST (S (b := l) (Union i as))
-         -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
-
-  entry' :: forall s l i. ( KnownStage s, ValidEntryPoint s i l ~ 'True )
-         => Proxy s
-         -> AST (S (() := l) (Union i (StageBuiltins s)))
-         -> m (AST () := i) i
-
-  get' :: forall k i. KnownSymbol k
-       => Proxy k
-       -> m (AST (Get k i) := i) i
-
-  put' :: forall k i. (KnownSymbol k, PrimTy (Put k i))
-       => Proxy k
-       -> AST (Put k i)
-       -> m (AST () := i) i
-  
-def :: forall k perms a i m. (ScopeIx m, KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
-    => AST a
-    -> m (AST a := Insert k (Var perms a) i) i 
-def = def' @m @k @perms @a @i Proxy Proxy
-
-defun :: forall k as b l i m. (ScopeIx m, KnownSymbol k, ValidFunDef k as i l ~ 'True, PrimTy b)
-        => AST (S (b := l) (Union i as))
-        -> m (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
-defun = defun' @m @k @as @b @l @i Proxy Proxy
-
-entry :: forall s l i m. (ScopeIx m, KnownStage s, ValidEntryPoint s i l ~ 'True)
-        => AST (S (() := l) (Union i (StageBuiltins s)))
-        -> m (AST () := i) i
-entry = entry' @m @s @l @i Proxy
-
-get :: forall k i m. (ScopeIx m, KnownSymbol k)
-     => m (AST (Get k i) := i) i
-get = get' @m @k @i Proxy
-
-put :: forall k i m. (ScopeIx m, KnownSymbol k, PrimTy (Put k i))
-     => AST (Put k i) -> m (AST () := i) i
-put = put' @m @k @i Proxy
-
----------------------------------------------------
--- specialise function definition to work with the codensity representation
--- generalise the return type, to allow user-defined function to yield types of either forms:
--- AST a_1 -> ... -> AST a_n -> AST b
--- AST ( a_1 -> ... -> a_n -> b)
-
-fundef :: forall k as b f l i. 
-          ( KnownSymbol k, PrimTy b
-          , ValidFunDef k as i l ~ 'True
-          , Syntactic f, Internal f ~ Variadic as b
-          )
-       => Codensity S (AST b := l) (Union i as) 
-       -> Codensity S (f := Insert k (Fun as b) i) i
-fundef = fmapIx (fromAST `withKey`) . defun @k @as @b @l @i . toAST
--- normal function definitions have no additional variables ^^^^^^
-
-entryPoint :: forall s l i. ( KnownStage s, ValidEntryPoint s i l ~ 'True )
-       => Codensity S (AST () := l) (Union i (StageBuiltins s))
-       -> Codensity S (AST () := i) i
-entryPoint = fmapIx (fromAST `withKey`) . entry @s @l @i . toAST
-
 --------------------------------------------------------------------------
+-- specialise stateful functions to work with the Codensity IdIx indexed monad
 
--- force uniqueness of ScopeIx instance to improve type inference
-instance (m ~ Codensity S) => ScopeIx m where
-  def'   k b a = Codensity ( \h -> Bind :$ (Def    k b :$ a) :$ (Lam $ h . AtKey) )
-  defun' k j f = Codensity ( \h -> Bind :$ (FunDef k j :$ f) :$ (Lam $ h . AtKey) )
-  entry' k   f = Codensity ( \h -> Bind :$ (Entry  k   :$ f) :$ (Lam $ h . AtKey) )
-  get'   k     = Codensity ( \h -> Bind :$  Get    k         :$ (Lam $ h . AtKey) )
-  put'   k   a = Codensity ( \h -> Bind :$ (Put    k   :$ a) :$ (Lam $ h . AtKey) )
 
-instance TypeError (     Text "Failable pattern detected in AST construction."
-                    :$$: Text "Only irrefutable patterns are supported."
-                    :$$: Text "As inference of pattern refutability is sometimes patchy,"
-                    :$$: Text "consider using a lazy pattern match instead:"
-                    :$$: Text "'~pat <- ...' instead of 'pat <- ...'."
-                    ) => MonadIxFail (Codensity S) where
-  fail = error "'fail': irrefutable pattern failed to match, during AST construction."
+def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
+    => AST a
+    -> Codensity Id (AST a := Insert k (Var ps a) i) i
+def         a = Codensity ( \h -> Bind :$ (Def    (Proxy @k) (Proxy @ps)            :$ a      ) :$ (Lam $ h . AtKey) )
+
+fundef :: forall k as b l i. (KnownSymbol k, KnownVars as, PrimTy b, ValidFunDef k as i l ~ 'True)
+       => Codensity Id (AST b := l) (Union i as)
+       -> Codensity Id (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
+fundef      f = Codensity ( \h -> Bind :$ (FunDef (Proxy @k) (Proxy @as) (Proxy @b) :$ toAST f) :$ (Lam $ h . AtKey) )
+
+entryPoint :: forall k s l i. (KnownSymbol k, KnownStage s, ValidEntryPoint s i l ~ 'True)
+           => Codensity Id (AST () := l) (Union i (StageBuiltins s))
+           -> Codensity Id (AST () := i) i
+entryPoint  f = Codensity ( \h -> Bind :$ (Entry  (Proxy @k) (Proxy @s )            :$ toAST f) :$ (Lam $ h . AtKey) )
+
+get :: forall k i. (KnownSymbol k)
+    => Codensity Id ( AST (Get k i) := i) i
+get           = Codensity ( \h -> Bind :$  Get    (Proxy @k)                                    :$ (Lam $ h . AtKey) )
+
+put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
+    => AST (Put k i) -> Codensity Id ( AST () := i) i
+put         a = Codensity ( \h -> Bind :$ (Put    (Proxy @k)                        :$ a      ) :$ (Lam $ h . AtKey) )
 
 --------------------------------------------------------------------------------------
 -- instances for AST
@@ -343,22 +265,31 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
 
 instance Syntactic a => Syntactic ( (a := j) i ) where
   type Internal ( (a := j) i ) = (Internal a := j) i
+
   toAST :: (a := j) i -> AST ( (Internal a := j) i)
-  toAST (AtKey a) = Ix :$ toAST a
+  toAST (AtKey a) = MkAtKey :$ toAST a
+
   fromAST :: AST ( (Internal a := j) i) -> (a := j) i
-  fromAST (Ix :$ a) = AtKey (fromAST a)
-  fromAST _ = error "help needed"
+  fromAST a = unsafeCoerce wrongIndex
+    where wrongIndex :: (a := j) j
+          wrongIndex = AtKey ( fromAST (RunAtKey :$ a) )
 
 
-instance Syntactic a => Syntactic (Codensity (m :: (k -> Type) -> (k -> Type)) (a := j) i) where
-  type Internal (Codensity m (a := j) i) = m (Internal a := j) i
+instance Syntactic a
+        => Syntactic (Codensity Id (a := j) i) where
+  type Internal (Codensity Id (a := j) i) = Id (Internal a := j) i
 
-  toAST :: Codensity m (a := j) i -> AST (m (Internal a := j) i)
+  toAST :: Codensity Id (a := j) i -> AST (Id (Internal a := j) i)
   toAST (Codensity k) = k ( fromAST Pure )
 
-  fromAST :: AST (m (Internal a := j) i) -> Codensity m (a := j) i
+  fromAST :: AST (Id (Internal a := j) i) -> Codensity Id (a := j) i
   fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
 
+instance Syntactic a => Syntactic (Id (a := j) i) where
+  type Internal (Id (a := j) i) = Id (Internal a := j) i
+
+  toAST (Id a) = Pure :$ toAST a
+  fromAST a = Id (fromAST (RunId :$ a) )
 
 
 -- utility type for the following instance declaration

@@ -19,7 +19,9 @@ import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl))
 import Data.Typeable(Typeable, eqT)
 import Data.Word(Word8, Word16, Word32, Word64)
-import GHC.TypeLits(TypeError, ErrorMessage(Text))
+import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
+                   , TypeError, ErrorMessage(Text)
+                   )
 import GHC.TypeNats(KnownNat)
 
 -- binary
@@ -28,7 +30,17 @@ import Data.Binary(Binary(get,put))
 -- half
 import Numeric.Half(Half)
 
+-- text-utf8
+import qualified Data.Text as Text
+
 -- fir
+import Data.Type.Bindings( Binding
+                         , Assignment, type (:->)
+                         , BindingsMap
+                         , Var
+                         , Permission, permissions
+                         , KnownPermissions
+                         )
 import Math.Algebra.Class(Ring)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimTy as SPIRV
@@ -229,8 +241,8 @@ scalarTy = SPIRV.fromSScalarTy $ sScalarName ( scalarTySing @ty )
 sScalarTy :: SScalarTy a -> SPIRV.ScalarTy
 sScalarTy = SPIRV.fromSScalarTy . sScalarName
 
-primTyPx :: forall ty. PrimTy ty => Proxy ty -> SPIRV.PrimTy
-primTyPx _ = primTy @ty
+primTyVal :: forall ty. PrimTy ty => Proxy ty -> SPIRV.PrimTy
+primTyVal _ = primTy @ty
 
 instance ( PrimTy a, ScalarTy a
          , KnownNat n--, 2 <= n, n <= 4
@@ -244,6 +256,28 @@ instance ( PrimTy a, ScalarTy a
          ) => PrimTy (M m n a) where
   primTySing = SMatrix (Proxy @m) (Proxy @n) (scalarTySing @a)
 
+
+
+class KnownVar (bd :: Assignment Symbol Binding) where
+  knownVar :: Proxy bd -> (Text.Text, (SPIRV.PrimTy, [Permission]))
+
+instance (KnownSymbol k, KnownPermissions ps, PrimTy a)
+       => KnownVar (k :-> Var ps a) where
+  knownVar _ = ( Text.pack . symbolVal $ Proxy @k
+               , ( primTy @a
+                 , permissions (Proxy @ps)
+                 )
+               )
+
+-- doing this by hand...
+class KnownVars (bds :: BindingsMap) where
+  knownVars :: Proxy bds -> [(Text.Text, (SPIRV.PrimTy, [Permission]))]
+instance KnownVars '[] where
+  knownVars _ = []
+instance (KnownVar bd, KnownVars bds)
+      => KnownVars (bd ': bds) where
+  knownVars _ = knownVar (Proxy @bd) : knownVars (Proxy @bds)
+
 ------------------------------------------------------------
 -- dependent pair
 
@@ -254,18 +288,21 @@ data AConstant :: Type where
 aConstant :: PrimTy ty => ty -> AConstant
 aConstant = AConstant Proxy
 
-eqTProx :: forall a b. (Typeable a, Typeable b) => Proxy a -> Proxy b -> Maybe (a :~: b)
-eqTProx _ _ = eqT @a @b
+eqTProx :: forall s t. (Typeable s, Typeable t) => Proxy s -> Proxy t -> Maybe (s :~: t)
+eqTProx _ _ = eqT @s @t
+
+instance Show AConstant where
+  show (AConstant ty a) = "Constant " ++ show a ++ " of type " ++ show (primTyVal ty)
 
 instance Eq AConstant where
-  (AConstant px1 v1) == (AConstant px2 v2) 
-    = case eqTProx px1 px2 of
-        Just Refl -> v1 == v2
+  (AConstant ty1 a1) == (AConstant ty2 a2)
+    = case eqTProx ty1 ty2 of
+        Just Refl -> a1 == a2
         _         -> False
 
 instance Ord AConstant where
-  (AConstant px1 v1) `compare` (AConstant px2 v2)
-    = case eqTProx px1 px2 of
-         Just Refl -> compare v1 v2
-         _         -> compare (primTyPx px1)
-                              (primTyPx px2)
+  (AConstant ty1 a1) `compare` (AConstant ty2 a2)
+    = case eqTProx ty1 ty2 of
+         Just Refl -> compare a1 a2
+         _         -> compare (primTyVal ty1)
+                              (primTyVal ty2)

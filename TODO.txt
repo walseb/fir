@@ -1,8 +1,4 @@
 
-
-Basic types:
-  - pointers ???
-
 Compound types:
   - Arrays (containing any basic type)
   - Records/structs (containing any other types)
@@ -14,9 +10,7 @@ Operations:
   - rounding operations
   - bitwise operations on numeric types
   - way to lift operations to vectors (like 'fmap')
-  - load/store through pointers???
   - glsl utility operations (clamp, mix, step, smoothstep, ...)
-
 
 Control flow:
   - switch
@@ -39,38 +33,18 @@ instead need to manually "zipWith" using OpCompositeExtra, OpCompositeConstruct
 
 
 
-think: do I only want to use load/store for the interface variables, or for those defined along the way?
-  - in SPIR-V, for load/store I think I need everything to be global, so everything would need to be floated to the top
-
-
-ensure correctness of the binary instance for strings (needed e.g. to import GLSL and to name entry points)
 apply RowMajor decoration to matrix type declarations
 
 
-
-remove dated entry-points code
-entry points are specified manually within the code (no longer fundefs), function calls to entry points are not allowed
-
-
-
-looking through storage classes for variables:
-  - UniformConstant
-  - Input (for the ['Read] starting variables)
-  - Output (for the ['Write] starting variables)
-      - have a custom Program type which sets uniforms, inputs, outputs
-  - Uniform
-  - PushConstant
-  - Variable for function variables (use this with fundef)
 
 program optimisation: when possible, bundle together the vector indexing "At" things into a OpVectorShuffle
 
 
 
 address string issues:
-  - use Text for error messages
   - figure out which ByteString to use for SPIR-V internal strings (if any)
   - figure out if the ByteString used in Binary.Put is correct
-
+  - ensure correctness of the binary instance for strings (needed e.g. to import GLSL and to name entry points)
 
 
 
@@ -82,4 +56,6 @@ entry point definition:
 figure out how to overload function composition for internal functions
 
 
-split out scalars from primitive type definition (& singletons)
+deal with entry point execution modes
+
+make CGMonad polymorphic, so that we can output binary directly, or a human-readable format (or AST)

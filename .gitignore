@@ -4,6 +4,7 @@ dist-newstyle/
 .ghc.*
 *.html
 *.project
+*.spv
 
 shaders/
 

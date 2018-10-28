@@ -21,6 +21,7 @@ class FunctorIx m => MonadIx m where
   extendIx :: ( forall ix.   p ix -> m q ix )
            -> ( forall ix. m p ix -> m q ix )
 
+
 ------------------------------------------------
 -- Atkey indexing
 
@@ -35,6 +36,20 @@ instance Show a => Show ( (a := i) j ) where
 
 withKey :: (a -> b) -> (a := i) j -> (b := i) j
 withKey f (AtKey a) = AtKey (f a)
+
+
+------------------------------------------------------------
+-- identity indexed monad
+
+newtype Id p i = Id { runId :: p i }
+
+instance FunctorIx Id where
+  fmapIx f (Id a) = Id (f a)
+
+instance MonadIx Id where
+  extendIx f (Id a) = f a
+  returnIx = Id
+
 
 ------------------------------------------------
 -- rebindable syntax

@@ -13,12 +13,8 @@ import Data.Word(Word32)
 import Data.Binary(Binary)
 import qualified Data.Binary as Binary
 
--- text-utf8
-import Data.Text(Text)
-
 -- fir
-import qualified SPIRV.ExecutionMode as SPIRV
-import qualified SPIRV.Operation     as SPIRV
+import qualified SPIRV.Operation as SPIRV
 
 ----------------------------------------------------------------------------
 -- args
@@ -63,14 +59,6 @@ prependArg :: ( Show a, Binary a ) => a -> Instruction -> Instruction
 prependArg arg instr@Instruction { args = oldArgs }
   = instr { args = Arg arg oldArgs }
 
-data EntryPoint a
-  = EntryPoint
-      { entryPointName      :: Text
-      , entryPointModel     :: SPIRV.ExecutionModel
-      , entryPointID        :: a
-      , entryPointInterface :: [ a ]
-      , executionMode       :: SPIRV.ExecutionMode
-      , executionModeArgs   :: [ Word32 ]
-      }
-  deriving Show
+prependArgs :: ( Show a, Binary a ) => [a] -> Instruction -> Instruction
+prependArgs = flip ( foldr prependArg )
 

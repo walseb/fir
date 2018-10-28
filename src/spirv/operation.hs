@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternSynonyms   #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module SPIRV.Operation where
 

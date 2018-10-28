@@ -1,7 +1,4 @@
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module CodeGen.Declarations where
 
@@ -11,15 +8,11 @@ import qualified Data.Binary.Put as Binary
 -- bytestring
 import Data.ByteString.Lazy(ByteString)
 
--- containers
-import Data.Map.Strict(Map)
-import qualified Data.Map.Strict as Map
-
 -- text-utf8
 import Data.Text(Text)
 
 -- transformers
-import Control.Monad.Except(MonadError , ExceptT, throwError)
+import Control.Monad.Except(ExceptT)
 import Control.Monad.Trans.Class(lift)
 
 -- fir
@@ -29,16 +22,14 @@ import CodeGen.Binary ( putHeader
                       , putMemoryModel
                       , putEntryPoints
                       , putBindingAnnotations
-                      , putDecorations
-                      , putExecutionModes
+                      --, putDecorations
+                      --, putExecutionModes
                       , putInstructionsInOrder
+                      , putGlobals
                       )
-import CodeGen.Instruction ( ID(..)
-                           , EntryPoint(..)
-                           )
-import CodeGen.Monad ( CGState(..), CGContext(..)
-                     , CGMonad, runCGMonad, runExceptTPutM
-                     )
+import CodeGen.Instruction (ID(..))
+import CodeGen.Monad(CGMonad, runCGMonad, runExceptTPutM)
+import CodeGen.State(CGState(..), CGContext(..))
 
 ----------------------------------------------------------------------------
 -- writing the declarations at the top, after codegen is finished
@@ -47,19 +38,19 @@ putDecs :: CGContext -> CGState -> ExceptT Text Binary.PutM ()
 putDecs 
   CGContext { .. }
   CGState   { .. }
-  = do entryPointsWithIDs <- identifyEntryPoints knownBindings entryPoints
-       lift $
-         do putHeader               ( idNumber currentID )
-            putCapabilities         neededCapabilities
-            putExtendedInstructions knownExtInsts
-            putMemoryModel
-            putEntryPoints          entryPointsWithIDs
-            putExecutionModes       entryPointsWithIDs
-            putBindingAnnotations   knownBindings
-            putDecorations          undefined --todo
-            putInstructionsInOrder  knownTypes
-            putInstructionsInOrder  knownConstants
-
+  = do
+    lift $ do putHeader               ( idNumber currentID )
+              putCapabilities         neededCapabilities
+              putExtendedInstructions knownExtInsts
+              putMemoryModel
+    putEntryPoints knownBindings interfaces    
+    lift $ do --putExecutionModes knownBindings interfaces
+              putBindingAnnotations   knownBindings
+              --putDecorations
+              putInstructionsInOrder  knownTypes
+              putInstructionsInOrder  knownConstants
+    putGlobals knownTypes usedGlobals
+     
 putASM :: CGContext -> CGMonad r -> Either Text ByteString
 putASM context mr
   = case runCGMonad context mr of
@@ -70,56 +61,3 @@ putASM context mr
               Left err         -> Left err
 
       Left err -> Left err
-
-----------------------------------------------------------------------------
--- managing entry point ID data
-
--- TODO: move this somewhere sensible
-note :: MonadError e m => e -> Maybe a -> m a
-note _ (Just a) = pure a
-note e Nothing  = throwError e
-
--- fill in the ID of an entry point and of all its bindings in its interface
-identifyEntryPoint
-  :: forall m. ( MonadError Text m )
-  => Map Text ID 
-  -> EntryPoint Text
-  -> m (EntryPoint ID)
-identifyEntryPoint
-  bindingIDs
-  entryPoint@EntryPoint
-    { entryPointName      = entryName
-    , entryPointInterface = interface
-    }  
-  = do
-      entryID <- 
-        note
-          (    "No entry point with name "
-            <> entryName
-            <> " was found during code generation."
-          )
-          ( Map.lookup entryName bindingIDs )
-
-      interfaceIDs <- 
-        traverse
-          ( \ bindingName -> note
-            (    "No binding with name "
-              <> bindingName
-              <> " was found during code generation."
-            )
-            ( Map.lookup bindingName bindingIDs )
-          )
-          interface
-      
-      pure ( entryPoint 
-              { entryPointID        = entryID
-              , entryPointInterface = interfaceIDs
-              }
-           )
-
-identifyEntryPoints
-  :: forall m. ( MonadError Text m )
-  => Map Text ID
-  -> Map Text (EntryPoint Text)
-  -> m (Map Text (EntryPoint ID))
-identifyEntryPoints = traverse . identifyEntryPoint

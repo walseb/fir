@@ -18,78 +18,31 @@ import qualified Data.Binary.Put as Binary
 -- bytestring
 import Data.ByteString.Lazy(ByteString)
 
--- containers
-import Data.Map(Map)
-import qualified Data.Map as Map
-
 -- lens
-import Control.Lens( Lens', lens
+import Control.Lens( Lens'
                    , use, assign, (<<%=)
-                   , at
                    )
 
 -- text-utf8
 import Data.Text(Text)
 
 -- transformers
-import Control.Monad.Except(MonadError , ExceptT, runExceptT)
+import Control.Monad.Except(MonadError , ExceptT, runExceptT, throwError)
 import Control.Monad.Reader(MonadReader, ReaderT, runReaderT)
 import Control.Monad.State (MonadState , StateT , runStateT )
 import Control.Monad.Trans.Class(MonadTrans, lift)
 
 -- fir
 import Control.Arrow.Strength(leftStrength)
-import CodeGen.Instruction( ID(ID)
-                          , Instruction
-                          , EntryPoint
-                          )
-import FIR.Builtin(Stage)
-import FIR.PrimTy(AConstant)
-import qualified SPIRV.Capability as SPIRV
-import qualified SPIRV.Extension  as SPIRV
-import qualified SPIRV.PrimTy     as SPIRV
+import CodeGen.Instruction(ID)
+import CodeGen.State( CGState, CGContext
+                    , initialState
+                    , _currentID
+                    )
 
 ----------------------------------------------------------------------------
--- code generator monad
+-- monad for code generation
 
--- code generator state
--- this consists of information we need to keep track of along the way,
--- for instance which types have been declared
-data CGState
-  = CGState
-    { currentID          :: ID
-    , functionContext    :: FunctionContext
-    , neededCapabilities :: [ SPIRV.Capability ]
-    , knownExtInsts      :: Map SPIRV.ExtInst Instruction
-    , annotations        :: [Instruction]
-    , knownBindings      :: Map Text          ID
-    , knownTypes         :: Map SPIRV.PrimTy  Instruction
-    , knownConstants     :: Map AConstant     Instruction    
-    }
-
-data FunctionContext
-  = TopLevel
-  | Function [Text] -- argument names
-  | EntryPoint Stage
-  deriving ( Eq, Show )
-
-initialState :: CGState
-initialState = CGState
-  { currentID          = ID 1
-  , functionContext    = TopLevel
-  , neededCapabilities = []
-  , knownExtInsts      = Map.empty
-  , annotations        = []
-  , knownBindings      = Map.empty
-  , knownTypes         = Map.empty
-  , knownConstants     = Map.empty  
-  }
-
-data CGContext
-  = CGContext
-    { entryPoints :: Map Text (EntryPoint Text) }
-
--- bespoke monad for code generation
 type CGMonad 
   = FreshSuccT CGState    -- supply of fresh variable IDs using CGState (see below)
       ( ReaderT CGContext -- context for code generation
@@ -104,41 +57,11 @@ deriving instance MonadError  Text      CGMonad
 -- other instances automatically derived from the definition of FreshSuccT:
 -- Functor, Applicative, Monad, MonadState CGState, MonadFresh ID
 
+liftPut :: Binary.PutM a -> CGMonad a
+liftPut = lift . lift . lift . lift  -- apologies
+
 putCG :: Binary a => a -> CGMonad ()
-putCG = lift . lift . lift . lift . Binary.put -- apologies
-
-----------------------------------------------------------------------------
--- lenses
-
-_currentID :: Lens' CGState ID
-_currentID = lens currentID ( \s v -> s { currentID = v } )
-
-_functionContext :: Lens' CGState FunctionContext
-_functionContext = lens functionContext ( \s v -> s { functionContext = v } )
-
-_knownExtInsts :: Lens' CGState (Map SPIRV.ExtInst Instruction)
-_knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )
-
-_knownExtInst :: SPIRV.ExtInst -> Lens' CGState (Maybe Instruction)
-_knownExtInst ext = _knownExtInsts . at ext
-
-_knownBindings :: Lens' CGState (Map Text ID)
-_knownBindings = lens knownBindings ( \s v -> s { knownBindings = v } )
-
-_knownBinding :: Text -> Lens' CGState (Maybe ID)
-_knownBinding binding = _knownBindings . at binding
-
-_knownTypes :: Lens' CGState (Map SPIRV.PrimTy Instruction)
-_knownTypes = lens knownTypes ( \s v -> s { knownTypes = v } )
-
-_knownType :: SPIRV.PrimTy -> Lens' CGState (Maybe Instruction)
-_knownType primTy = _knownTypes . at primTy
-
-_knownConstants :: Lens' CGState (Map AConstant Instruction)
-_knownConstants = lens knownConstants ( \s v -> s { knownConstants = v } )
-
-_knownConstant :: AConstant -> Lens' CGState (Maybe Instruction)
-_knownConstant constant = _knownConstants . at constant
+putCG = liftPut . Binary.put
 
 ----------------------------------------------------------------------------
 -- fresh name generation
@@ -205,3 +128,9 @@ runCGMonad context
   >>> runExceptTPutM
   >>> right ( \((r,s),b) -> (r,s,b) )
 
+----------------------------------------------------------------------------
+-- utility for exceptions
+
+note :: MonadError e m => e -> Maybe a -> m a
+note _ (Just a) = pure a
+note e Nothing  = throwError e

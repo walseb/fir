@@ -2,6 +2,8 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeInType           #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -11,6 +13,7 @@ module Data.Type.Bindings where
 
 -- base 
 import Data.Kind(Type)
+import Data.Proxy(Proxy(Proxy))
 import Data.Type.Bool(If)
 import Data.Type.Equality(type (==))
 import GHC.TypeLits( Symbol, CmpSymbol
@@ -87,3 +90,20 @@ type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a
   BindingType (Fun as b) = Variadic as b
+
+
+class KnownPermission (p :: Permission) where
+  permission :: Proxy p -> Permission
+
+instance KnownPermission 'Read where
+  permission _ = Read
+instance KnownPermission 'Write where
+  permission _ = Write
+
+class KnownPermissions (ps :: [Permission]) where
+  permissions :: Proxy ps -> [Permission]
+
+instance KnownPermissions '[] where
+  permissions _ = []
+instance (KnownPermission p, KnownPermissions ps) => KnownPermissions ( p ': ps ) where
+  permissions _ = permission (Proxy @p) : permissions (Proxy @ps)

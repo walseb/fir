@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeInType           #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -8,19 +9,27 @@
 module FIR.Builtin where
 
 -- base
+import Control.Arrow(second)
 import Data.Int(Int32)
-import Data.Proxy(Proxy)
+import Data.Proxy(Proxy(Proxy))
 import Data.Word(Word32)
 import GHC.TypeLits(Symbol)
+
+-- text-utf8
+import Data.Text(Text)
 
 -- fir
 import Data.Type.Bindings( BindingsMap, type (:->)
                          , FromList, Union
-                         , Var, R, W --, RW
+                         , Var
+                         , Permission(Write)
+                         , R, W--, RW
                          )
+import FIR.PrimTy(knownVars)
 import Math.Linear(V)
-import SPIRV.ExecutionMode(ExecutionMode(ExecutionMode))
-
+import SPIRV.ExecutionMode(ExecutionModel(ExecutionModel))
+import qualified SPIRV.PrimTy  as SPIRV
+import qualified SPIRV.Storage as SPIRV
 
 
 data Stage
@@ -56,11 +65,11 @@ instance KnownStage GLCompute where
 instance KnownStage Kernel where
   stageVal _ = Kernel
 
-executionMode :: Stage -> ExecutionMode
-executionMode = ExecutionMode . fromIntegral . fromEnum
+executionModel :: Stage -> ExecutionModel
+executionModel = ExecutionModel . fromIntegral . fromEnum
 
-stage :: ExecutionMode -> Stage
-stage (ExecutionMode i) = toEnum ( fromIntegral i )
+stage :: ExecutionModel -> Stage
+stage (ExecutionModel i) = toEnum ( fromIntegral i )
 
 type family StageBuiltins (stage :: Stage) :: BindingsMap where
   StageBuiltins stage = FromList ( StageBuiltins' stage )
@@ -128,4 +137,21 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
                                            , "gl_SubgroupId"                :-> Var R Word32
                                            , "gl_SubgroupLocalInvocationId" :-> Var R Word32
                                            ]
-  StageBuiltins' _                      = '[ ]
+
+stageBuiltins :: Stage -> [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
+stageBuiltins Vertex                 = builtinStorage . knownVars $ Proxy @(StageBuiltins Vertex                )
+stageBuiltins TessellationControl    = builtinStorage . knownVars $ Proxy @(StageBuiltins TessellationControl   )
+stageBuiltins TessellationEvaluation = builtinStorage . knownVars $ Proxy @(StageBuiltins TessellationEvaluation)
+stageBuiltins Geometry               = builtinStorage . knownVars $ Proxy @(StageBuiltins Geometry              )
+stageBuiltins Fragment               = builtinStorage . knownVars $ Proxy @(StageBuiltins Fragment              )
+stageBuiltins GLCompute              = builtinStorage . knownVars $ Proxy @(StageBuiltins GLCompute             )
+stageBuiltins Kernel                 = builtinStorage . knownVars $ Proxy @(StageBuiltins Kernel                )
+
+storageFromPermissions :: [Permission] -> SPIRV.StorageClass
+storageFromPermissions p
+  | Write `elem` p = SPIRV.Output
+  | otherwise      = SPIRV.Input
+
+builtinStorage :: [ (Text, (SPIRV.PrimTy, [Permission])) ]
+               -> [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
+builtinStorage = map (second (second storageFromPermissions))

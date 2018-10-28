@@ -19,6 +19,7 @@ import Unsafe.Coerce(unsafeCoerce)
 
 -- fir
 import SPIRV.Operation hiding(Function)
+import SPIRV.Storage(StorageClass)
 
 --------------------------------------------------
 -- SPIR-V types
@@ -86,7 +87,8 @@ data PrimTy where
   Scalar   ::               ScalarTy -> PrimTy
   Vector   :: Dim        -> ScalarTy -> PrimTy
   Matrix   :: Dim -> Dim -> ScalarTy -> PrimTy
-  Function :: [ PrimTy ] -> PrimTy   -> PrimTy
+  Function :: [ PrimTy ]   -> PrimTy -> PrimTy
+  Pointer  :: StorageClass -> PrimTy -> PrimTy
   -- todo: records, arrays, opaque types, ...
   deriving ( Show, Eq, Ord )
 
@@ -98,6 +100,10 @@ tyAndStaticTyConArgs (Scalar (Floating   w)) = ( TypeFloat   , [ width w ] )
 tyAndStaticTyConArgs (Vector n   _) = ( TypeVector  , [ dim n ] ) -- element type ID is provided separately
 tyAndStaticTyConArgs (Matrix _ m _) = ( TypeMatrix  , [ dim m ] ) -- only number of columns... column type ID is provided separately
 tyAndStaticTyConArgs (Function _ _) = ( TypeFunction, [] ) -- can't know return type and parameter type IDs statically
+tyAndStaticTyConArgs (Pointer _ _ ) = ( TypePointer , [] ) -- can't statically know the ID of type the pointer points to
+                                                  --  ^^-- not putting the storage class because of weird ordering
+                                                  -- the arguments are: first storage class, then ID of type
+                                                  -- this is inconvenient when writing an instruction, easier to not put anything
 
 ty :: PrimTy -> Operation
 ty = fst . tyAndStaticTyConArgs
@@ -140,19 +146,14 @@ data SScalarTy :: ScalarTy -> Type where
   SInteger  :: SSignedness s -> SWidth w -> SScalarTy (Integer  s w)
   SFloating ::                  SWidth w -> SScalarTy (Floating   w)
 
--- singleton types for PrimTy
+-- some singleton types for PrimTy
+-- (only those corresponding to primitive AST types, e.g. no pointers or functions)
 data SPrimTy :: PrimTy -> Type where
   SUnit     ::                                    SPrimTy Unit
   SBoolean  ::                                    SPrimTy Boolean
   SScalar   ::                     SScalarTy a -> SPrimTy (Scalar     a)
   SVector   :: SDim n ->           SScalarTy a -> SPrimTy (Vector n   a)
   SMatrix   :: SDim m -> SDim n -> SScalarTy a -> SPrimTy (Matrix m n a)
-  SFunction :: SPrimTys as      -> SPrimTy   b -> SPrimTy (Function as b) 
-
-data SPrimTys :: [PrimTy] -> Type where
-  SNil  :: SPrimTys '[]
-  SCons :: SPrimTy a -> SPrimTys as -> SPrimTys (a ': as)
-
 
 -- reification
 
@@ -181,8 +182,3 @@ fromSPrimTy SBoolean         = Boolean
 fromSPrimTy (SScalar     a ) = Scalar (fromSScalarTy a)
 fromSPrimTy (SVector n   a ) = Vector (fromSDim n)              (fromSScalarTy a)
 fromSPrimTy (SMatrix m n a ) = Matrix (fromSDim m) (fromSDim n) (fromSScalarTy a)
-fromSPrimTy (SFunction as b) = Function (fromSPrimTys as) (fromSPrimTy b)
-
-fromSPrimTys :: SPrimTys as -> [PrimTy]
-fromSPrimTys SNil         = []
-fromSPrimTys (SCons a as) = fromSPrimTy a : fromSPrimTys as
