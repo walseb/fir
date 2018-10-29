@@ -345,7 +345,7 @@ runCodeGen context = putASM context . codeGen
 ----------------------------------------------------------------------------
 -- function declarations
 
-declareFunction :: Text -> [(Text, SPIRV.PrimTy)] -> SPIRV.PrimTy -> CGMonad r -> CGMonad ID
+declareFunction :: Text -> [(Text, SPIRV.PrimTy)] -> SPIRV.PrimTy -> CGMonad ID -> CGMonad ID
 declareFunction funName as b body
   = createRec ( _knownBinding funName )
       ( do resTyID <- typeID b
@@ -361,7 +361,23 @@ declareFunction funName as b body
             , args      = Arg (0 :: Word32) -- no function control information
                         $ Arg fnTyID EndArgs
             }
-        _ <- inFunctionContext as body
+        retValID <- inFunctionContext as body
+        case b of
+          SPIRV.Unit 
+            -> liftPut $ putInstruction Map.empty
+                 Instruction
+                   { operation = SPIRV.Op.Return
+                   , resTy = Nothing
+                   , resID = Nothing
+                   , args  = EndArgs
+                   }
+          _ -> liftPut $ putInstruction Map.empty
+                 Instruction
+                   { operation = SPIRV.Op.ReturnValue
+                   , resTy = Nothing
+                   , resID = Just retValID
+                   , args  = EndArgs
+                   }
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.FunctionEnd
@@ -415,7 +431,6 @@ declareEntryPoint stage stageName body
             , resID     = Nothing
             , args      = EndArgs
             }
-
         pure v
       )
 

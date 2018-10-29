@@ -46,6 +46,7 @@ putDecs
     putEntryPoints knownBindings usedGlobals interfaces    
     lift $ do --putExecutionModes knownBindings interfaces
               putBindingAnnotations   knownBindings
+              putBindingAnnotations   (fmap fst usedGlobals)
               --putDecorations
               putInstructionsInOrder  knownTypes
               putInstructionsInOrder  knownConstants

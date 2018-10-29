@@ -321,6 +321,29 @@ pattern FOrdGreaterThanEqual   :: Operation
 pattern FOrdGreaterThanEqual   = Code 190
 pattern FUnordGreaterThanEqual :: Operation
 pattern FUnordGreaterThanEqual = Code 191
+-- control flow
+pattern Phi               :: Operation
+pattern Phi               = Code 245
+pattern LoopMerge         :: Operation
+pattern LoopMerge         = Code 246
+pattern SelectionMerge    :: Operation
+pattern SelectionMerge    = Code 247
+pattern Label             :: Operation
+pattern Label             = Code 248
+pattern Branch            :: Operation
+pattern Branch            = Code 249
+pattern BranchConditional :: Operation
+pattern BranchConditional = Code 250
+pattern Switch            :: Operation
+pattern Switch            = Code 251
+pattern Kill              :: Operation
+pattern Kill              = Code 252
+pattern Return            :: Operation
+pattern Return            = Code 253
+pattern ReturnValue       :: Operation
+pattern ReturnValue       = Code 254
+pattern Unreachable       :: Operation
+pattern Unreachable       = Code 255
 -- GLSL extended instructions
 pattern FAbs          :: Operation
 pattern FAbs          = ExtCode GLSL 4
@@ -519,6 +542,17 @@ showOperation FOrdLessThanEqual = "FOrdLessThanEqual"
 showOperation FUnordLessThanEqual = "FUnordLessThanEqual"
 showOperation FOrdGreaterThanEqual = "FOrdGreaterThanEqual"
 showOperation FUnordGreaterThanEqual = "FUnordGreaterThanEqual"
+showOperation Phi = "Phi"
+showOperation LoopMerge = "LoopMerge"
+showOperation SelectionMerge = "SelectionMerge"
+showOperation Label = "Label"
+showOperation Branch = "Branch"
+showOperation BranchConditional = "BranchConditional"
+showOperation Switch = "Switch"
+showOperation Kill = "Kill"
+showOperation Return = "Return"
+showOperation ReturnValue = "ReturnValue"
+showOperation Unreachable = "Unreachable"
 showOperation FAbs = "FAbs"
 showOperation SAbs = "SAbs"
 showOperation FSign = "FSign"

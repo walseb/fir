@@ -44,9 +44,6 @@ import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Storage       as SPIRV
 
-import Debug.Trace(trace)
-import Numeric(showHex)
-
 ----------------------------------------------------------------------------
 
 traverseWithKey_ :: Applicative t => (k -> v -> t a) -> Map k v -> t ()
@@ -68,7 +65,6 @@ putInstruction extInsts
         in do put @Word32 ( Bits.shift n 16 + fromIntegral opCode)
               traverse_ put opResTy
               traverse_ put opResID
-              trace (show (SPIRV.Op.Code opCode) ++ " ( hex = " ++ showHex opCode "" ++ ")") (pure ())
               putArgs opArgs
 
            
