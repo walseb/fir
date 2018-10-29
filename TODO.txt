@@ -59,3 +59,5 @@ figure out how to overload function composition for internal functions
 deal with entry point execution modes
 
 make CGMonad polymorphic, so that we can output binary directly, or a human-readable format (or AST)
+
+keep track of extended instruction sets being used

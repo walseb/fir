@@ -10,10 +10,10 @@ import Control.Category((>>>))
 import Data.Word(Word32)
 
 -- binary
-import Data.Binary(Binary)
-import qualified Data.Binary as Binary
+import qualified Data.Binary.Put as Binary
 
 -- fir
+import Data.Binary.Class.Put(Put(put, sizeOf))
 import qualified SPIRV.Operation as SPIRV
 
 ----------------------------------------------------------------------------
@@ -21,30 +21,32 @@ import qualified SPIRV.Operation as SPIRV
 
 data Args where
   EndArgs :: Args
-  Arg     :: ( Show a, Binary a ) => a -> Args -> Args
+  Arg     :: ( Show a, Put a ) => a -> Args -> Args
 
 deriving instance Show Args
 
 -- mono-foldable business
-foldrArgs :: (forall a. (Show a, Binary a) => a -> b -> b) -> b -> Args -> b
+foldrArgs :: (forall a. (Show a, Put a) => a -> b -> b) -> b -> Args -> b
 foldrArgs _ b0 EndArgs    = b0
 foldrArgs f b0 (Arg a as) = f a ( foldrArgs f b0 as )
 
 putArgs :: Args -> Binary.Put
-putArgs = foldrArgs (Binary.put >>> (>>)) (pure ())
+putArgs = foldrArgs (put >>> (>>)) (pure ())
 
 arity :: Num a => Args -> a
 arity = foldrArgs (const (+1)) 0
 
-toArgs :: ( Show a, Binary a, Foldable t ) => t a -> Args
+wordCount :: Args -> Word32
+wordCount = foldrArgs ( (+) . sizeOf ) 0
+
+toArgs :: ( Show a, Put a, Foldable t ) => t a -> Args
 toArgs = foldr Arg EndArgs
 
 ----------------------------------------------------------------------------
 -- instructions
 
 newtype ID = ID { idNumber :: Word32 }
-  deriving ( Eq, Show, Ord, Enum, Binary )
-  -- derived binary instance is big-endian
+  deriving ( Eq, Show, Ord, Enum, Put )
 
 data Instruction
   = Instruction
@@ -55,10 +57,10 @@ data Instruction
     }
   deriving Show
 
-prependArg :: ( Show a, Binary a ) => a -> Instruction -> Instruction
+prependArg :: ( Show a, Put a ) => a -> Instruction -> Instruction
 prependArg arg instr@Instruction { args = oldArgs }
   = instr { args = Arg arg oldArgs }
 
-prependArgs :: ( Show a, Binary a ) => [a] -> Instruction -> Instruction
+prependArgs :: ( Show a, Put a ) => [a] -> Instruction -> Instruction
 prependArgs = flip ( foldr prependArg )
 

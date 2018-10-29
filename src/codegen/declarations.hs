@@ -43,7 +43,7 @@ putDecs
               putCapabilities         neededCapabilities
               putExtendedInstructions knownExtInsts
               putMemoryModel
-    putEntryPoints knownBindings interfaces    
+    putEntryPoints knownBindings usedGlobals interfaces    
     lift $ do --putExecutionModes knownBindings interfaces
               putBindingAnnotations   knownBindings
               --putDecorations

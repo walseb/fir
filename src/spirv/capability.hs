@@ -7,10 +7,8 @@ module SPIRV.Capability where
 -- base
 import Data.Word(Word32)
 
--- binary
-import Data.Binary(Binary)
-
 -- fir
+import Data.Binary.Class.Put(Put)
 import qualified SPIRV.PrimOp as PrimOp
 import qualified SPIRV.PrimTy as PrimTy
 import SPIRV.Operation hiding (Capability)
@@ -19,7 +17,7 @@ import SPIRV.PrimTy(Width(..))
 --------------------------------------------------
 
 newtype Capability = Capability Word32
-  deriving ( Eq, Binary )
+  deriving ( Eq, Ord, Put )
 
 instance Show Capability where
   show capability = "Capability " ++ showCapability capability

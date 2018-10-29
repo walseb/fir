@@ -24,9 +24,6 @@ import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
                    )
 import GHC.TypeNats(KnownNat)
 
--- binary
-import Data.Binary(Binary(get,put))
-
 -- half
 import Numeric.Half(Half)
 
@@ -34,6 +31,7 @@ import Numeric.Half(Half)
 import qualified Data.Text as Text
 
 -- fir
+import Data.Binary.Class.Put(Put)
 import Data.Type.Bindings( Binding
                          , Assignment, type (:->)
                          , BindingsMap
@@ -146,12 +144,13 @@ sTyName (SMatrix m n a  ) = SPIRV.SMatrix (natSDim m) (natSDim n) (sScalarName a
 
 class ( Show ty                    -- for convenience
       , Eq ty, Ord ty, Typeable ty -- to keep track of lists of constants
-      , Binary ty                  -- for serialisation
       ) 
     => PrimTy ty where
   primTySing :: SPrimTy ty
 
-class PrimTy ty => ScalarTy ty where
+class ( PrimTy ty
+      , Put ty                     -- for serialisation
+      ) => ScalarTy ty where
   scalarTySing :: SScalarTy ty
 
 instance PrimTy ()   where
@@ -204,11 +203,6 @@ instance PrimTy Float  where
   primTySing = SScalar SFloat
 instance PrimTy Double where
   primTySing = SScalar SDouble
-
-
-instance Binary Half where
-  get = error "todo"
-  put = error "todo"
 
 
 instance TypeError

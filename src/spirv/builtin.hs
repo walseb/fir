@@ -6,17 +6,15 @@ module SPIRV.Builtin where
 -- base
 import Data.Word(Word32)
 
--- binary
-import Data.Binary(Binary)
-
 -- fir
+import Data.Binary.Class.Put(Put)
 import qualified SPIRV.Capability as Cap
 import SPIRV.ExecutionMode
 
 --------------------------------------------------
 
 newtype Builtin = Builtin Word32
-  deriving ( Eq, Binary )
+  deriving ( Eq, Ord, Put )
 
 instance Show Builtin where
   show builtin = "Builtin " ++ showBuiltin builtin

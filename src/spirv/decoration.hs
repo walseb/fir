@@ -6,13 +6,13 @@ module SPIRV.Decoration where
 -- base
 import Data.Word(Word32)
 
--- binary
-import Data.Binary(Binary)
+-- fir
+import Data.Binary.Class.Put(Put)
 
 --------------------------------------------------
 
 newtype Decoration = Decoration Word32
-  deriving ( Eq, Binary )
+  deriving ( Eq, Ord, Put )
 
 instance Show Decoration where
   show decoration = "Decoration" ++ showDecoration decoration

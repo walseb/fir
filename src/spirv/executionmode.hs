@@ -6,16 +6,17 @@ module SPIRV.ExecutionMode where
 -- base
 import Data.Word(Word32)
 
--- binary
-import Data.Binary(Binary)
+
+-- fir
+import Data.Binary.Class.Put(Put)
 
 --------------------------------------------------
 
 newtype ExecutionModel = ExecutionModel Word32
-  deriving ( Eq, Binary )
+  deriving ( Eq, Ord, Put )
 
 newtype ExecutionMode = ExecutionMode Word32
-  deriving ( Eq, Binary )
+  deriving ( Eq, Ord, Put )
 
 instance Show ExecutionModel where
   show executionModel = "ExecutionModel " ++ showExecutionModel executionModel

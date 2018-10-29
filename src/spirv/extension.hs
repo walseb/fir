@@ -7,11 +7,11 @@ module SPIRV.Extension where
 -- base
 import Data.Word(Word32)
 
--- binary
-import Data.Binary(Binary)
-
 -- text-utf8
 import Data.Text(Text)
+
+-- fir
+import Data.Binary.Class.Put(Put)
 
 --------------------------------------------------
 -- extended instruction sets
@@ -29,7 +29,7 @@ extInstName GLSL   = "GLSL.std.450"
 -- extensions
 
 newtype Extension = Extension Word32
-  deriving ( Eq, Binary )
+  deriving ( Eq, Ord, Put )
 
 instance Show Extension where
   show extension = "Extension " ++ showExtension extension

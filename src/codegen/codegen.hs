@@ -62,6 +62,7 @@ import CodeGen.Instruction ( Args(..), toArgs
                            , ID(ID), Instruction(..)
                            )
 import Control.Monad.Indexed((:=), atKey, Id(runId))
+import Data.Binary.Class.Put(Literal(Literal))
 import FIR.AST(AST(..))
 import FIR.Builtin(Stage, stageVal, stageBuiltins)
 import FIR.Instances(Syntactic(fromAST))
@@ -354,7 +355,7 @@ extInstID extInst =
         { operation = SPIRV.Op.ExtInstImport
         , resTy     = Nothing
         , resID     = Just v
-        , args      = Arg ( SPIRV.extInstName extInst ) -- TODO: 'Put' instance for strings might be wrong
+        , args      = Arg ( Literal (SPIRV.extInstName extInst) )
                       EndArgs
         }
     )

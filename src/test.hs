@@ -25,6 +25,7 @@ import qualified Data.Binary.Put as Binary
 
 -- bytestring
 import Data.ByteString.Lazy(ByteString)
+import qualified Data.ByteString as Strict
 import qualified Data.ByteString.Lazy as ByteString
 import qualified Data.ByteString.Builder as ByteString
 
@@ -112,5 +113,5 @@ write = case runCodeGen cgContext (toAST program) of
       ByteString.writeFile "program.spv" bin
       Prelude.>> putStrLn "output written to program.spv"
 
-showPutBin :: Binary.Binary a => a -> ByteString.ByteString
-showPutBin = ByteString.toLazyByteString . ByteString.lazyByteStringHex . Binary.runPut . Binary.put
+showPutBin :: Binary.Binary a => a -> Strict.ByteString
+showPutBin = ByteString.toStrict . ByteString.toLazyByteString . ByteString.lazyByteStringHex . Binary.runPut . Binary.put

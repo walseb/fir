@@ -6,13 +6,13 @@ module SPIRV.Storage where
 -- base
 import Data.Word(Word32)
 
--- binary
-import Data.Binary(Binary)
+-- fir
+import Data.Binary.Class.Put(Put)
 
 --------------------------------------------------
 
 newtype StorageClass = StorageClass Word32
-  deriving ( Eq, Ord, Binary )
+  deriving ( Eq, Ord, Put )
 
 instance Show StorageClass where
   show storageClass = "StorageClass " ++ showStorageClass storageClass

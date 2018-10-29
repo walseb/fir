@@ -30,10 +30,12 @@ import Control.Monad.Except(ExceptT)
 import Control.Monad.Trans.Class(lift)
 
 -- fir
-import CodeGen.Instruction ( Args(..), arity, putArgs, toArgs
+import CodeGen.Instruction ( Args(..), putArgs, toArgs
                            , ID(..), Instruction(..)
+                           , wordCount
                            )
 import CodeGen.Monad(note)
+import Data.Binary.Class.Put(Put(put), Literal(Literal))
 import FIR.Builtin(Stage, executionModel)
 import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV
@@ -41,6 +43,8 @@ import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Storage       as SPIRV
+
+import Debug.Trace(trace)
 
 ----------------------------------------------------------------------------
 
@@ -55,17 +59,18 @@ putInstruction extInsts
     = case op of
 
       SPIRV.Op.Code opCode ->
-        let n = 1                          -- OpCode and number of arguments
-              + maybe 0 (const 1) opResTy  -- result type + ID, if operation produces a result
-              + maybe 0 (const 1) opResID
-              + arity opArgs               -- one per argument
-        in do Binary.putWord32be ( Bits.shift n 16 + fromIntegral opCode )
-              traverse_ Binary.put opResTy
-              traverse_ Binary.put opResID
+        let n :: Word32
+            n = 1                          -- OpCode and word count (first byte)
+              + maybe 0 (const 1) opResTy  -- result type (if present)
+              + maybe 0 (const 1) opResID  -- ID (if present)
+              + wordCount opArgs
+        in do put @Word32 ( Bits.shift n 16 + fromIntegral opCode)
+              traverse_ put opResTy
+              traverse_ put opResID
               putArgs opArgs
            
       SPIRV.Op.ExtCode ext extOpCode ->
-        case resID <$> Map.lookup ext extInsts of
+        case resID =<< Map.lookup ext extInsts of
           Nothing    -> pure ()
           Just extID ->
             putInstruction Map.empty
@@ -74,18 +79,19 @@ putInstruction extInsts
                 , resTy     = opResTy
                 , resID     = opResID
                 , args      = Arg extID
-                            $ Arg extOpCode opArgs
+                            $ Arg extOpCode
+                            opArgs
                 }
 
 
 putHeader :: Word32 -> Binary.Put
 putHeader bound
   = traverse_
-      Binary.putWord32be
+      (put @Word32)
       [ 0x07230203   -- magic number
       , 0x00010000   -- version 1.0 ( 0 | 1 | 0 | 0 )
-      , 0x46495221   -- FIR!
-      , bound
+      , 0x21524946   -- FIR!
+      , trace ("bound = " ++ show bound) bound
       , 0            -- always 0
       ]
 
@@ -129,26 +135,26 @@ putEntryPoint stage stageName entryPointID interface
         -- instead of result type, resTy field holds the ExecutionModel value
         , resTy     = Just ( ID executionID )
         , resID     = Just entryPointID
-        , args      = Arg stageName
+        , args      = Arg (Literal stageName)
                     $ toArgs interface
         }
     where SPIRV.ExecutionModel executionID = executionModel stage
 
-putEntryPoints :: Map Text ID -> Map (Stage, Text) (Set Text) -> ExceptT Text Binary.PutM ()
-putEntryPoints bindings
+putEntryPoints :: Map Text ID -> Map Text (ID, p) -> Map (Stage, Text) (Set Text) -> ExceptT Text Binary.PutM ()
+putEntryPoints bindings globals
   = traverseWithKey_
       ( \(stage, stageName) builtins -> do
-        builtin_IDs <- 
-          traverse 
+        builtin_IDs <-
+          traverse
             ( \builtin -> 
               note
                 ( "putEntryPoints: builtin " <> builtin <> " not bound to any ID." )
-                ( Map.lookup builtin bindings) 
+                ( fst <$> Map.lookup builtin globals)
             )
             (Set.toList builtins)
         entryPointID <- note
                      ( "putEntryPoints: entry point " <> stageName <> "not bound to any ID." )
-                     ( Map.lookup stageName bindings ) 
+                     ( Map.lookup stageName bindings )
         lift ( putEntryPoint stage stageName entryPointID builtin_IDs )
       )
 
@@ -161,7 +167,7 @@ putBindingAnnotations
           , resTy     = Nothing
           , resID     = Nothing
           , args      = Arg ident
-                      $ Arg name EndArgs
+                      $ Arg (Literal name) EndArgs
           }
       )
 
@@ -187,7 +193,7 @@ putGlobals typeIDs
            ptrTyID 
              <- note
                   ( error ( "putGlobals: pointer type " ++ show ptrTy ++ " not bound to any ID." ) )
-                  ( resTy =<< Map.lookup ptrTy typeIDs )
+                  ( resID =<< Map.lookup ptrTy typeIDs )
            lift $ putInstruction Map.empty
                  Instruction
                    { operation = SPIRV.Op.Variable

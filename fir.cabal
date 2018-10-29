@@ -25,6 +25,7 @@ library
     , CodeGen.State
     , Control.Arrow.Strength
     , Control.Monad.Indexed
+    , Data.Binary.Class.Put
     , Data.Type.Bindings
     , Deriving.Prelude
     , FIR.AST
