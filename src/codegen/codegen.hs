@@ -2,10 +2,12 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module CodeGen.CodeGen where
 
@@ -15,6 +17,7 @@ import Data.Foldable(traverse_)
 import Data.Maybe(fromJust)
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
+import GHC.TypeNats(natVal)
 import Prelude hiding (Monad(..))
 
 -- bytestring
@@ -55,6 +58,7 @@ import CodeGen.State( CGState, CGContext
                     , _builtin
                     , _interface
                     , _usedGlobal
+                    , _functionReturnType
                     , _userGlobal
                     )
 import CodeGen.Instruction ( Args(..), toArgs
@@ -81,8 +85,41 @@ import qualified SPIRV.Storage   as Storage
 import SPIRV.Storage(StorageClass)
 
 ----------------------------------------------------------------------------
--- main code generator
+-- pattern for applied function with any number of arguments
 
+infixl 5 :&
+
+data ASTList where
+  Nil  :: ASTList
+  (:&) :: ASTList -> AST a -> ASTList
+
+data AnyAST where
+  AnyAST :: AST a -> AnyAST
+
+pattern Ap :: AST a -> ASTList -> AST b
+pattern Ap f as <- (unapply . AnyAST -> (AnyAST f,as))
+
+unapply :: AnyAST -> (AnyAST, ASTList)
+unapply (AnyAST (f :$ a))
+  = case unapply (AnyAST f) of
+        (AnyAST g, as) -> (AnyAST g, as :& a)
+unapply (AnyAST f) = (AnyAST f, Nil)
+
+codeGenASTList :: ASTList -> CGMonad [ ID ]
+codeGenASTList = sequence . reverse . go
+    where go :: ASTList -> [ CGMonad ID ]
+          go Nil = []
+          go (as :& a) = codeGen a : go as
+
+headTailASTList :: ASTList -> Maybe (AnyAST, ASTList)
+headTailASTList Nil       = Nothing
+headTailASTList (as :& a)
+  = case headTailASTList as of
+      Nothing      -> Just ( AnyAST a, Nil )
+      Just (b, bs) -> Just ( b, bs :& a )
+
+----------------------------------------------------------------------------
+-- main code generator
 
 codeGen :: AST a -> CGMonad ID
 -- ignore indexing information
@@ -90,10 +127,22 @@ codeGen (Pure     :$ a) = codeGen a
 codeGen (RunId    :$ a) = codeGen a
 codeGen (MkAtKey  :$ a) = codeGen a
 codeGen (RunAtKey :$ a) = codeGen a
+codeGen (Ap (MkID v) as)
+  = case as of
+      Nil -> pure v
+      _   ->
+        do mbRetTyID <- use ( _functionReturnType v )
+           case mbRetTyID of
+              Nothing
+                -> throwError "codeGen: function with unknown return type"
+              Just retTyID
+                -> codeGenFunctionCall retTyID v =<< codeGenASTList as
 -- constants
 codeGen (Lit a) = constID a
 -- perform substitution when possible
-codeGen (Lam f :$ a) = codeGen (f a)
+codeGen (Lam f :$ a)
+  = do a_ID <- codeGen a
+       codeGen (f (MkID a_ID))
 codeGen (Bind :$ a :$ f)
   = codeGen ( fromAST f
             $ atKey       -- acrobatics
@@ -199,33 +248,39 @@ codeGen (Put k :$ a)
           _ -> assign ( _knownBinding varName) (Just a_ID)
 
        pure (ID 666666666) -- should never be used
--- primops
-codeGen (PrimOp primOp _ :$ a1 :$ a2 :$ a3 :$ a4)
-  = codeGenPrimOp primOp =<< sequence [codeGen a1, codeGen a2, codeGen a3, codeGen a4]
-codeGen (PrimOp primOp _ :$ a1 :$ a2 :$ a3)
-  = codeGenPrimOp primOp =<< sequence [codeGen a1, codeGen a2, codeGen a3]
-codeGen (PrimOp primOp _ :$ a1 :$ a2)
-  = codeGenPrimOp primOp =<< sequence [codeGen a1, codeGen a2]
-codeGen (PrimOp primOp _ :$ a1)
-  = codeGenPrimOp primOp =<< sequence [codeGen a1]
-codeGen (PrimOp primOp _ )
-  = codeGenPrimOp primOp []
-codeGen (MkVector _) = throwError "codeGen: vector construction not yet supported"
-codeGen (VectorAt _) = throwError "codeGen: vector indexing not yet supported"
+codeGen (Ap (PrimOp primOp _) as)
+  = codeGenPrimOp primOp =<< codeGenASTList as
+codeGen (Ap (MkVector n_px a_px) as)
+  = do let n = SPIRV.toDim (natVal n_px)
+       compositeTy
+         <- case primTyVal a_px of
+              SPIRV.Scalar s
+                -> pure $ SPIRV.Vector n s
+              SPIRV.Vector m s
+                -> pure $ SPIRV.Matrix m n s -- TODO: check ordering of m, n
+              x -> throwError ( "codeGen: unexpected vector constituent "
+                              <> Text.pack ( show x )
+                              )
+       codeGenCompositeConstruct compositeTy =<< codeGenASTList as
+codeGen (VectorAt a_px i_px :$ v)
+ = codeGenCompositeExtract
+    (primTyVal a_px)
+    [fromIntegral ( natVal i_px )]
+    =<< codeGen v
 codeGen (FmapVector _) = throwError "codeGen: fmap not yet supported"
 codeGen (Mat) = throwError "codeGen: matrix construction not yet supported"
 codeGen (UnMat) = throwError "codeGen: matrix type eliminator not yet supported"
 codeGen (If) = throwError "codeGen: if statements not yet supported"
 codeGen (Lam f) = error ( "codeGen: unexpected lambda abstraction:\n"
-                          ++ show (Lam f)
+                         <> show (Lam f)
                         )
 codeGen (f :$ a) = error ( "codeGen: unsupported function application:\n"
-                          ++ show (f :$ a)
+                          <> show (f :$ a)
                          )
 -- NamedVar used only for pretty-printing AST
 codeGen (NamedVar _) = throwError "codeGen: unexpected 'NamedVar'"
 codeGen other = error ( "codeGen: non-exhaustive pattern match:\n"
-                        ++ show other
+                        <> show other
                       )
 
 codeGenPrimOp :: SPIRV.PrimOp -> [ ID ] -> CGMonad ID
@@ -241,6 +296,48 @@ codeGenPrimOp primOp as
            , args = toArgs as
            }
        pure v
+
+codeGenCompositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad ID
+codeGenCompositeConstruct compositeType constituents
+  = do tyID <- typeID compositeType
+       v <- fresh
+       liftPut $ putInstruction Map.empty
+         Instruction
+           { operation = SPIRV.Op.CompositeConstruct
+           , resTy = Just tyID
+           , resID = Just v
+           , args  = toArgs constituents
+           }
+       pure v
+
+codeGenCompositeExtract :: SPIRV.PrimTy -> [ Word32 ] -> ID -> CGMonad ID
+codeGenCompositeExtract constituentTy indices compositeID
+  = do constituentTyID <- typeID constituentTy
+       v <- fresh
+       liftPut $ putInstruction Map.empty
+         Instruction
+           { operation = SPIRV.Op.CompositeExtract
+           , resTy     = Just constituentTyID
+           , resID     = Just v
+           , args      = Arg compositeID
+                       $ toArgs (map pred indices) -- off by one, TODO: fix
+           }
+       pure v
+
+codeGenFunctionCall :: ID -> ID -> [ ID ] -> CGMonad ID
+codeGenFunctionCall resTyID functionID argIDs
+  = do v <- fresh
+       liftPut $ putInstruction Map.empty
+         Instruction
+           { operation = SPIRV.Op.FunctionCall
+           , resTy = Just resTyID
+           , resID = Just v
+           , args  = Arg functionID
+                   $ toArgs argIDs
+           }
+       pure v
+
+----------------------------------------------------------------------------
 
 runCodeGen :: CGContext -> AST a -> Either Text ByteString
 runCodeGen context = putASM context . codeGen
@@ -272,6 +369,7 @@ declareFunction funName as b body
             , resID     = Nothing
             , args      = EndArgs
             }
+        assign ( _functionReturnType v ) (Just resTyID) -- hacky workaround, sorry
         pure v
       )
 
@@ -451,11 +549,17 @@ constID a =
                             ) 
                             elts
 
-        SScalar _ -> create _knownAConstant 
-              ( mkConstantInstruction SPIRV.Op.Constant (SPIRV.Scalar (scalarTy @a)) (Arg a EndArgs) )
+        SScalar _
+          -> create _knownAConstant
+              ( mkConstantInstruction
+                  SPIRV.Op.Constant
+                  (SPIRV.Scalar (scalarTy @a))
+                  (Arg a EndArgs)
+              )
 
         SUnit -> error "Error: 'constId' called on Unit type.\n\
-                       \Unit has a unique value, and as such does not need to be constructed."
+                       \Unit has a unique value, \
+                       \and as such does not need to be constructed."
 
         SBool -> 
           create _knownAConstant

@@ -58,10 +58,8 @@ library
     , transformers
     , tree-view
     , text-utf8
-    --, singletons
-    --    >= 2.5
-    --, exinst
-    --    >= 0.7
+    , data-binary-ieee754
+        >= 0.4.4
     , half
         >= 0.3
     , lens

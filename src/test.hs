@@ -51,11 +51,10 @@ import CodeGen.Instruction
 import CodeGen.Monad
 import CodeGen.State
 
-
 ------------------------------------------------
 -- program
 
-{-
+
 program ::
   Program
     '[ "model"       :-> Var R (M 4 4 Float)
@@ -85,17 +84,9 @@ program = do
       _14 = convert ( add11 :$ 3 )
 
   entryPoint @"main" @Vertex do
-    ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ fmapAST add11 position' )
+    ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ position' )
     put @"gl_Position" ( vec4 x y z (convert _14) )
--}
 
-program :: Program '[ "t" :-> Var R Float ] '[] ()
-program = do
-  t <- get @"t"
-  entryPoint @"main" @Vertex do
-    vertexId <- get @"gl_VertexId"
-    let size = t * convert vertexId
-    put @"gl_PointSize" size
 
 cgContext :: CGContext
 cgContext = CGContext { userGlobals = programGlobals program }

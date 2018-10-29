@@ -45,6 +45,7 @@ import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Storage       as SPIRV
 
 import Debug.Trace(trace)
+import Numeric(showHex)
 
 ----------------------------------------------------------------------------
 
@@ -67,7 +68,9 @@ putInstruction extInsts
         in do put @Word32 ( Bits.shift n 16 + fromIntegral opCode)
               traverse_ put opResTy
               traverse_ put opResID
+              trace (show (SPIRV.Op.Code opCode) ++ " ( hex = " ++ showHex opCode "" ++ ")") (pure ())
               putArgs opArgs
+
            
       SPIRV.Op.ExtCode ext extOpCode ->
         case resID =<< Map.lookup ext extInsts of
@@ -91,7 +94,7 @@ putHeader bound
       [ 0x07230203   -- magic number
       , 0x00010000   -- version 1.0 ( 0 | 1 | 0 | 0 )
       , 0x21524946   -- FIR!
-      , trace ("bound = " ++ show bound) bound
+      , bound
       , 0            -- always 0
       ]
 

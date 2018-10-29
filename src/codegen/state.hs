@@ -40,17 +40,18 @@ import qualified SPIRV.Storage    as SPIRV
 -- for instance which types have been declared
 data CGState
   = CGState
-    { currentID          :: ID
-    , functionContext    :: FunctionContext
-    , neededCapabilities :: Set               SPIRV.Capability
-    , knownExtInsts      :: Map SPIRV.ExtInst Instruction
-    , interfaces         :: Map (Stage, Text) (Set Text)
-    , annotations        :: Set               Instruction
-    , knownTypes         :: Map SPIRV.PrimTy  Instruction
-    , knownConstants     :: Map AConstant     Instruction
-    , usedGlobals        :: Map Text          (ID, (SPIRV.PrimTy, SPIRV.StorageClass))
-    , knownBindings      :: Map Text          ID
-    , localBindings      :: Map Text          ID
+    { currentID           :: ID
+    , functionContext     :: FunctionContext
+    , neededCapabilities  :: Set               SPIRV.Capability
+    , knownExtInsts       :: Map SPIRV.ExtInst Instruction
+    , interfaces          :: Map (Stage, Text) (Set Text)
+    , annotations         :: Set               Instruction
+    , knownTypes          :: Map SPIRV.PrimTy  Instruction
+    , knownConstants      :: Map AConstant     Instruction
+    , usedGlobals         :: Map Text          (ID, (SPIRV.PrimTy, SPIRV.StorageClass))
+    , knownBindings       :: Map Text          ID
+    , localBindings       :: Map Text          ID
+    , functionReturnTypes :: Map ID            ID
     }
   deriving Show
 
@@ -69,17 +70,18 @@ data VariableContext
 
 initialState :: CGState
 initialState = CGState
-  { currentID          = ID 1
-  , functionContext    = TopLevel
-  , neededCapabilities = Set.empty
-  , knownExtInsts      = Map.empty
-  , interfaces         = Map.empty
-  , annotations        = Set.empty
-  , knownTypes         = Map.empty
-  , knownConstants     = Map.empty
-  , usedGlobals        = Map.empty
-  , knownBindings      = Map.empty
-  , localBindings      = Map.empty
+  { currentID           = ID 1
+  , functionContext     = TopLevel
+  , neededCapabilities  = Set.empty
+  , knownExtInsts       = Map.empty
+  , interfaces          = Map.empty
+  , annotations         = Set.empty
+  , knownTypes          = Map.empty
+  , knownConstants      = Map.empty
+  , usedGlobals         = Map.empty
+  , knownBindings       = Map.empty
+  , localBindings       = Map.empty
+  , functionReturnTypes = Map.empty
   }
 
 data CGContext
@@ -176,6 +178,14 @@ _localBindings = lens localBindings ( \s v -> s { localBindings = v } )
 
 _localBinding :: Text -> Lens' CGState (Maybe ID)
 _localBinding binding = _localBindings . at binding
+
+_functionReturnTypes :: Lens' CGState (Map ID ID)
+_functionReturnTypes = lens functionReturnTypes
+                            ( \s v -> s { functionReturnTypes = v } )
+
+_functionReturnType :: ID -> Lens' CGState (Maybe ID)
+_functionReturnType fnID = _functionReturnTypes . at fnID
+
 
 
 _userGlobals :: Lens' CGContext (Map Text SPIRV.PrimTy)

@@ -12,6 +12,9 @@ import qualified Data.Binary.Put as Binary
 -- bytestring
 import qualified Data.ByteString as ByteString
 
+-- data-binary-ieee754
+import qualified Data.Binary.IEEE754 as Binary.IEEE754
+
 -- half
 import Numeric.Half(Half)
 import qualified Numeric.Half as Half
@@ -74,11 +77,11 @@ instance Put Half where
   sizeOf _ = 1
 
 instance Put Float where
-  put = Binary.put
+  put = Binary.IEEE754.putFloat32le
   sizeOf _ = 1
 
 instance Put Double where
-  put = Binary.put
+  put = Binary.IEEE754.putFloat64le
   sizeOf _ = 2
 
 -- C-style string

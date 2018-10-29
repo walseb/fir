@@ -295,7 +295,7 @@ instance Syntactic a => Syntactic (Id (a := j) i) where
 -- utility type for the following instance declaration
 newtype B n a b i = B { unB :: AST (AST.Variadic (n-i) a b) }
 
-instance (KnownNat n, Syntactic a) => Syntactic (V n a) where
+instance (KnownNat n, Syntactic a, PrimTy (Internal a)) => Syntactic (V n a) where
   type Internal (V n a) = V n (Internal a)
 
   toAST :: V n a -> AST (V n (Internal a))
@@ -306,47 +306,48 @@ instance (KnownNat n, Syntactic a) => Syntactic (V n a) where
             -> B n (Internal a) (V n (Internal a)) (i+1)
           f a (B b) = B ( b :$ toAST a )
           a0 :: B n (Internal a) (V n (Internal a)) 0
-          a0 = B ( MkVector @n @(Internal a) Proxy )
+          a0 = B ( MkVector (Proxy @n) (Proxy @(Internal a)) )
           res :: B n (Internal a) (V n (Internal a)) n
           res = dfoldrV f a0 v
           res' :: ((n-n) ~ 0) => AST (AST.Variadic 0 (Internal a) (V n (Internal a)))
           res' = unB res
 
   fromAST :: AST (V n (Internal a)) -> V n a
-  fromAST = buildV ( \i v -> fromAST ( VectorAt i :$ v) )
+  fromAST = buildV ( \i v -> fromAST ( VectorAt Proxy i :$ v) )
 
-deriving instance (KnownNat m, KnownNat n, Syntactic a) => Syntactic (Math.Linear.M m n a)
+deriving instance (KnownNat m, KnownNat n, Syntactic a, ScalarTy (Internal a))
+  => Syntactic (Math.Linear.M m n a)
 
 -- these patterns and constructors could be generalised to have types such as:
--- Vec2 :: Syntactic a => a -> a -> AST ( V 2 (Internal a) )
+-- Vec2 :: (Syntactic a, PrimTy (Internal a)) => a -> a -> AST ( V 2 (Internal a) )
 -- but this leads to poor type-inference
 
 {-# COMPLETE Vec2 #-}
-pattern Vec2 :: AST a -> AST a -> AST ( V 2 a )
+pattern Vec2 :: PrimTy a => AST a -> AST a -> AST ( V 2 a )
 pattern Vec2 x y <- (fromAST -> V2 x y)
 
 {-# COMPLETE Vec3 #-}
-pattern Vec3 :: AST a -> AST a -> AST a -> AST ( V 3 a )
+pattern Vec3 :: PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
 pattern Vec3 x y z <- (fromAST -> V3 x y z)
 
 {-# COMPLETE Vec4 #-}
-pattern Vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
+pattern Vec4 :: PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 
-vec2 :: AST a -> AST a -> AST ( V 2 a )
-vec2 = fromAST $ MkVector (Proxy @2)
+vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
+vec2 = fromAST $ MkVector (Proxy @2) (Proxy @a)
 
-vec3 :: AST a -> AST a -> AST a -> AST ( V 3 a )
-vec3 = fromAST $ MkVector (Proxy @3)
+vec3 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
+vec3 = fromAST $ MkVector (Proxy @3) (Proxy @a)
 
-vec4 :: AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
-vec4 = fromAST $ MkVector (Proxy @4)
-
+vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
+vec4 = fromAST $ MkVector (Proxy @4) (Proxy @a)
 
 
 {-# COMPLETE Mat22 #-}
 pattern Mat22
-  :: AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a
   -> AST a -> AST a
   -> AST ( M 2 2 a )
 pattern Mat22 a11 a12
@@ -358,7 +359,8 @@ pattern Mat22 a11 a12
 
 {-# COMPLETE Mat23 #-}
 pattern Mat23
-  :: AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST ( M 2 3 a )
 pattern Mat23 a11 a12 a13
@@ -370,7 +372,8 @@ pattern Mat23 a11 a12 a13
 
 {-# COMPLETE Mat24 #-}
 pattern Mat24
-  :: AST a -> AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST ( M 2 4 a )
 pattern Mat24 a11 a12 a13 a14
@@ -382,7 +385,8 @@ pattern Mat24 a11 a12 a13 a14
 
 {-# COMPLETE Mat32 #-}
 pattern Mat32
-  :: AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a
   -> AST a -> AST a
   -> AST a -> AST a
   -> AST ( M 3 2 a )
@@ -397,7 +401,8 @@ pattern Mat32 a11 a12
 
 {-# COMPLETE Mat33 #-}
 pattern Mat33
-  :: AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST ( M 3 3 a )
@@ -412,7 +417,8 @@ pattern Mat33 a11 a12 a13
 
 {-# COMPLETE Mat34 #-}
 pattern Mat34
-  :: AST a -> AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST ( M 3 4 a )
@@ -427,7 +433,8 @@ pattern Mat34 a11 a12 a13 a14
 
 {-# COMPLETE Mat42 #-}
 pattern Mat42
-  :: AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a
   -> AST a -> AST a
   -> AST a -> AST a
   -> AST a -> AST a
@@ -445,7 +452,8 @@ pattern Mat42 a11 a12
 
 {-# COMPLETE Mat43 #-}
 pattern Mat43
-  :: AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
@@ -463,7 +471,8 @@ pattern Mat43 a11 a12 a13
 
 {-# COMPLETE Mat44 #-}
 pattern Mat44
-  :: AST a -> AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
@@ -480,7 +489,8 @@ pattern Mat44 a11 a12 a13 a14
       )
 
 mat22
-  :: AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a
   -> AST a -> AST a
   -> AST ( M 2 2 a )
 mat22 a11 a12
@@ -490,7 +500,8 @@ mat22 a11 a12
       ( vec2 a21 a22 )
 
 mat23
-  :: AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST ( M 2 3 a )
 mat23 a11 a12 a13
@@ -500,7 +511,8 @@ mat23 a11 a12 a13
       ( vec3 a21 a22 a23 )
 
 mat24
-  :: AST a -> AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST ( M 2 4 a )
 mat24 a11 a12 a13 a14
@@ -510,7 +522,8 @@ mat24 a11 a12 a13 a14
       ( vec4 a21 a22 a23 a24 )
 
 mat32
-  :: AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a
   -> AST a -> AST a
   -> AST a -> AST a
   -> AST ( M 3 2 a )
@@ -523,7 +536,8 @@ mat32 a11 a12
       ( vec2 a31 a32 )
 
 mat33
-  :: AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST ( M 3 3 a )
@@ -536,7 +550,8 @@ mat33 a11 a12 a13
       ( vec3 a31 a32 a33 )
 
 mat34
-  :: AST a -> AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST ( M 3 4 a )
@@ -549,7 +564,8 @@ mat34 a11 a12 a13 a14
       ( vec4 a31 a32 a33 a34 )
 
 mat42
-  :: AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a
   -> AST a -> AST a
   -> AST a -> AST a
   -> AST a -> AST a
@@ -565,7 +581,8 @@ mat42 a11 a12
       ( vec2 a41 a42 )
 
 mat43
-  :: AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a
@@ -581,7 +598,8 @@ mat43 a11 a12 a13
       ( vec3 a41 a42 a43 )
 
 mat44
-  :: AST a -> AST a -> AST a -> AST a
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a
   -> AST a -> AST a -> AST a -> AST a

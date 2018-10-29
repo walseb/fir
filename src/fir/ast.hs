@@ -29,12 +29,13 @@ import Control.Monad.State.Lazy(State, put, get, evalState)
 import Data.Tree.View(showTree)
 
 -- fir
+import CodeGen.Instruction(ID(ID))
+import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..)
+                            , Id )
 import Data.Type.Bindings 
   ( BindingType, Var, Fun
   , Insert, Union
   )
-import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..)
-                            , Id )
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Get, Put
                    )
@@ -98,21 +99,28 @@ data AST :: Type -> Type where
          -> AST (    Id (() := l) (Union i (StageBuiltins s))
                   -> Id (() := i) i
                 )
-
-  Get    :: forall k i. KnownSymbol k
-         => Proxy k
-         -> AST ( Id (Get k i := i) i)
-  Put    :: forall k i. (KnownSymbol k, PrimTy (Put k i))
-         => Proxy k
-         -> AST ( Put k i -> Id (():= i) i )
+  Get :: forall k i. KnownSymbol k
+      => Proxy k
+      -> AST ( Id (Get k i := i) i)
+  Put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
+      => Proxy k
+      -> AST ( Put k i -> Id (():= i) i )
 
   -- vectors (and matrices)
-  MkVector :: KnownNat n => Proxy n -> AST ( Variadic n a ( V n a ) )
-  VectorAt :: (KnownNat n, KnownNat i) => Proxy i -> AST ( V n a -> a )
+  MkVector :: (KnownNat n, PrimTy a)
+           => Proxy n
+           -> Proxy a
+           -> AST ( Variadic n a ( V n a ) )
+  VectorAt :: (KnownNat n, KnownNat i, PrimTy a)
+           => Proxy a
+           -> Proxy i
+           -> AST ( V n a -> a )
   FmapVector :: KnownNat n => Proxy n -> AST ( (a -> b) -> (V n a -> V n b) )
 
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
+
+  MkID :: ID -> AST a
 
   -- for printing lambdas
   NamedVar :: String -> AST a
@@ -166,16 +174,17 @@ toTreeArgs RunAtKey as = return (Node "RunAtKey" as)
 toTreeArgs RunId    as = return (Node "RunId"    as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
-toTreeArgs (NamedVar   v ) as = return (Node v as)
-toTreeArgs (Lit        a ) as = return (Node ("Lit "     ++ show a ) as)
-toTreeArgs (MkVector   n ) as = return (Node ("Vec"      ++ show (natVal n)) as)
-toTreeArgs (VectorAt   n ) as = return (Node ("At "      ++ show (natVal n)) as)
-toTreeArgs (FmapVector n ) as = return (Node ("Fmap V"   ++ show (natVal n)) as)
-toTreeArgs (Get    k     ) as = return (Node ("Get @"    ++ symbolVal k ) as)
-toTreeArgs (Put    k     ) as = return (Node ("Put @"    ++ symbolVal k ) as)
-toTreeArgs (Def    k _   ) as = return (Node ("Def @"    ++ symbolVal k ) as)
-toTreeArgs (FunDef k _ _ ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
-toTreeArgs (Entry  _ s   ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
+toTreeArgs (NamedVar   v  ) as = return (Node v as)
+toTreeArgs (MkID       v  ) as = return (Node (show v) as)
+toTreeArgs (Lit        a  ) as = return (Node ("Lit "     ++ show a ) as)
+toTreeArgs (MkVector   n _) as = return (Node ("Vec"      ++ show (natVal n)) as)
+toTreeArgs (VectorAt   _ i) as = return (Node ("At "      ++ show (natVal i)) as)
+toTreeArgs (FmapVector n  ) as = return (Node ("Fmap V"   ++ show (natVal n)) as)
+toTreeArgs (Get    k      ) as = return (Node ("Get @"    ++ symbolVal k ) as)
+toTreeArgs (Put    k      ) as = return (Node ("Put @"    ++ symbolVal k ) as)
+toTreeArgs (Def    k _    ) as = return (Node ("Def @"    ++ symbolVal k ) as)
+toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
+toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
 
 toTree :: AST a -> Tree String
 toTree a = evalState (toTreeArgs a []) 0
