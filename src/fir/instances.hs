@@ -36,7 +36,6 @@ import GHC.TypeLits  ( KnownSymbol
                      )
 import GHC.TypeNats(KnownNat, type (+), type (-), type (<=?))
 import Type.Reflection(typeRep)
-import Unsafe.Coerce(unsafeCoerce)
 
 -- fir  
 import Control.Monad.Indexed ((:=)(..), Codensity(..))
@@ -47,10 +46,12 @@ import FIR.AST(AST(..))
 import qualified FIR.AST as AST
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Put, Get
+                   , Local
                    )
 import FIR.Builtin(StageBuiltins, KnownStage)
 import FIR.PrimTy(PrimTy, primTy, ScalarTy, scalarTy, KnownVars)
-import Math.Logic.Class ( Eq(..), Boolean(..), HasBool(..)
+import Math.Logic.Class ( Eq(..), Boolean(..)
+                        , Choose(..), Triple
                         , Ord(..)
                         )
 import Math.Algebra.Class ( AdditiveGroup(..)
@@ -77,25 +78,25 @@ import qualified SPIRV.PrimTy as SPIRV
 def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
     => AST a
     -> Codensity AST (AST a := Insert k (Var ps a) i) i
-def         a = Codensity ( \h -> Bind :$ (Def    (Proxy @k) (Proxy @ps)            :$ a      ) :$ (Lam $ h . AtKey) )
+def        a = Codensity ( \h -> Bind :$ (Def    (Proxy @k) (Proxy @ps)            :$ a      ) :$ (Lam $ h . AtKey) )
 
 fundef :: forall k as b l i. (KnownSymbol k, KnownVars as, PrimTy b, ValidFunDef k as i l ~ 'True)
        => Codensity AST (AST b := l) (Union i as)
        -> Codensity AST (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
-fundef      f = Codensity ( \h -> Bind :$ (FunDef (Proxy @k) (Proxy @as) (Proxy @b) :$ toAST f) :$ (Lam $ h . AtKey) )
+fundef     f = Codensity ( \h -> Bind :$ (FunDef (Proxy @k) (Proxy @as) (Proxy @b) :$ toAST f) :$ (Lam $ h . AtKey) )
 
 entryPoint :: forall k s l i. (KnownSymbol k, KnownStage s, ValidEntryPoint s i l ~ 'True)
            => Codensity AST (AST () := l) (Union i (StageBuiltins s))
            -> Codensity AST (AST () := i) i
-entryPoint  f = Codensity ( \h -> Bind :$ (Entry  (Proxy @k) (Proxy @s )            :$ toAST f) :$ (Lam $ h . AtKey) )
+entryPoint f = Codensity ( \h -> Bind :$ (Entry  (Proxy @k) (Proxy @s )            :$ toAST f) :$ (Lam $ h . AtKey) )
 
 get :: forall k i. (KnownSymbol k)
-    => Codensity AST ( AST (Get k i) := i) i
-get           = Codensity ( \h -> Bind :$  Get    (Proxy @k)                                    :$ (Lam $ h . AtKey) )
+    => Codensity AST (AST (Get k i) := i) i
+get          = Codensity ( \h -> Bind :$  Get    (Proxy @k)                                    :$ (Lam $ h . AtKey) )
 
 put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
-    => AST (Put k i) -> Codensity AST ( AST () := i) i
-put         a = Codensity ( \h -> Bind :$ (Put    (Proxy @k)                        :$ a      ) :$ (Lam $ h . AtKey) )
+    => AST (Put k i) -> Codensity AST (AST () := i) i
+put        a = Codensity ( \h -> Bind :$ (Put    (Proxy @k)                        :$ a      ) :$ (Lam $ h . AtKey) )
 
 --------------------------------------------------------------------------------------
 -- instances for AST
@@ -108,15 +109,29 @@ instance Boolean (AST Bool) where
   (||)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Or ) (||)
   not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Not) not
 
-instance PrimTy a => HasBool (AST Bool) (AST a) where
-  bool b x y = RunAtKey :$ ( If :$ b :$ (MkAtKey :$ x) :$ (MkAtKey :$ y) )
+instance PrimTy a => Choose (AST Bool) (Triple (AST a)) where
+  choose = fromAST If
 
-instance (PrimTy a, Eq a, Logic a ~ Bool) => Eq (AST a) where
+instance ( PrimTy a
+         , i' ~ i, i'' ~ i
+         , a' ~ a
+         , r ~ (AST a := i)
+         ) =>
+  Choose  ( AST Bool )
+         '( Codensity AST (AST a  := j) i
+          , Codensity AST (AST a' := k) i'
+          , Codensity AST r             i''
+          ) where
+  choose = fromAST IfM
+
+instance (PrimTy a, Eq a, Logic a ~ Bool)
+  => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)
   (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (primTy @a)) (==)
   (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) (/=)
 
-instance (PrimTy a, Ord a, Logic a ~ Bool) => Ord (AST a) where
+instance (PrimTy a, Ord a, Logic a ~ Bool)
+  => Ord (AST a) where
   type Ordering (AST a) = AST Int
   compare = error "todo"
   (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) (<=)
@@ -142,7 +157,10 @@ instance (ScalarTy a, Signed a) => Signed (AST a) where
 instance (ScalarTy a, DivisionRing a) => DivisionRing (AST a) where
   (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (scalarTy @a)) (/)
   fromRational = Lit . fromRational
-instance (ScalarTy a, Archimedean a, Logic a ~ Bool) => Archimedean (AST a) where
+instance ( ScalarTy a
+         , Archimedean a
+         , Logic a ~ Bool
+         ) => Archimedean (AST a) where
   mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (scalarTy @a)) mod
   rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (scalarTy @a)) rem
 
@@ -262,25 +280,12 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   toAST   f = Lam ( toAST . f . fromAST )
   fromAST f = \a -> fromAST ( f :$ toAST a )
 
-
-instance Syntactic a => Syntactic ( (a := j) i ) where
-  type Internal ( (a := j) i ) = (Internal a := j) i
-
-  toAST :: (a := j) i -> AST ( (Internal a := j) i)
-  toAST (AtKey a) = MkAtKey :$ toAST a
-
-  fromAST :: AST ( (Internal a := j) i) -> (a := j) i
-  fromAST a = unsafeCoerce wrongIndex
-    where wrongIndex :: (a := j) j
-          wrongIndex = AtKey ( fromAST (RunAtKey :$ a) )
-
-
 instance Syntactic a
         => Syntactic (Codensity AST (a := j) i) where
   type Internal (Codensity AST (a := j) i) = (Internal a := j) i
 
   toAST :: Codensity AST (a := j) i -> AST ( (Internal a := j) i )
-  toAST (Codensity k) = k toAST
+  toAST (Codensity k) = k ( \(AtKey a) -> Pure :$ toAST a )
 
   fromAST :: AST ( (Internal a := j) i) -> Codensity AST (a := j) i
   fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )

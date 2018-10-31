@@ -1,13 +1,15 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE DerivingVia           #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingVia            #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module Math.Logic.Class where
 
@@ -21,6 +23,7 @@ import Prelude( Bool(..)
 import qualified Prelude
 import Data.Coerce(Coercible, coerce)
 import Data.Int(Int8,Int16,Int32,Int64)
+import Data.Kind(Type)
 import Data.Word(Word8,Word16,Word32,Word64)
 
 -- half
@@ -50,33 +53,21 @@ instance Boolean Bool where
 infix 4 ==
 infix 4 /=
 
-class Boolean b => HasBool b a where
-  bool :: b -> a -> a -> a
+type family Choosing b (t :: (Type,Type,Type)) = r | r -> b t where
+  Choosing b '(x,y,z) = b -> x -> y -> z
 
-ifThenElse :: HasBool b a => b -> a -> a -> a
-ifThenElse = bool
+class Boolean b => Choose b (t :: (Type,Type,Type)) where
+  choose :: Choosing b t
+  ifThenElse :: Choosing b t
+  ifThenElse = choose
 
-instance HasBool Bool (Prelude a) where
-  bool True  x _ = x
-  bool False _ y = y
+type Triple a = '(a,a,a)
 
-deriving via Prelude ()     instance HasBool Bool ()
-deriving via Prelude Bool   instance HasBool Bool Bool
-deriving via Prelude Word8  instance HasBool Bool Word8
-deriving via Prelude Word16 instance HasBool Bool Word16
-deriving via Prelude Word32 instance HasBool Bool Word32
-deriving via Prelude Word64 instance HasBool Bool Word64
-deriving via Prelude Word   instance HasBool Bool Word
-deriving via Prelude Int8   instance HasBool Bool Int8
-deriving via Prelude Int16  instance HasBool Bool Int16
-deriving via Prelude Int32  instance HasBool Bool Int32
-deriving via Prelude Int64  instance HasBool Bool Int64
-deriving via Prelude Int    instance HasBool Bool Int
-deriving via Prelude Half   instance HasBool Bool Half
-deriving via Prelude Float  instance HasBool Bool Float
-deriving via Prelude Double instance HasBool Bool Double
+instance Choose Bool (Triple a) where
+  choose True  x _ = x
+  choose False _ y = y
 
-class HasBool (Logic a) a => Eq a where
+class Boolean (Logic a) => Eq a where
   type Logic a
   (==) :: a -> a -> Logic a
   (/=) :: a -> a -> Logic a

@@ -15,6 +15,7 @@ module Test where
 import Data.Int(Int32)
 import Prelude hiding ( Monad(..), Applicative(..) -- for ix monad
                       , Num(..), Fractional(..), Integral(..), Floating(..)
+                      , Eq(..), Ord(..) -- custom logic for AST
                       )
 import qualified Prelude
 import Data.Proxy
@@ -46,6 +47,7 @@ import Control.Monad.Indexed
 import Data.Type.Bindings
 import Math.Linear
 import Math.Algebra.Class
+import Math.Logic.Class
 import CodeGen.CodeGen
 import CodeGen.Instruction
 import CodeGen.Monad
@@ -54,6 +56,13 @@ import CodeGen.State
 ------------------------------------------------
 -- program
 
+type I = '[ "add11"      :-> Fun '["u" :-> Var R Float] Float
+          , "model"      :-> Var R (M 4 4 Float)
+          , "position"   :-> Var R (V 3 Float)
+          , "projection" :-> Var R (M 4 4 Float)
+          , "test"       :-> Var W (V 3 Float)
+          , "view"       :-> Var R (M 4 4 Float)
+          ]
 
 program ::
   Program
@@ -62,8 +71,8 @@ program ::
      , "projection"  :-> Var R (M 4 4 Float)
      , "position"    :-> Var R (V 3 Float)
      ]
-    '[ "add11"       :-> Fun '[ "u" :-> Var R Float]
-                             Float
+    '[ "f" :-> Fun '[ "u" :-> Var R Float] Float
+     , "t" :-> Var RW Int32
      ]
     ()
 program = do
@@ -75,17 +84,22 @@ program = do
   let mvp        = projection !*! view !*! model
       position'  = vec4 px py pz 1
 
-  add11 <- fundef @"add11" do
-    u   <- get @"u"
-    _11 <- def @"11" @R 11 -- local variable
-    pure $ u + _11
+  f <- fundef @"f" do
+    u <- get @"u"
+    t <- def @"t" @RW @Float 11 -- local variable
+    pure (u + t)
 
-  let _14 :: AST Int32
-      _14 = convert ( add11 :$ 3 )
+  def @"t" 11
+
+  if px > 0
+  then put @"t" 4
+  else put @"t" 5
+  t <- get @"t"
+  
 
   entryPoint @"main" @Vertex do
     ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ position' )
-    put @"gl_Position" ( vec4 x y z (convert _14) )
+    put @"gl_Position" ( vec4 x (f :$ y) (z + convert t) 1 )
 
 
 cgContext :: CGContext
@@ -97,12 +111,12 @@ draw = drawTree . toTree . toAST $ program
 gen :: Either Text (ID, CGState, ByteString)
 gen = runCGMonad cgContext . codeGen . toAST $ program
 
-write :: IO ()
-write = case runCodeGen cgContext (toAST program) of
+write :: String -> IO ()
+write path = case runCodeGen cgContext (toAST program) of
     Left err  -> print err
     Right bin -> -- can't use normal do notation with the current rebindable syntax
-      ByteString.writeFile "program.spv" bin
-      Prelude.>> putStrLn "output written to program.spv"
+      ByteString.writeFile path bin
+      Prelude.>> putStrLn ( "output written to " ++ path )
 
 showPutBin :: Binary.Binary a => a -> Strict.ByteString
 showPutBin = ByteString.toStrict . ByteString.toLazyByteString . ByteString.lazyByteStringHex . Binary.runPut . Binary.put

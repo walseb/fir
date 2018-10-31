@@ -17,6 +17,7 @@ import GHC.TypeLits( Symbol
                    )
 
 -- fir
+import Control.Monad.Indexed((:=))
 import Data.Type.Bindings ( BindingsMap, (:->)
                           , BindingType, Binding
                           , Elem, Lookup
@@ -97,8 +98,8 @@ type family ValidFunDef
       ( i  :: BindingsMap )  -- variables in scope
       ( l  :: BindingsMap )  -- l contains the above three sets, together with the function's local variables
       :: Bool where          -- ( it is the total state at the end of the function definition )  
-  ValidFunDef k as i l 
-      = NoFunctionNameConflict k as i  
+  ValidFunDef k as i l
+      = NoFunctionNameConflict k as i
           ( Lookup k i  )    -- check that function name is not already in use
           ( NotHigherOrder k as (Remove i (Remove as l)) )
   --           ╱               └━━━━━━┬━━━━━━┘
@@ -212,4 +213,17 @@ type family BuiltinDoesNotAppearBefore
                  :$$: ShowType i
                 )
   
-        
+------------------------------------------------------------------------------------------------
+-- constraint for if/then/else
+
+type family Local (r :: Type) (j :: k) :: Type where
+  Local  ( (a := i) i ) j = (a := j) i
+  Local  ( (a := j) i ) _
+    = TypeError (     Text "'ifThenElse': unexpected new bindings."
+                 :$$: Text "Bindings made within each branch remain local to that branch."
+                 :$$: Text "Bindings before 'ifThenElse' statement:"
+                 :$$: ShowType i
+                 :$$: Text "Bindings inferred at the end of the statement:"
+                 :$$: ShowType j
+                )
+  Local a _ = a

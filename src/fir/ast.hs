@@ -37,6 +37,7 @@ import Data.Type.Bindings
   )
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Get, Put
+                   , Local
                    )
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
 import FIR.PrimTy(PrimTy, KnownVars)
@@ -62,21 +63,9 @@ data AST :: Type -> Type where
   Lit :: PrimTy a => a -> AST a
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
-  If :: AST (    Bool
-              -> ( a := j ) i -- variables declared in a branch
-              -> ( a := k ) i -- remain local to that branch
-              -> ( a := i ) i
-            )
-  While :: AST (    ( Bool := i ) i
-                 -> ( a    := j ) i -- ditto
-                 -> ( a    := i ) i
-               )
-
-  -- angelic indexed monadic bind (for the identity indexed monad)
-  Bind :: AST ( (a := j) i -> (a -> q j) -> q i )
-
-  MkAtKey :: AST (a -> (a := i) i)
-  RunAtKey :: AST ( (a := j) i -> a ) -- unsafe hack
+  -- indexed monadic operations (for the identity indexed monad)
+  Pure :: AST (a -> (a := i) i)
+  Bind :: AST ( (a := j) i -> (a -> q j) -> q i ) -- angelic bind
 
   Def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
       => Proxy k
@@ -108,6 +97,11 @@ data AST :: Type -> Type where
   Put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
       => Proxy k
       -> AST ( Put k i -> (():= i) i )
+
+  -- control flow
+  If :: AST ( Bool -> a -> a -> a )
+  IfM :: AST ( Bool -> (a := j) i -> (a := k) i -> (a := i) i )
+  While :: AST ( ( Bool := i ) i -> (a := j) i -> (a := i) i )
 
   -- vectors (and matrices)
   MkVector :: (KnownNat n, PrimTy a)
@@ -143,10 +137,10 @@ toTreeArgs (PrimOp op _ ) as
   = return (Node ("PrimOp " ++ opName ) as)
     where opName = show ( SPIRV.op op )
 toTreeArgs If       as = return (Node "If"       as)
+toTreeArgs IfM      as = return (Node "IfM"      as)
 toTreeArgs While    as = return (Node "While"    as)
+toTreeArgs Pure     as = return (Node "Pure"     as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
-toTreeArgs MkAtKey  as = return (Node "MkAtKey"  as)
-toTreeArgs RunAtKey as = return (Node "RunAtKey" as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
 toTreeArgs (MkID       v  ) as = return (Node (show v) as)

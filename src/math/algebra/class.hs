@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DerivingVia            #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -12,6 +13,7 @@ module Math.Algebra.Class where
 
 -- base
 import Prelude( id, (.)
+              , Bool
               , Integer, Rational
               , Word, Int
               , Float, Double
@@ -30,7 +32,7 @@ import qualified Numeric.Half as Half
 
 -- fir
 import Deriving.Prelude(Prelude(..)) -- newtype for deriving Prelude instances
-import Math.Logic.Class(HasBool, Eq((==)), Ord, ifThenElse)
+import Math.Logic.Class(Choose(ifThenElse), Eq(Logic,(==)), Ord)
 
 
 
@@ -160,7 +162,6 @@ deriving via Prelude Int64  instance Archimedean Int64
 deriving via Prelude Int    instance Archimedean Int
 
 newtype Fixed a = Fixed a
-deriving via a instance HasBool b     a => HasBool b     (Fixed a)
 deriving via a instance Eq            a => Eq            (Fixed a)
 deriving via a instance Ord           a => Ord           (Fixed a)
 deriving via a instance AdditiveGroup a => AdditiveGroup (Fixed a)
@@ -168,7 +169,8 @@ deriving via a instance Semiring      a => Semiring      (Fixed a)
 deriving via a instance Ring          a => Ring          (Fixed a)
 deriving via a instance Signed        a => Signed        (Fixed a)
 
-instance ( Eq a, Ord a
+instance ( Eq a, Logic a ~ Bool
+         , Ord a
          , Ring a, Signed a
          , Prelude.Real a
          ) => Archimedean (Fixed a) where

@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -59,7 +60,9 @@ import Data.Distributive(Distributive(..))
 
 -- fir
 import Control.Arrow.Strength(strong)
-import Math.Logic.Class( Eq(Logic,(==)), Boolean(..), HasBool(..), (#.), ifThenElse
+import Math.Logic.Class( Boolean(..), Eq(Logic,(==))
+                       , Choose(choose, ifThenElse), Triple
+                       , (#.)
                        , Ord(..)
                        )
 import Math.Algebra.Class(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Floating(..))
@@ -107,8 +110,9 @@ instance KnownNat n => Applicative (V n) where
   _         <*> _         = error "unreachable"
 
 
-instance (KnownNat n, HasBool b a) => HasBool b (V n a) where
-  bool b = liftA2 ( bool b )
+instance (KnownNat n, Choose b '(x,y,z))
+        => Choose b '(V n x, V n y, V n z) where
+  choose b = liftA2 ( choose b )
 
 instance (KnownNat n, Eq a) => Eq (V n a) where
   type Logic (V n a) = Logic a
@@ -278,9 +282,16 @@ class Module v => Cross v where
   (^×^), cross :: OfDim v 3 -> OfDim v 3 -> OfDim v 3
   (^×^) = cross
 
-class    (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
-instance (Semimodule v, KnownNat n, Eq (Scalar v), HasBool (Logic (Scalar v)) (Scalar v), HasBool (Logic (Scalar v)) (OfDim v n)) => HasEquality v n
-
+class    ( Semimodule v, KnownNat n
+         , Eq (Scalar v)
+         , Choose (Logic (Scalar v)) (Triple (Scalar v))
+         , Choose (Logic (Scalar v)) (Triple (OfDim v n))
+         ) => HasEquality v n
+instance ( Semimodule v, KnownNat n
+         , Eq (Scalar v)
+         , Choose (Logic (Scalar v)) (Triple (Scalar v))
+         , Choose (Logic (Scalar v)) (Triple (OfDim v n))
+         ) => HasEquality v n
 
 ------------------------------------------------------------------
 -- instances for plain vectors
@@ -341,11 +352,11 @@ reflect' v n = v ^-^ (2 * dot v n) *^ n -- assumes n is normalised
 proj :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> OfDim v n
 proj x y = projC x y *^ y
 
-projC :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> Scalar v
+projC :: forall n v. (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> Scalar v
 projC x y =
   let sqNm = dot y y
   in if sqNm == 0
-     then 0
+     then 0 :: Scalar v
      else dot x y / sqNm
 
 isOrthogonal :: (KnownNat n, Module v, Inner v, Eq (Scalar v)) => OfDim v n -> OfDim v n -> Logic (Scalar v)
@@ -427,7 +438,6 @@ class Module (Vector m) => Matrix m where
 newtype M m n a = M { unM :: V m (V n a) }
 deriving instance (KnownNat m, KnownNat n, Prelude.Eq  a) => Prelude.Eq  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
-deriving instance (KnownNat m, KnownNat n, HasBool b a) => HasBool b (M m n a)
 deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
 deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
@@ -435,6 +445,9 @@ deriving instance (KnownNat m, KnownNat n) => Functor     (M m n)
 deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
 deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
 deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
+
+deriving via '(V m (V n x), V m (V n y), V m (V n z))
+  instance (KnownNat m, KnownNat n, Choose b '(x,y,z)) => Choose b '(M m n x, M m n y, M m n z)
 
 instance Ring a => Matrix (M 0 0 a) where
   type Vector (M 0 0 a) = V 0 a

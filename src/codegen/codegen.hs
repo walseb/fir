@@ -71,7 +71,6 @@ import CodeGen.Instruction ( Args(..), toArgs
                            , ID(ID), Instruction(..)
                            , Pairs(Pairs)
                            )
-import Control.Monad.Indexed((:=), atKey)
 import Data.Binary.Class.Put(Literal(Literal))
 import FIR.AST(AST(..))
 import FIR.Builtin(Stage, stageVal, stageBuiltins)
@@ -128,9 +127,7 @@ headTailASTList (as :& a)
 -- main code generator
 
 codeGen :: AST a -> CGMonad ID
--- ignore indexing information
-codeGen (MkAtKey  :$ a) = codeGen a
-codeGen (RunAtKey :$ a) = codeGen a
+codeGen (Pure :$ a) = codeGen a
 codeGen (Ap (MkID v) as)
   = case as of
       Nil -> pure v
@@ -146,13 +143,10 @@ codeGen (Lit a) = constID a
 -- perform substitution when possible
 codeGen (Lam f :$ a)
   = do a_ID <- codeGen a
-       codeGen (f (MkID a_ID))
+       codeGen $ f (MkID a_ID)
 codeGen (Bind :$ a :$ f)
-  = codeGen ( fromAST f
-            $ atKey       -- acrobatics
-            . fromAST @( (AST _ := _) _)
-            $ a
-            )
+  = do a_ID <- codeGen a
+       codeGen $ (fromAST f) (MkID a_ID)
 -- stateful operations
 codeGen (Def k _ :$ a)
   = do let name = Text.pack ( symbolVal k )
@@ -274,7 +268,9 @@ codeGen (FmapVector _) = throwError "codeGen: fmap not yet supported"
 codeGen (Mat) = throwError "codeGen: matrix construction not yet supported"
 codeGen (UnMat) = throwError "codeGen: matrix type eliminator not yet supported"
 -- control flow
-codeGen (If :$ cond :$ bodyTrue :$ bodyFalse)
+codeGen (If :$ c :$ t :$ f)
+ = codeGen (IfM :$ c :$ (Pure :$ t) :$ (Pure :$ f))
+codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
   = do  headerBlock <- fresh
         trueBlock   <- fresh
         falseBlock  <- fresh
@@ -582,19 +578,6 @@ inEntryPointContext stage stageName action
 ----------------------------------------------------------------------------
 -- phi instructions
 
-{-
-conflicts :: forall k a. (Ord k, Eq a)
-          => Map k a -> Map k a -> Map k (a,a)
-conflicts = Map.merge
-              Map.dropMissing
-              Map.dropMissing
-              ( Map.zipWithMaybeMatched f )
-  where f :: k -> a -> a -> Maybe (a,a)
-        f _ a b = if a == b
-                  then Nothing
-                  else Just (a,b)
--}
-
 conflicts :: forall k a. (Ord k, Eq a)
           => ( k -> Bool )
           -> [ Map k a ]
@@ -618,39 +601,19 @@ phiInstructions isRelevant blocks bindings
   = traverseWithKey_
       ( \ name ids ->
         do  v <- fresh
+            removeThisHack <- fresh
             let bdAndBlockIDs :: Pairs ID -- has the right traversable instance
                 bdAndBlockIDs = Pairs (zip ids blocks)
             liftPut $ putInstruction Map.empty
               Instruction
                 { operation = SPIRV.Op.Phi
-                , resTy = Nothing -- TODO: error, this should be an actual result type
+                , resTy = Just removeThisHack -- TODO: error, this should be an actual result type
                 , resID = Just v
                 , args  = toArgs bdAndBlockIDs
                 }
             assign ( _knownBinding name ) (Just v)
       )
       ( conflicts isRelevant bindings )
-
-{-
-
-phiInstructions :: ID -> ID -> Map Text ID -> Map Text ID -> CGMonad ()
-phiInstructions block1 block2 bindings1 bindings2
-  = traverseWithKey_
-      ( \ name (id1,id2) -> 
-         do v <- fresh
-            liftPut $ putInstruction Map.empty
-              Instruction
-                { operation = SPIRV.Op.Phi
-                , resTy = Nothing -- TODO: error, this should be an actual result type
-                , resID = Just v
-                , args  = Arg id1 $ Arg block1
-                        $ Arg id2 $ Arg block2
-                        EndArgs
-                }
-            assign ( _knownBinding name ) (Just v)
-      )
-      ( conflicts bindings1 bindings2 )
--}
 
 ----------------------------------------------------------------------------
 -- instructions generated along the way that need to be floated to the top
