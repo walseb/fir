@@ -52,7 +52,10 @@ newtype Pairs a = Pairs [(a,a)]
 -- instructions
 
 newtype ID = ID { idNumber :: Word32 }
-  deriving ( Eq, Show, Ord, Enum, Put )
+  deriving ( Eq, Ord, Enum, Put )
+
+instance Show ID where
+  show (ID n) = "%" ++ show n
 
 data Instruction
   = Instruction

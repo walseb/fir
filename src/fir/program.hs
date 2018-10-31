@@ -28,12 +28,12 @@ import qualified Data.Map as Map
 import Data.Text(Text)
 
 -- fir
-import Control.Monad.Indexed((:=), Id)
+import Control.Monad.Indexed((:=), Codensity)
 import Data.Type.Bindings( BindingsMap, Binding
                          , Assignment
                          , Union, FromList
                          )
-import FIR.AST(AST, Codensity)
+import FIR.AST(AST)
 import FIR.PrimTy(KnownVars(knownVars))
 import qualified SPIRV.PrimTy as SPIRV
 
@@ -49,7 +49,7 @@ type family Program
           a
 
 type family CodensityProgram (i :: BindingsMap) (j :: BindingsMap) (a :: Type) = (r :: Type) | r -> i j a where
-  CodensityProgram i j a = Codensity Id ( AST a := j ) i
+  CodensityProgram i j a = Codensity AST ( AST a := j ) i
 
 programGlobals :: forall i j a. KnownVars i
                => CodensityProgram i j a -> Map Text SPIRV.PrimTy

@@ -39,11 +39,11 @@ import Type.Reflection(typeRep)
 import Unsafe.Coerce(unsafeCoerce)
 
 -- fir  
-import Control.Monad.Indexed ((:=)(..), Id(Id))
+import Control.Monad.Indexed ((:=)(..), Codensity(..))
 import Data.Type.Bindings( BindingType, Var, Fun
                          , Union, Insert
                          )
-import FIR.AST(AST(..), Codensity(..))
+import FIR.AST(AST(..))
 import qualified FIR.AST as AST
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Put, Get
@@ -76,25 +76,25 @@ import qualified SPIRV.PrimTy as SPIRV
 
 def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
     => AST a
-    -> Codensity Id (AST a := Insert k (Var ps a) i) i
+    -> Codensity AST (AST a := Insert k (Var ps a) i) i
 def         a = Codensity ( \h -> Bind :$ (Def    (Proxy @k) (Proxy @ps)            :$ a      ) :$ (Lam $ h . AtKey) )
 
 fundef :: forall k as b l i. (KnownSymbol k, KnownVars as, PrimTy b, ValidFunDef k as i l ~ 'True)
-       => Codensity Id (AST b := l) (Union i as)
-       -> Codensity Id (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
+       => Codensity AST (AST b := l) (Union i as)
+       -> Codensity AST (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
 fundef      f = Codensity ( \h -> Bind :$ (FunDef (Proxy @k) (Proxy @as) (Proxy @b) :$ toAST f) :$ (Lam $ h . AtKey) )
 
 entryPoint :: forall k s l i. (KnownSymbol k, KnownStage s, ValidEntryPoint s i l ~ 'True)
-           => Codensity Id (AST () := l) (Union i (StageBuiltins s))
-           -> Codensity Id (AST () := i) i
+           => Codensity AST (AST () := l) (Union i (StageBuiltins s))
+           -> Codensity AST (AST () := i) i
 entryPoint  f = Codensity ( \h -> Bind :$ (Entry  (Proxy @k) (Proxy @s )            :$ toAST f) :$ (Lam $ h . AtKey) )
 
 get :: forall k i. (KnownSymbol k)
-    => Codensity Id ( AST (Get k i) := i) i
+    => Codensity AST ( AST (Get k i) := i) i
 get           = Codensity ( \h -> Bind :$  Get    (Proxy @k)                                    :$ (Lam $ h . AtKey) )
 
 put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
-    => AST (Put k i) -> Codensity Id ( AST () := i) i
+    => AST (Put k i) -> Codensity AST ( AST () := i) i
 put         a = Codensity ( \h -> Bind :$ (Put    (Proxy @k)                        :$ a      ) :$ (Lam $ h . AtKey) )
 
 --------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ instance Boolean (AST Bool) where
   not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Not) not
 
 instance PrimTy a => HasBool (AST Bool) (AST a) where
-  bool b x y = RunAtKey :$ ( RunId :$ ( If :$ b :$ (Pure :$ (MkAtKey :$ x)) :$ (Pure :$ (MkAtKey :$ y)) ) )
+  bool b x y = RunAtKey :$ ( If :$ b :$ (MkAtKey :$ x) :$ (MkAtKey :$ y) )
 
 instance (PrimTy a, Eq a, Logic a ~ Bool) => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)
@@ -276,21 +276,14 @@ instance Syntactic a => Syntactic ( (a := j) i ) where
 
 
 instance Syntactic a
-        => Syntactic (Codensity Id (a := j) i) where
-  type Internal (Codensity Id (a := j) i) = Id (Internal a := j) i
+        => Syntactic (Codensity AST (a := j) i) where
+  type Internal (Codensity AST (a := j) i) = (Internal a := j) i
 
-  toAST :: Codensity Id (a := j) i -> AST (Id (Internal a := j) i)
-  toAST (Codensity k) = k ( fromAST Pure )
+  toAST :: Codensity AST (a := j) i -> AST ( (Internal a := j) i )
+  toAST (Codensity k) = k toAST
 
-  fromAST :: AST (Id (Internal a := j) i) -> Codensity Id (a := j) i
+  fromAST :: AST ( (Internal a := j) i) -> Codensity AST (a := j) i
   fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
-
-instance Syntactic a => Syntactic (Id (a := j) i) where
-  type Internal (Id (a := j) i) = Id (Internal a := j) i
-
-  toAST (Id a) = Pure :$ toAST a
-  fromAST a = Id (fromAST (RunId :$ a) )
-
 
 -- utility type for the following instance declaration
 newtype B n a b i = B { unB :: AST (AST.Variadic (n-i) a b) }

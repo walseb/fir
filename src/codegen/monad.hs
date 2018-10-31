@@ -72,6 +72,9 @@ class HasSupply v s where
 instance HasSupply ID CGState where
   supply = _currentID
 
+instance HasSupply ID ID where
+  supply = id
+
 class Monad m => MonadFresh v m where
   fresh :: m v
 

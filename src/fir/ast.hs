@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -23,15 +22,15 @@ import GHC.TypeNats (Nat, KnownNat, natVal, type (-), type (<=?))
 import Data.Tree(Tree(Node))
 
 -- mtl
-import Control.Monad.State.Lazy(State, put, get, evalState)
+import Control.Monad.State.Lazy(evalState)
 
 -- tree-view
 import Data.Tree.View(showTree)
 
 -- fir
 import CodeGen.Instruction(ID(ID))
-import Control.Monad.Indexed( FunctorIx(..), MonadIx(..), (:=)(..)
-                            , Id )
+import CodeGen.Monad(MonadFresh(fresh), runFreshSuccT)
+import Control.Monad.Indexed((:=))
 import Data.Type.Bindings 
   ( BindingType, Var, Fun
   , Insert, Union
@@ -64,37 +63,33 @@ data AST :: Type -> Type where
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
   If :: AST (    Bool
-              -> Id ( a := j ) i -- variables declared in a branch
-              -> Id ( a := k ) i -- remain local to that branch
-              -> Id ( a := i ) i
+              -> ( a := j ) i -- variables declared in a branch
+              -> ( a := k ) i -- remain local to that branch
+              -> ( a := i ) i
             )
-  While :: AST (    Id ( Bool := i) i
-                 -> Id ( a := j ) i -- ditto
-                 -> Id ( a := i ) i
+  While :: AST (    ( Bool := i ) i
+                 -> ( a    := j ) i -- ditto
+                 -> ( a    := i ) i
                )
 
-  -- (indexed) monadic operations
-  -- (specialised to the identity indexed monad)
-  Pure :: AST (p i -> Id p i)
-  Bind :: AST (Id (a := j) i -> (a -> Id q j) -> Id q i) -- angelic bind
+  -- angelic indexed monadic bind (for the identity indexed monad)
+  Bind :: AST ( (a := j) i -> (a -> q j) -> q i )
 
-  MkAtKey :: AST (a -> (a := i) i) -- hack, would be solved if we could have
-                                   -- Pure :: AST (a -> m (a := i) i)
-  RunAtKey :: AST ( (a := j) i -> a )
-  RunId :: AST (Id p i -> p i)
+  MkAtKey :: AST (a -> (a := i) i)
+  RunAtKey :: AST ( (a := j) i -> a ) -- unsafe hack
 
   Def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
       => Proxy k
       -> Proxy ps
       -> AST (    a
-               -> Id ( a := Insert k (Var ps a) i) i
+               -> (a := Insert k (Var ps a) i) i
              )
   FunDef :: forall k as b l i. (KnownSymbol k, KnownVars as, PrimTy b, ValidFunDef k as i l ~ 'True)
          => Proxy k
          -> Proxy as -- function arguments
          -> Proxy b
-         -> AST (    Id (b := l) (Union i as)
-                  -> Id (BindingType (Fun as b) := Insert k (Fun as b) i) i
+         -> AST (    (b := l) (Union i as)
+                  -> (BindingType (Fun as b) := Insert k (Fun as b) i) i
                 )
   -- entry point: a function definition, with no arguments and Unit return type
   -- it is given access to addtional builtins
@@ -104,15 +99,15 @@ data AST :: Type -> Type where
   Entry :: forall k s l i. (KnownSymbol k, KnownStage s, ValidEntryPoint s i l ~ 'True)
          => Proxy k
          -> Proxy s
-         -> AST (    Id (() := l) (Union i (StageBuiltins s))
-                  -> Id (() := i) i
+         -> AST (    (() := l) (Union i (StageBuiltins s))
+                  -> (() := i) i
                 )
   Get :: forall k i. KnownSymbol k
       => Proxy k
-      -> AST ( Id (Get k i := i) i)
+      -> AST ( (Get k i := i) i)
   Put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
       => Proxy k
-      -> AST ( Put k i -> Id (():= i) i )
+      -> AST ( Put k i -> (():= i) i )
 
   -- vectors (and matrices)
   MkVector :: (KnownNat n, PrimTy a)
@@ -130,59 +125,30 @@ data AST :: Type -> Type where
 
   MkID :: ID -> AST a
 
-  -- for printing lambdas
-  NamedVar :: String -> AST a
-
------------------------------------------------- 
--- codensity indexed monad, specialised with AST return type
-
--- demonic codensity
-newtype Codensity m p i
-  = Codensity
-    { runCodensity :: forall (q :: k -> Type)
-    . (forall (j :: k). p j -> AST (m q j) ) -> AST (m q i)
-    }
-
-instance FunctorIx (Codensity m) where
-  fmapIx :: ( forall ix.               p ix ->               q ix )
-         -> ( forall ix. (Codensity m) p ix -> (Codensity m) q ix )
-  fmapIx f (Codensity m) = Codensity ( \k -> m ( k . f ) )
-
-instance MonadIx (Codensity m) where
-  returnIx :: p i -> Codensity m p i
-  returnIx a = Codensity ( \k -> k a )
-
-  extendIx :: ( forall ix.               p ix -> (Codensity m) q ix )
-           -> ( forall ix. (Codensity m) p ix -> (Codensity m) q ix )
-  extendIx f (Codensity ma) = Codensity ( \k -> ma ( \a -> runCodensity (f a) k ) )
-
 ------------------------------------------------
 -- display AST for viewing
 
-toTreeArgs :: AST a -> [Tree String] -> State Int (Tree String)
+toTreeArgs :: forall m a. MonadFresh ID m => AST a -> [Tree String] -> m (Tree String)
 toTreeArgs (f :$ a) as = do
   at <- toTreeArgs a []
   toTreeArgs f (at:as)
 toTreeArgs (Lam f) as = do
-  v <- get
-  put (v+1)
-  let var = NamedVar ('v' : show v)
+  v <- fresh
+  let var = MkID v
   body <- toTreeArgs (f var) []
   return $ case as of
-    [] -> Node ("Lam v" ++ show v) [body]
-    _  -> Node  ":$"               (body : as)
+    [] -> Node ("Lam " ++ show v) [body]
+    _  -> Node  ":$"              (body : as)
 toTreeArgs (PrimOp op _ ) as 
   = return (Node ("PrimOp " ++ opName ) as)
     where opName = show ( SPIRV.op op )
 toTreeArgs If       as = return (Node "If"       as)
-toTreeArgs Pure     as = return (Node "Pure"     as)
+toTreeArgs While    as = return (Node "While"    as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs MkAtKey  as = return (Node "MkAtKey"  as)
 toTreeArgs RunAtKey as = return (Node "RunAtKey" as)
-toTreeArgs RunId    as = return (Node "RunId"    as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
-toTreeArgs (NamedVar   v  ) as = return (Node v as)
 toTreeArgs (MkID       v  ) as = return (Node (show v) as)
 toTreeArgs (Lit        a  ) as = return (Node ("Lit "     ++ show a ) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"      ++ show (natVal n)) as)
@@ -195,7 +161,7 @@ toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
 toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
 
 toTree :: AST a -> Tree String
-toTree a = evalState (toTreeArgs a []) 0
+toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )
 
 instance Show (AST a) where
   show = showTree . toTree

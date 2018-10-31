@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs         #-}
+{-# LANGUAGE InstanceSigs  #-}
 {-# LANGUAGE PolyKinds     #-}
 {-# LANGUAGE RankNTypes    #-}
 {-# LANGUAGE TypeOperators #-}
@@ -50,6 +51,28 @@ instance MonadIx Id where
   extendIx f (Id a) = f a
   returnIx = Id
 
+------------------------------------------------------------
+-- codensity transformation
+
+-- demonic codensity
+newtype Codensity f p i
+  = Codensity
+    { runCodensity :: forall (q :: k -> Type)
+    . ( forall (j :: k). p j -> f (q j) ) -> f (q i)
+    }
+
+instance FunctorIx (Codensity f) where
+  fmapIx :: ( forall ix.             p ix ->             q ix )
+         -> ( forall ix. Codensity f p ix -> Codensity f q ix )
+  fmapIx f (Codensity m) = Codensity ( \k -> m ( k . f ) )
+
+instance MonadIx (Codensity f) where
+  returnIx :: p i -> Codensity f p i
+  returnIx a = Codensity ( \k -> k a )
+
+  extendIx :: ( forall ix.             p ix -> Codensity f q ix )
+           -> ( forall ix. Codensity f p ix -> Codensity f q ix )
+  extendIx f (Codensity ma) = Codensity ( \k -> ma ( \a -> runCodensity (f a) k ) )
 
 ------------------------------------------------
 -- rebindable syntax

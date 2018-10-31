@@ -71,7 +71,7 @@ import CodeGen.Instruction ( Args(..), toArgs
                            , ID(ID), Instruction(..)
                            , Pairs(Pairs)
                            )
-import Control.Monad.Indexed((:=), atKey, Id(runId))
+import Control.Monad.Indexed((:=), atKey)
 import Data.Binary.Class.Put(Literal(Literal))
 import FIR.AST(AST(..))
 import FIR.Builtin(Stage, stageVal, stageBuiltins)
@@ -129,8 +129,6 @@ headTailASTList (as :& a)
 
 codeGen :: AST a -> CGMonad ID
 -- ignore indexing information
-codeGen (Pure     :$ a) = codeGen a
-codeGen (RunId    :$ a) = codeGen a
 codeGen (MkAtKey  :$ a) = codeGen a
 codeGen (RunAtKey :$ a) = codeGen a
 codeGen (Ap (MkID v) as)
@@ -152,8 +150,7 @@ codeGen (Lam f :$ a)
 codeGen (Bind :$ a :$ f)
   = codeGen ( fromAST f
             $ atKey       -- acrobatics
-            . runId       -- (to deal with indexing)
-            . fromAST @(Id (AST _ := _) _)
+            . fromAST @( (AST _ := _) _)
             $ a
             )
 -- stateful operations
@@ -366,8 +363,6 @@ codeGen (Lam f) = error ( "codeGen: unexpected lambda abstraction:\n"
 codeGen (f :$ a) = error ( "codeGen: unsupported function application:\n"
                           <> show (f :$ a)
                          )
--- NamedVar used only for pretty-printing AST
-codeGen (NamedVar _) = throwError "codeGen: unexpected 'NamedVar'"
 codeGen other = error ( "codeGen: non-exhaustive pattern match:\n"
                         <> show other
                       )
