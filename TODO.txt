@@ -65,3 +65,12 @@ make CGMonad polymorphic, so that we can output binary directly, or a human-read
 keep track of extended instruction sets being used
 
 if the unit type is being passed to a function, remove it
+
+
+figure out what's going on with gl_PerVertex being both input and output
+in SPIR-V code, it seems to be split up into two different cases...
+can it be renamed gl_in and gl_out ??
+
+
+include source line number information in the SPIR-V
+see http://hackage.haskell.org/package/base-4.12.0.0/docs/GHC-Stack.html

@@ -41,6 +41,7 @@ import qualified SPIRV.Storage    as SPIRV
 data CGState
   = CGState
     { currentID           :: ID
+    , currentBlock        :: Maybe ID
     , functionContext     :: FunctionContext
     , neededCapabilities  :: Set               SPIRV.Capability
     , knownExtInsts       :: Map SPIRV.ExtInst Instruction
@@ -71,6 +72,7 @@ data VariableContext
 initialState :: CGState
 initialState = CGState
   { currentID           = ID 1
+  , currentBlock        = Nothing
   , functionContext     = TopLevel
   , neededCapabilities  = Set.empty
   , knownExtInsts       = Map.empty
@@ -97,6 +99,9 @@ emptyContext = CGContext { userGlobals = Map.empty }
 
 _currentID :: Lens' CGState ID
 _currentID = lens currentID ( \s v -> s { currentID = v } )
+
+_currentBlock :: Lens' CGState ( Maybe ID )
+_currentBlock = lens currentBlock ( \s v -> s { currentBlock = v } )
 
 _functionContext :: Lens' CGState FunctionContext
 _functionContext = lens functionContext ( \s v -> s { functionContext = v } )

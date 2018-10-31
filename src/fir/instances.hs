@@ -109,7 +109,7 @@ instance Boolean (AST Bool) where
   not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Not) not
 
 instance PrimTy a => HasBool (AST Bool) (AST a) where
-  bool = fromAST If
+  bool b x y = RunAtKey :$ ( RunId :$ ( If :$ b :$ (Pure :$ (MkAtKey :$ x)) :$ (Pure :$ (MkAtKey :$ y)) ) )
 
 instance (PrimTy a, Eq a, Logic a ~ Bool) => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)

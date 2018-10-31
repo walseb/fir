@@ -13,7 +13,9 @@ module CodeGen.CodeGen where
 
 -- base
 import Control.Arrow(second)
+import Control.Monad((>>=))
 import Data.Foldable(traverse_)
+import Data.List(foldl1')
 import Data.Maybe(fromJust)
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
@@ -24,7 +26,9 @@ import Prelude hiding (Monad(..))
 import Data.ByteString.Lazy(ByteString)
 
 -- containers
-import qualified Data.Map as Map
+import Data.Map(Map)
+import qualified Data.Map.Strict as Map
+import qualified Data.Map.Merge.Strict as Map
 import qualified Data.Set as Set
 
 -- mtl
@@ -39,7 +43,7 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 
 -- fir
-import CodeGen.Binary(putInstruction)
+import CodeGen.Binary(putInstruction, traverseWithKey_)
 import CodeGen.Declarations(putASM)
 import CodeGen.Monad( CGMonad, MonadFresh(fresh)
                     , liftPut
@@ -49,9 +53,10 @@ import CodeGen.Monad( CGMonad, MonadFresh(fresh)
                     )
 import CodeGen.State( CGState, CGContext
                     , FunctionContext(TopLevel, Function, EntryPoint)
+                    , _currentBlock
                     , _functionContext
                     , _knownExtInst
-                    , _knownBinding
+                    , _knownBindings, _knownBinding
                     , _localBindings, _localBinding
                     , _knownType
                     , _knownConstant
@@ -64,6 +69,7 @@ import CodeGen.State( CGState, CGContext
 import CodeGen.Instruction ( Args(..), toArgs
                            , prependArg, prependArgs
                            , ID(ID), Instruction(..)
+                           , Pairs(Pairs)
                            )
 import Control.Monad.Indexed((:=), atKey, Id(runId))
 import Data.Binary.Class.Put(Literal(Literal))
@@ -270,7 +276,90 @@ codeGen (VectorAt a_px i_px :$ v)
 codeGen (FmapVector _) = throwError "codeGen: fmap not yet supported"
 codeGen (Mat) = throwError "codeGen: matrix construction not yet supported"
 codeGen (UnMat) = throwError "codeGen: matrix type eliminator not yet supported"
-codeGen (If) = throwError "codeGen: if statements not yet supported"
+-- control flow
+codeGen (If :$ cond :$ bodyTrue :$ bodyFalse)
+  = do  headerBlock <- fresh
+        trueBlock   <- fresh
+        falseBlock  <- fresh
+        mergeBlock  <- fresh
+        bindingsBefore <- use _knownBindings
+        branch headerBlock
+        
+        -- header block
+        block headerBlock
+        condID <- codeGen cond
+        -- might have ended in a different block now, I think that's OK
+        branchConditional condID trueBlock falseBlock
+
+        -- true block
+        block trueBlock
+        _ <- codeGen bodyTrue
+        trueEndBlock <- note ( "codeGen: true branch in if statement escaped CFG" )
+                            =<< use _currentBlock
+        trueBindings <- use _knownBindings
+        branch mergeBlock
+
+        -- false block
+        block falseBlock
+        _ <- codeGen bodyFalse
+        falseEndBlock <- note ( "codeGen: false branch in if statement escaped CFG" )
+                            =<< use _currentBlock
+        falseBindings <- use _knownBindings
+        branch mergeBlock
+
+        -- merge block
+        block mergeBlock
+        phiInstructions
+          ( \ bd -> bd `Map.member` bindingsBefore )
+          [ trueEndBlock, falseEndBlock ]
+          [ trueBindings, falseBindings ]
+        
+        pure ( ID 888888888 ) -- no
+
+codeGen (While :$ cond :$ loopBody)
+  = do  beforeBlock <- note ( "codeGen: while loop outside of a block" )
+                         =<< use _currentBlock
+        headerBlock <- fresh
+        loopBlock   <- fresh
+        mergeBlock  <- fresh -- block where control flow merges back
+        bindingsBefore <- use _knownBindings
+        branch headerBlock
+  
+        -- loop block (also called the continue block)
+        -- we need to put the loop block first,
+        -- as performing codeGen for the loop body
+        -- allows us to know which phi instructions to emit
+        block loopBlock
+        _ <- codeGen loopBody
+        loopEndBlock    <- note ( "codeGen: while loop escaped CFG")
+                                =<< use _currentBlock
+        loopEndBindings <- use _knownBindings
+        branch headerBlock
+
+        -- header block
+        block headerBlock
+        phiInstructions
+          ( const True )
+          [ beforeBlock   , loopEndBlock ]
+          [ bindingsBefore, loopEndBindings ]
+        condID <- codeGen cond
+        -- might have ended in a different block now, I think that's OK
+        liftPut $ putInstruction Map.empty
+          Instruction
+             { operation = SPIRV.Op.LoopMerge
+             , resTy = Nothing
+             , resID = Nothing
+             , args  = Arg mergeBlock
+                     $ Arg loopBlock
+                     $ Arg (0 :: Word32) -- no loop control
+                     EndArgs
+             }
+        branchConditional condID loopBlock mergeBlock
+
+        -- merge block (first block after the loop)
+        block mergeBlock
+        pure (ID 777777777) -- should never be used
+       
 codeGen (Lam f) = error ( "codeGen: unexpected lambda abstraction:\n"
                          <> show (Lam f)
                         )
@@ -343,6 +432,45 @@ runCodeGen :: CGContext -> AST a -> Either Text ByteString
 runCodeGen context = putASM context . codeGen
 
 ----------------------------------------------------------------------------
+-- blocks and branching
+
+block :: ID -> CGMonad ()
+block blockID = do
+  liftPut $ putInstruction Map.empty
+    Instruction
+      { operation = SPIRV.Op.Label
+      , resTy = Nothing
+      , resID = Just blockID
+      , args  = EndArgs
+      }
+  assign _currentBlock (Just blockID)
+
+newBlock :: CGMonad ()
+newBlock = fresh >>= block
+
+branch :: ID -> CGMonad ()
+branch branchID
+  = liftPut $ putInstruction Map.empty
+      Instruction
+       { operation = SPIRV.Op.Branch
+       , resID = Nothing
+       , resTy = Nothing
+       , args  = Arg branchID EndArgs
+       }
+
+branchConditional :: ID -> ID -> ID -> CGMonad ()
+branchConditional b t f
+  = liftPut $ putInstruction Map.empty
+      Instruction
+        { operation = SPIRV.Op.BranchConditional
+        , resTy = Nothing
+        , resID = Nothing
+        , args  = Arg b
+                $ Arg t
+                $ Arg f EndArgs
+        }
+
+----------------------------------------------------------------------------
 -- function declarations
 
 declareFunction :: Text -> [(Text, SPIRV.PrimTy)] -> SPIRV.PrimTy -> CGMonad ID -> CGMonad ID
@@ -363,7 +491,7 @@ declareFunction funName as b body
             }
         retValID <- inFunctionContext as body
         case b of
-          SPIRV.Unit 
+          SPIRV.Unit
             -> liftPut $ putInstruction Map.empty
                  Instruction
                    { operation = SPIRV.Op.Return
@@ -442,6 +570,7 @@ inFunctionContext as action
   = do outsideBindings <- use _localBindings
        traverse_ (uncurry declareArgument) as
        assign _functionContext ( Function as )
+       newBlock
        a <- action
        assign _functionContext TopLevel -- functions can't be nested
        assign _localBindings outsideBindings
@@ -450,9 +579,83 @@ inFunctionContext as action
 inEntryPointContext :: Stage -> Text -> CGMonad a -> CGMonad a
 inEntryPointContext stage stageName action
   = do assign _functionContext ( EntryPoint stage stageName )
+       newBlock
        a <- action
        assign _functionContext TopLevel
        pure a
+
+----------------------------------------------------------------------------
+-- phi instructions
+
+{-
+conflicts :: forall k a. (Ord k, Eq a)
+          => Map k a -> Map k a -> Map k (a,a)
+conflicts = Map.merge
+              Map.dropMissing
+              Map.dropMissing
+              ( Map.zipWithMaybeMatched f )
+  where f :: k -> a -> a -> Maybe (a,a)
+        f _ a b = if a == b
+                  then Nothing
+                  else Just (a,b)
+-}
+
+conflicts :: forall k a. (Ord k, Eq a)
+          => ( k -> Bool )
+          -> [ Map k a ]
+          -> Map k [a]
+conflicts keyIsOK
+  = Map.mapMaybeWithKey
+      ( \k as -> if keyIsOK k && not (all (== head as) as)
+                 then Just as
+                 else Nothing
+      )
+  . foldl1'
+      ( Map.merge
+          Map.dropMissing
+          Map.dropMissing
+          ( Map.zipWithMatched (const (++)) )
+      )
+  . map (fmap (:[]))
+
+phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text ID ] -> CGMonad ()
+phiInstructions isRelevant blocks bindings 
+  = traverseWithKey_
+      ( \ name ids ->
+        do  v <- fresh
+            let bdAndBlockIDs :: Pairs ID -- has the right traversable instance
+                bdAndBlockIDs = Pairs (zip ids blocks)
+            liftPut $ putInstruction Map.empty
+              Instruction
+                { operation = SPIRV.Op.Phi
+                , resTy = Nothing -- TODO: error, this should be an actual result type
+                , resID = Just v
+                , args  = toArgs bdAndBlockIDs
+                }
+            assign ( _knownBinding name ) (Just v)
+      )
+      ( conflicts isRelevant bindings )
+
+{-
+
+phiInstructions :: ID -> ID -> Map Text ID -> Map Text ID -> CGMonad ()
+phiInstructions block1 block2 bindings1 bindings2
+  = traverseWithKey_
+      ( \ name (id1,id2) -> 
+         do v <- fresh
+            liftPut $ putInstruction Map.empty
+              Instruction
+                { operation = SPIRV.Op.Phi
+                , resTy = Nothing -- TODO: error, this should be an actual result type
+                , resID = Just v
+                , args  = Arg id1 $ Arg block1
+                        $ Arg id2 $ Arg block2
+                        EndArgs
+                }
+            assign ( _knownBinding name ) (Just v)
+      )
+      ( conflicts bindings1 bindings2 )
+-}
 
 ----------------------------------------------------------------------------
 -- instructions generated along the way that need to be floated to the top

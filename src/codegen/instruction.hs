@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
@@ -41,6 +44,9 @@ wordCount = foldrArgs ( (+) . sizeOf ) 0
 
 toArgs :: ( Show a, Put a, Foldable t ) => t a -> Args
 toArgs = foldr Arg EndArgs
+
+newtype Pairs a = Pairs [(a,a)]
+ deriving ( Functor, Foldable, Traversable )
 
 ----------------------------------------------------------------------------
 -- instructions

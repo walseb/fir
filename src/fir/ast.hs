@@ -63,7 +63,15 @@ data AST :: Type -> Type where
   Lit :: PrimTy a => a -> AST a
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
-  If :: PrimTy a => AST (Bool -> a -> a -> a)
+  If :: AST (    Bool
+              -> Id ( a := j ) i -- variables declared in a branch
+              -> Id ( a := k ) i -- remain local to that branch
+              -> Id ( a := i ) i
+            )
+  While :: AST (    Id ( Bool := i) i
+                 -> Id ( a := j ) i -- ditto
+                 -> Id ( a := i ) i
+               )
 
   -- (indexed) monadic operations
   -- (specialised to the identity indexed monad)
