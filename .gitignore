@@ -5,6 +5,8 @@ dist-newstyle/
 *.html
 *.project
 *.spv
+*.ps
+*.dot
 
 shaders/
 

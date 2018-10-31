@@ -37,12 +37,12 @@ import Data.Type.Bindings
   )
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Get, Put
-                   , Local
                    )
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
-import FIR.PrimTy(PrimTy, KnownVars)
+import FIR.PrimTy(PrimTy, primTyVal, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
+import qualified SPIRV.PrimTy as SPIRV
 
 ------------------------------------------------------------
 
@@ -60,7 +60,7 @@ data AST :: Type -> Type where
   Lam :: {-PrimTy a =>-} (AST a -> AST b) -> AST (a -> b)
   (:$) :: AST (a -> b) -> AST a -> AST b
 
-  Lit :: PrimTy a => a -> AST a
+  Lit :: PrimTy a => Proxy a -> a -> AST a
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
   -- indexed monadic operations (for the identity indexed monad)
@@ -117,7 +117,7 @@ data AST :: Type -> Type where
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
 
-  MkID :: ID -> AST a
+  MkID :: ID -> SPIRV.PrimTy -> AST a
 
 ------------------------------------------------
 -- display AST for viewing
@@ -128,7 +128,7 @@ toTreeArgs (f :$ a) as = do
   toTreeArgs f (at:as)
 toTreeArgs (Lam f) as = do
   v <- fresh
-  let var = MkID v
+  let var = MkID v undefined
   body <- toTreeArgs (f var) []
   return $ case as of
     [] -> Node ("Lam " ++ show v) [body]
@@ -143,8 +143,7 @@ toTreeArgs Pure     as = return (Node "Pure"     as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
-toTreeArgs (MkID       v  ) as = return (Node (show v) as)
-toTreeArgs (Lit        a  ) as = return (Node ("Lit "     ++ show a ) as)
+toTreeArgs (MkID       v _) as = return (Node (show v) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"      ++ show (natVal n)) as)
 toTreeArgs (VectorAt   _ i) as = return (Node ("At "      ++ show (natVal i)) as)
 toTreeArgs (FmapVector n  ) as = return (Node ("Fmap V"   ++ show (natVal n)) as)
@@ -153,6 +152,7 @@ toTreeArgs (Put    k      ) as = return (Node ("Put @"    ++ symbolVal k ) as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"    ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
 toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
+toTreeArgs (Lit        t a) as = return (Node ("Lit @" ++ show (primTyVal t) ++ " " ++ show a ) as)
 
 toTree :: AST a -> Tree String
 toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )

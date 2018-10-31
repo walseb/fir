@@ -43,9 +43,9 @@ putDecs
               putCapabilities         neededCapabilities
               putExtendedInstructions knownExtInsts
               putMemoryModel
-    putEntryPoints knownBindings usedGlobals interfaces    
+    putEntryPoints (fmap fst knownBindings) usedGlobals interfaces    
     lift $ do --putExecutionModes knownBindings interfaces
-              putBindingAnnotations   knownBindings
+              putBindingAnnotations   (fmap fst knownBindings)
               putBindingAnnotations   (fmap fst usedGlobals)
               --putDecorations
               putInstructionsInOrder  knownTypes

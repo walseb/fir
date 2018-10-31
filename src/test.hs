@@ -52,6 +52,7 @@ import CodeGen.CodeGen
 import CodeGen.Instruction
 import CodeGen.Monad
 import CodeGen.State
+import qualified SPIRV.PrimTy as SPIRV
 
 ------------------------------------------------
 -- program
@@ -72,7 +73,7 @@ program ::
      , "position"    :-> Var R (V 3 Float)
      ]
     '[ "f" :-> Fun '[ "u" :-> Var R Float] Float
-     , "t" :-> Var RW Int32
+     , "t" :-> Var RW Float
      ]
     ()
 program = do
@@ -92,14 +93,23 @@ program = do
   def @"t" 11
 
   if px > 0
-  then put @"t" 4
-  else put @"t" 5
+  then put @"t" px
+  else put @"t" (-px)
+
+  while ( do t <- get @"t"
+             pure (t < 10)
+        )
+    ( do t <- get @"t"
+         put @"t" (t+1)
+    )
+
   t <- get @"t"
+  
   
 
   entryPoint @"main" @Vertex do
     ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ position' )
-    put @"gl_Position" ( vec4 x (f :$ y) (z + convert t) 1 )
+    put @"gl_Position" ( vec4 x (f :$ y) (z + t) 1 )
 
 
 cgContext :: CGContext
@@ -108,7 +118,7 @@ cgContext = CGContext { userGlobals = programGlobals program }
 draw :: IO ()
 draw = drawTree . toTree . toAST $ program
 
-gen :: Either Text (ID, CGState, ByteString)
+gen :: Either Text ((ID, SPIRV.PrimTy), CGState, ByteString)
 gen = runCGMonad cgContext . codeGen . toAST $ program
 
 write :: String -> IO ()

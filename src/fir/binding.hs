@@ -17,7 +17,6 @@ import GHC.TypeLits( Symbol
                    )
 
 -- fir
-import Control.Monad.Indexed((:=))
 import Data.Type.Bindings ( BindingsMap, (:->)
                           , BindingType, Binding
                           , Elem, Lookup
@@ -212,18 +211,3 @@ type family BuiltinDoesNotAppearBefore
                  :$$: Text "Variables in scope at site of entry point definition are:"
                  :$$: ShowType i
                 )
-  
-------------------------------------------------------------------------------------------------
--- constraint for if/then/else
-
-type family Local (r :: Type) (j :: k) :: Type where
-  Local  ( (a := i) i ) j = (a := j) i
-  Local  ( (a := j) i ) _
-    = TypeError (     Text "'ifThenElse': unexpected new bindings."
-                 :$$: Text "Bindings made within each branch remain local to that branch."
-                 :$$: Text "Bindings before 'ifThenElse' statement:"
-                 :$$: ShowType i
-                 :$$: Text "Bindings inferred at the end of the statement:"
-                 :$$: ShowType j
-                )
-  Local a _ = a

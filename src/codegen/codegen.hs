@@ -13,7 +13,7 @@ module CodeGen.CodeGen where
 
 -- base
 import Control.Arrow(second)
-import Control.Monad((>>=))
+import Control.Monad((>>=), when)
 import Data.Foldable(traverse_)
 import Data.List(foldl1')
 import Data.Maybe(fromJust)
@@ -63,7 +63,6 @@ import CodeGen.State( CGState, CGContext
                     , _builtin
                     , _interface
                     , _usedGlobal
-                    , _functionReturnType
                     , _userGlobal
                     )
 import CodeGen.Instruction ( Args(..), toArgs
@@ -110,9 +109,9 @@ unapply (AnyAST (f :$ a))
         (AnyAST g, as) -> (AnyAST g, as :& a)
 unapply (AnyAST f) = (AnyAST f, Nil)
 
-codeGenASTList :: ASTList -> CGMonad [ ID ]
+codeGenASTList :: ASTList -> CGMonad [ (ID, SPIRV.PrimTy)  ]
 codeGenASTList = sequence . reverse . go
-    where go :: ASTList -> [ CGMonad ID ]
+    where go :: ASTList -> [ CGMonad (ID, SPIRV.PrimTy) ]
           go Nil = []
           go (as :& a) = codeGen a : go as
 
@@ -123,30 +122,42 @@ headTailASTList (as :& a)
       Nothing      -> Just ( AnyAST a, Nil )
       Just (b, bs) -> Just ( b, bs :& a )
 
+astLength :: ASTList -> Int
+astLength Nil        = 0
+astLength (as :& _ ) = 1 + astLength as
+
 ----------------------------------------------------------------------------
 -- main code generator
 
-codeGen :: AST a -> CGMonad ID
+codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Pure :$ a) = codeGen a
-codeGen (Ap (MkID v) as)
+codeGen (Ap (MkID v ty) as)
   = case as of
-      Nil -> pure v
+      Nil -> pure (v,ty)
       _   ->
-        do mbRetTyID <- use ( _functionReturnType v )
-           case mbRetTyID of
-              Nothing
-                -> throwError "codeGen: function with unknown return type"
-              Just retTyID
-                -> codeGenFunctionCall retTyID v =<< codeGenASTList as
+        case ty of
+          SPIRV.Function xs y
+            -> let totalArgs = length xs
+                   givenArgs = astLength as
+               in case compare totalArgs givenArgs of
+                    EQ -> do retTyID <- typeID y
+                             codeGenFunctionCall (retTyID, y) (v,ty) =<< codeGenASTList as
+                    GT -> throwError "codeGen: partial application not yet supported"
+                    LT -> throwError 
+                        $ "codeGen: function of " <> Text.pack (show totalArgs)
+                          <> " arguments applied to "
+                          <> Text.pack (show givenArgs)
+                          <> " arguments"
+          _ -> throwError $ "codeGen: type " <> Text.pack (show ty) <> " used as a function"
 -- constants
-codeGen (Lit a) = constID a
+codeGen (Lit ty a) = ( , primTyVal ty) <$> constID a
 -- perform substitution when possible
 codeGen (Lam f :$ a)
-  = do a_ID <- codeGen a
-       codeGen $ f (MkID a_ID)
+  = do cg <- codeGen a
+       codeGen $ f (uncurry MkID cg)
 codeGen (Bind :$ a :$ f)
-  = do a_ID <- codeGen a
-       codeGen $ (fromAST f) (MkID a_ID)
+  = do cg <- codeGen a
+       codeGen $ (fromAST f) (uncurry MkID cg)
 -- stateful operations
 codeGen (Def k _ :$ a)
   = do let name = Text.pack ( symbolVal k )
@@ -154,16 +165,20 @@ codeGen (Def k _ :$ a)
        assign ( _knownBinding name ) (Just a_ID)
        pure a_ID
 codeGen (FunDef k as b :$ body)
-  = declareFunction
-      ( Text.pack ( symbolVal k ) )
-      ( map (second fst) (knownVars as) )
-      ( primTyVal b )
-      ( codeGen body )
+  = let argTys = map (second fst) (knownVars as)
+        retTy  = primTyVal b
+    in ( , SPIRV.Function (map snd argTys) retTy) <$>    
+          declareFunction
+            ( Text.pack ( symbolVal k ) )
+            argTys
+            retTy
+            ( codeGen body )
 codeGen (Entry k s :$ body)
-  = declareEntryPoint
-      ( stageVal s )
-      ( Text.pack ( symbolVal k ) )
-      ( codeGen body )
+  = ( , SPIRV.Function [] SPIRV.Unit ) <$>
+      declareEntryPoint
+        ( stageVal s )
+        ( Text.pack ( symbolVal k ) )
+        ( codeGen body )
 codeGen (Get k)
  = do let varName = Text.pack ( symbolVal k )
       ctxt <- use _functionContext
@@ -197,7 +212,7 @@ codeGen (Get k)
                                \ no variable with name " <> varName
                              )
                              mbKnown
-  where loadInstruction :: SPIRV.PrimTy -> StorageClass -> ID -> CGMonad ID
+  where loadInstruction :: SPIRV.PrimTy -> StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
         loadInstruction ty storage loadeeID
           = do tyID <- typeID ty
                -- inelegantly ensure the TypePointer declaration exists
@@ -211,10 +226,10 @@ codeGen (Get k)
                    , resID = Just v
                    , args  = Arg loadeeID EndArgs
                    }
-               pure v
+               pure (v, ty)
 codeGen (Put k :$ a)
   = do let varName = Text.pack ( symbolVal k )
-       a_ID <- codeGen a
+       (a_ID,a_ty) <- codeGen a
        ctxt <- use _functionContext
 
        case ctxt of
@@ -238,27 +253,27 @@ codeGen (Put k :$ a)
           -- is the variable local to a function?
           Function as
             | Just _ <- lookup varName as
-            -> assign (_localBinding varName) (Just a_ID)
+            -> assign (_localBinding varName) (Just (a_ID,a_ty))
 
           -- as we cannot store into user defined variables (e.g. uniforms)
           -- there is only one possible case left to deal with
-          _ -> assign ( _knownBinding varName) (Just a_ID)
+          _ -> assign ( _knownBinding varName) (Just (a_ID,a_ty))
 
-       pure (ID 666666666) -- should never be used
+       pure (ID 0, SPIRV.Unit) -- ID should never be used
 codeGen (Ap (PrimOp primOp _) as)
   = codeGenPrimOp primOp =<< codeGenASTList as
 codeGen (Ap (MkVector n_px a_px) as)
-  = do let n = SPIRV.toDim (natVal n_px)
-       compositeTy
-         <- case primTyVal a_px of
-              SPIRV.Scalar s
-                -> pure $ SPIRV.Vector n s
-              SPIRV.Vector m s
-                -> pure $ SPIRV.Matrix m n s -- TODO: check ordering of m, n
-              x -> throwError ( "codeGen: unexpected vector constituent "
-                              <> Text.pack ( show x )
-                              )
-       codeGenCompositeConstruct compositeTy =<< codeGenASTList as
+  = do  let n = SPIRV.toDim (natVal n_px)
+        compositeTy
+          <- case primTyVal a_px of
+               SPIRV.Scalar s
+                 -> pure $ SPIRV.Vector n s
+               SPIRV.Vector m s
+                 -> pure $ SPIRV.Matrix m n s -- TODO: check ordering of m, n
+               x -> throwError ( "codeGen: unexpected vector constituent "
+                               <> Text.pack ( show x )
+                               )
+        (codeGenCompositeConstruct compositeTy . map fst) =<< codeGenASTList as
 codeGen (VectorAt a_px i_px :$ v)
  = codeGenCompositeExtract
     (primTyVal a_px)
@@ -280,7 +295,12 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
         
         -- header block
         block headerBlock
-        condID <- codeGen cond
+        (condID, condTy) <- codeGen cond
+        when ( condTy /= SPIRV.Boolean )
+             ( throwError
+             $  "codeGen: 'if' expected boolean conditional, but got "
+             <> Text.pack (show condTy)
+             )
         -- might have ended in a different block now, I think that's OK
         branchConditional condID trueBlock falseBlock
 
@@ -307,7 +327,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
           [ trueEndBlock, falseEndBlock ]
           [ trueBindings, falseBindings ]
         
-        pure ( ID 888888888 ) -- no
+        pure (ID 0, SPIRV.Unit) -- ID should never be used
 
 codeGen (While :$ cond :$ loopBody)
   = do  beforeBlock <- note ( "codeGen: while loop outside of a block" )
@@ -335,7 +355,12 @@ codeGen (While :$ cond :$ loopBody)
           ( const True )
           [ beforeBlock   , loopEndBlock ]
           [ bindingsBefore, loopEndBindings ]
-        condID <- codeGen cond
+        (condID, condTy) <- codeGen cond
+        when ( condTy /= SPIRV.Boolean )
+             ( throwError
+             $  "codeGen: 'while' expected boolean conditional, but got "
+             <> Text.pack (show condTy)
+             )
         -- might have ended in a different block now, I think that's OK
         liftPut $ putInstruction Map.empty
           Instruction
@@ -351,7 +376,7 @@ codeGen (While :$ cond :$ loopBody)
 
         -- merge block (first block after the loop)
         block mergeBlock
-        pure (ID 777777777) -- should never be used
+        pure (ID 0, SPIRV.Unit) -- ID should never be used
        
 codeGen (Lam f) = error ( "codeGen: unexpected lambda abstraction:\n"
                          <> show (Lam f)
@@ -363,7 +388,7 @@ codeGen other = error ( "codeGen: non-exhaustive pattern match:\n"
                         <> show other
                       )
 
-codeGenPrimOp :: SPIRV.PrimOp -> [ ID ] -> CGMonad ID
+codeGenPrimOp :: SPIRV.PrimOp -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
 codeGenPrimOp primOp as
   = do let (op,retTy) = SPIRV.opAndReturnType primOp
        resTyId <- typeID retTy
@@ -373,11 +398,11 @@ codeGenPrimOp primOp as
            { operation = op
            , resTy = Just resTyId
            , resID = Just v
-           , args = toArgs as
+           , args = toArgs (map fst as)
            }
-       pure v
+       pure (v, retTy)
 
-codeGenCompositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad ID
+codeGenCompositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad (ID, SPIRV.PrimTy)
 codeGenCompositeConstruct compositeType constituents
   = do tyID <- typeID compositeType
        v <- fresh
@@ -388,10 +413,10 @@ codeGenCompositeConstruct compositeType constituents
            , resID = Just v
            , args  = toArgs constituents
            }
-       pure v
+       pure (v, compositeType)
 
-codeGenCompositeExtract :: SPIRV.PrimTy -> [ Word32 ] -> ID -> CGMonad ID
-codeGenCompositeExtract constituentTy indices compositeID
+codeGenCompositeExtract :: SPIRV.PrimTy -> [ Word32 ] -> (ID, SPIRV.PrimTy) -> CGMonad (ID, SPIRV.PrimTy)
+codeGenCompositeExtract constituentTy indices (compositeID, _)
   = do constituentTyID <- typeID constituentTy
        v <- fresh
        liftPut $ putInstruction Map.empty
@@ -402,20 +427,20 @@ codeGenCompositeExtract constituentTy indices compositeID
            , args      = Arg compositeID
                        $ toArgs (map pred indices) -- off by one, TODO: fix
            }
-       pure v
+       pure (v, constituentTy)
 
-codeGenFunctionCall :: ID -> ID -> [ ID ] -> CGMonad ID
-codeGenFunctionCall resTyID functionID argIDs
+codeGenFunctionCall :: (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
+codeGenFunctionCall res func argIDs
   = do v <- fresh
        liftPut $ putInstruction Map.empty
          Instruction
            { operation = SPIRV.Op.FunctionCall
-           , resTy = Just resTyID
+           , resTy = Just (fst res)
            , resID = Just v
-           , args  = Arg functionID
-                   $ toArgs argIDs
+           , args  = Arg (fst func)
+                   $ toArgs (map fst argIDs)
            }
-       pure v
+       pure (v, snd res)
 
 ----------------------------------------------------------------------------
 
@@ -464,7 +489,7 @@ branchConditional b t f
 ----------------------------------------------------------------------------
 -- function declarations
 
-declareFunction :: Text -> [(Text, SPIRV.PrimTy)] -> SPIRV.PrimTy -> CGMonad ID -> CGMonad ID
+declareFunction :: Text -> [(Text, SPIRV.PrimTy)] -> SPIRV.PrimTy -> CGMonad (ID, SPIRV.PrimTy) -> CGMonad ID
 declareFunction funName as b body
   = createRec ( _knownBinding funName )
       ( do resTyID <- typeID b
@@ -480,7 +505,7 @@ declareFunction funName as b body
             , args      = Arg (0 :: Word32) -- no function control information
                         $ Arg fnTyID EndArgs
             }
-        retValID <- inFunctionContext as body
+        (retValID, _) <- inFunctionContext as body
         case b of
           SPIRV.Unit
             -> liftPut $ putInstruction Map.empty
@@ -504,25 +529,23 @@ declareFunction funName as b body
             , resID     = Nothing
             , args      = EndArgs
             }
-        assign ( _functionReturnType v ) (Just resTyID) -- hacky workaround, sorry
-        pure v
+        pure (v, SPIRV.Function (map snd as) b)
       )
 
 
 declareArgument :: Text -> SPIRV.PrimTy -> CGMonad ID
 declareArgument argName argTy
   = createRec ( _localBinding argName )
-     ( typeID argTy )
-     ( \argTyID v -> do
+     ( ( , argTy) <$> typeID argTy )
+     ( \(argTyID,_) v -> do
         liftPut $ putInstruction Map.empty Instruction
           { operation = SPIRV.Op.FunctionParameter
           , resTy = Just argTyID
           , resID = Just v
           , args = EndArgs
           }
-        pure v
+        pure (v, argTy)
      )
-
 declareEntryPoint :: Stage -> Text -> CGMonad r -> CGMonad ID
 declareEntryPoint stage stageName body
   = createRec ( _knownBinding stageName )
@@ -550,7 +573,7 @@ declareEntryPoint stage stageName body
             , resID     = Nothing
             , args      = EndArgs
             }
-        pure v
+        pure (v, SPIRV.Function [] SPIRV.Unit)
       )
 
 ----------------------------------
@@ -596,22 +619,29 @@ conflicts keyIsOK
       )
   . map (fmap (:[]))
 
-phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text ID ] -> CGMonad ()
+phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text (ID, SPIRV.PrimTy) ] -> CGMonad ()
 phiInstructions isRelevant blocks bindings 
   = traverseWithKey_
-      ( \ name ids ->
-        do  v <- fresh
-            removeThisHack <- fresh
-            let bdAndBlockIDs :: Pairs ID -- has the right traversable instance
-                bdAndBlockIDs = Pairs (zip ids blocks)
-            liftPut $ putInstruction Map.empty
-              Instruction
-                { operation = SPIRV.Op.Phi
-                , resTy = Just removeThisHack -- TODO: error, this should be an actual result type
-                , resID = Just v
-                , args  = toArgs bdAndBlockIDs
-                }
-            assign ( _knownBinding name ) (Just v)
+      ( \ name idsAndTys ->
+        case idsAndTys of
+          (_,ty) : _
+            -> do tyID <- typeID ty
+                  v    <- fresh                  
+                  let bdAndBlockIDs :: Pairs ID -- has the right traversable instance
+                      bdAndBlockIDs 
+                        = Pairs $ zipWith 
+                                    (\(x_ID, _) blk -> (x_ID, blk))
+                                    idsAndTys
+                                    blocks
+                  liftPut $ putInstruction Map.empty
+                    Instruction
+                      { operation = SPIRV.Op.Phi
+                      , resTy = Just tyID
+                      , resID = Just v
+                      , args  = toArgs bdAndBlockIDs
+                      }
+                  assign ( _knownBinding name ) (Just (v, ty))
+          _ -> pure ()
       )
       ( conflicts isRelevant bindings )
 

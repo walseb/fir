@@ -31,6 +31,7 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      )
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
+import Data.Word(Word16)
 import GHC.TypeLits  ( KnownSymbol
                      , TypeError, ErrorMessage(..)
                      )
@@ -46,7 +47,6 @@ import FIR.AST(AST(..))
 import qualified FIR.AST as AST
 import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Put, Get
-                   , Local
                    )
 import FIR.Builtin(StageBuiltins, KnownStage)
 import FIR.PrimTy(PrimTy, primTy, ScalarTy, scalarTy, KnownVars)
@@ -101,10 +101,13 @@ put        a = Codensity ( \h -> Bind :$ (Put    (Proxy @k)                     
 --------------------------------------------------------------------------------------
 -- instances for AST
 
+lit :: forall a. PrimTy a => a -> AST a
+lit = Lit (Proxy @a)
+
 -- logical operations
 instance Boolean (AST Bool) where
-  true  = Lit True
-  false = Lit False
+  true  = lit True
+  false = lit False
   (&&)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.And) (&&)
   (||)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Or ) (||)
   not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Not) not
@@ -124,6 +127,16 @@ instance ( PrimTy a
           ) where
   choose = fromAST IfM
 
+while :: ( PrimTy a
+         , i' ~ i, i'' ~ i
+         , b ~ (AST Bool := i)
+         , r ~ (AST a := i)
+        )
+      => Codensity AST b               i
+      -> Codensity AST ( AST a := j  ) i'
+      -> Codensity AST r               i''
+while = fromAST While
+
 instance (PrimTy a, Eq a, Logic a ~ Bool)
   => Eq (AST a) where
   type Logic (AST a) = AST (Logic a)
@@ -132,7 +145,7 @@ instance (PrimTy a, Eq a, Logic a ~ Bool)
 
 instance (PrimTy a, Ord a, Logic a ~ Bool)
   => Ord (AST a) where
-  type Ordering (AST a) = AST Int
+  type Ordering (AST a) = AST Word16
   compare = error "todo"
   (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) (<=)
   (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (primTy @a)) (>=)
@@ -144,19 +157,19 @@ instance (PrimTy a, Ord a, Logic a ~ Bool)
 -- numeric operations
 instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
   (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalarTy @a)) (+)
-  zero   = Lit (zero :: a)
+  zero   = lit (zero :: a)
 instance (ScalarTy a, Semiring a) => Semiring (AST a) where
   (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (scalarTy @a)) (*)
 instance (ScalarTy a, Ring a) => Ring (AST a) where
   (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (scalarTy @a)) (-)
   negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (scalarTy @a)) negate
-  fromInteger = Lit . fromInteger
+  fromInteger = lit . fromInteger
 instance (ScalarTy a, Signed a) => Signed (AST a) where
   abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (scalarTy @a)) abs
   signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (scalarTy @a)) signum
 instance (ScalarTy a, DivisionRing a) => DivisionRing (AST a) where
   (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (scalarTy @a)) (/)
-  fromRational = Lit . fromRational
+  fromRational = lit . fromRational
 instance ( ScalarTy a
          , Archimedean a
          , Logic a ~ Bool
@@ -272,7 +285,7 @@ instance Syntactic (AST a) where
 
 instance Syntactic () where
   type Internal () = ()
-  toAST   = Lit
+  toAST   = lit
   fromAST = const ()
 
 instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where

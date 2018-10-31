@@ -50,9 +50,8 @@ data CGState
     , knownTypes          :: Map SPIRV.PrimTy  Instruction
     , knownConstants      :: Map AConstant     Instruction
     , usedGlobals         :: Map Text          (ID, (SPIRV.PrimTy, SPIRV.StorageClass))
-    , knownBindings       :: Map Text          ID
-    , localBindings       :: Map Text          ID
-    , functionReturnTypes :: Map ID            ID
+    , knownBindings       :: Map Text          (ID, SPIRV.PrimTy)
+    , localBindings       :: Map Text          (ID, SPIRV.PrimTy)
     }
   deriving Show
 
@@ -83,7 +82,6 @@ initialState = CGState
   , usedGlobals         = Map.empty
   , knownBindings       = Map.empty
   , localBindings       = Map.empty
-  , functionReturnTypes = Map.empty
   }
 
 data CGContext
@@ -172,24 +170,17 @@ _knownConstants = lens knownConstants ( \s v -> s { knownConstants = v } )
 _knownConstant :: AConstant -> Lens' CGState (Maybe Instruction)
 _knownConstant constant = _knownConstants . at constant
 
-_knownBindings :: Lens' CGState (Map Text ID)
+_knownBindings :: Lens' CGState (Map Text (ID, SPIRV.PrimTy))
 _knownBindings = lens knownBindings ( \s v -> s { knownBindings = v } )
 
-_knownBinding :: Text -> Lens' CGState (Maybe ID)
+_knownBinding :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _knownBinding binding = _knownBindings . at binding
 
-_localBindings :: Lens' CGState (Map Text ID)
+_localBindings :: Lens' CGState (Map Text (ID, SPIRV.PrimTy))
 _localBindings = lens localBindings ( \s v -> s { localBindings = v } )
 
-_localBinding :: Text -> Lens' CGState (Maybe ID)
+_localBinding :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _localBinding binding = _localBindings . at binding
-
-_functionReturnTypes :: Lens' CGState (Map ID ID)
-_functionReturnTypes = lens functionReturnTypes
-                            ( \s v -> s { functionReturnTypes = v } )
-
-_functionReturnType :: ID -> Lens' CGState (Maybe ID)
-_functionReturnType fnID = _functionReturnTypes . at fnID
 
 
 

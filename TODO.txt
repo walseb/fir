@@ -74,3 +74,7 @@ can it be renamed gl_in and gl_out ??
 
 include source line number information in the SPIR-V
 see http://hackage.haskell.org/package/base-4.12.0.0/docs/GHC-Stack.html
+
+
+deal with function arguments and local variables (and entry point local variables)
+use pointers for writable arguments?
