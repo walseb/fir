@@ -22,6 +22,7 @@ import CodeGen.Binary ( putHeader
                       , putMemoryModel
                       , putEntryPoints
                       , putBindingAnnotations
+                      , putKnownStringLits
                       --, putDecorations
                       --, putExecutionModes
                       , putInstructionsInOrder
@@ -47,6 +48,7 @@ putDecs
     lift $ do --putExecutionModes knownBindings interfaces
               putBindingAnnotations   (fmap fst knownBindings)
               putBindingAnnotations   (fmap fst usedGlobals)
+              putKnownStringLits      knownStringLits
               --putDecorations
               putInstructionsInOrder  knownTypes
               putInstructionsInOrder  knownConstants

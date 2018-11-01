@@ -85,16 +85,13 @@ instance Put Double where
   sizeOf _ = 2
 
 -- C-style string
-newtype Literal = Literal { literal :: Text }
-  deriving ( Eq, Show, Ord )
-
-instance Put Literal where
-  put (Literal lit) =
+instance Put Text where
+  put lit =
     let bs = Text.encodeUtf8 lit
         n = ByteString.length bs
         pad = 4 - (n `mod` 4)
     in Binary.putByteString bs
     <> (pad `stimes` Binary.putWord8 0)
-  sizeOf (Literal lit) 
+  sizeOf lit
     = let n = fromIntegral $ ByteString.length ( Text.encodeUtf8 lit )
       in 1 + (n `div` 4)

@@ -15,6 +15,7 @@ module FIR.AST where
 -- base  
 import Data.Kind(Type)
 import Data.Proxy(Proxy)
+import qualified GHC.Stack
 import GHC.TypeLits(KnownSymbol, symbolVal)
 import GHC.TypeNats (Nat, KnownNat, natVal, type (-), type (<=?))             
 
@@ -67,13 +68,24 @@ data AST :: Type -> Type where
   Pure :: AST (a -> (a := i) i)
   Bind :: AST ( (a := j) i -> (a -> q j) -> q i ) -- angelic bind
 
-  Def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
+  Def :: forall k ps a i.
+        ( GHC.Stack.HasCallStack
+        , KnownSymbol k
+        , PrimTy a
+        , ValidDef k i ~ 'True
+        )
       => Proxy k
       -> Proxy ps
       -> AST (    a
                -> (a := Insert k (Var ps a) i) i
              )
-  FunDef :: forall k as b l i. (KnownSymbol k, KnownVars as, PrimTy b, ValidFunDef k as i l ~ 'True)
+  FunDef :: forall k as b l i.
+            ( GHC.Stack.HasCallStack
+            , KnownSymbol k
+            , KnownVars as
+            , PrimTy b
+            , ValidFunDef k as i l ~ 'True
+            )
          => Proxy k
          -> Proxy as -- function arguments
          -> Proxy b
@@ -85,23 +97,31 @@ data AST :: Type -> Type where
   -- this function definition is not added to the index of items in scope
   -- ( it is not allowed to be called )
   -- TODO: add a special "entry point" binding instead of nothing
-  Entry :: forall k s l i. (KnownSymbol k, KnownStage s, ValidEntryPoint s i l ~ 'True)
+  Entry :: forall k s l i.
+           ( GHC.Stack.HasCallStack
+           , KnownSymbol k
+           , KnownStage s
+           , ValidEntryPoint s i l ~ 'True
+           )
          => Proxy k
          -> Proxy s
          -> AST (    (() := l) (Union i (StageBuiltins s))
                   -> (() := i) i
                 )
-  Get :: forall k i. KnownSymbol k
+  Get :: forall k i. (GHC.Stack.HasCallStack,KnownSymbol k)
       => Proxy k
       -> AST ( (Get k i := i) i)
-  Put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
+  Put :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k, PrimTy (Put k i))
       => Proxy k
       -> AST ( Put k i -> (():= i) i )
 
   -- control flow
-  If :: AST ( Bool -> a -> a -> a )
-  IfM :: AST ( Bool -> (a := j) i -> (a := k) i -> (a := i) i )
-  While :: AST ( ( Bool := i ) i -> (a := j) i -> (a := i) i )
+  If    :: GHC.Stack.HasCallStack
+        => AST ( Bool -> a -> a -> a )
+  IfM   :: GHC.Stack.HasCallStack
+        => AST ( Bool -> (a := j) i -> (a := k) i -> (a := i) i )
+  While :: GHC.Stack.HasCallStack
+        => AST ( ( Bool := i ) i -> (a := j) i -> (a := i) i )
 
   -- vectors (and matrices)
   MkVector :: (KnownNat n, PrimTy a)

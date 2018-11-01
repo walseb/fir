@@ -92,7 +92,11 @@ program = do
 
 
 cgContext :: CGContext
-cgContext = CGContext { userGlobals = programGlobals program }
+cgContext
+  = CGContext
+      { userGlobals = programGlobals program
+      , debugMode   = True
+      }
 
 draw :: IO ()
 draw = drawTree . toTree . toAST $ program

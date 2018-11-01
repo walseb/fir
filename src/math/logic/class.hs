@@ -25,6 +25,7 @@ import Data.Coerce(Coercible, coerce)
 import Data.Int(Int8,Int16,Int32,Int64)
 import Data.Kind(Type)
 import Data.Word(Word8,Word16,Word32,Word64)
+import qualified GHC.Stack
 
 -- half
 import Numeric.Half(Half)
@@ -58,8 +59,10 @@ type family Choosing b (t :: (Type,Type,Type)) = r | r -> b t where
 
 class Boolean b => Choose b (t :: (Type,Type,Type)) where
   choose :: Choosing b t
-  ifThenElse :: Choosing b t
-  ifThenElse = choose
+
+ifThenElse :: (GHC.Stack.HasCallStack, Choose b (t :: (Type,Type,Type)))
+           => Choosing b t
+ifThenElse = choose
 
 type Triple a = '(a,a,a)
 

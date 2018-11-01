@@ -34,6 +34,7 @@ import qualified Prelude
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
 import Data.Word(Word16)
+import qualified GHC.Stack
 import GHC.TypeLits  ( KnownSymbol
                      , TypeError, ErrorMessage(..)
                      )
@@ -76,28 +77,44 @@ import qualified SPIRV.PrimTy as SPIRV
 --------------------------------------------------------------------------
 -- specialise stateful functions to work with the Codensity IdIx indexed monad
 
-
-def :: forall k ps a i. (KnownSymbol k, ValidDef k i ~ 'True, PrimTy a)
+def :: forall k ps a i.
+       ( GHC.Stack.HasCallStack
+       , KnownSymbol k
+       , PrimTy a
+       , ValidDef k i ~ 'True
+       )
     => AST a
     -> Codensity AST (AST a := Insert k (Var ps a) i) i
-def        a = Codensity ( \h -> Bind :$ (Def    (Proxy @k) (Proxy @ps)            :$ a      ) :$ (Lam $ h . AtKey) )
 
-fundef :: forall k as b l i. (KnownSymbol k, KnownVars as, PrimTy b, ValidFunDef k as i l ~ 'True)
+fundef :: forall k as b l i.
+          ( GHC.Stack.HasCallStack
+          , KnownSymbol k
+          , KnownVars as
+          , PrimTy b
+          , ValidFunDef k as i l ~ 'True
+          )
        => Codensity AST (AST b := l) (Union i as)
        -> Codensity AST (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
-fundef     f = Codensity ( \h -> Bind :$ (FunDef (Proxy @k) (Proxy @as) (Proxy @b) :$ toAST f) :$ (Lam $ h . AtKey) )
 
-entryPoint :: forall k s l i. (KnownSymbol k, KnownStage s, ValidEntryPoint s i l ~ 'True)
+entryPoint :: forall k s l i.
+             ( GHC.Stack.HasCallStack
+             , KnownSymbol k
+             , KnownStage s
+             , ValidEntryPoint s i l ~ 'True
+             )
            => Codensity AST (AST () := l) (Union i (StageBuiltins s))
            -> Codensity AST (AST () := i) i
-entryPoint f = Codensity ( \h -> Bind :$ (Entry  (Proxy @k) (Proxy @s )            :$ toAST f) :$ (Lam $ h . AtKey) )
 
-get :: forall k i. (KnownSymbol k)
+get :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k)
     => Codensity AST (AST (Get k i) := i) i
-get          = Codensity ( \h -> Bind :$  Get    (Proxy @k)                                    :$ (Lam $ h . AtKey) )
 
-put :: forall k i. (KnownSymbol k, PrimTy (Put k i))
+put :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k, PrimTy (Put k i))
     => AST (Put k i) -> Codensity AST (AST () := i) i
+
+def        a = Codensity ( \h -> Bind :$ (Def    (Proxy @k) (Proxy @ps)            :$ a      ) :$ (Lam $ h . AtKey) )
+fundef     f = Codensity ( \h -> Bind :$ (FunDef (Proxy @k) (Proxy @as) (Proxy @b) :$ toAST f) :$ (Lam $ h . AtKey) )
+entryPoint f = Codensity ( \h -> Bind :$ (Entry  (Proxy @k) (Proxy @s )            :$ toAST f) :$ (Lam $ h . AtKey) )
+get          = Codensity ( \h -> Bind :$  Get    (Proxy @k)                                    :$ (Lam $ h . AtKey) )
 put        a = Codensity ( \h -> Bind :$ (Put    (Proxy @k)                        :$ a      ) :$ (Lam $ h . AtKey) )
 
 --------------------------------------------------------------------------------------
@@ -129,7 +146,8 @@ instance ( PrimTy a
           ) where
   choose = fromAST IfM
 
-while :: ( PrimTy a
+while :: ( GHC.Stack.HasCallStack
+         , PrimTy a
          , i' ~ i, i'' ~ i
          , b ~ (AST Bool := i)
          , r ~ (AST a := i)

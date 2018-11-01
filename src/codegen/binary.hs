@@ -35,7 +35,7 @@ import CodeGen.Instruction ( Args(..), putArgs, toArgs
                            , wordCount
                            )
 import CodeGen.Monad(note)
-import Data.Binary.Class.Put(Put(put), Literal(Literal))
+import Data.Binary.Class.Put(Put(put))
 import FIR.Builtin(Stage, executionModel)
 import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV
@@ -134,7 +134,7 @@ putEntryPoint stage stageName entryPointID interface
         -- instead of result type, resTy field holds the ExecutionModel value
         , resTy     = Just ( ID executionID )
         , resID     = Just entryPointID
-        , args      = Arg (Literal stageName)
+        , args      = Arg stageName
                     $ toArgs interface
         }
     where SPIRV.ExecutionModel executionID = executionModel stage
@@ -166,7 +166,19 @@ putBindingAnnotations
           , resTy     = Nothing
           , resID     = Nothing
           , args      = Arg ident
-                      $ Arg (Literal name) EndArgs
+                      $ Arg name EndArgs
+          }
+      )
+
+putKnownStringLits :: Map Text ID -> Binary.Put
+putKnownStringLits
+  = traverseWithKey_
+      ( \ lit ident -> putInstruction Map.empty
+        Instruction
+          { operation = SPIRV.Op.String
+          , resTy     = Nothing
+          , resID     = Just ident
+          , args      = Arg lit EndArgs
           }
       )
 

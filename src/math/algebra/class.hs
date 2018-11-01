@@ -32,7 +32,7 @@ import qualified Numeric.Half as Half
 
 -- fir
 import Deriving.Prelude(Prelude(..)) -- newtype for deriving Prelude instances
-import Math.Logic.Class(Choose(ifThenElse), Eq(Logic,(==)), Ord)
+import Math.Logic.Class(ifThenElse, Eq(Logic,(==)), Ord)
 
 
 

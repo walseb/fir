@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RankNTypes #-}
 
 module CodeGen.State where
 
@@ -40,19 +40,20 @@ import qualified SPIRV.Storage    as SPIRV
 -- for instance which types have been declared
 data CGState
   = CGState
-    { currentID           :: ID
-    , currentBlock        :: Maybe ID
-    , functionContext     :: FunctionContext
-    , neededCapabilities  :: Set               SPIRV.Capability
-    , knownExtInsts       :: Map SPIRV.ExtInst Instruction
-    , interfaces          :: Map (Stage, Text) (Set Text)
-    , annotations         :: Set               Instruction
-    , knownTypes          :: Map SPIRV.PrimTy  Instruction
-    , knownConstants      :: Map AConstant     Instruction
-    , usedGlobals         :: Map Text          (ID, (SPIRV.PrimTy, SPIRV.StorageClass))
-    , knownBindings       :: Map Text          (ID, SPIRV.PrimTy)
-    , localBindings       :: Map Text          (ID, SPIRV.PrimTy)
-    }
+      { currentID           :: ID
+      , currentBlock        :: Maybe ID
+      , functionContext     :: FunctionContext
+      , neededCapabilities  :: Set               SPIRV.Capability
+      , knownExtInsts       :: Map SPIRV.ExtInst Instruction
+      , knownStringLits     :: Map Text          ID
+      , interfaces          :: Map (Stage, Text) (Set Text)
+      , annotations         :: Set               Instruction
+      , knownTypes          :: Map SPIRV.PrimTy  Instruction
+      , knownConstants      :: Map AConstant     Instruction
+      , usedGlobals         :: Map Text          (ID, (SPIRV.PrimTy, SPIRV.StorageClass))
+      , knownBindings       :: Map Text          (ID, SPIRV.PrimTy)
+      , localBindings       :: Map Text          (ID, SPIRV.PrimTy)
+      }
   deriving Show
 
 data FunctionContext
@@ -62,28 +63,35 @@ data FunctionContext
   deriving ( Eq, Show )
 
 initialState :: CGState
-initialState = CGState
-  { currentID           = ID 1
-  , currentBlock        = Nothing
-  , functionContext     = TopLevel
-  , neededCapabilities  = Set.empty
-  , knownExtInsts       = Map.empty
-  , interfaces          = Map.empty
-  , annotations         = Set.empty
-  , knownTypes          = Map.empty
-  , knownConstants      = Map.empty
-  , usedGlobals         = Map.empty
-  , knownBindings       = Map.empty
-  , localBindings       = Map.empty
-  }
+initialState
+  = CGState
+      { currentID           = ID 1
+      , currentBlock        = Nothing
+      , functionContext     = TopLevel
+      , neededCapabilities  = Set.empty
+      , knownExtInsts       = Map.empty
+      , knownStringLits     = Map.empty
+      , interfaces          = Map.empty
+      , annotations         = Set.empty
+      , knownTypes          = Map.empty
+      , knownConstants      = Map.empty
+      , usedGlobals         = Map.empty
+      , knownBindings       = Map.empty
+      , localBindings       = Map.empty
+      }
 
 data CGContext
   = CGContext
      { userGlobals :: Map Text SPIRV.PrimTy
+     , debugMode   :: Bool
      }
 
 emptyContext :: CGContext
-emptyContext = CGContext { userGlobals = Map.empty }
+emptyContext
+  = CGContext
+      { userGlobals = Map.empty
+      , debugMode   = True
+      }
 
 ----------------------------------------------------------------------------
 -- lenses
@@ -108,6 +116,12 @@ _knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )
 
 _knownExtInst :: SPIRV.ExtInst -> Lens' CGState (Maybe Instruction)
 _knownExtInst ext = _knownExtInsts . at ext
+
+_knownStringLits :: Lens' CGState (Map Text ID)
+_knownStringLits = lens knownStringLits ( \s v -> s { knownStringLits = v } )
+
+_knownStringLit :: Text -> Lens' CGState (Maybe ID)
+_knownStringLit lit = _knownStringLits . at lit
 
 _usedGlobals :: Lens' CGState (Map Text (ID, (SPIRV.PrimTy, SPIRV.StorageClass)))
 _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
@@ -188,3 +202,6 @@ _userGlobals = lens userGlobals ( \c v -> c { userGlobals = v } )
 
 _userGlobal :: Text -> Lens' CGContext (Maybe SPIRV.PrimTy)
 _userGlobal global = _userGlobals . at global
+
+_debugMode :: Lens' CGContext Bool
+_debugMode = lens debugMode ( \c v -> c { debugMode = v } )

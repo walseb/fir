@@ -23,6 +23,8 @@ import Data.Maybe(fromJust)
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
 import GHC.TypeNats(natVal)
+import qualified GHC.Stack
+import qualified GHC.Stack.Types as GHC.Stack
 import Prelude hiding (Monad(..))
 
 -- binary
@@ -39,7 +41,7 @@ import qualified Data.Set as Set
 
 -- mtl
 import Control.Monad.Except(throwError)
-import Control.Monad.Reader(ask)
+import Control.Monad.Reader(MonadReader, ask)
 import Control.Monad.State(MonadState, get, put)
 --import Control.Monad.State.Class(MonadState)
 
@@ -67,6 +69,7 @@ import CodeGen.State( CGState(currentBlock, knownBindings, localBindings)
                     , _functionContext
                     , _neededCapability
                     , _knownExtInsts, _knownExtInst
+                    , _knownStringLit
                     , _knownBindings, _knownBinding
                     , _localBindings, _localBinding
                     , _knownType
@@ -75,13 +78,13 @@ import CodeGen.State( CGState(currentBlock, knownBindings, localBindings)
                     , _interface
                     , _usedGlobal
                     , _userGlobal
+                    , _debugMode
                     )
 import CodeGen.Instruction ( Args(..), toArgs
                            , prependArg, prependArgs
                            , ID(ID), Instruction(..)
                            , Pairs(Pairs)
                            )
-import Data.Binary.Class.Put(Literal(Literal))
 import FIR.AST(AST(..))
 import FIR.Builtin( Stage, stageVal
                   , stageBuiltins, stageCapabilities
@@ -167,21 +170,23 @@ codeGen (Bind :$ a :$ f)
        codeGen $ (fromAST f) (uncurry MkID cg)
 -- stateful operations
 codeGen (Def k _ :$ a)
-  = do let name = Text.pack ( symbolVal k )
-       a_ID <- codeGen a
-       assign ( _knownBinding name ) (Just a_ID)
-       pure a_ID
+  = do  let name = Text.pack ( symbolVal k )
+        a_ID <- codeGen a
+        assign ( _knownBinding name ) (Just a_ID)
+        pure a_ID
 codeGen (FunDef k as b :$ body)
   = let argTys = map (second fst) (knownVars as)
         retTy  = primTyVal b
-    in ( , SPIRV.Function (map snd argTys) retTy) <$>    
+    in debug ( putSrcInfo GHC.Stack.callStack )
+    >> ( , SPIRV.Function (map snd argTys) retTy) <$>
           declareFunction
             ( Text.pack ( symbolVal k ) )
             argTys
             retTy
             ( codeGen body )
 codeGen (Entry k s :$ body)
-  = ( , SPIRV.Function [] SPIRV.Unit ) <$>
+  = debug ( putSrcInfo GHC.Stack.callStack )
+  >>( , SPIRV.Function [] SPIRV.Unit ) <$>
       declareEntryPoint
         ( stageVal s )
         ( Text.pack ( symbolVal k ) )
@@ -510,6 +515,43 @@ runCodeGen :: CGContext -> AST a -> Either Text ByteString
 runCodeGen context = putASM context . codeGen
 
 ----------------------------------------------------------------------------
+-- debugging
+
+debug :: MonadReader CGContext m => m () -> m ()
+debug action = (`when` action) =<< view _debugMode
+
+sourceInfo :: GHC.Stack.CallStack -> Maybe (Text, Word32, Word32)
+sourceInfo GHC.Stack.EmptyCallStack = Nothing
+sourceInfo (GHC.Stack.PushCallStack _ loc stack)
+  = case sourceInfo stack of
+      Nothing
+        -> Just ( Text.pack    $ GHC.Stack.srcLocFile      loc
+                , fromIntegral $ GHC.Stack.srcLocStartLine loc
+                , fromIntegral $ GHC.Stack.srcLocStartCol  loc
+                )
+      Just info
+        -> Just info
+sourceInfo (GHC.Stack.FreezeCallStack stack) = sourceInfo stack
+
+putSrcInfo :: GHC.Stack.CallStack -> CGMonad ()
+putSrcInfo callstack
+  = do  (fileName, lineNo, colNo)
+          <- note ( "putSrcInfo: cannot find source location \
+                    \needed for debug statement"
+                  )
+                  ( sourceInfo callstack )
+        fileID <- stringLit fileName
+        liftPut $ putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.Line
+            , resTy = Nothing
+            , resID = Nothing
+            , args  = Arg fileID
+                    $ Arg lineNo
+                    $ Arg colNo EndArgs
+            }
+
+----------------------------------------------------------------------------
 -- blocks and branching
 
 block :: ID -> CGMonad ()
@@ -735,7 +777,7 @@ extInstID extInst =
         { operation = SPIRV.Op.ExtInstImport
         , resTy     = Nothing
         , resID     = Just v
-        , args      = Arg ( Literal (SPIRV.extInstName extInst) )
+        , args      = Arg ( SPIRV.extInstName extInst )
                       EndArgs
         }
     )
@@ -887,6 +929,13 @@ globalID globalName ty storage =
   tryToUse ( _usedGlobal globalName )
     fst
     ( pure . ( , (ty,storage) ) )
+
+stringLit :: (MonadState CGState m, MonadFresh ID m)
+         => Text -> m ID
+stringLit lit =
+  tryToUse ( _knownStringLit lit )
+    id
+    pure
 
 declareCapabilities :: ( MonadState CGState m, Traversable t)
                     => t SPIRV.Capability -> m ()
