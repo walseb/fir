@@ -1,14 +1,15 @@
-{-# LANGUAGE GADTs         #-}
-{-# LANGUAGE InstanceSigs  #-}
-{-# LANGUAGE PolyKinds     #-}
-{-# LANGUAGE RankNTypes    #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE InstanceSigs      #-}
+{-# LANGUAGE PolyKinds         #-}
+{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE TypeOperators     #-}
 
 module Control.Monad.Indexed where
 
 -- base
 import Data.Kind(Type)
-import Prelude hiding ( Applicative(..), Monad(..) )
+import Prelude hiding ( Functor(..), (<$>), Applicative(..), Monad(..) )
 
 ------------------------------------------------
 -- indexed monads (à la Conor McBride)
@@ -19,9 +20,8 @@ class FunctorIx ( f :: (k -> Type) -> (k -> Type) ) where
 
 class FunctorIx m => MonadIx m where
   returnIx :: p ix -> m p ix
-  extendIx :: ( forall ix.   p ix -> m q ix )
+  extendIx :: ( forall ix.   p ix -> m q ix ) -- demonic bind
            -> ( forall ix. m p ix -> m q ix )
-
 
 ------------------------------------------------
 -- Atkey indexing
@@ -87,6 +87,48 @@ ma >> mb = ma >>= const mb
 return, pure :: MonadIx m => a -> m (a := i) i
 return = returnIx . AtKey
 pure   = returnIx . AtKey
+
+fmap :: FunctorIx m => (a -> b) -> m (a := j) i -> m (b := j) i
+fmap f = fmapIx ( withKey f)
+
+infixl 4 <$>
+infixl 4 <$
+infixl 4 $>
+infixl 1 <&>
+
+(<$>) :: FunctorIx f => (a -> b) -> f (a := j) i -> f (b := j) i
+(<$>) = fmap
+(<$) :: FunctorIx f => a -> f (b := j) i -> f (a := j) i
+(<$) = fmap . const
+($>) :: FunctorIx f => f (a := j) i -> b -> f (b := j) i
+($>) = flip (<$)
+(<&>) :: FunctorIx f => f (a := j) i -> (a -> b) -> f (b := j) i
+(<&>) = flip fmap
+
+infixl 4 <*>
+class FunctorIx f => IxApplicative f where
+  (<*>) :: f ((a -> b) := j) i -> (f (a := k) j -> f (b := k) i)
+
+instance (FunctorIx m, MonadIx m) => IxApplicative m where
+  mf <*> ma = mf >>= (<$> ma)
+
+infixl 4 *>
+infixl 4 <*
+
+(*>) :: IxApplicative f => f (a := j) i -> f (b := k) j -> f (b := k) i
+fa *> fb = (id <$ fa) <*> fb
+(<*) :: IxApplicative f => f (a := j) i -> f (b := k) j -> f (a := k) i
+fa <* fb = (const <$> fa) <*> fb
+
+liftA2 :: IxApplicative f
+       => (a -> b -> c)
+       -> f (a := j) i -> f (b := k) j -> f (c := k) i
+liftA2 f a b = f <$> a <*> b
+
+liftA3 :: IxApplicative f
+       => (a -> b -> c -> d)
+       -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := l) i
+liftA3 f a b c = f <$> a <*> b <*> c
 
 class MonadIx m => MonadIxFail m where
   fail :: String -> m (a := j) i

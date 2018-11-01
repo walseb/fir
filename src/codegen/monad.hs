@@ -23,20 +23,21 @@ import Control.Lens( Lens'
                    , use, assign, (<<%=)
                    )
 
+-- mtl
+import Control.Monad.Except(MonadError , ExceptT, runExceptT, throwError)
+import Control.Monad.Reader(MonadReader, ReaderT, runReaderT)
+import Control.Monad.State (MonadState , StateT , runStateT )
+
 -- text-utf8
 import Data.Text(Text)
 
 -- transformers
-import Control.Monad.Except(MonadError , ExceptT, runExceptT, throwError)
-import Control.Monad.Reader(MonadReader, ReaderT, runReaderT)
-import Control.Monad.State (MonadState , StateT , runStateT )
 import Control.Monad.Trans.Class(MonadTrans, lift)
 
 -- fir
 import Control.Arrow.Strength(leftStrength)
 import CodeGen.Instruction(ID)
 import CodeGen.State( CGState, CGContext
-                    , initialState
                     , _currentID
                     )
 
@@ -123,11 +124,11 @@ tryToUse _key f mk = tryToUseWith _key f (create _key mk)
 runExceptTPutM :: ExceptT e Binary.PutM a -> Either e (a, ByteString)
 runExceptTPutM = runExceptT >>> uncurry leftStrength . Binary.runPutM
 
-runCGMonad :: CGContext -> CGMonad r -> Either Text (r, CGState, ByteString)
-runCGMonad context
+runCGMonad :: CGContext -> CGState -> CGMonad r -> Either Text (r, CGState, ByteString)
+runCGMonad context state
   =   runFreshSuccT  
-  >>> ( `runReaderT` context      )
-  >>> ( `runStateT`  initialState )
+  >>> ( `runReaderT` context )
+  >>> ( `runStateT`  state   )
   >>> runExceptTPutM
   >>> right ( \((r,s),b) -> (r,s,b) )
 

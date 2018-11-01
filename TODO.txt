@@ -14,7 +14,6 @@ Operations:
 
 Control flow:
   - switch
-  - loops
 
 
 need to think about records/structs and in particular memory layout & alignment concerns
@@ -33,7 +32,7 @@ instead need to manually "zipWith" using OpCompositeExtra, OpCompositeConstruct
 
 
 
-apply RowMajor decoration to matrix type declarations
+apply RowMajor decoration to matrix type declarations?
 
 write pattern synonyms for creating matrices out of rows/columns
 same for destructuring
@@ -42,29 +41,10 @@ same for destructuring
 program optimisation: when possible, bundle together the vector indexing "At" things into a OpVectorShuffle
 
 
-
-address string issues:
-  - figure out which ByteString to use for SPIR-V internal strings (if any)
-  - figure out if the ByteString used in Binary.Put is correct
-  - ensure correctness of the binary instance for strings (needed e.g. to import GLSL and to name entry points)
-
-
-
-entry point definition:
-  add entry points to the indexing, so that entry points have names
-  this allows e.g. multiple Vertex entry points (with different names)
-
-
 figure out how to overload function composition for internal functions
 
 
-deal with entry point execution modes
-
 make CGMonad polymorphic, so that we can output binary directly, or a human-readable format (or AST)
-
-keep track of extended instruction sets being used
-
-if the unit type is being passed to a function, remove it
 
 
 figure out what's going on with gl_PerVertex being both input and output
@@ -76,5 +56,4 @@ include source line number information in the SPIR-V
 see http://hackage.haskell.org/package/base-4.12.0.0/docs/GHC-Stack.html
 
 
-deal with function arguments and local variables (and entry point local variables)
-use pointers for writable arguments?
+check correctness with function arguments and local variables (and entry point local variables)

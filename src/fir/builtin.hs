@@ -27,9 +27,11 @@ import Data.Type.Bindings( BindingsMap, type (:->)
                          )
 import FIR.PrimTy(knownVars)
 import Math.Linear(V)
-import SPIRV.ExecutionMode(ExecutionModel(ExecutionModel))
-import qualified SPIRV.PrimTy  as SPIRV
-import qualified SPIRV.Storage as SPIRV
+import qualified SPIRV.Capability    as SPIRV(Capability)
+import qualified SPIRV.Capability    as Capability
+import qualified SPIRV.ExecutionMode as SPIRV(ExecutionModel(ExecutionModel))
+import qualified SPIRV.PrimTy        as SPIRV(PrimTy)
+import qualified SPIRV.Storage       as SPIRV
 
 
 data Stage
@@ -41,6 +43,15 @@ data Stage
   | GLCompute
   | Kernel
   deriving ( Show, Eq, Ord, Enum, Bounded )
+
+stageCapabilities :: Stage -> [SPIRV.Capability]
+stageCapabilities Vertex                 = [ Capability.Shader ]
+stageCapabilities TessellationControl    = [ Capability.Tessellation ]
+stageCapabilities TessellationEvaluation = [ Capability.Tessellation ]
+stageCapabilities Geometry               = [ Capability.Geometry ]
+stageCapabilities Fragment               = [ Capability.Shader ]
+stageCapabilities GLCompute              = [ Capability.Shader ]
+stageCapabilities Kernel                 = [ Capability.Kernel ]
 
 
 type family GetAllBuiltins (entryPoints :: [( Symbol, Stage )]) :: BindingsMap where
@@ -65,11 +76,11 @@ instance KnownStage GLCompute where
 instance KnownStage Kernel where
   stageVal _ = Kernel
 
-executionModel :: Stage -> ExecutionModel
-executionModel = ExecutionModel . fromIntegral . fromEnum
+executionModel :: Stage -> SPIRV.ExecutionModel
+executionModel = SPIRV.ExecutionModel . fromIntegral . fromEnum
 
-stage :: ExecutionModel -> Stage
-stage (ExecutionModel i) = toEnum ( fromIntegral i )
+stage :: SPIRV.ExecutionModel -> Stage
+stage (SPIRV.ExecutionModel i) = toEnum ( fromIntegral i )
 
 type family StageBuiltins (stage :: Stage) :: BindingsMap where
   StageBuiltins stage = FromList ( StageBuiltins' stage )

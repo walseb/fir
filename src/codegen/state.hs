@@ -61,13 +61,6 @@ data FunctionContext
   | EntryPoint Stage Text -- stage, and stage name
   deriving ( Eq, Show )
 
-data VariableContext
-  = KnownBinding
-  | UserGlobal
-  | LocalBinding
-  | Builtin
-  deriving ( Eq, Show )
-
 initialState :: CGState
 initialState = CGState
   { currentID           = ID 1
@@ -103,6 +96,12 @@ _currentBlock = lens currentBlock ( \s v -> s { currentBlock = v } )
 
 _functionContext :: Lens' CGState FunctionContext
 _functionContext = lens functionContext ( \s v -> s { functionContext = v } )
+
+_neededCapabilities :: Lens' CGState (Set SPIRV.Capability)
+_neededCapabilities = lens neededCapabilities ( \s v -> s { neededCapabilities = v } )
+
+_neededCapability :: SPIRV.Capability -> Lens' CGState (Maybe ())
+_neededCapability capability = _neededCapabilities . at capability
 
 _knownExtInsts :: Lens' CGState (Map SPIRV.ExtInst Instruction)
 _knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )

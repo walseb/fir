@@ -9,5 +9,10 @@ dist-newstyle/
 *.dot
 
 shaders/
+*.vert
+*.frag
+*.tesc
+*.tese
+*.geom
 
 TODO.txt

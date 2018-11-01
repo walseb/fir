@@ -28,7 +28,9 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      , Num(..), Floating(..)
                      , Integral(..)
                      , Fractional(..), fromRational
+                     , Functor(..)
                      )
+import qualified Prelude
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
 import Data.Word(Word16)
@@ -266,7 +268,7 @@ instance
   TypeError (     Text "The AST datatype does not have a Functor instance:"
              :$$: Text "    cannot map Haskell functions over internal types."
              :$$: Text "To map an internal function over an internal type, use 'fmapAST'."
-            ) => Functor AST where
+            ) => Prelude.Functor AST where
   fmap = error "unreachable"
 
 ------------------------------------------------

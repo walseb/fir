@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -9,11 +10,13 @@
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
 
-module CodeGen.CodeGen where
+module CodeGen.CodeGen
+  ( codeGen, runCodeGen )
+  where
 
 -- base
 import Control.Arrow(second)
-import Control.Monad((>>=), when)
+import Control.Monad((>>=),(>>), when, void)
 import Data.Foldable(traverse_)
 import Data.List(foldl1')
 import Data.Maybe(fromJust)
@@ -21,6 +24,9 @@ import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
 import GHC.TypeNats(natVal)
 import Prelude hiding (Monad(..))
+
+-- binary
+import qualified Data.Binary.Put as Binary
 
 -- bytestring
 import Data.ByteString.Lazy(ByteString)
@@ -33,7 +39,9 @@ import qualified Data.Set as Set
 
 -- mtl
 import Control.Monad.Except(throwError)
-import Control.Monad.State.Class(MonadState)
+import Control.Monad.Reader(ask)
+import Control.Monad.State(MonadState, get, put)
+--import Control.Monad.State.Class(MonadState)
 
 -- lens
 import Control.Lens(Lens', view, use, assign)
@@ -45,17 +53,20 @@ import qualified Data.Text as Text
 -- fir
 import CodeGen.Binary(putInstruction, traverseWithKey_)
 import CodeGen.Declarations(putASM)
-import CodeGen.Monad( CGMonad, MonadFresh(fresh)
+import CodeGen.Monad( CGMonad, runCGMonad
+                    , MonadFresh(fresh)
                     , liftPut
                     , create, createRec
                     , tryToUse, tryToUseWith
                     , note
                     )
-import CodeGen.State( CGState, CGContext
+import CodeGen.State( CGState(currentBlock, knownBindings, localBindings)
+                    , CGContext
                     , FunctionContext(TopLevel, Function, EntryPoint)
                     , _currentBlock
                     , _functionContext
-                    , _knownExtInst
+                    , _neededCapability
+                    , _knownExtInsts, _knownExtInst
                     , _knownBindings, _knownBinding
                     , _localBindings, _localBinding
                     , _knownType
@@ -72,7 +83,9 @@ import CodeGen.Instruction ( Args(..), toArgs
                            )
 import Data.Binary.Class.Put(Literal(Literal))
 import FIR.AST(AST(..))
-import FIR.Builtin(Stage, stageVal, stageBuiltins)
+import FIR.Builtin( Stage, stageVal
+                  , stageBuiltins, stageCapabilities
+                  )
 import FIR.Instances(Syntactic(fromAST))
 import FIR.PrimTy( PrimTy(primTySing), primTyVal
                  , SPrimTy(..)
@@ -81,12 +94,13 @@ import FIR.PrimTy( PrimTy(primTySing), primTyVal
                  , KnownVars(knownVars)
                  )
 import Math.Linear(M(unM), Matrix(transpose))
-import qualified SPIRV.Extension as SPIRV
-import qualified SPIRV.Operation as SPIRV.Op
-import qualified SPIRV.PrimTy    as SPIRV
-import qualified SPIRV.PrimOp    as SPIRV
-import qualified SPIRV.Storage   as Storage
-import SPIRV.Storage(StorageClass)
+import qualified SPIRV.Capability as SPIRV(Capability, primTyCapabilities)
+import qualified SPIRV.Extension  as SPIRV
+import qualified SPIRV.Operation  as SPIRV.Op
+import qualified SPIRV.PrimTy     as SPIRV
+import qualified SPIRV.PrimOp     as SPIRV
+import qualified SPIRV.Storage    as Storage
+import qualified SPIRV.Storage    as SPIRV(StorageClass)
 
 ----------------------------------------------------------------------------
 -- pattern for applied function with any number of arguments
@@ -114,13 +128,6 @@ codeGenASTList = sequence . reverse . go
     where go :: ASTList -> [ CGMonad (ID, SPIRV.PrimTy) ]
           go Nil = []
           go (as :& a) = codeGen a : go as
-
-headTailASTList :: ASTList -> Maybe (AnyAST, ASTList)
-headTailASTList Nil       = Nothing
-headTailASTList (as :& a)
-  = case headTailASTList as of
-      Nothing      -> Just ( AnyAST a, Nil )
-      Just (b, bs) -> Just ( b, bs :& a )
 
 astLength :: ASTList -> Int
 astLength Nil        = 0
@@ -212,7 +219,7 @@ codeGen (Get k)
                                \ no variable with name " <> varName
                              )
                              mbKnown
-  where loadInstruction :: SPIRV.PrimTy -> StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
+  where loadInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
         loadInstruction ty storage loadeeID
           = do tyID <- typeID ty
                -- inelegantly ensure the TypePointer declaration exists
@@ -301,7 +308,6 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
              $  "codeGen: 'if' expected boolean conditional, but got "
              <> Text.pack (show condTy)
              )
-        -- might have ended in a different block now, I think that's OK
         branchConditional condID trueBlock falseBlock
 
         -- true block
@@ -310,6 +316,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
         trueEndBlock <- note ( "codeGen: true branch in if statement escaped CFG" )
                             =<< use _currentBlock
         trueBindings <- use _knownBindings
+        trueLBindings <- use _localBindings
         branch mergeBlock
 
         -- false block
@@ -318,6 +325,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
         falseEndBlock <- note ( "codeGen: false branch in if statement escaped CFG" )
                             =<< use _currentBlock
         falseBindings <- use _knownBindings
+        falseLBindings <- use _knownBindings
         branch mergeBlock
 
         -- merge block
@@ -326,6 +334,10 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
           ( \ bd -> bd `Map.member` bindingsBefore )
           [ trueEndBlock, falseEndBlock ]
           [ trueBindings, falseBindings ]
+        phiInstructions
+          ( \ bd -> bd `Map.member` bindingsBefore )
+          [ trueEndBlock , falseEndBlock  ]
+          [ trueLBindings, falseLBindings ]
         
         pure (ID 0, SPIRV.Unit) -- ID should never be used
 
@@ -335,33 +347,65 @@ codeGen (While :$ cond :$ loopBody)
         headerBlock <- fresh
         loopBlock   <- fresh
         mergeBlock  <- fresh -- block where control flow merges back
-        bindingsBefore <- use _knownBindings
         branch headerBlock
-  
-        -- loop block (also called the continue block)
-        -- we need to put the loop block first,
-        -- as performing codeGen for the loop body
-        -- allows us to know which phi instructions to emit
-        block loopBlock
-        _ <- codeGen loopBody
-        loopEndBlock    <- note ( "codeGen: while loop escaped CFG")
-                                =<< use _currentBlock
-        loopEndBindings <- use _knownBindings
-        branch headerBlock
+
+        -- Need to perform code generation for the loop block first,
+        -- as we need to know which phi instructions to put in the header.
+        -- However, the loop block (also called the continue block)
+        -- needs to appear after the header block in the CFG.
+        ctxt  <- ask
+        state <- get
+        let bindingsBefore, bindingsLBefore :: Map Text (ID, SPIRV.PrimTy)
+            bindingsBefore  = knownBindings state
+            bindingsLBefore = localBindings state
+
+
+            -- The first CGState is the one we pass manually and that we want.
+            -- The second CGState has the wrong "currentBlock" information,
+            -- because we branched to the header block at the end.
+            loopGenOutput :: Either Text (CGState, CGState, ByteString)
+            loopGenOutput
+              = runCGMonad ctxt state
+                  do  block loopBlock
+                      _ <- codeGen loopBody
+                      endState <- get
+                      branch headerBlock
+                      pure endState
+
+        (loopEndState, loopBodyASM)
+          <- case loopGenOutput of
+                Left  err     -> throwError err
+                Right (s,_,a) -> pure (s,a)
+        let mbLoopEndBlock   = currentBlock  loopEndState
+            loopEndBindings  = knownBindings loopEndState
+            loopEndLBindings = localBindings loopEndState
+        loopEndBlock <- note ( "codeGen: while loop escaped CFG")
+                          mbLoopEndBlock
+
+        -- Update the state to be the state at the end of the loop
+        -- (e.g. don't forget about new constants that were defined),
+        -- but reset bindings to what they were before the loop block.
+        -- This is because all bindings within the loop remain local to it.
+        put loopEndState
+        assign _knownBindings bindingsBefore
+        assign _localBindings bindingsLBefore
 
         -- header block
         block headerBlock
         phiInstructions
           ( const True )
-          [ beforeBlock   , loopEndBlock ]
-          [ bindingsBefore, loopEndBindings ]
+          [ beforeBlock   , loopEndBlock    ]
+          [ bindingsBefore, loopEndBindings ] -- need loopEndBindings
+        phiInstructions
+          ( const True )
+          [ beforeBlock    , loopEndBlock     ]
+          [ bindingsLBefore, loopEndLBindings ] -- and loopEndLBindings
         (condID, condTy) <- codeGen cond
         when ( condTy /= SPIRV.Boolean )
              ( throwError
              $  "codeGen: 'while' expected boolean conditional, but got "
              <> Text.pack (show condTy)
              )
-        -- might have ended in a different block now, I think that's OK
         liftPut $ putInstruction Map.empty
           Instruction
              { operation = SPIRV.Op.LoopMerge
@@ -373,6 +417,9 @@ codeGen (While :$ cond :$ loopBody)
                      EndArgs
              }
         branchConditional condID loopBlock mergeBlock
+
+        -- writing the loop block proper
+        liftPut $ Binary.putLazyByteString loopBodyASM
 
         -- merge block (first block after the loop)
         block mergeBlock
@@ -390,17 +437,26 @@ codeGen other = error ( "codeGen: non-exhaustive pattern match:\n"
 
 codeGenPrimOp :: SPIRV.PrimOp -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
 codeGenPrimOp primOp as
-  = do let (op,retTy) = SPIRV.opAndReturnType primOp
-       resTyId <- typeID retTy
-       v <- fresh
-       liftPut $ putInstruction Map.empty
-         Instruction
-           { operation = op
-           , resTy = Just resTyId
-           , resID = Just v
-           , args = toArgs (map fst as)
-           }
-       pure (v, retTy)
+  = do  let (op,retTy) = SPIRV.opAndReturnType primOp
+
+        -- check if any extended instruction set is required
+        case op of
+          SPIRV.Op.ExtCode extInst _
+            -> void (extInstID extInst)
+          _ -> pure ()
+
+        extInsts <- use _knownExtInsts
+
+        resTyID <- typeID retTy
+        v <- fresh
+        liftPut $ putInstruction extInsts
+          Instruction
+            { operation = op
+            , resTy = Just resTyID
+            , resID = Just v
+            , args = toArgs (map fst as)
+            }
+        pure (v, retTy)
 
 codeGenCompositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad (ID, SPIRV.PrimTy)
 codeGenCompositeConstruct compositeType constituents
@@ -415,7 +471,10 @@ codeGenCompositeConstruct compositeType constituents
            }
        pure (v, compositeType)
 
-codeGenCompositeExtract :: SPIRV.PrimTy -> [ Word32 ] -> (ID, SPIRV.PrimTy) -> CGMonad (ID, SPIRV.PrimTy)
+codeGenCompositeExtract :: SPIRV.PrimTy
+                        -> [ Word32 ]
+                        -> (ID, SPIRV.PrimTy)
+                        -> CGMonad (ID, SPIRV.PrimTy)
 codeGenCompositeExtract constituentTy indices (compositeID, _)
   = do constituentTyID <- typeID constituentTy
        v <- fresh
@@ -429,7 +488,10 @@ codeGenCompositeExtract constituentTy indices (compositeID, _)
            }
        pure (v, constituentTy)
 
-codeGenFunctionCall :: (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
+codeGenFunctionCall :: (ID, SPIRV.PrimTy)
+                    -> (ID, SPIRV.PrimTy)
+                    -> [ (ID, SPIRV.PrimTy) ]
+                    -> CGMonad (ID, SPIRV.PrimTy)
 codeGenFunctionCall res func argIDs
   = do v <- fresh
        liftPut $ putInstruction Map.empty
@@ -489,7 +551,11 @@ branchConditional b t f
 ----------------------------------------------------------------------------
 -- function declarations
 
-declareFunction :: Text -> [(Text, SPIRV.PrimTy)] -> SPIRV.PrimTy -> CGMonad (ID, SPIRV.PrimTy) -> CGMonad ID
+declareFunction :: Text
+                -> [(Text, SPIRV.PrimTy)]
+                -> SPIRV.PrimTy
+                -> CGMonad (ID, SPIRV.PrimTy)
+                -> CGMonad ID
 declareFunction funName as b body
   = createRec ( _knownBinding funName )
       ( do resTyID <- typeID b
@@ -546,6 +612,7 @@ declareArgument argName argTy
           }
         pure (v, argTy)
      )
+
 declareEntryPoint :: Stage -> Text -> CGMonad r -> CGMonad ID
 declareEntryPoint stage stageName body
   = createRec ( _knownBinding stageName )
@@ -557,6 +624,8 @@ declareEntryPoint stage stageName body
         -- initialise entry point with empty interface
         -- uses of 'Get' on builtins will add to the interface as needed
         assign ( _interface stage stageName ) (Just Set.empty)
+        -- add the required capabilities
+        declareCapabilities ( stageCapabilities stage )
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Function
@@ -566,6 +635,13 @@ declareEntryPoint stage stageName body
                         $ Arg fnTyID EndArgs
             }
         _ <- inEntryPointContext stage stageName body
+        liftPut $ putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.Return
+            , resTy = Nothing
+            , resID = Nothing
+            , args  = EndArgs
+            }
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.FunctionEnd
@@ -671,13 +747,14 @@ typeID :: forall m. (MonadState CGState m, MonadFresh ID m)
 typeID ty =
   tryToUseWith _knownPrimTy
     ( fromJust . resID ) -- type constructor instructions always have a result ID
-    $ case ty of
+    $ declareCapabilities ( SPIRV.primTyCapabilities ty )
+    >> case ty of
 
         SPIRV.Matrix m _ a -> 
           createRec _knownPrimTy
             ( typeID (SPIRV.Vector m a) ) -- column type
             ( \ colID -> pure . prependArg colID . mkTyConInstruction )
-        
+
         SPIRV.Vector _ a ->
           createRec _knownPrimTy
             ( typeID (SPIRV.Scalar a) ) -- element type
@@ -692,7 +769,7 @@ typeID ty =
             ( \ (as_IDs, b_ID) -> pure . prependArgs (b_ID : as_IDs)
                                        . mkTyConInstruction
             )
-        
+
         SPIRV.Unit     -> create _knownPrimTy ( pure . mkTyConInstruction )
         SPIRV.Boolean  -> create _knownPrimTy ( pure . mkTyConInstruction )
         SPIRV.Scalar _ -> create _knownPrimTy ( pure . mkTyConInstruction )
@@ -705,7 +782,7 @@ typeID ty =
                       . prependArg tyID
                       . mkTyConInstruction
             )
-           
+
   where _knownPrimTy :: Lens' CGState (Maybe Instruction)
         _knownPrimTy = _knownType ty
 
@@ -781,7 +858,11 @@ constID a =
   where _knownAConstant :: Lens' CGState (Maybe Instruction)
         _knownAConstant = _knownConstant ( aConstant a )
 
-        mkConstantInstruction :: SPIRV.Op.Operation -> SPIRV.PrimTy -> Args -> ID -> m Instruction
+        mkConstantInstruction :: SPIRV.Op.Operation
+                              -> SPIRV.PrimTy
+                              -> Args
+                              -> ID
+                              -> m Instruction
         mkConstantInstruction op ty flds v = 
           do resTypeID <- typeID ty
              pure Instruction
@@ -801,8 +882,13 @@ builtinID stage stageName builtinName =
 
 
 globalID :: (MonadState CGState m, MonadFresh ID m)
-         => Text -> SPIRV.PrimTy -> StorageClass -> m ID
+         => Text -> SPIRV.PrimTy -> SPIRV.StorageClass -> m ID
 globalID globalName ty storage =
   tryToUse ( _usedGlobal globalName )
     fst
     ( pure . ( , (ty,storage) ) )
+
+declareCapabilities :: ( MonadState CGState m, Traversable t)
+                    => t SPIRV.Capability -> m ()
+declareCapabilities
+  = traverse_ ( \cap -> assign ( _neededCapability cap ) (Just ()) )

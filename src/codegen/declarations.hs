@@ -29,7 +29,7 @@ import CodeGen.Binary ( putHeader
                       )
 import CodeGen.Instruction (ID(..))
 import CodeGen.Monad(CGMonad, runCGMonad, runExceptTPutM)
-import CodeGen.State(CGState(..), CGContext(..))
+import CodeGen.State(CGState(..), CGContext(..), initialState)
 
 ----------------------------------------------------------------------------
 -- writing the declarations at the top, after codegen is finished
@@ -54,7 +54,7 @@ putDecs
      
 putASM :: CGContext -> CGMonad r -> Either Text ByteString
 putASM context mr
-  = case runCGMonad context mr of
+  = case runCGMonad context initialState mr of
 
       Right (_, cgState, body)
         -> case runExceptTPutM $ putDecs context cgState of
