@@ -40,7 +40,7 @@ import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
                    , Get, Put
                    )
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
-import FIR.PrimTy(PrimTy, primTyVal, KnownVars)
+import FIR.PrimTy(PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
@@ -55,6 +55,8 @@ type family Variadic' (n :: Nat) a b geq1 where
   Variadic' n a b 'True  = a -> Variadic (n-1) a b
 
 ------------------------------------------------------------
+
+------------------------------------------------------------
 -- main AST data type
 
 data AST :: Type -> Type where
@@ -64,8 +66,8 @@ data AST :: Type -> Type where
   Lit :: PrimTy a => Proxy a -> a -> AST a
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
-  -- indexed monadic operations (for the identity indexed monad)
-  Pure :: AST (a -> (a := i) i)
+  -- indexed monadic operations (for the AST itself)
+  Return :: AST (a -> (a := i) i)
   Bind :: AST ( (a := j) i -> (a -> q j) -> q i ) -- angelic bind
 
   Def :: forall k ps a i.
@@ -116,12 +118,24 @@ data AST :: Type -> Type where
       -> AST ( Put k i -> (():= i) i )
 
   -- control flow
-  If    :: GHC.Stack.HasCallStack
+  If    :: ( GHC.Stack.HasCallStack
+           , PrimTy a
+           )
         => AST ( Bool -> a -> a -> a )
   IfM   :: GHC.Stack.HasCallStack
         => AST ( Bool -> (a := j) i -> (a := k) i -> (a := i) i )
   While :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (a := j) i -> (a := i) i )
+
+  -- functor, applicative
+  -- passing a singleton representing the functor
+  Fmap :: PrimTy a
+       => SPrimFunc f -> AST ( (a -> b) -> f a -> f b )
+  Pure :: SPrimFunc f -> AST ( a -> f a )
+  Ap   :: PrimTy a
+       => SPrimFunc f
+       -> Proxy a
+       -> AST ( f (a -> b) -> f a -> f b )
 
   -- vectors (and matrices)
   MkVector :: (KnownNat n, PrimTy a)
@@ -132,12 +146,11 @@ data AST :: Type -> Type where
            => Proxy a
            -> Proxy i
            -> AST ( V n a -> a )
-  FmapVector :: KnownNat n => Proxy n -> AST ( (a -> b) -> (V n a -> V n b) )
 
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
 
-  MkID :: ID -> SPIRV.PrimTy -> AST a
+  MkID :: (ID, SPIRV.PrimTy) -> AST a
 
 ------------------------------------------------
 -- display AST for viewing
@@ -148,7 +161,7 @@ toTreeArgs (f :$ a) as = do
   toTreeArgs f (at:as)
 toTreeArgs (Lam f) as = do
   v <- fresh
-  let var = MkID v undefined
+  let var = MkID (v,undefined)
   body <- toTreeArgs (f var) []
   return $ case as of
     [] -> Node ("Lam " ++ show v) [body]
@@ -159,20 +172,22 @@ toTreeArgs (PrimOp op _ ) as
 toTreeArgs If       as = return (Node "If"       as)
 toTreeArgs IfM      as = return (Node "IfM"      as)
 toTreeArgs While    as = return (Node "While"    as)
-toTreeArgs Pure     as = return (Node "Pure"     as)
+toTreeArgs Return   as = return (Node "Return"   as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
-toTreeArgs (MkID       v _) as = return (Node (show v) as)
+toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"      ++ show (natVal n)) as)
 toTreeArgs (VectorAt   _ i) as = return (Node ("At "      ++ show (natVal i)) as)
-toTreeArgs (FmapVector n  ) as = return (Node ("Fmap V"   ++ show (natVal n)) as)
 toTreeArgs (Get    k      ) as = return (Node ("Get @"    ++ symbolVal k ) as)
 toTreeArgs (Put    k      ) as = return (Node ("Put @"    ++ symbolVal k ) as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"    ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
 toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
 toTreeArgs (Lit        t a) as = return (Node ("Lit @" ++ show (primTyVal t) ++ " " ++ show a ) as)
+toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @(" ++ primFuncName f ++ ")") as)
+toTreeArgs (Pure   f      ) as = return (Node ("Pure @(" ++ primFuncName f ++ ")") as)
+toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("   ++ primFuncName f ++ ")") as)
 
 toTree :: AST a -> Tree String
 toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )

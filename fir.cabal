@@ -31,7 +31,9 @@ library
     , FIR.AST
     , FIR.Binding
     , FIR.Builtin
+    , FIR.Codensity
     , FIR.Instances
+    , FIR.Labels
     , FIR.PrimTy
     , FIR.Program
     , Math.Algebra.Class
@@ -51,6 +53,7 @@ library
   build-depends: 
       base
         >= 4.12
+    , filepath
     , binary
     , bytestring
     , containers

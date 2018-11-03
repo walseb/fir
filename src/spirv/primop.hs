@@ -232,20 +232,20 @@ floatingOp FInvsqrt = Invsqrt
 
 vectorOp :: VecPrimOp -> Dim -> ScalarTy -> (Operation, PrimTy)
 -- re-use numeric operations on vectors
-vectorOp AddV   n s            = ( fst $ numericOp Add s, Vector n s )
-vectorOp SubV   n s            = ( fst $ numericOp Sub s, Vector n s )
-vectorOp NegV   n s            = ( fst $ numericOp Neg s, Vector n s )
+vectorOp AddV   n s = ( fst $ numericOp Add s, Vector n (Scalar s) )
+vectorOp SubV   n s = ( fst $ numericOp Sub s, Vector n (Scalar s) )
+vectorOp NegV   n s = ( fst $ numericOp Neg s, Vector n (Scalar s) )
 vectorOp DotV   _ (Floating w) = ( Dot, Scalar (Floating w) )
 vectorOp DotV   _ _            = error "Dot product: vector elements must be of floating-point type."
-vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Floating w) )
+vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Scalar (Floating w)) )
 vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements must be of floating-point type (sorry!)."
-vectorOp CrossV n (Floating w) = ( Cross, Vector n (Floating w) )
+vectorOp CrossV n (Floating w) = ( Cross, Vector n (Scalar (Floating w)) )
 vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
 
 matrixOp :: MatPrimOp -> Dim -> Dim -> ScalarTy -> (Operation, PrimTy)
 matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
-matrixOp MMulV  n _ s = ( MatrixTimesVector, Vector n   s )
-matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vector n   s )
+matrixOp MMulV  n _ s = ( MatrixTimesVector, Vector n   (Scalar s) )
+matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vector n   (Scalar s) )
 matrixOp MMulM  n m s = ( MatrixTimesMatrix, Matrix n m s )
 matrixOp Transp n m s = ( Transpose        , Matrix n m s )
 matrixOp Det    _ _ s = ( Determinant      , Scalar     s )

@@ -29,34 +29,22 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      , Integral(..)
                      , Fractional(..), fromRational
                      , Functor(..)
+                     , Applicative(..)
                      )
 import qualified Prelude
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
 import Data.Word(Word16)
-import qualified GHC.Stack
-import GHC.TypeLits  ( KnownSymbol
-                     , TypeError, ErrorMessage(..)
-                     )
+import GHC.TypeLits(TypeError, ErrorMessage(..))
 import GHC.TypeNats(KnownNat, type (+), type (-), type (<=?))
 import Type.Reflection(typeRep)
 
 -- fir  
-import Control.Monad.Indexed ((:=)(..), Codensity(..))
-import Data.Type.Bindings( BindingType, Var, Fun
-                         , Union, Insert
-                         )
 import FIR.AST(AST(..))
 import qualified FIR.AST as AST
-import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
-                   , Put, Get
-                   )
-import FIR.Builtin(StageBuiltins, KnownStage)
-import FIR.PrimTy(PrimTy, primTy, ScalarTy, scalarTy, KnownVars)
-import Math.Logic.Class ( Eq(..), Boolean(..)
-                        , Choose(..), Triple
-                        , Ord(..)
-                        )
+import FIR.PrimTy( PrimTy, primTy, ScalarTy, scalarTy
+                 , SPrimFunc(SFuncVector, SFuncMatrix)
+                 )
 import Math.Algebra.Class ( AdditiveGroup(..)
                           , Semiring(..), Ring(..)
                           , DivisionRing(..)
@@ -71,51 +59,12 @@ import Math.Linear( Semimodule(..), Module(..)
                   , pattern V2, pattern V3, pattern V4
                   )
 import qualified Math.Linear
+import Math.Logic.Class ( Eq(..), Boolean(..)
+                        , Choose(..), Triple
+                        , Ord(..)
+                        )
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
-
---------------------------------------------------------------------------
--- specialise stateful functions to work with the Codensity IdIx indexed monad
-
-def :: forall k ps a i.
-       ( GHC.Stack.HasCallStack
-       , KnownSymbol k
-       , PrimTy a
-       , ValidDef k i ~ 'True
-       )
-    => AST a
-    -> Codensity AST (AST a := Insert k (Var ps a) i) i
-
-fundef :: forall k as b l i.
-          ( GHC.Stack.HasCallStack
-          , KnownSymbol k
-          , KnownVars as
-          , PrimTy b
-          , ValidFunDef k as i l ~ 'True
-          )
-       => Codensity AST (AST b := l) (Union i as)
-       -> Codensity AST (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
-
-entryPoint :: forall k s l i.
-             ( GHC.Stack.HasCallStack
-             , KnownSymbol k
-             , KnownStage s
-             , ValidEntryPoint s i l ~ 'True
-             )
-           => Codensity AST (AST () := l) (Union i (StageBuiltins s))
-           -> Codensity AST (AST () := i) i
-
-get :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k)
-    => Codensity AST (AST (Get k i) := i) i
-
-put :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k, PrimTy (Put k i))
-    => AST (Put k i) -> Codensity AST (AST () := i) i
-
-def        a = Codensity ( \h -> Bind :$ (Def    (Proxy @k) (Proxy @ps)            :$ a      ) :$ (Lam $ h . AtKey) )
-fundef     f = Codensity ( \h -> Bind :$ (FunDef (Proxy @k) (Proxy @as) (Proxy @b) :$ toAST f) :$ (Lam $ h . AtKey) )
-entryPoint f = Codensity ( \h -> Bind :$ (Entry  (Proxy @k) (Proxy @s )            :$ toAST f) :$ (Lam $ h . AtKey) )
-get          = Codensity ( \h -> Bind :$  Get    (Proxy @k)                                    :$ (Lam $ h . AtKey) )
-put        a = Codensity ( \h -> Bind :$ (Put    (Proxy @k)                        :$ a      ) :$ (Lam $ h . AtKey) )
 
 --------------------------------------------------------------------------------------
 -- instances for AST
@@ -134,43 +83,20 @@ instance Boolean (AST Bool) where
 instance PrimTy a => Choose (AST Bool) (Triple (AST a)) where
   choose = fromAST If
 
-instance ( PrimTy a
-         , i' ~ i, i'' ~ i
-         , a' ~ a
-         , r ~ (AST a := i)
-         ) =>
-  Choose  ( AST Bool )
-         '( Codensity AST (AST a  := j) i
-          , Codensity AST (AST a' := k) i'
-          , Codensity AST r             i''
-          ) where
-  choose = fromAST IfM
-
-while :: ( GHC.Stack.HasCallStack
-         , PrimTy a
-         , i' ~ i, i'' ~ i
-         , b ~ (AST Bool := i)
-         , r ~ (AST a := i)
-        )
-      => Codensity AST b               i
-      -> Codensity AST ( AST a := j  ) i'
-      -> Codensity AST r               i''
-while = fromAST While
-
-instance (PrimTy a, Eq a, Logic a ~ Bool)
+instance ( PrimTy a, Eq a, Logic a ~ Bool )
   => Eq (AST a) where
-  type Logic (AST a) = AST (Logic a)
-  (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (primTy @a)) (==)
-  (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) (/=)
+  type Logic (AST a) = AST Bool
+  (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (primTy @a)) ((==) @a)
+  (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) ((/=) @a)
 
-instance (PrimTy a, Ord a, Logic a ~ Bool)
+instance ( PrimTy a, Ord a, Logic a ~ Bool ) 
   => Ord (AST a) where
   type Ordering (AST a) = AST Word16
   compare = error "todo"
-  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) (<=)
-  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (primTy @a)) (>=)
-  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (primTy @a)) (<)
-  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (primTy @a)) (>)
+  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) ((<=) @a)
+  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (primTy @a)) ((>=) @a)
+  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (primTy @a)) ((<)  @a)
+  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (primTy @a)) ((>)  @a)
   min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (primTy @a)) min
   max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (primTy @a)) max
 
@@ -200,7 +126,7 @@ instance ( ScalarTy a
 
 -- numeric conversions
 instance (ScalarTy a, ScalarTy b, Convert '(a,b))
-         => Convert '((AST a),(AST b)) where
+         => Convert '(AST a, AST b) where
   convert = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> id
     _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)) convert
@@ -212,7 +138,7 @@ dim = SPIRV.toDim ( Math.Linear.dim @n )
 
 -- vectors
 instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
-  type Scalar (AST (V 0 a))   = AST a
+  type Scalar (AST (V 0 a))   = AST      a
   type OfDim  (AST (V 0 a)) n = AST (V n a)
 
   (^+^) :: forall n. KnownNat n
@@ -235,11 +161,11 @@ instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
 -- matrices
 
 instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
-  type Vector (AST (M 0 0 a)) = AST (V 0 a)
+  type Vector (AST (M 0 0 a))     = AST (V 0   a)
   type OfDims (AST (M 0 0 a)) m n = AST (M m n a)
 
-  diag        = error "todo"
-  konst       = error "todo"
+  diag    = error "todo"
+  konst a = Mat :$ pureAST (pureAST a)
 
   transpose :: forall n m. (KnownNat n, KnownNat m)
             => AST (M n m a) -> AST (M m n a)
@@ -253,8 +179,18 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
               => AST (M n n a) -> AST a
   determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (dim @0) (dim @0) (scalarTy @a)) determinant
 
-  (!+!) = error "todo"
-  (!-!) = error "todo"
+  -- no built-in matrix addition and subtraction, so we use the vector operations
+  (!+!) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
+  x !+! y = Mat :$ ( vecAdd <$$> (UnMat :$ x) <**> (UnMat :$ y) )
+    where vecAdd :: AST (V j a) -> AST(V j a -> V j a)
+          vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (dim @i) (scalarTy @a)) (^+^)
+
+  (!-!) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
+  x !-! y = Mat :$ ( vecSub <$$> (UnMat :$ x) <**> (UnMat :$ y) )
+    where vecSub :: AST (V j a) -> AST(V j a -> V j a)
+          vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (dim @i) (scalarTy @a)) (^-^)
 
   (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
         => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
@@ -269,18 +205,39 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
   (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (dim @i) (dim @0) (scalarTy @a)) (!*^)
 
   (!*) :: forall i j. (KnownNat i, KnownNat j)
-        => AST (M i j a) -> AST a -> AST (M i j a)
-  (!* ) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (scalarTy @a)) (!*)
+       => AST (M i j a) -> AST a -> AST (M i j a)
+  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (scalarTy @a)) (!*)
 
+
+infixl 4 <$$>
+infixl 4 <**>
 
 -- functor functionality
+class ASTFunctor f where
+  fmapAST :: PrimTy a => (AST a -> AST b) -> AST (f a) -> AST (f b) --  AST (a -> b) -> AST (f a) -> AST (f b)
 
-class FunctorAST f where
-  fmapAST :: (Syntactic ret, Internal ret ~ (f a -> f b))
-          => AST (a -> b) -> ret
+class ASTApplicative f where
+  pureAST :: AST a -> AST (f a)
+  (<**>)  :: PrimTy a => AST ( f (a -> b) ) -> AST ( f a ) -> AST ( f b )
 
-instance KnownNat n => FunctorAST (V n) where
-  fmapAST = fromAST $ FmapVector (Proxy @n)
+(<$$>) :: (ASTFunctor f, PrimTy a) => (AST a -> AST b) -> AST (f a) -> AST (f b) -- AST (a -> b) -> AST (f a) -> AST (f b)
+(<$$>) = fmapAST
+
+
+instance KnownNat n => ASTFunctor (V n) where
+  fmapAST = fromAST $ Fmap (SFuncVector (Proxy @n))
+
+instance (KnownNat m, KnownNat n) => ASTFunctor (M m n) where
+  fmapAST = fromAST $ Fmap (SFuncMatrix (Proxy @m) (Proxy @n))
+
+instance KnownNat n => ASTApplicative (V n) where
+  pureAST = fromAST $ Pure (SFuncVector (Proxy @n))
+  (<**>)  = fromAST $ Ap   (SFuncVector (Proxy @n)) Proxy
+
+instance (KnownNat m, KnownNat n) => ASTApplicative (M m n) where
+  pureAST = fromAST $ Pure (SFuncMatrix (Proxy @m) (Proxy @n))
+  (<**>)  = fromAST $ Ap   (SFuncMatrix (Proxy @m) (Proxy @n)) Proxy
+
 
 instance 
   TypeError (     Text "The AST datatype does not have a Functor instance:"
@@ -313,16 +270,6 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   toAST   f = Lam ( toAST . f . fromAST )
   fromAST f = \a -> fromAST ( f :$ toAST a )
 
-instance Syntactic a
-        => Syntactic (Codensity AST (a := j) i) where
-  type Internal (Codensity AST (a := j) i) = (Internal a := j) i
-
-  toAST :: Codensity AST (a := j) i -> AST ( (Internal a := j) i )
-  toAST (Codensity k) = k ( \(AtKey a) -> Pure :$ toAST a )
-
-  fromAST :: AST ( (Internal a := j) i) -> Codensity AST (a := j) i
-  fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
-
 -- utility type for the following instance declaration
 newtype B n a b i = B { unB :: AST (AST.Variadic (n-i) a b) }
 
@@ -344,7 +291,7 @@ instance (KnownNat n, Syntactic a, PrimTy (Internal a)) => Syntactic (V n a) whe
           res' = unB res
 
   fromAST :: AST (V n (Internal a)) -> V n a
-  fromAST = buildV ( \i v -> fromAST ( VectorAt Proxy i :$ v) )
+  fromAST = buildV ( \i v -> fromAST ( VectorAt (Proxy @(Internal a)) i :$ v) )
 
 deriving instance (KnownNat m, KnownNat n, Syntactic a, ScalarTy (Internal a))
   => Syntactic (Math.Linear.M m n a)
@@ -366,13 +313,13 @@ pattern Vec4 :: PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 
 vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
-vec2 = fromAST $ MkVector (Proxy @2) (Proxy @a)
+vec2 = fromAST $ MkVector @2 @a Proxy Proxy
 
 vec3 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
-vec3 = fromAST $ MkVector (Proxy @3) (Proxy @a)
+vec3 = fromAST $ MkVector @3 @a Proxy Proxy
 
 vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
-vec4 = fromAST $ MkVector (Proxy @4) (Proxy @a)
+vec4 = fromAST $ MkVector @4 @a Proxy Proxy
 
 
 {-# COMPLETE Mat22 #-}

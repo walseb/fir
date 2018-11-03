@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedLabels    #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RebindableSyntax    #-}
@@ -18,8 +19,10 @@ import Prelude hiding ( Functor(..), (<$>)
                       , Applicative(..), Monad(..)
                       , Num(..), Fractional(..), Integral(..), Floating(..)
                       , Eq(..), Ord(..)
+                      , (&&)
                       )
 import qualified Prelude
+import System.FilePath((</>),(<.>))
 
 -- bytestring
 import qualified Data.ByteString.Lazy as ByteString
@@ -30,7 +33,9 @@ import Data.Tree.View(drawTree)
 -- fir
 import FIR.AST
 import FIR.Builtin
+import FIR.Codensity
 import FIR.Instances
+import FIR.Labels
 import FIR.Program
 import Control.Monad.Indexed
 import Data.Type.Bindings
@@ -42,6 +47,8 @@ import CodeGen.State
 
 ------------------------------------------------
 -- program
+
+--type T a i = Codensity AST (AST a := i) i
 
 program ::
   Program
@@ -55,7 +62,7 @@ program ::
     ()
 program = do
 
-  f <- fundef @"f" do
+  (f :: AST Float -> AST Float) <- fundef @"f" do
     u <- get @"u"
     t <- def @"t" @RW @Float 11 -- local variable
     pure (u + t)
@@ -65,30 +72,39 @@ program = do
     model            <- get @"model"
     view             <- get @"view"
     projection       <- get @"projection"
-    ~(Vec3 px py pz) <- get @"position"
+    ~pos@(Vec3 px py pz) <- get @"position"
 
-    def @"t" @RW @Float 11
-    def @"s" @RW @Float 0.17
-  
+    #t @Float #= 11
+    #s @Float #= 0.17
+
     if px > 0
-    then put @"t" px
-    else put @"t" (-px)
+    then #t .=   px
+    else #t .= (-px)
 
-    -- while (t < abs s)
-    while ( (<) <$> get @"t" <*> (abs <$> get @"s") )
+    let (#<) = (<) @(S _ _)
+
+    while ( #t #< abs (#s + 3) )
       do
-        t <- get @"t"
-        s <- get @"s"
-        put @"t" (t+1)
-        put @"s" (s+2*t)
+        y <- 11 * #s - 7 * #t
+        #t .= y+1
+        #s .= 2*y
 
-    t <- get @"t"
-  
-    let mvp        = projection !*! view !*! model
+
+    let mvp        = fmapAST (*11) $ projection !*! view !*! model
         position'  = vec4 px py pz 1
+        func :: AST Float -> AST Float {--> AST Float-} -> AST Float
+        func x y {-z-} = (2 * x - abs y) {-/ z-}
+        func' :: AST Float -> AST (Float {--> Float-} -> Float)
+        func' = fromAST (toAST func)
+        stupid :: AST (V 3 Float)
+        stupid = func' <$$> pos <**> pos {-<**> pos-}
 
-    ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ position' )
-    put @"gl_Position" ( vec4 x (f :$ y) (z + t) 1 )
+    ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ (fmapAST ((*3) .f) position') )
+
+    def @"stupid" @RW stupid
+
+    put @"gl_Position" ( vec4 x y z 1 )
+    
 
 
 cgContext :: CGContext
@@ -105,5 +121,5 @@ write :: String -> IO ()
 write path = case runCodeGen cgContext (toAST program) of
     Left  err -> print err
     Right bin -> -- can't use normal do notation with the current rebindable syntax
-      ByteString.writeFile path bin
+      ByteString.writeFile ( "shaders" </> path <.> "spv") bin
       Prelude.>> putStrLn ( "output written to " ++ path )

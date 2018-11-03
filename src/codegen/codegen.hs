@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
@@ -17,7 +18,7 @@ module CodeGen.CodeGen
 -- base
 import Control.Arrow(second)
 import Control.Monad((>>=),(>>), when, void)
-import Data.Foldable(traverse_)
+import Data.Foldable(traverse_, toList)
 import Data.List(foldl1')
 import Data.Maybe(fromJust)
 import Data.Word(Word32)
@@ -85,18 +86,19 @@ import CodeGen.Instruction ( Args(..), toArgs
                            , ID(ID), Instruction(..)
                            , Pairs(Pairs)
                            )
-import FIR.AST(AST(..))
+import FIR.AST(AST(..), toTree)
 import FIR.Builtin( Stage, stageVal
                   , stageBuiltins, stageCapabilities
                   )
 import FIR.Instances(Syntactic(fromAST))
 import FIR.PrimTy( PrimTy(primTySing), primTyVal
-                 , SPrimTy(..)
-                 , aConstant
+                 , SPrimTy(..), sPrimTy
                  , scalarTy, sScalarTy
+                 , SPrimFunc(..)
+                 , aConstant
                  , KnownVars(knownVars)
                  )
-import Math.Linear(M(unM), Matrix(transpose))
+import Math.Linear(V((:.)), M(unM), Matrix(transpose))
 import qualified SPIRV.Capability as SPIRV(Capability, primTyCapabilities)
 import qualified SPIRV.Extension  as SPIRV
 import qualified SPIRV.Operation  as SPIRV.Op
@@ -117,8 +119,11 @@ data ASTList where
 data AnyAST where
   AnyAST :: AST a -> AnyAST
 
-pattern Ap :: AST a -> ASTList -> AST b
-pattern Ap f as <- (unapply . AnyAST -> (AnyAST f,as))
+deriving instance Show ASTList
+deriving instance Show AnyAST
+
+pattern Applied :: AST a -> ASTList -> AST b
+pattern Applied f as <- (unapply . AnyAST -> (AnyAST f,as))
 
 unapply :: AnyAST -> (AnyAST, ASTList)
 unapply (AnyAST (f :$ a))
@@ -140,10 +145,10 @@ astLength (as :& _ ) = 1 + astLength as
 -- main code generator
 
 codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)
-codeGen (Pure :$ a) = codeGen a
-codeGen (Ap (MkID v ty) as)
+codeGen (Return :$ a) = codeGen a
+codeGen (Applied (MkID ident@(_,ty)) as)
   = case as of
-      Nil -> pure (v,ty)
+      Nil -> pure ident
       _   ->
         case ty of
           SPIRV.Function xs y
@@ -151,7 +156,7 @@ codeGen (Ap (MkID v ty) as)
                    givenArgs = astLength as
                in case compare totalArgs givenArgs of
                     EQ -> do retTyID <- typeID y
-                             codeGenFunctionCall (retTyID, y) (v,ty) =<< codeGenASTList as
+                             codeGenFunctionCall (retTyID, y) ident =<< codeGenASTList as
                     GT -> throwError "codeGen: partial application not yet supported"
                     LT -> throwError 
                         $ "codeGen: function of " <> Text.pack (show totalArgs)
@@ -164,10 +169,11 @@ codeGen (Lit ty a) = ( , primTyVal ty) <$> constID a
 -- perform substitution when possible
 codeGen (Lam f :$ a)
   = do cg <- codeGen a
-       codeGen $ f (uncurry MkID cg)
+       codeGen $ f (MkID cg)
+-- ((  _:$ _ ) :$ (Lam _ ))
 codeGen (Bind :$ a :$ f)
   = do cg <- codeGen a
-       codeGen $ (fromAST f) (uncurry MkID cg)
+       codeGen $ (fromAST f) (MkID cg)
 -- stateful operations
 codeGen (Def k _ :$ a)
   = do  let name = Text.pack ( symbolVal k )
@@ -272,31 +278,122 @@ codeGen (Put k :$ a)
           _ -> assign ( _knownBinding varName) (Just (a_ID,a_ty))
 
        pure (ID 0, SPIRV.Unit) -- ID should never be used
-codeGen (Ap (PrimOp primOp _) as)
+codeGen (Applied (PrimOp primOp _) as)
   = codeGenPrimOp primOp =<< codeGenASTList as
-codeGen (Ap (MkVector n_px a_px) as)
+codeGen (Applied (MkVector n_px ty_px) as)
   = do  let n = SPIRV.toDim (natVal n_px)
         compositeTy
-          <- case primTyVal a_px of
+          <- case primTyVal ty_px of
                SPIRV.Scalar s
-                 -> pure $ SPIRV.Vector n s
-               SPIRV.Vector m s
+                 -> pure $ SPIRV.Vector n (SPIRV.Scalar s)
+               SPIRV.Vector m (SPIRV.Scalar s)
                  -> pure $ SPIRV.Matrix m n s -- TODO: check ordering of m, n
                x -> throwError ( "codeGen: unexpected vector constituent "
                                <> Text.pack ( show x )
                                )
         (codeGenCompositeConstruct compositeTy . map fst) =<< codeGenASTList as
-codeGen (VectorAt a_px i_px :$ v)
+codeGen (VectorAt ty_px i_px :$ v)
  = codeGenCompositeExtract
-    (primTyVal a_px)
-    [fromIntegral ( natVal i_px )]
-    =<< codeGen v
-codeGen (FmapVector _) = throwError "codeGen: fmap not yet supported"
-codeGen (Mat) = throwError "codeGen: matrix construction not yet supported"
-codeGen (UnMat) = throwError "codeGen: matrix type eliminator not yet supported"
+      (primTyVal ty_px)
+      [fromIntegral ( natVal i_px )]
+      =<< codeGen v
+codeGen (VectorAt ty_px _ :$ f :$ v)
+  = case primTyVal ty_px of
+      SPIRV.Function _ _
+        -> case fromAST @(V _ ( AST _ -> AST _)) f of
+                     (h:._) -> codeGen (h v)
+                     _      -> throwError "codeGen: accessing component of dimension 0 vector"
+      _ -> throwError "codeGen: trying to apply a vector of non-functions to a vector of arguments"
+codeGen (Fmap functorSing :$ f :$ a)
+  = case functorSing of
+      SFuncVector n
+        -> do vec@(_,vecTy) <- codeGen a
+              constituentTy 
+                <- case vecTy of
+                      SPIRV.Vector _ ty
+                        -> pure ty
+                      _ -> throwError ( "codeGen: vector fmap used over non-vector-type "
+                                       <> Text.pack (show vecTy)
+                                      )
+              elems <- traverse
+                         (\i -> codeGenCompositeExtract constituentTy [i] vec)
+                         [1..fromIntegral (natVal n)] -- off by one issues remain
+              fmapped <- traverse ( codeGen . (f :$) . MkID ) elems
+              codeGenCompositeConstruct vecTy (map fst . toList $ fmapped)
+      SFuncMatrix m n
+        -> do mat@(_, matTy) <- codeGen a
+              constituentTy 
+                <- case matTy of
+                      SPIRV.Matrix _ _ ty
+                         -> pure ty
+                      ty -> throwError ( "codeGen: matrix fmap used over non-matrix-type "
+                                        <> Text.pack (show ty)
+                                       )
+              let colDim = SPIRV.sDim . SPIRV.natSDim $ m
+              cols <- traverse
+                         (\i -> codeGenCompositeExtract 
+                                  ( SPIRV.Vector colDim (SPIRV.Scalar constituentTy) )
+                                  [i]
+                                  mat
+                         )
+                         [1..fromIntegral (natVal n)]
+              fmapped <- traverse 
+                           ( \ x -> fst <$> codeGen (Fmap (SFuncVector m) :$ f :$ MkID x) ) 
+                           cols
+              codeGenCompositeConstruct matTy (toList fmapped)
+codeGen (Pure functorSing :$ a)
+  = case functorSing of
+      SFuncVector n
+        -> do (valID, valTy) <- codeGen a
+              let dim = SPIRV.sDim . SPIRV.natSDim $ n
+              codeGenCompositeConstruct
+                 ( SPIRV.Vector dim valTy )
+                 ( replicate (fromIntegral (natVal n)) valID )
+      SFuncMatrix m n
+        -> do val@(_,valTy) <- codeGen a
+              constituentTy
+                <- case valTy of
+                      SPIRV.Scalar ty
+                         -> pure ty
+                      ty -> throwError ( "codeGen: matrix contains non-scalars of type "
+                                        <> Text.pack (show ty)
+                                       )
+              let colDim = SPIRV.sDim . SPIRV.natSDim $ m
+                  rowDim = SPIRV.sDim . SPIRV.natSDim $ n
+              col <- fst <$> codeGen (Pure (SFuncVector m) :$ MkID val)
+              codeGenCompositeConstruct
+                ( SPIRV.Matrix colDim rowDim constituentTy )
+                ( replicate (fromIntegral (natVal n)) col )
+codeGen (Ap functorSing ty_px :$ f :$ a)
+  = case functorSing of
+      SFuncVector n
+        -> case f of
+            -- base case
+            (Fmap _ :$ g :$ b)
+               -> let dim = SPIRV.sDim . SPIRV.natSDim $ n
+                      t =  fromAST @(AST _ -> AST _ -> AST _) g
+                       <$> fromAST @(V _ (AST _)) b
+                       <*> fromAST @(V _ (AST _)) a
+                  in do ids <- traverse codeGen t                    
+                        codeGenCompositeConstruct
+                          ( SPIRV.Vector dim (primTyVal ty_px) )
+                          ( map fst (toList ids) )
+            -- inductive case
+            (Ap _ _ :$ _ :$ _)
+              -> throwError "codeGen: applicative support WIP"
+
+            _ -> throwError
+                    "codeGen: support for applicatives is very limited, sorry...\n\
+                    \only expressions of the form f <$$> a_1 <**> ... <**> a_n are supported"
+
+      SFuncMatrix _ _ -> throwError "codeGen: applicative operations not yet supported on matrices"
+
+-- newtype wrapping
+codeGen (Mat :$ m)   = codeGen m
+codeGen (UnMat :$ m) = codeGen m
 -- control flow
 codeGen (If :$ c :$ t :$ f)
- = codeGen (IfM :$ c :$ (Pure :$ t) :$ (Pure :$ f))
+ = codeGen (IfM :$ c :$ (Return :$ t) :$ (Return :$ f))
 codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
   = do  headerBlock <- fresh
         trueBlock   <- fresh
@@ -434,7 +531,7 @@ codeGen (Lam f) = error ( "codeGen: unexpected lambda abstraction:\n"
                          <> show (Lam f)
                         )
 codeGen (f :$ a) = error ( "codeGen: unsupported function application:\n"
-                          <> show (f :$ a)
+                          <> show (toTree (f :$ a))
                          )
 codeGen other = error ( "codeGen: non-exhaustive pattern match:\n"
                         <> show other
@@ -794,12 +891,12 @@ typeID ty =
 
         SPIRV.Matrix m _ a -> 
           createRec _knownPrimTy
-            ( typeID (SPIRV.Vector m a) ) -- column type
+            ( typeID (SPIRV.Vector m (SPIRV.Scalar a)) ) -- column type
             ( \ colID -> pure . prependArg colID . mkTyConInstruction )
 
         SPIRV.Vector _ a ->
           createRec _knownPrimTy
-            ( typeID (SPIRV.Scalar a) ) -- element type
+            ( typeID a ) -- element type
             ( \ eltID -> pure . prependArg eltID . mkTyConInstruction )
 
         SPIRV.Function as b ->
@@ -870,7 +967,7 @@ constID a =
                           SPIRV.Op.ConstantComposite
                             ( SPIRV.Vector 
                                 (SPIRV.sDim $ SPIRV.natSDim n) 
-                                (sScalarTy eltTySing)
+                                (sPrimTy eltTySing)
                             ) 
                             elts
 

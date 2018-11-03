@@ -4,15 +4,7 @@ dist-newstyle/
 .ghc.*
 *.html
 *.project
-*.spv
-*.ps
-*.dot
 
 shaders/
-*.vert
-*.frag
-*.tesc
-*.tese
-*.geom
 
 TODO.txt

@@ -9,7 +9,7 @@ module Control.Monad.Indexed where
 
 -- base
 import Data.Kind(Type)
-import Prelude hiding ( Functor(..), (<$>), Applicative(..), Monad(..) )
+import Prelude hiding ( Functor(..), Applicative(..), Monad(..) )
 
 ------------------------------------------------
 -- indexed monads (à la Conor McBride)
@@ -84,51 +84,61 @@ c >>= f = extendIx ( \ (AtKey a) -> f a ) c
 (>>) :: MonadIx m => m (a := j) i -> m q j -> m q i
 ma >> mb = ma >>= const mb
 
-return, pure :: MonadIx m => a -> m (a := i) i
+return, pure, ixPure :: MonadIx m => a -> m (a := i) i
 return = returnIx . AtKey
 pure   = returnIx . AtKey
-
-fmap :: FunctorIx m => (a -> b) -> m (a := j) i -> m (b := j) i
-fmap f = fmapIx ( withKey f)
-
-infixl 4 <$>
-infixl 4 <$
-infixl 4 $>
-infixl 1 <&>
-
-(<$>) :: FunctorIx f => (a -> b) -> f (a := j) i -> f (b := j) i
-(<$>) = fmap
-(<$) :: FunctorIx f => a -> f (b := j) i -> f (a := j) i
-(<$) = fmap . const
-($>) :: FunctorIx f => f (a := j) i -> b -> f (b := j) i
-($>) = flip (<$)
-(<&>) :: FunctorIx f => f (a := j) i -> (a -> b) -> f (b := j) i
-(<&>) = flip fmap
-
-infixl 4 <*>
-class FunctorIx f => IxApplicative f where
-  (<*>) :: f ((a -> b) := j) i -> (f (a := k) j -> f (b := k) i)
-
-instance (FunctorIx m, MonadIx m) => IxApplicative m where
-  mf <*> ma = mf >>= (<$> ma)
-
-infixl 4 *>
-infixl 4 <*
-
-(*>) :: IxApplicative f => f (a := j) i -> f (b := k) j -> f (b := k) i
-fa *> fb = (id <$ fa) <*> fb
-(<*) :: IxApplicative f => f (a := j) i -> f (b := k) j -> f (a := k) i
-fa <* fb = (const <$> fa) <*> fb
-
-liftA2 :: IxApplicative f
-       => (a -> b -> c)
-       -> f (a := j) i -> f (b := k) j -> f (c := k) i
-liftA2 f a b = f <$> a <*> b
-
-liftA3 :: IxApplicative f
-       => (a -> b -> c -> d)
-       -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := l) i
-liftA3 f a b c = f <$> a <*> b <*> c
+ixPure = returnIx . AtKey
 
 class MonadIx m => MonadIxFail m where
   fail :: String -> m (a := j) i
+
+------------------------------------------------------------
+-- useful operators & functions for AtKey-style indexing
+
+ixFmap :: FunctorIx m => (a -> b) -> m (a := j) i -> m (b := j) i
+ixFmap f = fmapIx ( withKey f)
+
+infixl 4 <<$>>
+infixl 4 <<$
+infixl 4 $>>
+infixl 1 <<&>>
+
+(<<$>>) :: FunctorIx f => (a -> b) -> f (a := j) i -> f (b := j) i
+(<<$>>) = ixFmap
+(<<$) :: FunctorIx f => a -> f (b := j) i -> f (a := j) i
+(<<$) = ixFmap . const
+($>>) :: FunctorIx f => f (a := j) i -> b -> f (b := j) i
+($>>) = flip (<<$)
+(<<&>>) :: FunctorIx f => f (a := j) i -> (a -> b) -> f (b := j) i
+(<<&>>) = flip ixFmap
+
+infixl 4 <<*>>
+class FunctorIx f => IxApplicative f where
+  (<<*>>) :: f ((a -> b) := j) i -> (f (a := k) j -> f (b := k) i)
+
+instance (FunctorIx m, MonadIx m) => IxApplicative m where
+  mf <<*>> ma = mf >>= (<<$>> ma)
+
+infixl 4 *>>
+infixl 4 <<*
+
+(*>>) :: IxApplicative f => f (a := j) i -> f (b := k) j -> f (b := k) i
+fa *>> fb = (id <<$ fa) <<*>> fb
+(<<*) :: IxApplicative f => f (a := j) i -> f (b := k) j -> f (a := k) i
+fa <<* fb = (const <<$>> fa) <<*>> fb
+
+ixLiftA2 :: IxApplicative f
+       => (a -> b -> c)
+       -> f (a := j) i -> f (b := k) j -> f (c := k) i
+ixLiftA2 f a b = f <<$>> a <<*>> b
+
+ixLiftA3 :: IxApplicative f
+       => (a -> b -> c -> d)
+       -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := l) i
+ixLiftA3 f a b c = f <<$>> a <<*>> b <<*>> c
+
+ixLiftA4 :: IxApplicative f
+       => (a -> b -> c -> d -> e)
+       -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := m) l -> f (e := m) i
+ixLiftA4 f a b c d = f <<$>> a <<*>> b <<*>> c <<*>> d
+

@@ -84,7 +84,7 @@ data PrimTy where
   Unit     ::                           PrimTy -- known as Void in the SPIR-V specification
   Boolean  ::                           PrimTy
   Scalar   ::               ScalarTy -> PrimTy
-  Vector   :: Dim        -> ScalarTy -> PrimTy
+  Vector   :: Dim        -> PrimTy   -> PrimTy
   Matrix   :: Dim -> Dim -> ScalarTy -> PrimTy
   Function :: [ PrimTy ]   -> PrimTy -> PrimTy
   Pointer  :: StorageClass -> PrimTy -> PrimTy
@@ -106,7 +106,6 @@ tyAndStaticTyConArgs (Pointer _ _ ) = ( TypePointer , [] ) -- can't statically k
 
 ty :: PrimTy -> Operation
 ty = fst . tyAndStaticTyConArgs
-
 
 ------------------------------------------------------------
 -- singletons
@@ -146,16 +145,20 @@ data SScalarTy :: ScalarTy -> Type where
   SFloating ::                  SWidth w -> SScalarTy (Floating   w)
 
 -- some singleton types for PrimTy
--- (only those corresponding to primitive AST types, e.g. no pointers or functions)
 data SPrimTy :: PrimTy -> Type where
   SUnit     ::                                    SPrimTy Unit
   SBoolean  ::                                    SPrimTy Boolean
   SScalar   ::                     SScalarTy a -> SPrimTy (Scalar     a)
-  SVector   :: SDim n ->           SScalarTy a -> SPrimTy (Vector n   a)
+  SVector   :: SDim n ->           SPrimTy   a -> SPrimTy (Vector n   a)
   SMatrix   :: SDim m -> SDim n -> SScalarTy a -> SPrimTy (Matrix m n a)
+  SFunction :: SPrimTys as      -> SPrimTy   b -> SPrimTy (Function as b)
+
+data SPrimTys :: [PrimTy] -> Type where
+  SPrimNil  :: SPrimTys '[]
+  SPrimCons :: SPrimTy a -> SPrimTys as -> SPrimTys (a ': as)
+
 
 -- reification
-
 fromSSignedness :: SSignedness s -> Signedness
 fromSSignedness SUnsigned = Unsigned
 fromSSignedness SSigned   = Signed
@@ -179,5 +182,10 @@ fromSPrimTy :: SPrimTy ty -> PrimTy
 fromSPrimTy SUnit            = Unit
 fromSPrimTy SBoolean         = Boolean
 fromSPrimTy (SScalar     a ) = Scalar (fromSScalarTy a)
-fromSPrimTy (SVector n   a ) = Vector (fromSDim n)              (fromSScalarTy a)
+fromSPrimTy (SVector n   a ) = Vector (fromSDim n)              (fromSPrimTy   a)
 fromSPrimTy (SMatrix m n a ) = Matrix (fromSDim m) (fromSDim n) (fromSScalarTy a)
+fromSPrimTy (SFunction as b) = Function (fromSPrimTys as) (fromSPrimTy b)
+
+fromSPrimTys :: SPrimTys as -> [PrimTy]
+fromSPrimTys SPrimNil         = []
+fromSPrimTys (SPrimCons a as) = fromSPrimTy a : fromSPrimTys as

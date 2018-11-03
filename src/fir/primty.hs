@@ -22,7 +22,7 @@ import Data.Word(Word8, Word16, Word32, Word64)
 import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
                    , TypeError, ErrorMessage(Text)
                    )
-import GHC.TypeNats(KnownNat)
+import GHC.TypeNats(KnownNat, natVal)
 
 -- half
 import Numeric.Half(Half)
@@ -80,7 +80,7 @@ type family TyName (ty :: Type) = (r :: SPIRV.PrimTy) | r -> ty where
   TyName Half      = SPIRV.Scalar ( ScalarName Half   )
   TyName Float     = SPIRV.Scalar ( ScalarName Float  )
   TyName Double    = SPIRV.Scalar ( ScalarName Double )
-  TyName (V n   a) = SPIRV.Vector (ToDim n)           (ScalarName a)
+  TyName (V n   a) = SPIRV.Vector (ToDim n)           (TyName a)
   TyName (M m n a) = SPIRV.Matrix (ToDim m) (ToDim n) (ScalarName a)
 
 data SScalarTy :: Type -> Type where
@@ -102,11 +102,10 @@ data SPrimTy :: Type -> Type where
   SBool   :: SPrimTy Bool
   SScalar :: ScalarTy a
           => SScalarTy a -> SPrimTy a
-  SVector :: (KnownNat n, ScalarTy a)
-          => Proxy n -> SScalarTy a -> SPrimTy (V n a)
+  SVector :: (KnownNat n, PrimTy a)
+          => Proxy n -> SPrimTy a -> SPrimTy (V n a)
   SMatrix :: (KnownNat m, KnownNat n, ScalarTy a, Ring a)
           => Proxy m -> Proxy n -> SScalarTy a -> SPrimTy (M m n a)
-
 
 
 -- associated functions on singletons
@@ -138,7 +137,7 @@ sTyName (SScalar SInt64 ) = SPIRV.SScalar ( sScalarName SInt64  )
 sTyName (SScalar SHalf  ) = SPIRV.SScalar ( sScalarName SHalf   )
 sTyName (SScalar SFloat ) = SPIRV.SScalar ( sScalarName SFloat  )
 sTyName (SScalar SDouble) = SPIRV.SScalar ( sScalarName SDouble )
-sTyName (SVector n   a  ) = SPIRV.SVector (natSDim n) (sScalarName a)
+sTyName (SVector n   a  ) = SPIRV.SVector (natSDim n) (sTyName a)
 sTyName (SMatrix m n a  ) = SPIRV.SMatrix (natSDim m) (natSDim n) (sScalarName a)
 
 
@@ -238,10 +237,10 @@ sScalarTy = SPIRV.fromSScalarTy . sScalarName
 primTyVal :: forall ty. PrimTy ty => Proxy ty -> SPIRV.PrimTy
 primTyVal _ = primTy @ty
 
-instance ( PrimTy a, ScalarTy a
+instance ( PrimTy a
          , KnownNat n--, 2 <= n, n <= 4
          ) => PrimTy (V n a) where
-  primTySing = SVector (Proxy @n) (scalarTySing @a)
+  primTySing = SVector (Proxy @n) (primTySing @a)
 
 instance ( PrimTy a, ScalarTy a
          , Ring a
@@ -271,6 +270,24 @@ instance KnownVars '[] where
 instance (KnownVar bd, KnownVars bds)
       => KnownVars (bd ': bds) where
   knownVars _ = knownVar (Proxy @bd) : knownVars (Proxy @bds)
+
+------------------------------------------------------------
+-- functors
+
+data SPrimFunc :: (Type -> Type) -> Type where
+  SFuncVector :: KnownNat n
+              => Proxy n -> SPrimFunc (V n)
+  SFuncMatrix :: (KnownNat m, KnownNat n)
+              => Proxy m -> Proxy n -> SPrimFunc (M m n)
+
+primFuncName :: SPrimFunc f -> String
+primFuncName (SFuncVector n) 
+  = "V " ++ show (natVal n)
+primFuncName (SFuncMatrix m n)
+  = "M " ++ show (natVal m)
+         ++ " "
+         ++ show (natVal n)
+
 
 ------------------------------------------------------------
 -- dependent pair

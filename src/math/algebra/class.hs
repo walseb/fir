@@ -161,7 +161,7 @@ deriving via Prelude Int32  instance Archimedean Int32
 deriving via Prelude Int64  instance Archimedean Int64
 deriving via Prelude Int    instance Archimedean Int
 
-newtype Fixed a = Fixed a
+newtype Fixed a = Fixed { runFixed :: a }
 deriving via a instance Eq            a => Eq            (Fixed a)
 deriving via a instance Ord           a => Ord           (Fixed a)
 deriving via a instance AdditiveGroup a => AdditiveGroup (Fixed a)
