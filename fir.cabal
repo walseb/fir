@@ -34,6 +34,7 @@ library
     , FIR.Codensity
     , FIR.Instances
     , FIR.Labels
+    , FIR.Lens
     , FIR.PrimTy
     , FIR.Program
     , Math.Algebra.Class

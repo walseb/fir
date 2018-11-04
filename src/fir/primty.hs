@@ -1,9 +1,14 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveFunctor          #-}
+{-# LANGUAGE DeriveFoldable         #-}
+{-# LANGUAGE DeriveTraversable      #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -13,6 +18,7 @@
 module FIR.PrimTy where
 
 -- base
+import Control.Applicative(liftA2)
 import Data.Int(Int8, Int16, Int32, Int64)
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
@@ -22,7 +28,7 @@ import Data.Word(Word8, Word16, Word32, Word64)
 import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
                    , TypeError, ErrorMessage(Text)
                    )
-import GHC.TypeNats(KnownNat, natVal)
+import GHC.TypeNats(Nat, KnownNat, natVal)
 
 -- half
 import Numeric.Half(Half)
@@ -34,7 +40,7 @@ import qualified Data.Text as Text
 import Data.Binary.Class.Put(Put)
 import Data.Type.Bindings( Binding
                          , Assignment, type (:->)
-                         , BindingsMap
+                         , SymbolMap, BindingsMap
                          , Var
                          , Permission, permissions
                          , KnownPermissions
@@ -43,45 +49,77 @@ import Math.Algebra.Class(Ring)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimTy as SPIRV
 import SPIRV.PrimTy ( Signedness(Unsigned, Signed)
-                    , SSignedness(SUnsigned, SSigned)
                     , Width(W8,W16,W32,W64)
-                    , SWidth(SW8,SW16,SW32,SW64)
-                    , ToDim, natSDim
                     )
 
 ------------------------------------------------------------
 -- primitive types, which can be internalised in the AST
+------------------------------------------------------------
 
-type family ScalarName (ty :: Type) = (r :: SPIRV.ScalarTy ) | r -> ty where
-  ScalarName Word8     = SPIRV.Integer Unsigned W8
-  ScalarName Word16    = SPIRV.Integer Unsigned W16
-  ScalarName Word32    = SPIRV.Integer Unsigned W32
-  ScalarName Word64    = SPIRV.Integer Unsigned W64
-  ScalarName Int8      = SPIRV.Integer Signed   W8
-  ScalarName Int16     = SPIRV.Integer Signed   W16
-  ScalarName Int32     = SPIRV.Integer Signed   W32
-  ScalarName Int64     = SPIRV.Integer Signed   W64
-  ScalarName Half      = SPIRV.Floating         W16
-  ScalarName Float     = SPIRV.Floating         W32
-  ScalarName Double    = SPIRV.Floating         W64
+-- basic types:
+-- Unit ()
+-- Bool
+-- Word8, ..., Word64
+-- Int8, ..., Int64
+-- vectors
+-- matrices
+-- arrays
+-- structs (ordered records)
 
--- names for the primitive types which can be represented internally
-type family TyName (ty :: Type) = (r :: SPIRV.PrimTy) | r -> ty where
-  TyName ()        = SPIRV.Unit
-  TyName Bool      = SPIRV.Boolean
-  TyName Word8     = SPIRV.Scalar ( ScalarName Word8  )
-  TyName Word16    = SPIRV.Scalar ( ScalarName Word16 )
-  TyName Word32    = SPIRV.Scalar ( ScalarName Word32 )
-  TyName Word64    = SPIRV.Scalar ( ScalarName Word64 )
-  TyName Int8      = SPIRV.Scalar ( ScalarName Int8   )
-  TyName Int16     = SPIRV.Scalar ( ScalarName Int16  )
-  TyName Int32     = SPIRV.Scalar ( ScalarName Int32  )
-  TyName Int64     = SPIRV.Scalar ( ScalarName Int64  )
-  TyName Half      = SPIRV.Scalar ( ScalarName Half   )
-  TyName Float     = SPIRV.Scalar ( ScalarName Float  )
-  TyName Double    = SPIRV.Scalar ( ScalarName Double )
-  TyName (V n   a) = SPIRV.Vector (ToDim n)           (TyName a)
-  TyName (M m n a) = SPIRV.Matrix (ToDim m) (ToDim n) (ScalarName a)
+-- importantly, function types are not "primitive"
+
+------------------------------------------------------------
+-- arrays and structs
+
+data Array :: Nat -> Type -> Type where
+  MkArray :: forall n a. KnownNat n => [a] -> Array n a
+
+deriving instance Eq   a => Eq   (Array l a)
+deriving instance Ord  a => Ord  (Array l a)
+deriving instance Show a => Show (Array l a)
+deriving instance Functor     (Array n)
+deriving instance Foldable    (Array n)
+deriving instance Traversable (Array n)
+
+newtype RuntimeArray a = RuntimeArray [a]
+
+deriving instance Eq   a => Eq   (RuntimeArray a)
+deriving instance Ord  a => Ord  (RuntimeArray a)
+deriving instance Show a => Show (RuntimeArray a)
+deriving instance Functor     RuntimeArray
+deriving instance Foldable    RuntimeArray
+deriving instance Traversable RuntimeArray
+
+-- order *matters* for structs (memory layout!)
+data Struct :: [Assignment Symbol Type] -> Type where
+  End  :: Struct '[]
+  (:&) :: forall k a as. (KnownSymbol k, PrimTy a)
+       => a -> Struct as -> Struct ((k :-> a) ': as)
+
+deriving instance Eq   (Struct as)
+deriving instance Ord  (Struct as)
+deriving instance Show (Struct as)
+
+foldrStruct
+  :: forall as b.
+  (forall a. PrimTy a => a -> b -> b)
+  -> b -> Struct as -> b
+foldrStruct f b = go @as
+  where go :: forall xs. Struct xs -> b
+        go End       = b
+        go (a :& as) = f a (go as)
+
+traverseStruct :: Applicative f =>
+  ( forall a. PrimTy a => a -> f b )
+  -> Struct as
+  -> f [b]
+traverseStruct f
+   = foldrStruct ( \a bs -> liftA2 (:) (f a) bs )
+       ( pure [] )
+
+------------------------------------------------------------
+-- singletons for primitive types
+-- this allows us to pattern match on the type when necessary
 
 data SScalarTy :: Type -> Type where
   SWord8  :: SScalarTy Word8
@@ -96,7 +134,6 @@ data SScalarTy :: Type -> Type where
   SFloat  :: SScalarTy Float
   SDouble :: SScalarTy Double
 
--- corresponding singletons
 data SPrimTy :: Type -> Type where
   SUnit   :: SPrimTy ()
   SBool   :: SPrimTy Bool
@@ -106,39 +143,20 @@ data SPrimTy :: Type -> Type where
           => Proxy n -> SPrimTy a -> SPrimTy (V n a)
   SMatrix :: (KnownNat m, KnownNat n, ScalarTy a, Ring a)
           => Proxy m -> Proxy n -> SScalarTy a -> SPrimTy (M m n a)
+  SArray  :: (KnownNat n, PrimTy a)
+          => Proxy n -> SPrimTy a -> SPrimTy (Array n a)
+  SRuntimeArray
+          :: PrimTy a
+          => SPrimTy a -> SPrimTy (RuntimeArray a)
+  SStruct :: SPrimTyBindings as -> SPrimTy (Struct as)
 
-
--- associated functions on singletons
-
-sScalarName :: SScalarTy ty -> SPIRV.SScalarTy (ScalarName ty)
-sScalarName SWord8  = SPIRV.SInteger SUnsigned SW8
-sScalarName SWord16 = SPIRV.SInteger SUnsigned SW16
-sScalarName SWord32 = SPIRV.SInteger SUnsigned SW32
-sScalarName SWord64 = SPIRV.SInteger SUnsigned SW64
-sScalarName SInt8   = SPIRV.SInteger SSigned   SW8
-sScalarName SInt16  = SPIRV.SInteger SSigned   SW16
-sScalarName SInt32  = SPIRV.SInteger SSigned   SW32
-sScalarName SInt64  = SPIRV.SInteger SSigned   SW64
-sScalarName SHalf   = SPIRV.SFloating          SW16
-sScalarName SFloat  = SPIRV.SFloating          SW32
-sScalarName SDouble = SPIRV.SFloating          SW64
-
-sTyName :: SPrimTy ty -> SPIRV.SPrimTy (TyName ty)
-sTyName SUnit             = SPIRV.SUnit
-sTyName SBool             = SPIRV.SBoolean
-sTyName (SScalar SWord8 ) = SPIRV.SScalar ( sScalarName SWord8  )
-sTyName (SScalar SWord16) = SPIRV.SScalar ( sScalarName SWord16 )
-sTyName (SScalar SWord32) = SPIRV.SScalar ( sScalarName SWord32 )
-sTyName (SScalar SWord64) = SPIRV.SScalar ( sScalarName SWord64 )
-sTyName (SScalar SInt8  ) = SPIRV.SScalar ( sScalarName SInt8   )
-sTyName (SScalar SInt16 ) = SPIRV.SScalar ( sScalarName SInt16  )
-sTyName (SScalar SInt32 ) = SPIRV.SScalar ( sScalarName SInt32  )
-sTyName (SScalar SInt64 ) = SPIRV.SScalar ( sScalarName SInt64  )
-sTyName (SScalar SHalf  ) = SPIRV.SScalar ( sScalarName SHalf   )
-sTyName (SScalar SFloat ) = SPIRV.SScalar ( sScalarName SFloat  )
-sTyName (SScalar SDouble) = SPIRV.SScalar ( sScalarName SDouble )
-sTyName (SVector n   a  ) = SPIRV.SVector (natSDim n) (sTyName a)
-sTyName (SMatrix m n a  ) = SPIRV.SMatrix (natSDim m) (natSDim n) (sScalarName a)
+data SPrimTyBindings :: SymbolMap Type -> Type where
+  SNilBindings  :: SPrimTyBindings '[]
+  SConsBindings :: (KnownSymbol k, PrimTy a)
+                => Proxy k
+                -> SPrimTy a
+                -> SPrimTyBindings as
+                -> SPrimTyBindings ((k :-> a) ': as)
 
 
 class ( Show ty                    -- for convenience
@@ -179,6 +197,16 @@ instance ScalarTy Float  where
   scalarTySing = SFloat
 instance ScalarTy Double where
   scalarTySing = SDouble
+
+class ScalarTy ty => IntegralTy ty where
+instance IntegralTy Word8  where
+instance IntegralTy Word16 where
+instance IntegralTy Word32 where
+instance IntegralTy Word64 where
+instance IntegralTy Int8   where
+instance IntegralTy Int16  where
+instance IntegralTy Int32  where
+instance IntegralTy Int64  where
 
 instance PrimTy Word8  where
   primTySing = SScalar SWord8
@@ -222,21 +250,6 @@ instance TypeError
   scalarTySing = error "unreachable"
 
 
-primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
-primTy = SPIRV.fromSPrimTy $ sTyName ( primTySing @ty )
-
-sPrimTy :: SPrimTy a -> SPIRV.PrimTy
-sPrimTy = SPIRV.fromSPrimTy . sTyName
-
-scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
-scalarTy = SPIRV.fromSScalarTy $ sScalarName ( scalarTySing @ty )
-
-sScalarTy :: SScalarTy a -> SPIRV.ScalarTy
-sScalarTy = SPIRV.fromSScalarTy . sScalarName
-
-primTyVal :: forall ty. PrimTy ty => Proxy ty -> SPIRV.PrimTy
-primTyVal _ = primTy @ty
-
 instance ( PrimTy a
          , KnownNat n--, 2 <= n, n <= 4
          ) => PrimTy (V n a) where
@@ -249,6 +262,54 @@ instance ( PrimTy a, ScalarTy a
          ) => PrimTy (M m n a) where
   primTySing = SMatrix (Proxy @m) (Proxy @n) (scalarTySing @a)
 
+
+instance (PrimTy a, KnownNat l) => PrimTy (Array l a) where
+  primTySing = SArray (Proxy @l) (primTySing @a)
+
+instance PrimTy a => PrimTy (RuntimeArray a) where
+  primTySing = SRuntimeArray (primTySing @a)
+
+
+
+
+primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
+primTy = sPrimTy ( primTySing @ty )
+
+primTyVal :: forall ty. PrimTy ty => Proxy ty -> SPIRV.PrimTy
+primTyVal _ = primTy @ty
+
+val :: KnownNat n => Proxy n -> Word32
+val = fromIntegral . natVal
+
+sPrimTy :: SPrimTy ty -> SPIRV.PrimTy
+sPrimTy SUnit             = SPIRV.Unit
+sPrimTy SBool             = SPIRV.Boolean
+sPrimTy (SScalar       a) = SPIRV.Scalar                 (sScalarTy a)
+sPrimTy (SVector n     a) = SPIRV.Vector (val n)         (sPrimTy   a)
+sPrimTy (SMatrix m n   a) = SPIRV.Matrix (val m) (val n) (sScalarTy a)
+sPrimTy (SArray l      a) = SPIRV.Array  (val l)         (sPrimTy   a)
+sPrimTy (SRuntimeArray a) = SPIRV.RuntimeArray           (sPrimTy   a)
+sPrimTy (SStruct      as) = SPIRV.Struct (sPrimTyBindings as)
+
+sPrimTyBindings :: SPrimTyBindings ty -> [SPIRV.PrimTy]
+sPrimTyBindings SNilBindings           = []
+sPrimTyBindings (SConsBindings _ a as) = sPrimTy a : sPrimTyBindings as
+
+scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
+scalarTy = sScalarTy ( scalarTySing @ty )
+
+sScalarTy :: SScalarTy ty -> SPIRV.ScalarTy
+sScalarTy SWord8  = SPIRV.Integer Unsigned W8
+sScalarTy SWord16 = SPIRV.Integer Unsigned W16
+sScalarTy SWord32 = SPIRV.Integer Unsigned W32
+sScalarTy SWord64 = SPIRV.Integer Unsigned W64
+sScalarTy SInt8   = SPIRV.Integer Signed   W8
+sScalarTy SInt16  = SPIRV.Integer Signed   W16
+sScalarTy SInt32  = SPIRV.Integer Signed   W32
+sScalarTy SInt64  = SPIRV.Integer Signed   W64
+sScalarTy SHalf   = SPIRV.Floating         W16
+sScalarTy SFloat  = SPIRV.Floating         W32
+sScalarTy SDouble = SPIRV.Floating         W64
 
 
 class KnownVar (bd :: Assignment Symbol Binding) where

@@ -70,6 +70,5 @@ prependArg :: ( Show a, Put a ) => a -> Instruction -> Instruction
 prependArg arg instr@Instruction { args = oldArgs }
   = instr { args = Arg arg oldArgs }
 
-prependArgs :: ( Show a, Put a ) => [a] -> Instruction -> Instruction
-prependArgs = flip ( foldr prependArg )
-
+setArgs :: Args -> Instruction -> Instruction
+setArgs as instr = instr { args = as }

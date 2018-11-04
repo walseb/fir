@@ -41,10 +41,9 @@ import qualified Data.Map.Merge.Strict as Map
 import qualified Data.Set as Set
 
 -- mtl
-import Control.Monad.Except(throwError)
+import Control.Monad.Except(MonadError, throwError)
 import Control.Monad.Reader(MonadReader, ask)
 import Control.Monad.State(MonadState, get, put)
---import Control.Monad.State.Class(MonadState)
 
 -- lens
 import Control.Lens(Lens', view, use, assign)
@@ -82,7 +81,6 @@ import CodeGen.State( CGState(currentBlock, knownBindings, localBindings)
                     , _debugMode
                     )
 import CodeGen.Instruction ( Args(..), toArgs
-                           , prependArg, prependArgs
                            , ID(ID), Instruction(..)
                            , Pairs(Pairs)
                            )
@@ -91,12 +89,13 @@ import FIR.Builtin( Stage, stageVal
                   , stageBuiltins, stageCapabilities
                   )
 import FIR.Instances(Syntactic(fromAST))
-import FIR.PrimTy( PrimTy(primTySing), primTyVal
-                 , SPrimTy(..), sPrimTy
-                 , scalarTy, sScalarTy
+import FIR.PrimTy( PrimTy(primTySing)
+                 , primTy, primTyVal
+                 , SPrimTy(..)
                  , SPrimFunc(..)
                  , aConstant
                  , KnownVars(knownVars)
+                 , traverseStruct
                  )
 import Math.Linear(V((:.)), M(unM), Matrix(transpose))
 import qualified SPIRV.Capability as SPIRV(Capability, primTyCapabilities)
@@ -281,7 +280,7 @@ codeGen (Put k :$ a)
 codeGen (Applied (PrimOp primOp _) as)
   = codeGenPrimOp primOp =<< codeGenASTList as
 codeGen (Applied (MkVector n_px ty_px) as)
-  = do  let n = SPIRV.toDim (natVal n_px)
+  = do  let n = fromIntegral (natVal n_px)
         compositeTy
           <- case primTyVal ty_px of
                SPIRV.Scalar s
@@ -329,7 +328,7 @@ codeGen (Fmap functorSing :$ f :$ a)
                       ty -> throwError ( "codeGen: matrix fmap used over non-matrix-type "
                                         <> Text.pack (show ty)
                                        )
-              let colDim = SPIRV.sDim . SPIRV.natSDim $ m
+              let colDim = fromIntegral (natVal m)
               cols <- traverse
                          (\i -> codeGenCompositeExtract 
                                   ( SPIRV.Vector colDim (SPIRV.Scalar constituentTy) )
@@ -345,10 +344,11 @@ codeGen (Pure functorSing :$ a)
   = case functorSing of
       SFuncVector n
         -> do (valID, valTy) <- codeGen a
-              let dim = SPIRV.sDim . SPIRV.natSDim $ n
+              let dim :: Num a => a
+                  dim = fromIntegral (natVal n)
               codeGenCompositeConstruct
                  ( SPIRV.Vector dim valTy )
-                 ( replicate (fromIntegral (natVal n)) valID )
+                 ( replicate dim valID )
       SFuncMatrix m n
         -> do val@(_,valTy) <- codeGen a
               constituentTy
@@ -358,19 +358,22 @@ codeGen (Pure functorSing :$ a)
                       ty -> throwError ( "codeGen: matrix contains non-scalars of type "
                                         <> Text.pack (show ty)
                                        )
-              let colDim = SPIRV.sDim . SPIRV.natSDim $ m
-                  rowDim = SPIRV.sDim . SPIRV.natSDim $ n
+              let colDim :: Word32
+                  colDim = fromIntegral (natVal m)
+                  rowDim :: Num a => a
+                  rowDim = fromIntegral (natVal n)
               col <- fst <$> codeGen (Pure (SFuncVector m) :$ MkID val)
               codeGenCompositeConstruct
                 ( SPIRV.Matrix colDim rowDim constituentTy )
-                ( replicate (fromIntegral (natVal n)) col )
+                ( replicate rowDim col )
 codeGen (Ap functorSing ty_px :$ f :$ a)
   = case functorSing of
       SFuncVector n
         -> case f of
             -- base case
             (Fmap _ :$ g :$ b)
-               -> let dim = SPIRV.sDim . SPIRV.natSDim $ n
+               -> let dim :: Word32
+                      dim = fromIntegral (natVal n)
                       t =  fromAST @(AST _ -> AST _ -> AST _) g
                        <$> fromAST @(V _ (AST _)) b
                        <*> fromAST @(V _ (AST _)) a
@@ -881,135 +884,196 @@ extInstID extInst =
 
 -- get an ID for a given type ( result ID of corresponding type constructor instruction )
 -- ( if one is known use it, otherwise recursively create fresh IDs for necessary types )
-typeID :: forall m. (MonadState CGState m, MonadFresh ID m)
+typeID :: forall m.
+          ( MonadState CGState m
+          , MonadFresh ID m
+          , MonadError Text m -- only needed for the constant instruction call for array length
+          )
        => SPIRV.PrimTy -> m ID
 typeID ty =
   tryToUseWith _knownPrimTy
     ( fromJust . resID ) -- type constructor instructions always have a result ID
-    $ declareCapabilities ( SPIRV.primTyCapabilities ty )
-    >> case ty of
+    do declareCapabilities ( SPIRV.primTyCapabilities ty )
+       case ty of
 
-        SPIRV.Matrix m _ a -> 
+        SPIRV.Matrix m n a -> 
           createRec _knownPrimTy
             ( typeID (SPIRV.Vector m (SPIRV.Scalar a)) ) -- column type
-            ( \ colID -> pure . prependArg colID . mkTyConInstruction )
+            ( \ colID 
+                  -> mkTyConInstruction ( Arg colID $ Arg n EndArgs )
+            )
 
-        SPIRV.Vector _ a ->
+        SPIRV.Vector n a ->
           createRec _knownPrimTy
             ( typeID a ) -- element type
-            ( \ eltID -> pure . prependArg eltID . mkTyConInstruction )
+            ( \ eltID 
+                  -> mkTyConInstruction ( Arg eltID $ Arg n EndArgs )
+            )
 
         SPIRV.Function as b ->
           createRec _knownPrimTy
-            ( do as_IDs <- traverse typeID as -- types of function arguments
-                 b_ID   <- typeID b           -- return type of function
-                 pure (as_IDs, b_ID)
+            ( do asIDs <- traverse typeID as -- types of function arguments
+                 bID   <- typeID b           -- return type of function
+                 pure (asIDs, bID)
             )
-            ( \ (as_IDs, b_ID) -> pure . prependArgs (b_ID : as_IDs)
-                                       . mkTyConInstruction
+            ( \ (asIDs, bID) 
+                  -> mkTyConInstruction ( Arg bID $ toArgs asIDs )
             )
 
-        SPIRV.Unit     -> create _knownPrimTy ( pure . mkTyConInstruction )
-        SPIRV.Boolean  -> create _knownPrimTy ( pure . mkTyConInstruction )
-        SPIRV.Scalar _ -> create _knownPrimTy ( pure . mkTyConInstruction )
+        SPIRV.Array l a ->
+          createRec _knownPrimTy
+            ( do lgID  <- constID l -- array size is the result of a constant instruction
+                 eltID <- typeID  a --     as opposed to being a literal number
+                 pure (eltID, lgID) -- (I suppose this is to do with specialisation constants)
+            )
+            ( \(eltID, lgId)
+                -> mkTyConInstruction ( Arg eltID $ Arg lgId EndArgs ) 
+            )
+
+        SPIRV.RuntimeArray a ->
+          createRec _knownPrimTy
+            ( typeID a )
+            ( \eltID -> mkTyConInstruction ( Arg eltID EndArgs ) )
+
+        SPIRV.Unit    -> create _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.Boolean -> create _knownPrimTy ( mkTyConInstruction EndArgs )
+
+        SPIRV.Scalar (SPIRV.Integer s w)
+          -> create _knownPrimTy 
+                ( mkTyConInstruction 
+                  ( Arg (SPIRV.width w)
+                  $ Arg (SPIRV.signedness s) EndArgs
+                  )
+                )
+
+        SPIRV.Scalar (SPIRV.Floating w)
+          -> create _knownPrimTy 
+                ( mkTyConInstruction ( Arg (SPIRV.width w) EndArgs ) )
+
+        SPIRV.Struct as
+          -> createRec _knownPrimTy
+                ( traverse typeID as )
+                ( \eltIDs -> mkTyConInstruction (toArgs eltIDs) )
 
         SPIRV.Pointer storage a ->
           createRec _knownPrimTy
             ( typeID a )
-            ( \ tyID -> pure
-                      . prependArg storage
-                      . prependArg tyID
-                      . mkTyConInstruction
+            ( \ tyID -> mkTyConInstruction
+                          ( Arg storage $ Arg tyID EndArgs )
             )
 
   where _knownPrimTy :: Lens' CGState (Maybe Instruction)
         _knownPrimTy = _knownType ty
 
-        op :: SPIRV.Op.Operation
-        staticTyConArgs :: [Word32]
-        (op, staticTyConArgs) = SPIRV.tyAndStaticTyConArgs ty
-
-        mkTyConInstruction :: ID -> Instruction
-        mkTyConInstruction v
-          = Instruction
-              { operation = op
-              , resTy     = Nothing
-              , resID     = Just v
-              , args      = toArgs staticTyConArgs
-              }
+        mkTyConInstruction :: Args -> ID -> m Instruction
+        mkTyConInstruction flds v
+          = pure 
+              Instruction
+                { operation = SPIRV.tyOp ty
+                , resTy     = Nothing
+                , resID     = Just v
+                , args      = flds
+                }
 
 constID :: forall m a.
-           ( MonadState CGState m, MonadFresh ID m
+           ( MonadState CGState m
+           , MonadFresh ID m
+           , MonadError Text m
            , PrimTy a
            )
         => a -> m ID
 constID a =
   tryToUseWith _knownAConstant
     ( fromJust . resID ) -- constant definition instructions always have a result ID
-    $ case primTySing @a of
+    do resTyID <- typeID (primTy @a) -- start off by getting an ID for the type!
+       case primTySing @a of
 
-        SMatrix m n eltTySing ->
+        SMatrix _ _ _ ->
           createRec _knownAConstant
-            ( toArgs <$> ( traverse constID . unM . transpose $ a ) ) -- get the ID for each column
-            $ \ cols -> mkConstantInstruction 
-                          SPIRV.Op.ConstantComposite 
-                          ( SPIRV.Matrix 
-                              (SPIRV.sDim $ SPIRV.natSDim m) 
-                              (SPIRV.sDim $ SPIRV.natSDim n)
-                              (sScalarTy eltTySing)
-                          )
-                          cols
+            ( traverse constID . unM . transpose $ a ) -- get the ID for each column
+            ( \ cols -> 
+                  mkConstantInstruction 
+                    SPIRV.Op.ConstantComposite 
+                    resTyID
+                    ( toArgs cols )
+            )
 
-        SVector n eltTySing -> 
+        SVector _ _ ->
           createRec _knownAConstant
-            ( toArgs <$> traverse constID a ) -- get the result ID for each component
-            $ \ elts -> mkConstantInstruction 
-                          SPIRV.Op.ConstantComposite
-                            ( SPIRV.Vector 
-                                (SPIRV.sDim $ SPIRV.natSDim n) 
-                                (sPrimTy eltTySing)
-                            ) 
-                            elts
+            ( traverse constID a ) -- get the result ID for each component
+            ( \ eltIDs -> 
+                  mkConstantInstruction 
+                    SPIRV.Op.ConstantComposite
+                    resTyID
+                    (toArgs eltIDs)
+            )
 
         SScalar _
           -> create _knownAConstant
               ( mkConstantInstruction
                   SPIRV.Op.Constant
-                  (SPIRV.Scalar (scalarTy @a))
-                  (Arg a EndArgs)
+                  resTyID
+                  ( Arg a EndArgs )
               )
 
-        SUnit -> error "Error: 'constId' called on Unit type.\n\
-                       \Unit has a unique value, \
-                       \and as such does not need to be constructed."
+        SUnit -> throwError
+                    "constId: called on Unit type.\n\
+                    \Unit has a unique value, \
+                    \and as such does not need to be constructed."
 
         SBool -> 
           create _knownAConstant
-            $ mkConstantInstruction
+            ( mkConstantInstruction
                 ( if a
                   then SPIRV.Op.ConstantTrue
                   else SPIRV.Op.ConstantFalse
                 )
-                SPIRV.Boolean
+                resTyID
                 EndArgs
+            )
+
+        SRuntimeArray _ ->
+            throwError
+              "constID: cannot construct runtime arrays.\n\
+              \Runtime arrays are only available through uniforms."
+        
+        SArray _ _ ->
+          createRec _knownAConstant
+            ( traverse constID a )
+            ( \ eltIDs ->
+                  mkConstantInstruction
+                    SPIRV.Op.ConstantComposite
+                    resTyID
+                    ( toArgs eltIDs )
+            )
+        
+        SStruct _ ->
+          createRec _knownAConstant
+            ( traverseStruct constID a )
+            ( \ eltIDs ->
+                  mkConstantInstruction
+                    SPIRV.Op.ConstantComposite
+                    resTyID
+                    ( toArgs eltIDs )
+            )
 
 
   where _knownAConstant :: Lens' CGState (Maybe Instruction)
         _knownAConstant = _knownConstant ( aConstant a )
 
         mkConstantInstruction :: SPIRV.Op.Operation
-                              -> SPIRV.PrimTy
+                              -> ID
                               -> Args
                               -> ID
                               -> m Instruction
-        mkConstantInstruction op ty flds v = 
-          do resTypeID <- typeID ty
-             pure Instruction
-                    { operation = op
-                    , resTy     = Just resTypeID
-                    , resID     = Just v
-                    , args      = flds
-                    }
+        mkConstantInstruction op resTyID flds v
+          = pure 
+              Instruction
+                { operation = op
+                , resTy     = Just resTyID
+                , resID     = Just v
+                , args      = flds
+                }
 
 
 builtinID :: (MonadState CGState m, MonadFresh ID m)

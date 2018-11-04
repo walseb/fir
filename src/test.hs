@@ -36,6 +36,7 @@ import FIR.Builtin
 import FIR.Codensity
 import FIR.Instances
 import FIR.Labels
+import FIR.PrimTy
 import FIR.Program
 import Control.Monad.Indexed
 import Data.Type.Bindings
@@ -74,6 +75,7 @@ program = do
     projection       <- get @"projection"
     ~pos@(Vec3 px py pz) <- get @"position"
 
+    {-
     #t @Float #= 11
     #s @Float #= 0.17
 
@@ -81,29 +83,47 @@ program = do
     then #t .=   px
     else #t .= (-px)
 
-    let (#<) = (<) @(S _ _)
+    let (#<) = (<) @(S _ _) -- help type inference along...
 
     while ( #t #< abs (#s + 3) )
       do
         y <- 11 * #s - 7 * #t
-        #t .= y+1
-        #s .= 2*y
+        #t .= y + 1
+        #s .= 2 * y
 
+        while ( #t - #s #< 111 )
+          do
+            t <- #t
+            s <- #s
+            #t .= t + 1.5
+            #s .= s - 2.2
 
+            while ( #t - #s #< 111 )
+              do
+                t' <- #t
+                s' <- #s
+                #t .= t' - 2 * t
+                #s .= s' + s + t
+     -}
+    
+
+    #array @(Array 10 Float) #= (lit $ MkArray [1,17,23,4,5,90,88,17,22,21])
+
+    
     let mvp        = fmapAST (*11) $ projection !*! view !*! model
         position'  = vec4 px py pz 1
-        func :: AST Float -> AST Float {--> AST Float-} -> AST Float
-        func x y {-z-} = (2 * x - abs y) {-/ z-}
-        func' :: AST Float -> AST (Float {--> Float-} -> Float)
-        func' = fromAST (toAST func)
-        stupid :: AST (V 3 Float)
-        stupid = func' <$$> pos <**> pos {-<**> pos-}
+        --func :: AST Float -> AST Float {--> AST Float-} -> AST Float
+        --func x y {-z-} = (2 * x - abs y) {-/ z-}
+        --func' :: AST Float -> AST (Float {--> Float-} -> Float)
+        --func' = fromAST (toAST func)
+        --applicativeTest :: AST (V 3 Float)
+        --applicativeTest = func' <$$> pos <**> pos {-<**> pos-}
 
     ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ (fmapAST ((*3) .f) position') )
 
-    def @"stupid" @RW stupid
-
-    put @"gl_Position" ( vec4 x y z 1 )
+    --def @"applicativeTest" @RW applicativeTest
+    
+    put @"gl_Position" ( vec4 x y z 10 )
     
 
 
@@ -118,8 +138,9 @@ draw :: IO ()
 draw = drawTree . toTree . toAST $ program
 
 write :: String -> IO ()
-write path = case runCodeGen cgContext (toAST program) of
+write filename = case runCodeGen cgContext (toAST program) of
     Left  err -> print err
     Right bin -> -- can't use normal do notation with the current rebindable syntax
-      ByteString.writeFile ( "shaders" </> path <.> "spv") bin
-      Prelude.>> putStrLn ( "output written to " ++ path )
+      let path = "shaders" </> filename <.> "spv"
+      in ByteString.writeFile path bin
+         Prelude.>> putStrLn ( "output written to " ++ path )

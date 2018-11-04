@@ -11,24 +11,25 @@ module SPIRV.PrimOp
 
 -- base
 import Control.Arrow(second)
+import Data.Word(Word32)
 import Prelude hiding( Ordering(..) )
 
 -- fir
 import SPIRV.Operation
-import SPIRV.PrimTy( PrimTy(..), ScalarTy(..), Signedness(..), Dim )
+import SPIRV.PrimTy( PrimTy(..), ScalarTy(..), Signedness(..) )
 
 -------------------------------------------------------------------------------
 -- primitive operations
 
 data PrimOp where
-  BoolOp  :: BoolPrimOp                            -> PrimOp
-  EqOp    :: EqPrimOp                  -> PrimTy   -> PrimOp
-  OrdOp   :: OrdPrimOp                 -> PrimTy   -> PrimOp
-  NumOp   :: NumPrimOp                 -> ScalarTy -> PrimOp
-  FloatOp :: FloatPrimOp               -> ScalarTy -> PrimOp
-  VecOp   :: VecPrimOp   -> Dim        -> ScalarTy -> PrimOp
-  MatOp   :: MatPrimOp   -> Dim -> Dim -> ScalarTy -> PrimOp
-  ConvOp  :: ConvPrimOp  -> ScalarTy   -> ScalarTy -> PrimOp
+  BoolOp  :: BoolPrimOp                                  -> PrimOp
+  EqOp    :: EqPrimOp                        -> PrimTy   -> PrimOp
+  OrdOp   :: OrdPrimOp                       -> PrimTy   -> PrimOp
+  NumOp   :: NumPrimOp                       -> ScalarTy -> PrimOp
+  FloatOp :: FloatPrimOp                     -> ScalarTy -> PrimOp
+  VecOp   :: VecPrimOp   -> Word32           -> ScalarTy -> PrimOp
+  MatOp   :: MatPrimOp   -> Word32 -> Word32 -> ScalarTy -> PrimOp
+  ConvOp  :: ConvPrimOp  -> ScalarTy         -> ScalarTy -> PrimOp
   deriving Show
 
 data BoolPrimOp
@@ -230,7 +231,7 @@ floatingOp FLog     = Log
 floatingOp FSqrt    = Sqrt
 floatingOp FInvsqrt = Invsqrt
 
-vectorOp :: VecPrimOp -> Dim -> ScalarTy -> (Operation, PrimTy)
+vectorOp :: VecPrimOp -> Word32 -> ScalarTy -> (Operation, PrimTy)
 -- re-use numeric operations on vectors
 vectorOp AddV   n s = ( fst $ numericOp Add s, Vector n (Scalar s) )
 vectorOp SubV   n s = ( fst $ numericOp Sub s, Vector n (Scalar s) )
@@ -242,7 +243,7 @@ vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements m
 vectorOp CrossV n (Floating w) = ( Cross, Vector n (Scalar (Floating w)) )
 vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
 
-matrixOp :: MatPrimOp -> Dim -> Dim -> ScalarTy -> (Operation, PrimTy)
+matrixOp :: MatPrimOp -> Word32 -> Word32 -> ScalarTy -> (Operation, PrimTy)
 matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
 matrixOp MMulV  n _ s = ( MatrixTimesVector, Vector n   (Scalar s) )
 matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vector n   (Scalar s) )

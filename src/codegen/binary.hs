@@ -191,6 +191,12 @@ putInstructionsInOrder
   . sortBy ( comparing resID )
   . Map.elems
 
+putTypesAndConstants :: Map a Instruction -> Map b Instruction -> Binary.Put
+putTypesAndConstants as bs
+  = traverse_ ( putInstruction Map.empty )
+      ( sortBy (comparing resID) $ Map.elems as ++ Map.elems bs )
+
+
 -- TODO: debug instructions
 -- annotations (decorations)
 
@@ -199,7 +205,7 @@ putGlobals :: Map SPIRV.PrimTy Instruction
            -> ExceptT Text Binary.PutM ()
 putGlobals typeIDs
   = traverse_
-      ( \(globalID, (ty, storage)) -> 
+      ( \(globalID, (ty, storage)) ->
         do let ptrTy = SPIRV.Pointer storage ty
            ptrTyID 
              <- note

@@ -24,18 +24,19 @@ import GHC.TypeLits( Symbol, CmpSymbol
 -- barebones type-level map functionality
 
 data Assignment k v = Assignment k v
-type BindingsMap = [Assignment Symbol Binding]
+type SymbolMap v = [Assignment Symbol v]
 
 infixr 4 :->
 type k :-> v = 'Assignment k v
 
-type family Lookup (k :: Symbol) (i :: BindingsMap) :: Maybe Binding where
+-- looks through the whole list always, in case the list is not sorted
+type family Lookup (k :: Symbol) (i :: SymbolMap v) :: Maybe v where
   Lookup _ '[]              = 'Nothing
   Lookup k ((k :-> a) ': b) = 'Just a
   Lookup k (_         ': b) = Lookup k b
 
 -- insert a key/value pair in an already-sorted map
-type family Insert (k :: Symbol) (v :: Binding) (i :: BindingsMap) :: BindingsMap where
+type family Insert (k :: Symbol) ( x :: v ) (i :: SymbolMap v) :: SymbolMap v where
   Insert k v '[]              = '[ k :-> v ]
   Insert k v ((k :-> a) ': b) = TypeError
       (     Text "Duplicate key: "
@@ -45,24 +46,25 @@ type family Insert (k :: Symbol) (v :: Binding) (i :: BindingsMap) :: BindingsMa
                                    ((k :-> v) ': (l :-> a) ': b)
                                    ((l :-> a) ': Insert k v b)
 
-type family Union (i :: BindingsMap) (j :: BindingsMap) :: BindingsMap where
+type family Union (i :: SymbolMap v) (j :: SymbolMap v) :: SymbolMap v where
   Union i '[]               = i
   Union i ( (k :-> a) ': b) = Union (Insert k a i) b
 
-type family Delete (k :: Symbol) (i :: BindingsMap) :: BindingsMap where
+type family Delete (k :: Symbol) (i :: SymbolMap v) :: SymbolMap v where
   Delete k '[]               = '[]
   Delete k ( (k :-> _) ': i) = i -- assumes there are no duplicates
   Delete k ( _         ': i) = Delete k i
 
-type family Remove (i :: BindingsMap) (j :: BindingsMap) :: BindingsMap where
+type family Remove (i :: SymbolMap v) (j :: SymbolMap v) :: SymbolMap v where
   Remove '[]               j = j
   Remove ( (k :-> _) ': i) j = Remove i (Delete k j) 
 
-type family FromList (i :: BindingsMap) :: BindingsMap where
-  FromList '[]             = '[]
-  FromList ((k :-> v) : l) = Insert k v (FromList l)
+type family InsertionSort (i :: SymbolMap v) :: SymbolMap v where
+  InsertionSort '[]             = '[]
+  InsertionSort ((k :-> v) : l) = Insert k v (InsertionSort l)
 
-
+------------------------------------------------
+-- bindings (variables, functions)
 
 data Permission = Read | Write
   deriving (Eq, Show)
@@ -80,8 +82,9 @@ data Binding where
   Variable :: [Permission] -> Type -> Binding
   Function :: [Assignment Symbol Binding] -> Type -> Binding
 
-type Var ps a = 'Variable ps a
-type Fun as b = 'Function as b
+type Var ps a    = 'Variable ps a
+type Fun as b    = 'Function as b
+type BindingsMap = SymbolMap Binding
 
 type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
   Variadic '[]               b = b
@@ -90,7 +93,6 @@ type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a
   BindingType (Fun as b) = Variadic as b
-
 
 class KnownPermission (p :: Permission) where
   permission :: Proxy p -> Permission
@@ -105,5 +107,6 @@ class KnownPermissions (ps :: [Permission]) where
 
 instance KnownPermissions '[] where
   permissions _ = []
-instance (KnownPermission p, KnownPermissions ps) => KnownPermissions ( p ': ps ) where
+instance (KnownPermission p, KnownPermissions ps)
+      => KnownPermissions ( p ': ps ) where
   permissions _ = permission (Proxy @p) : permissions (Proxy @ps)

@@ -20,7 +20,7 @@ import Data.Text(Text)
 
 -- fir
 import Data.Type.Bindings( BindingsMap, type (:->)
-                         , FromList, Union
+                         , InsertionSort, Union
                          , Var
                          , Permission(Write)
                          , R, W--, RW
@@ -83,7 +83,7 @@ stage :: SPIRV.ExecutionModel -> Stage
 stage (SPIRV.ExecutionModel i) = toEnum ( fromIntegral i )
 
 type family StageBuiltins (stage :: Stage) :: BindingsMap where
-  StageBuiltins stage = FromList ( StageBuiltins' stage )
+  StageBuiltins stage = InsertionSort ( StageBuiltins' stage )
 
 type family StageBuiltins' (stage :: Stage) :: BindingsMap where
   StageBuiltins' Vertex                 = '[ "gl_VertexId"       :-> Var R Int32

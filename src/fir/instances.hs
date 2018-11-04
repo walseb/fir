@@ -34,9 +34,11 @@ import Prelude hiding( Eq(..), (&&), (||), not
 import qualified Prelude
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
-import Data.Word(Word16)
+import Data.Word(Word16, Word32)
 import GHC.TypeLits(TypeError, ErrorMessage(..))
-import GHC.TypeNats(KnownNat, type (+), type (-), type (<=?))
+import GHC.TypeNats( KnownNat, natVal
+                   , type (+), type (-), type (<=?)
+                   )
 import Type.Reflection(typeRep)
 
 -- fir  
@@ -64,7 +66,6 @@ import Math.Logic.Class ( Eq(..), Boolean(..)
                         , Ord(..)
                         )
 import qualified SPIRV.PrimOp as SPIRV
-import qualified SPIRV.PrimTy as SPIRV
 
 --------------------------------------------------------------------------------------
 -- instances for AST
@@ -133,8 +134,8 @@ instance (ScalarTy a, ScalarTy b, Convert '(a,b))
 
 
 
-dim :: forall n. KnownNat n => SPIRV.Dim
-dim = SPIRV.toDim ( Math.Linear.dim @n )
+val :: forall n. KnownNat n => Word32
+val = fromIntegral ( natVal (Proxy @n))
 
 -- vectors
 instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
@@ -143,19 +144,19 @@ instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
 
   (^+^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (dim @n) (scalarTy @a)) (^+^)
+  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (val @n) (scalarTy @a)) (^+^)
 
   (^*) :: forall n. KnownNat n
         => AST (V n a) -> AST a -> AST (V n a)
-  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (dim @n) (scalarTy @a)) (^*)
+  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (val @n) (scalarTy @a)) (^*)
 
 instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
   (^-^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (dim @n) (scalarTy @a)) (^-^)
+  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (val @n) (scalarTy @a)) (^-^)
 
 instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
-  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (dim @0) (scalarTy @a)) (^.^)
+  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (val @0) (scalarTy @a)) (^.^)
 
 
 -- matrices
@@ -169,44 +170,44 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
 
   transpose :: forall n m. (KnownNat n, KnownNat m)
             => AST (M n m a) -> AST (M m n a)
-  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (dim @m) (dim @n) (scalarTy @a)) transpose
+  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (val @m) (val @n) (scalarTy @a)) transpose
 
   inverse :: forall n. KnownNat n
             => AST (M n n a) -> AST (M n n a)
-  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (dim @n) (dim @n) (scalarTy @a)) inverse
+  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (val @n) (val @n) (scalarTy @a)) inverse
   
   determinant :: forall n. KnownNat n
               => AST (M n n a) -> AST a
-  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (dim @0) (dim @0) (scalarTy @a)) determinant
+  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (val @0) (val @0) (scalarTy @a)) determinant
 
   -- no built-in matrix addition and subtraction, so we use the vector operations
   (!+!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !+! y = Mat :$ ( vecAdd <$$> (UnMat :$ x) <**> (UnMat :$ y) )
     where vecAdd :: AST (V j a) -> AST(V j a -> V j a)
-          vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (dim @i) (scalarTy @a)) (^+^)
+          vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (val @i) (scalarTy @a)) (^+^)
 
   (!-!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !-! y = Mat :$ ( vecSub <$$> (UnMat :$ x) <**> (UnMat :$ y) )
     where vecSub :: AST (V j a) -> AST(V j a -> V j a)
-          vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (dim @i) (scalarTy @a)) (^-^)
+          vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (val @i) (scalarTy @a)) (^-^)
 
   (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
         => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
-  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (dim @i) (dim @k) (scalarTy @a)) (!*!)
+  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (val @i) (val @k) (scalarTy @a)) (!*!)
 
   (^*!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (V i a) -> AST (M i j a) -> AST (V j a)
-  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (dim @j) (dim @0) (scalarTy @a)) (^*!)
+  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (val @j) (val @0) (scalarTy @a)) (^*!)
 
   (!*^) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (V j a) -> AST (V i a)
-  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (dim @i) (dim @0) (scalarTy @a)) (!*^)
+  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (val @i) (val @0) (scalarTy @a)) (!*^)
 
   (!*) :: forall i j. (KnownNat i, KnownNat j)
        => AST (M i j a) -> AST a -> AST (M i j a)
-  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (dim @i) (dim @j) (scalarTy @a)) (!*)
+  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (val @i) (val @j) (scalarTy @a)) (!*)
 
 
 infixl 4 <$$>

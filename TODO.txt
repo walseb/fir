@@ -1,7 +1,5 @@
 
 Compound types:
-  - Arrays (containing any basic type)
-  - Records/structs (containing any other types)
   - (Syntactic sugar for) complex numbers & quaternions
   - (Syntactic sugar for) tuples
 
@@ -9,17 +7,10 @@ Operations:
   - comparison (using Ordering, not just < <= > >=)
   - rounding operations
   - bitwise operations on numeric types
-  - way to lift operations to vectors (like 'fmap')
   - glsl utility operations (clamp, mix, step, smoothstep, ...)
 
 Control flow:
   - switch
-
-
-need to think about records/structs and in particular memory layout & alignment concerns
-structs should use type-level symbols to access individual components
-arrays should use runtime ints
-
 
 
 fix vector indexing to start from 0 and not 1
@@ -27,21 +18,15 @@ fix vector indexing to start from 0 and not 1
 figure out how to use fmap for internal vectors/matrices/structs/etc
 also need zipWith, e.g. shift operators (zipWith shiftRight intvec datavec)
 
-for some matrix operations (e.g. matrix addition), there are no built-in functions...
-instead need to manually "zipWith" using OpCompositeExtra, OpCompositeConstruct
-
-
 
 apply RowMajor decoration to matrix type declarations?
 
 write pattern synonyms for creating matrices out of rows/columns
 same for destructuring
+(could uses lenses?)
 
 
 program optimisation: when possible, bundle together the vector indexing "At" things into a OpVectorShuffle
-
-
-figure out how to overload function composition for internal functions
 
 
 make CGMonad polymorphic, so that we can output binary directly, or a human-readable format (or AST)
@@ -52,8 +37,7 @@ in SPIR-V code, it seems to be split up into two different cases...
 can it be renamed gl_in and gl_out ??
 
 
-include source line number information in the SPIR-V
-see http://hackage.haskell.org/package/base-4.12.0.0/docs/GHC-Stack.html
 
 
 check correctness with function arguments and local variables (and entry point local variables)
+maybe local variables & function arguments are not being updated properly (depending on whether they use load/store or SSA)

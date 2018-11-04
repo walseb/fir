@@ -23,9 +23,9 @@ import CodeGen.Binary ( putHeader
                       , putEntryPoints
                       , putBindingAnnotations
                       , putKnownStringLits
-                      --, putDecorations
-                      --, putExecutionModes
-                      , putInstructionsInOrder
+                    --, putDecorations
+                    --, putExecutionModes
+                      , putTypesAndConstants
                       , putGlobals
                       )
 import CodeGen.Instruction (ID(..))
@@ -50,8 +50,12 @@ putDecs
               putBindingAnnotations   (fmap fst knownBindings)
               putBindingAnnotations   (fmap fst usedGlobals)              
               --putDecorations
-              putInstructionsInOrder  knownTypes
-              putInstructionsInOrder  knownConstants
+
+              -- Type and constant declarations need to be interleaved.
+              -- For instance, an array type needs to have
+              -- its length (a constant) defined earlier.
+              putTypesAndConstants    knownTypes knownConstants
+
     putGlobals knownTypes usedGlobals
      
 putASM :: CGContext -> CGMonad r -> Either Text ByteString

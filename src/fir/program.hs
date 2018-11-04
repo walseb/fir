@@ -18,7 +18,6 @@ module FIR.Program
 import Control.Arrow(second)
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits(Symbol)
 
 -- containers
 import Data.Map(Map)
@@ -29,26 +28,34 @@ import Data.Text(Text)
 
 -- fir
 import Control.Monad.Indexed((:=), Codensity)
-import Data.Type.Bindings( BindingsMap, Binding
-                         , Assignment
-                         , Union, FromList
+import Data.Type.Bindings( BindingsMap
+                         , Union
+                         , InsertionSort
                          )
 import FIR.AST(AST)
 import FIR.PrimTy(KnownVars(knownVars))
 import qualified SPIRV.PrimTy as SPIRV
 
-type family Program
-              ( i :: [ Assignment Symbol Binding ] )
-              ( j :: [ Assignment Symbol Binding ] )
-              ( a :: Type )
-              :: Type where
-  Program i j a 
-      = CodensityProgram
-          ( FromList i ) 
-          ( Union (FromList j) (FromList i) )
-          a
+type family Program 
+    ( i :: BindingsMap )
+    ( j :: BindingsMap )
+    ( a :: Type ) 
+  = ( r :: Type ) where
+  Program i j a = Program' (InsertionSort i) (InsertionSort j) a
 
-type family CodensityProgram (i :: BindingsMap) (j :: BindingsMap) (a :: Type) = (r :: Type) | r -> i j a where
+type family Program' 
+    ( i :: BindingsMap )
+    ( j :: BindingsMap )
+    ( a :: Type )
+  = ( r :: Type ) where
+  Program' i j a = CodensityProgram i ( Union j i ) a
+
+type family CodensityProgram
+    (i :: BindingsMap)
+    (j :: BindingsMap)
+    (a :: Type)
+  = (r :: Type)
+  | r -> i j a where
   CodensityProgram i j a = Codensity AST ( AST a := j ) i
 
 programGlobals :: forall i j a. KnownVars i
