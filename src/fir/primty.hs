@@ -38,9 +38,8 @@ import qualified Data.Text as Text
 
 -- fir
 import Data.Binary.Class.Put(Put)
-import Data.Type.Bindings( Binding
-                         , Assignment, type (:->)
-                         , SymbolMap, BindingsMap
+import Data.Type.Bindings( (:->)((:->))
+                         , Binding, BindingsMap
                          , Var
                          , Permission, permissions
                          , KnownPermissions
@@ -91,10 +90,10 @@ deriving instance Foldable    RuntimeArray
 deriving instance Traversable RuntimeArray
 
 -- order *matters* for structs (memory layout!)
-data Struct :: [Assignment Symbol Type] -> Type where
+data Struct :: [Symbol :-> Type] -> Type where
   End  :: Struct '[]
   (:&) :: forall k a as. (KnownSymbol k, PrimTy a)
-       => a -> Struct as -> Struct ((k :-> a) ': as)
+       => a -> Struct as -> Struct ((k ':-> a) ': as)
 
 deriving instance Eq   (Struct as)
 deriving instance Ord  (Struct as)
@@ -150,13 +149,13 @@ data SPrimTy :: Type -> Type where
           => SPrimTy a -> SPrimTy (RuntimeArray a)
   SStruct :: SPrimTyBindings as -> SPrimTy (Struct as)
 
-data SPrimTyBindings :: SymbolMap Type -> Type where
+data SPrimTyBindings :: [Symbol :-> Type] -> Type where
   SNilBindings  :: SPrimTyBindings '[]
   SConsBindings :: (KnownSymbol k, PrimTy a)
                 => Proxy k
                 -> SPrimTy a
                 -> SPrimTyBindings as
-                -> SPrimTyBindings ((k :-> a) ': as)
+                -> SPrimTyBindings ((k ':-> a) ': as)
 
 
 class ( Show ty                    -- for convenience
@@ -270,6 +269,23 @@ instance PrimTy a => PrimTy (RuntimeArray a) where
   primTySing = SRuntimeArray (primTySing @a)
 
 
+class PrimTyBindings as where
+  primTyBindings :: SPrimTyBindings as
+
+instance PrimTyBindings '[] where
+  primTyBindings = SNilBindings
+
+instance (KnownSymbol k, PrimTy a, PrimTyBindings as)
+       => PrimTyBindings ((k ':-> a) ': as) where
+  primTyBindings
+    = SConsBindings
+        ( Proxy @k )
+        ( primTySing @a )
+        ( primTyBindings @as )
+
+instance ( Typeable as, PrimTyBindings as )
+       => PrimTy (Struct as) where
+  primTySing = SStruct (primTyBindings @as)
 
 
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
@@ -291,9 +307,10 @@ sPrimTy (SArray l      a) = SPIRV.Array  (val l)         (sPrimTy   a)
 sPrimTy (SRuntimeArray a) = SPIRV.RuntimeArray           (sPrimTy   a)
 sPrimTy (SStruct      as) = SPIRV.Struct (sPrimTyBindings as)
 
-sPrimTyBindings :: SPrimTyBindings ty -> [SPIRV.PrimTy]
+sPrimTyBindings :: SPrimTyBindings ty -> [(Text.Text, SPIRV.PrimTy)]
 sPrimTyBindings SNilBindings           = []
-sPrimTyBindings (SConsBindings _ a as) = sPrimTy a : sPrimTyBindings as
+sPrimTyBindings (SConsBindings k a as) = (Text.pack (symbolVal k), sPrimTy a)
+                                       : sPrimTyBindings as
 
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
 scalarTy = sScalarTy ( scalarTySing @ty )
@@ -312,11 +329,11 @@ sScalarTy SFloat  = SPIRV.Floating         W32
 sScalarTy SDouble = SPIRV.Floating         W64
 
 
-class KnownVar (bd :: Assignment Symbol Binding) where
+class KnownVar (bd :: (Symbol :-> Binding)) where
   knownVar :: Proxy bd -> (Text.Text, (SPIRV.PrimTy, [Permission]))
 
 instance (KnownSymbol k, KnownPermissions ps, PrimTy a)
-       => KnownVar (k :-> Var ps a) where
+       => KnownVar (k ':-> Var ps a) where
   knownVar _ = ( Text.pack . symbolVal $ Proxy @k
                , ( primTy @a
                  , permissions (Proxy @ps)

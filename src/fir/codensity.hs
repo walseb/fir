@@ -1,15 +1,16 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE InstanceSigs          #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE InstanceSigs           #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module FIR.Codensity where
 
@@ -22,8 +23,9 @@ import Prelude hiding( Eq(..), (&&), (||), not
                      , Functor(..)
                      , Applicative(..)
                      )
-import Data.Proxy(Proxy(Proxy))                     
-import Data.Word(Word16)                     
+import Data.Kind(Type)
+import Data.Proxy(Proxy(Proxy))
+import Data.Word(Word16)
 import qualified GHC.Stack
 import GHC.TypeLits(KnownSymbol)
 import GHC.TypeNats(KnownNat)
@@ -33,12 +35,15 @@ import Control.Monad.Indexed( (:=)(AtKey), Codensity(Codensity)
                             , ixFmap, ixPure, ixLiftA2
                             )
 import Data.Type.Bindings(Insert, Union, BindingType, Var, Fun, BindingsMap)
-import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
-                   , Put, Get
-                   )
+import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint )
 import FIR.AST(AST(..))
 import FIR.Builtin(StageBuiltins, KnownStage)
 import FIR.Instances(Syntactic(Internal,toAST,fromAST)) -- also importing orphan instances
+import FIR.Lens( Lens, KnownLens, lensSing
+               , Gettable, Getter, Get
+               , Settable, Setter, Set
+               , RequiredIndices, type (:++:)
+               )
 import FIR.PrimTy(PrimTy, ScalarTy, KnownVars)
 import Math.Algebra.Class ( AdditiveGroup(..)
                           , Semiring(..), Ring(..)
@@ -97,18 +102,32 @@ entryPoint :: forall k s l i.
              )
            => Codensity AST (AST () := l) (Union i (StageBuiltins s))
            -> Codensity AST (AST () := i) i
+           
+get :: forall (lens :: Lens) i.
+            ( GHC.Stack.HasCallStack
+            , KnownLens lens
+            , Gettable lens i
+            , Syntactic (CodGetter lens i)
+            , Internal (CodGetter lens i) ~ Getter lens i
+            )
+          => CodGetter lens i
 
-get :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k)
-    => Codensity AST (AST (Get k i) := i) i
+put :: forall (lens :: Lens) i.
+            ( GHC.Stack.HasCallStack
+            , KnownLens lens
+            , Settable lens i
+            , Syntactic (CodSetter lens i)
+            , Internal (CodSetter lens i) ~ Setter lens i
+            )
+          => CodSetter lens i
 
-put :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k, PrimTy (Put k i))
-    => AST (Put k i) -> Codensity AST (AST () := i) i
 
-def        a = Codensity ( \h -> Bind :$ (Def    @k @ps @a    @i Proxy Proxy       :$ a      ) :$ (Lam $ h . AtKey) )
-fundef'    f = Codensity ( \h -> Bind :$ (FunDef @k @as @b @l @i Proxy Proxy Proxy :$ toAST f) :$ (Lam $ h . AtKey) )
-entryPoint f = Codensity ( \h -> Bind :$ (Entry  @k     @s @l @i Proxy Proxy       :$ toAST f) :$ (Lam $ h . AtKey) )
-get          = Codensity ( \h -> Bind :$  Get    @k           @i Proxy                         :$ (Lam $ h . AtKey) )
-put        a = Codensity ( \h -> Bind :$ (Put    @k           @i Proxy             :$ a      ) :$ (Lam $ h . AtKey) )
+def        = fromAST ( Def    @k @ps @a    @i Proxy Proxy       ) . toAST
+fundef'    = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
+entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
+get        = fromAST ( Get    @lens        @i lensSing          )
+put        = fromAST ( Put    @lens        @i lensSing          )
+
 
 fundef :: forall k as b l i r.
            ( GHC.Stack.HasCallStack
@@ -122,6 +141,21 @@ fundef :: forall k as b l i r.
         => Codensity AST (AST b := l) (Union i as)
         -> Codensity AST ( r := Insert k (Fun as b) i) i
 fundef = fromAST . toAST . fundef' @k @as @b @l @i
+
+--------------------------------------------------------------------------
+-- utility types for get/put
+
+type CodGetter l i = CodVariadicList (RequiredIndices l                ) (Get l i) i
+type CodSetter l i = CodVariadicList (RequiredIndices l :++: '[Set l i]) ()        i
+
+type family CodVariadicList
+              ( as :: [Type]      )
+              ( b  :: Type        )
+              ( i  :: BindingsMap )
+            = ( r  :: Type        )
+            | r -> as i b  where
+  CodVariadicList '[]       b i = Codensity AST (AST b := i) i
+  CodVariadicList (a ': as) b i = AST a -> CodVariadicList as b i
 
 --------------------------------------------------------------------------
 -- instances for codensity representation
@@ -182,12 +216,12 @@ instance ( PrimTy a, Ord a, Logic a ~ Bool
 instance (ScalarTy a, AdditiveGroup a, j ~ i) => AdditiveGroup (Codensity AST (AST a := j) i) where
   (+)    = ixLiftA2 (+)
   zero   = ixPure zero
+  fromInteger = ixPure . fromInteger
 instance (ScalarTy a, Semiring a, j ~ i) => Semiring (Codensity AST (AST a := j) i) where
   (*)    = ixLiftA2 (*)
 instance (ScalarTy a, Ring a, j ~ i) => Ring (Codensity AST (AST a := j) i) where
   (-)    = ixLiftA2 (-)
-  negate = ixFmap negate
-  fromInteger = ixPure . fromInteger
+  negate = ixFmap negate  
 instance (ScalarTy a, Signed a, j ~ i) => Signed (Codensity AST (AST a := j) i) where
   abs    = ixFmap abs
   signum = ixFmap signum

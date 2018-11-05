@@ -105,12 +105,12 @@ instance ( PrimTy a, Ord a, Logic a ~ Bool )
 instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
   (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalarTy @a)) (+)
   zero   = lit (zero :: a)
+  fromInteger = lit . fromInteger
 instance (ScalarTy a, Semiring a) => Semiring (AST a) where
   (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (scalarTy @a)) (*)
 instance (ScalarTy a, Ring a) => Ring (AST a) where
   (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (scalarTy @a)) (-)
-  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (scalarTy @a)) negate
-  fromInteger = lit . fromInteger
+  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (scalarTy @a)) negate  
 instance (ScalarTy a, Signed a) => Signed (AST a) where
   abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (scalarTy @a)) abs
   signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (scalarTy @a)) signum

@@ -4,6 +4,7 @@ module CodeGen.State where
 
 -- base
 import Data.Maybe(fromMaybe)
+import Data.Word(Word32)
 
 -- containers
 import Data.Map(Map)
@@ -46,6 +47,7 @@ data CGState
       , neededCapabilities  :: Set               SPIRV.Capability
       , knownExtInsts       :: Map SPIRV.ExtInst Instruction
       , knownStringLits     :: Map Text          ID
+      , names               :: Set ( ID, Either Text (Word32, Text) )
       , interfaces          :: Map (Stage, Text) (Set Text)
       , annotations         :: Set               Instruction
       , knownTypes          :: Map SPIRV.PrimTy  Instruction
@@ -71,6 +73,7 @@ initialState
       , neededCapabilities  = Set.empty
       , knownExtInsts       = Map.empty
       , knownStringLits     = Map.empty
+      , names               = Set.empty
       , interfaces          = Map.empty
       , annotations         = Set.empty
       , knownTypes          = Map.empty
@@ -122,6 +125,9 @@ _knownStringLits = lens knownStringLits ( \s v -> s { knownStringLits = v } )
 
 _knownStringLit :: Text -> Lens' CGState (Maybe ID)
 _knownStringLit lit = _knownStringLits . at lit
+
+_names :: Lens' CGState ( Set (ID, Either Text (Word32, Text)) )
+_names = lens names ( \s v -> s { names = v } )
 
 _usedGlobals :: Lens' CGState (Map Text (ID, (SPIRV.PrimTy, SPIRV.StorageClass)))
 _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )

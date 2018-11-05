@@ -23,45 +23,58 @@ import GHC.TypeLits( Symbol, CmpSymbol
 ------------------------------------------------
 -- barebones type-level map functionality
 
-data Assignment k v = Assignment k v
-type SymbolMap v = [Assignment Symbol v]
-
 infixr 4 :->
-type k :-> v = 'Assignment k v
+data (:->) k v = k :-> v
+
+-- this synonym should only be used when we are working
+-- with lists that are known to be ordered
+type Map k v = [k :-> v]
+
+
+type family Key (a :: (k :-> v)) :: k where
+  Key (k ':-> _) = k
+
+type family Value (a :: (k :-> v)) :: v where
+  Value (_ ':-> v) = v
 
 -- looks through the whole list always, in case the list is not sorted
-type family Lookup (k :: Symbol) (i :: SymbolMap v) :: Maybe v where
-  Lookup _ '[]              = 'Nothing
-  Lookup k ((k :-> a) ': b) = 'Just a
-  Lookup k (_         ': b) = Lookup k b
+type family Lookup (s :: k) (i :: [k :-> v]) :: Maybe v where
+  Lookup _ '[]               = 'Nothing
+  Lookup k ((k ':-> a) ': _) = 'Just a
+  Lookup k (_          ': b) = Lookup k b
+
+type family LookupKey (s :: k) (i :: [k :-> v]) :: Maybe k where
+  Lookup _ '[]               = 'Nothing
+  Lookup k ((k ':-> _) ': _) = 'Just k
+  Lookup k (_          ': b) = LookupKey k b
 
 -- insert a key/value pair in an already-sorted map
-type family Insert (k :: Symbol) ( x :: v ) (i :: SymbolMap v) :: SymbolMap v where
-  Insert k v '[]              = '[ k :-> v ]
-  Insert k v ((k :-> a) ': b) = TypeError
+type family Insert (s :: k) (t :: v) (i :: Map k v) :: Map k v where
+  Insert k v '[]              = '[ k ':-> v ]
+  Insert k v ((k ':-> a) ': b) = TypeError
       (     Text "Duplicate key: "
-       :$$: ShowType '[ (k :-> v), (k :-> a) ]
+       :$$: ShowType '[ (k ':-> v), (k ':-> a) ]
       )
-  Insert k v ((l :-> a) ': b) = If (CmpSymbol k l == 'LT)
-                                   ((k :-> v) ': (l :-> a) ': b)
-                                   ((l :-> a) ': Insert k v b)
+  Insert k v ((l ':-> a) ': b) = If (CmpSymbol k l == 'LT)
+                                    ((k ':-> v) ': (l ':-> a) ': b)
+                                    ((l ':-> a) ': Insert k v b)
 
-type family Union (i :: SymbolMap v) (j :: SymbolMap v) :: SymbolMap v where
-  Union i '[]               = i
-  Union i ( (k :-> a) ': b) = Union (Insert k a i) b
+type family Union (i :: Map k v) (j :: Map k v) :: Map k v where
+  Union i '[]                = i
+  Union i ( (k ':-> a) ': b) = Union (Insert k a i) b
 
-type family Delete (k :: Symbol) (i :: SymbolMap v) :: SymbolMap v where
-  Delete k '[]               = '[]
-  Delete k ( (k :-> _) ': i) = i -- assumes there are no duplicates
-  Delete k ( _         ': i) = Delete k i
+type family Delete (s :: k) (i :: [k :-> v]) :: [k :-> v] where
+  Delete k '[]                = '[]
+  Delete k ( (k ':-> _) ': i) = i -- assumes there are no duplicates
+  Delete k ( _          ': i) = Delete k i
 
-type family Remove (i :: SymbolMap v) (j :: SymbolMap v) :: SymbolMap v where
-  Remove '[]               j = j
-  Remove ( (k :-> _) ': i) j = Remove i (Delete k j) 
+type family Remove (i :: [k :-> v]) (j :: [k :-> v]) :: [k :-> v] where
+  Remove '[]                j = j
+  Remove ( (k ':-> _) ': i) j = Remove i (Delete k j) 
 
-type family InsertionSort (i :: SymbolMap v) :: SymbolMap v where
-  InsertionSort '[]             = '[]
-  InsertionSort ((k :-> v) : l) = Insert k v (InsertionSort l)
+type family InsertionSort (i :: [k :-> v]) :: Map k v where
+  InsertionSort '[]              = '[]
+  InsertionSort ((k ':-> v) : l) = Insert k v (InsertionSort l)
 
 ------------------------------------------------
 -- bindings (variables, functions)
@@ -80,15 +93,15 @@ type family Elem x as where
 
 data Binding where
   Variable :: [Permission] -> Type -> Binding
-  Function :: [Assignment Symbol Binding] -> Type -> Binding
+  Function :: [Symbol :-> Binding] -> Type -> Binding
 
 type Var ps a    = 'Variable ps a
 type Fun as b    = 'Function as b
-type BindingsMap = SymbolMap Binding
+type BindingsMap = Map Symbol Binding
 
 type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
-  Variadic '[]               b = b
-  Variadic ((_ :-> a) ': as) b = BindingType a -> Variadic as b
+  Variadic '[]                b = b
+  Variadic ((_ ':-> a) ': as) b = BindingType a -> Variadic as b
 
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a

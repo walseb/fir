@@ -31,8 +31,8 @@ import Data.Type.Bindings( Var, R, RW
 import FIR.AST(AST)
 import FIR.Binding(ValidDef,Get,Put)
 import FIR.Codensity(def, get, put)
+import FIR.Lens(Lens(Name))
 import FIR.PrimTy(PrimTy)
-
 
 -- short type synonym helpful for disambiguating
 -- e.g. : [...] @(S _ _)
@@ -62,9 +62,7 @@ instance ( KnownSymbol k, PrimTy a
          , t ~ 'GetLabel k i
          )
       => IsLabel k a t (Codensity AST r i) where
-  fromLabel = get @k
-
-
+  fromLabel = get @(Name k)
 
 
 infixr 4 #=
@@ -102,4 +100,4 @@ _ #=! a = def @k @R a
      => Label k a
      -> AST a
      -> Codensity AST (AST () := i) i
-_ .= a = put @k a
+_ .= a = put @(Name k) a

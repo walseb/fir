@@ -41,3 +41,8 @@ can it be renamed gl_in and gl_out ??
 
 check correctness with function arguments and local variables (and entry point local variables)
 maybe local variables & function arguments are not being updated properly (depending on whether they use load/store or SSA)
+
+clean up all the type families called variadic:
+  - variadic with map of bindings
+  - variadic with type level nat
+  - variadic with type level list

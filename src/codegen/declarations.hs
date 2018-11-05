@@ -21,8 +21,9 @@ import CodeGen.Binary ( putHeader
                       , putExtendedInstructions
                       , putMemoryModel
                       , putEntryPoints
-                      , putBindingAnnotations
                       , putKnownStringLits
+                      , putBindingAnnotations                      
+                      , putNames
                     --, putDecorations
                     --, putExecutionModes
                       , putTypesAndConstants
@@ -48,7 +49,8 @@ putDecs
     lift $ do --putExecutionModes knownBindings interfaces
               putKnownStringLits      knownStringLits
               putBindingAnnotations   (fmap fst knownBindings)
-              putBindingAnnotations   (fmap fst usedGlobals)              
+              putBindingAnnotations   (fmap fst usedGlobals)
+              putNames                names            
               --putDecorations
 
               -- Type and constant declarations need to be interleaved.

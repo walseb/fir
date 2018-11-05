@@ -19,13 +19,14 @@ import GHC.TypeLits(Symbol)
 import Data.Text(Text)
 
 -- fir
-import Data.Type.Bindings( BindingsMap, type (:->)
+import Data.Type.Bindings( (:->)((:->))
+                         , BindingsMap
                          , InsertionSort, Union
                          , Var
                          , Permission(Write)
-                         , R, W--, RW
+                         , R, W, RW
                          )
-import FIR.PrimTy(knownVars)
+import FIR.PrimTy(knownVars, Struct, RuntimeArray)
 import Math.Linear(V)
 import qualified SPIRV.Capability    as SPIRV(Capability)
 import qualified SPIRV.Capability    as Capability
@@ -86,68 +87,96 @@ type family StageBuiltins (stage :: Stage) :: BindingsMap where
   StageBuiltins stage = InsertionSort ( StageBuiltins' stage )
 
 type family StageBuiltins' (stage :: Stage) :: BindingsMap where
-  StageBuiltins' Vertex                 = '[ "gl_VertexId"       :-> Var R Int32
-                                           , "gl_InstanceId"     :-> Var R Int32
-                                           , "gl_Position"       :-> Var W (V 4 Float)
-                                           , "gl_PointSize"      :-> Var W Float
-                                           ]
-  StageBuiltins' TessellationControl    = '[ "gl_InvocationId"   :-> Var R Int32
-                                           , "gl_PatchVertices"  :-> Var R Int32
-                                           , "gl_PrimitiveId"    :-> Var R Int32
-                                        -- , "gl_perVertex"      :-> Var RW (Array (Struct "gl_Position" "gl_PointSize"))
-                                        -- , "gl_TessLevelOuter" :-> Var W (Array Float)
-                                        -- , "gl_TessLevelInner" :-> Var W (Array Float)
-                                           ]
-  StageBuiltins' TessellationEvaluation = '[ "gl_TessCoord"      :-> Var R (V 3 Float)
-                                           , "gl_PatchVertices"  :-> Var R Int32
-                                           , "gl_PrimitiveId"    :-> Var R Int32
-                                        -- , "gl_perVertex"      :-> Var R (Array (Struct "gl_Position" "gl_PointSize"))
-                                           , "gl_Position"       :-> Var W (V 4 Float)
-                                           , "gl_PointSize"      :-> Var W Float
-                                           ]
-  StageBuiltins' Geometry               = '[ "gl_PrimitiveId"    :-> Var R Int32
-                                           , "gl_InvocationId"   :-> Var R Int32
-                                        -- , "gl_perVertex"      :-> Var R (Array (Struct "gl_Position" "gl_PointSize"))
-                                           , "gl_Position"       :-> Var W (V 4 Float)
-                                           , "gl_PointSize"      :-> Var W Float
-                                           , "gl_Layer"          :-> Var W Int32
-                                           , "gl_ViewportIndex"  :-> Var W Int32
-                                           ]                                        
-  StageBuiltins' Fragment               = '[ "gl_Layer"          :-> Var R Int32
-                                           , "gl_ViewportIndex"  :-> Var R Int32
-                                           , "gl_FragCoord"      :-> Var R (V 4 Float)
-                                           , "gl_PointCoord"     :-> Var R (V 2 Float)
-                                           , "gl_FrontFacing"    :-> Var R Bool
-                                           , "gl_SampleId"       :-> Var R Int32
-                                           , "gl_SamplePosition" :-> Var R (V 2 Float)
-                                        -- , "gl_SampleMask"     :-> Var W (Array Int32)
-                                           , "gl_FragDepth"      :-> Var W Float
-                                           ]
-  StageBuiltins' GLCompute              = '[ "gl_NumWorkgroups"        :-> Var R (V 3 Word32)
-                                           , "gl_WorkgroupSize"        :-> Var R (V 3 Word32)
-                                           , "gl_WorkgroupId"          :-> Var R (V 3 Word32)
-                                           , "gl_LocalInvocationId"    :-> Var R (V 3 Word32)
-                                           , "gl_GlobalInvocationId"   :-> Var R (V 3 Word32)
-                                           , "gl_LocalInvocationIndex" :-> Var R Word32
-                                           ]
-  StageBuiltins' Kernel                 = '[ "gl_NumWorkgroups"             :-> Var R Word32
-                                           , "gl_WorkgroupSize"             :-> Var R Word32
-                                           , "gl_WorkgroupId"               :-> Var R Word32
-                                           , "gl_LocalInvocationId"         :-> Var R Word32
-                                           , "gl_GlobalInvocationId"        :-> Var R Word32
-                                           , "gl_LocalInvocationIndex"      :-> Var R Word32
-                                           , "gl_WorkDim"                   :-> Var R Word32
-                                           , "gl_GlobalSize"                :-> Var R Word32
-                                           , "gl_EnqueuedWorkgroupSize"     :-> Var R Word32
-                                           , "gl_GlobalOffset"              :-> Var R Word32
-                                           , "gl_GlobalLinearId"            :-> Var R Word32
-                                           , "gl_SubgroupSize"              :-> Var R Word32
-                                           , "gl_SubgroupMaxSize"           :-> Var R Word32
-                                           , "gl_NumSubgroups"              :-> Var R Word32
-                                           , "gl_NumEnqueuedSubgroups"      :-> Var R Word32
-                                           , "gl_SubgroupId"                :-> Var R Word32
-                                           , "gl_SubgroupLocalInvocationId" :-> Var R Word32
-                                           ]
+  StageBuiltins' Vertex
+    = '[ "gl_VertexId"       ':-> Var R Int32
+       , "gl_InstanceId"     ':-> Var R Int32
+       , "gl_Position"       ':-> Var W ( V 4 Float )
+       , "gl_PointSize"      ':-> Var W Float
+       ]
+  StageBuiltins' TessellationControl
+    = '[ "gl_InvocationId"   ':-> Var R Int32
+       , "gl_PatchVertices"  ':-> Var R Int32
+       , "gl_PrimitiveId"    ':-> Var R Int32
+       , "gl_perVertex" 
+           ':-> Var RW
+                  ( RuntimeArray 
+                    ( Struct '[ "gl_Position"  ':-> V 4 Float
+                              , "gl_PointSize" ':-> Float
+                              ]
+                    )
+                  )
+       , "gl_TessLevelOuter" ':-> Var W ( RuntimeArray Float )
+       , "gl_TessLevelInner" ':-> Var W ( RuntimeArray Float )
+       ]
+  StageBuiltins' TessellationEvaluation
+    = '[ "gl_TessCoord"      ':-> Var R ( V 3 Float )
+       , "gl_PatchVertices"  ':-> Var R Int32
+       , "gl_PrimitiveId"    ':-> Var R Int32
+       , "gl_perVertex" 
+           ':-> Var R
+                  ( RuntimeArray 
+                    ( Struct '[ "gl_Position"  ':-> V 4 Float
+                              , "gl_PointSize" ':-> Float
+                              ]
+                    )
+                  )
+       , "gl_Position"       ':-> Var W ( V 4 Float )
+       , "gl_PointSize"      ':-> Var W Float
+       ]
+  StageBuiltins' Geometry 
+    = '[ "gl_PrimitiveId"    ':-> Var R Int32
+       , "gl_InvocationId"   ':-> Var R Int32
+       , "gl_perVertex" 
+           ':-> Var R
+                  ( RuntimeArray 
+                    ( Struct '[ "gl_Position"  ':-> V 4 Float
+                              , "gl_PointSize" ':-> Float
+                              ]
+                    )
+                  )
+       , "gl_Position"       ':-> Var W ( V 4 Float )
+       , "gl_PointSize"      ':-> Var W Float
+       , "gl_Layer"          ':-> Var W Int32
+       , "gl_ViewportIndex"  ':-> Var W Int32
+       ]                                        
+  StageBuiltins' Fragment 
+    = '[ "gl_Layer"          ':-> Var R Int32
+       , "gl_ViewportIndex"  ':-> Var R Int32
+       , "gl_FragCoord"      ':-> Var R ( V 4 Float )
+       , "gl_PointCoord"     ':-> Var R ( V 2 Float )
+       , "gl_FrontFacing"    ':-> Var R Bool
+       , "gl_SampleId"       ':-> Var R Int32
+       , "gl_SamplePosition" ':-> Var R ( V 2 Float )
+       , "gl_SampleMask"     ':-> Var W ( RuntimeArray Int32 )
+       , "gl_FragDepth"      ':-> Var W Float
+       ]
+  StageBuiltins' GLCompute 
+    = '[ "gl_NumWorkgroups"        ':-> Var R ( V 3 Word32 )
+       , "gl_WorkgroupSize"        ':-> Var R ( V 3 Word32 )
+       , "gl_WorkgroupId"          ':-> Var R ( V 3 Word32 )
+       , "gl_LocalInvocationId"    ':-> Var R ( V 3 Word32 )
+       , "gl_GlobalInvocationId"   ':-> Var R ( V 3 Word32 )
+       , "gl_LocalInvocationIndex" ':-> Var R Word32
+       ]
+  StageBuiltins' Kernel
+    = '[ "gl_NumWorkgroups"             ':-> Var R Word32
+       , "gl_WorkgroupSize"             ':-> Var R Word32
+       , "gl_WorkgroupId"               ':-> Var R Word32
+       , "gl_LocalInvocationId"         ':-> Var R Word32
+       , "gl_GlobalInvocationId"        ':-> Var R Word32
+       , "gl_LocalInvocationIndex"      ':-> Var R Word32
+       , "gl_WorkDim"                   ':-> Var R Word32
+       , "gl_GlobalSize"                ':-> Var R Word32
+       , "gl_EnqueuedWorkgroupSize"     ':-> Var R Word32
+       , "gl_GlobalOffset"              ':-> Var R Word32
+       , "gl_GlobalLinearId"            ':-> Var R Word32
+       , "gl_SubgroupSize"              ':-> Var R Word32
+       , "gl_SubgroupMaxSize"           ':-> Var R Word32
+       , "gl_NumSubgroups"              ':-> Var R Word32
+       , "gl_NumEnqueuedSubgroups"      ':-> Var R Word32
+       , "gl_SubgroupId"                ':-> Var R Word32
+       , "gl_SubgroupLocalInvocationId" ':-> Var R Word32
+       ]
 
 stageBuiltins :: Stage -> [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
 stageBuiltins Vertex                 = builtinStorage . knownVars $ Proxy @(StageBuiltins Vertex                )

@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
@@ -157,6 +158,18 @@ putEntryPoints bindings globals
         lift ( putEntryPoint stage stageName entryPointID builtin_IDs )
       )
 
+putKnownStringLits :: Map Text ID -> Binary.Put
+putKnownStringLits
+  = traverseWithKey_
+      ( \ lit ident -> putInstruction Map.empty
+        Instruction
+          { operation = SPIRV.Op.String
+          , resTy     = Nothing
+          , resID     = Just ident
+          , args      = Arg lit EndArgs
+          }
+      )
+
 putBindingAnnotations :: Map Text ID -> Binary.Put
 putBindingAnnotations
   = traverseWithKey_
@@ -170,17 +183,31 @@ putBindingAnnotations
           }
       )
 
-putKnownStringLits :: Map Text ID -> Binary.Put
-putKnownStringLits
-  = traverseWithKey_
-      ( \ lit ident -> putInstruction Map.empty
-        Instruction
-          { operation = SPIRV.Op.String
-          , resTy     = Nothing
-          , resID     = Just ident
-          , args      = Arg lit EndArgs
-          }
-      )
+putNames :: Set ( ID, Either Text (Word32, Text) ) -> Binary.Put
+putNames = traverse_
+  ( \case
+
+      ( ident, Left name )
+        -> putInstruction Map.empty
+              Instruction
+                { operation = SPIRV.Op.Name
+                , resTy     = Nothing
+                , resID     = Nothing
+                , args      = Arg ident
+                            $ Arg name EndArgs
+                }
+
+      ( ident, Right (index,name) )
+        -> putInstruction Map.empty
+             Instruction
+               { operation = SPIRV.Op.MemberName
+               , resTy     = Nothing
+               , resID     = Nothing
+               , args      = Arg ident
+                           $ Arg index
+                           $ Arg name EndArgs
+               }
+  )
 
 putDecorations :: todo -> Binary.Put
 putDecorations = error "todo"

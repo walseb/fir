@@ -46,7 +46,7 @@ import Control.Monad.Reader(MonadReader, ask)
 import Control.Monad.State(MonadState, get, put)
 
 -- lens
-import Control.Lens(Lens', view, use, assign)
+import Control.Lens(Lens', view, use, assign, modifying)
 
 -- text-utf8
 import Data.Text(Text)
@@ -70,6 +70,7 @@ import CodeGen.State( CGState(currentBlock, knownBindings, localBindings)
                     , _neededCapability
                     , _knownExtInsts, _knownExtInst
                     , _knownStringLit
+                    , _names
                     , _knownBindings, _knownBinding
                     , _localBindings, _localBinding
                     , _knownType
@@ -89,6 +90,7 @@ import FIR.Builtin( Stage, stageVal
                   , stageBuiltins, stageCapabilities
                   )
 import FIR.Instances(Syntactic(fromAST))
+import FIR.Lens(SLens(..))
 import FIR.PrimTy( PrimTy(primTySing)
                  , primTy, primTyVal
                  , SPrimTy(..)
@@ -196,39 +198,45 @@ codeGen (Entry k s :$ body)
         ( stageVal s )
         ( Text.pack ( symbolVal k ) )
         ( codeGen body )
-codeGen (Get k)
- = do let varName = Text.pack ( symbolVal k )
-      ctxt <- use _functionContext
+codeGen (Get lensSing)
+ = case lensSing of
 
-      case ctxt of
+    SName k -> 
+      do let varName = Text.pack ( symbolVal k )
+         ctxt <- use _functionContext
 
-        -- do we need to load a built-in variable?
-        EntryPoint stage stageName
-          | Just (ty, Storage.Input) <- lookup varName (stageBuiltins stage)
-          -> do builtin <- builtinID stage stageName varName
-                loadInstruction ty Storage.Input builtin
+         case ctxt of
 
-        -- are we looking up the value of a function argument?
-        Function as
-          | Just _ <- lookup varName as
-            -> note
-                 ( "codeGen: inconsistent local bindings for name " <> varName )
-                 =<< use ( _localBinding varName )
+           -- do we need to load a built-in variable?
+           EntryPoint stage stageName
+             | Just (ty, Storage.Input) <- lookup varName (stageBuiltins stage)
+             -> do builtin <- builtinID stage stageName varName
+                   loadInstruction ty Storage.Input builtin
 
-        -- are we loading a user-defined variable (e.g. a uniform?)
-        _ -> do mbGlobal <- view ( _userGlobal varName )
-                case mbGlobal of
-                   Just ty
-                     -> do global <- globalID varName ty Storage.Uniform
-                           loadInstruction ty Storage.Uniform global
+           -- are we looking up the value of a function argument?
+           Function as
+             | Just _ <- lookup varName as
+               -> note
+                    ( "codeGen: inconsistent local bindings for name " <> varName )
+                    =<< use ( _localBinding varName )
 
-                   Nothing
-                     -> do mbKnown <- use ( _knownBinding varName )
-                           note
-                             ( "codeGen: cannot get variable,\
-                               \ no variable with name " <> varName
-                             )
-                             mbKnown
+           -- are we loading a user-defined variable (e.g. a uniform?)
+           _ -> do mbGlobal <- view ( _userGlobal varName )
+                   case mbGlobal of
+                      Just ty
+                        -> do global <- globalID varName ty Storage.Uniform
+                              loadInstruction ty Storage.Uniform global
+
+                      Nothing
+                        -> do mbKnown <- use ( _knownBinding varName )
+                              note
+                                ( "codeGen: cannot get variable,\
+                                  \ no variable with name " <> varName
+                                )
+                                mbKnown
+
+    _ -> throwError "codeGen: getter not supported"
+
   where loadInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
         loadInstruction ty storage loadeeID
           = do tyID <- typeID ty
@@ -244,39 +252,45 @@ codeGen (Get k)
                    , args  = Arg loadeeID EndArgs
                    }
                pure (v, ty)
-codeGen (Put k :$ a)
-  = do let varName = Text.pack ( symbolVal k )
-       (a_ID,a_ty) <- codeGen a
-       ctxt <- use _functionContext
+codeGen (Put lens :$ a)
+  = case lens of
 
-       case ctxt of
+      SName k ->
+        do  let varName = Text.pack ( symbolVal k )
+            (a_ID,a_ty) <- codeGen a
+            ctxt <- use _functionContext
 
-          -- do we need to store into a built-in variable?
-          EntryPoint stage stageName
-            | Just (ty, Storage.Output) <- lookup varName (stageBuiltins stage)
-            -> do builtin <- builtinID stage stageName varName
-                  -- inelegantly ensure the TypePointer declaration exists
-                  -- TODO: include this into the builtinID function?
-                  _ <- typeID (SPIRV.Pointer Storage.Output ty)
-                  liftPut $ putInstruction Map.empty
-                    Instruction
-                      { operation = SPIRV.Op.Store
-                      , resTy = Nothing
-                      , resID = Nothing
-                      , args = Arg builtin
-                             $ Arg a_ID EndArgs
-                      }
+            case ctxt of
 
-          -- is the variable local to a function?
-          Function as
-            | Just _ <- lookup varName as
-            -> assign (_localBinding varName) (Just (a_ID,a_ty))
+               -- do we need to store into a built-in variable?
+               EntryPoint stage stageName
+                 | Just (ty, Storage.Output) <- lookup varName (stageBuiltins stage)
+                 -> do builtin <- builtinID stage stageName varName
+                       -- inelegantly ensure the TypePointer declaration exists
+                       -- TODO: include this into the builtinID function?
+                       _ <- typeID (SPIRV.Pointer Storage.Output ty)
+                       liftPut $ putInstruction Map.empty
+                         Instruction
+                           { operation = SPIRV.Op.Store
+                           , resTy = Nothing
+                           , resID = Nothing
+                           , args = Arg builtin
+                                  $ Arg a_ID EndArgs
+                           }
 
-          -- as we cannot store into user defined variables (e.g. uniforms)
-          -- there is only one possible case left to deal with
-          _ -> assign ( _knownBinding varName) (Just (a_ID,a_ty))
+               -- is the variable local to a function?
+               Function as
+                 | Just _ <- lookup varName as
+                 -> assign (_localBinding varName) (Just (a_ID,a_ty))
 
-       pure (ID 0, SPIRV.Unit) -- ID should never be used
+               -- as we cannot store into user defined variables (e.g. uniforms)
+               -- there is only one possible case left to deal with
+               _ -> assign ( _knownBinding varName) (Just (a_ID,a_ty))
+
+            pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+      _ -> throwError "codeGen: setter not supported"
+
 codeGen (Applied (PrimOp primOp _) as)
   = codeGenPrimOp primOp =<< codeGenASTList as
 codeGen (Applied (MkVector n_px ty_px) as)
@@ -952,8 +966,19 @@ typeID ty =
 
         SPIRV.Struct as
           -> createRec _knownPrimTy
-                ( traverse typeID as )
-                ( \eltIDs -> mkTyConInstruction (toArgs eltIDs) )
+                ( traverse (typeID . snd) as ) -- return IDs of struct member types
+                ( \eltIDs structTyID 
+                    -> do -- add annotations: name of each struct field
+                          traverse_
+                            ( uncurry (addMemberName structTyID) )
+                            ( zipWith 
+                                ( \i (k,_) -> (i,k) ) 
+                                [0..]
+                                as
+                            )
+                          -- declare the type
+                          mkTyConInstruction (toArgs eltIDs) structTyID
+                )
 
         SPIRV.Pointer storage a ->
           createRec _knownPrimTy
@@ -975,6 +1000,8 @@ typeID ty =
                 , args      = flds
                 }
 
+-- get the ID for a given constant, or create one if none exist
+-- this is the crucial location where we make use of singletons to perform type-case
 constID :: forall m a.
            ( MonadState CGState m
            , MonadFresh ID m
@@ -986,6 +1013,16 @@ constID a =
   tryToUseWith _knownAConstant
     ( fromJust . resID ) -- constant definition instructions always have a result ID
     do resTyID <- typeID (primTy @a) -- start off by getting an ID for the type!
+       let mkConstantInstruction 
+             :: SPIRV.Op.Operation -> Args -> ID -> m Instruction
+           mkConstantInstruction op flds v
+             = pure 
+                 Instruction
+                   { operation = op
+                   , resTy     = Just resTyID
+                   , resID     = Just v
+                   , args      = flds
+                   }
        case primTySing @a of
 
         SMatrix _ _ _ ->
@@ -994,7 +1031,6 @@ constID a =
             ( \ cols -> 
                   mkConstantInstruction 
                     SPIRV.Op.ConstantComposite 
-                    resTyID
                     ( toArgs cols )
             )
 
@@ -1004,7 +1040,6 @@ constID a =
             ( \ eltIDs -> 
                   mkConstantInstruction 
                     SPIRV.Op.ConstantComposite
-                    resTyID
                     (toArgs eltIDs)
             )
 
@@ -1012,7 +1047,6 @@ constID a =
           -> create _knownAConstant
               ( mkConstantInstruction
                   SPIRV.Op.Constant
-                  resTyID
                   ( Arg a EndArgs )
               )
 
@@ -1028,7 +1062,6 @@ constID a =
                   then SPIRV.Op.ConstantTrue
                   else SPIRV.Op.ConstantFalse
                 )
-                resTyID
                 EndArgs
             )
 
@@ -1043,7 +1076,6 @@ constID a =
             ( \ eltIDs ->
                   mkConstantInstruction
                     SPIRV.Op.ConstantComposite
-                    resTyID
                     ( toArgs eltIDs )
             )
         
@@ -1053,27 +1085,11 @@ constID a =
             ( \ eltIDs ->
                   mkConstantInstruction
                     SPIRV.Op.ConstantComposite
-                    resTyID
                     ( toArgs eltIDs )
             )
 
-
   where _knownAConstant :: Lens' CGState (Maybe Instruction)
         _knownAConstant = _knownConstant ( aConstant a )
-
-        mkConstantInstruction :: SPIRV.Op.Operation
-                              -> ID
-                              -> Args
-                              -> ID
-                              -> m Instruction
-        mkConstantInstruction op resTyID flds v
-          = pure 
-              Instruction
-                { operation = op
-                , resTy     = Just resTyID
-                , resID     = Just v
-                , args      = flds
-                }
 
 
 builtinID :: (MonadState CGState m, MonadFresh ID m)
@@ -1082,6 +1098,13 @@ builtinID stage stageName builtinName =
   tryToUse ( _builtin stage stageName builtinName )
     id
     pure
+
+
+addMemberName :: MonadState CGState m 
+              => ID -> Word32 -> Text -> m ()
+addMemberName structTyID index name
+  = modifying _names
+      ( Set.insert (structTyID, Right (index,name)) )
 
 
 globalID :: (MonadState CGState m, MonadFresh ID m)

@@ -36,10 +36,9 @@ import Data.Type.Bindings
   ( BindingType, Var, Fun
   , Insert, Union
   )
-import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint
-                   , Get, Put
-                   )
+import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint )
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
+import FIR.Lens(Lens, SLens, Gettable, Getter, Settable, Setter, showLensSing)
 import FIR.PrimTy(PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
@@ -110,12 +109,13 @@ data AST :: Type -> Type where
          -> AST (    (() := l) (Union i (StageBuiltins s))
                   -> (() := i) i
                 )
-  Get :: forall k i. (GHC.Stack.HasCallStack,KnownSymbol k)
-      => Proxy k
-      -> AST ( (Get k i := i) i)
-  Put :: forall k i. (GHC.Stack.HasCallStack, KnownSymbol k, PrimTy (Put k i))
-      => Proxy k
-      -> AST ( Put k i -> (():= i) i )
+
+  Get :: forall (lens :: Lens) i.
+        ( GHC.Stack.HasCallStack, Gettable lens i )
+      => SLens lens -> AST ( Getter lens i )
+  Put :: forall (lens :: Lens) i.
+        ( GHC.Stack.HasCallStack, Settable lens i )
+      => SLens lens -> AST ( Setter lens i )
 
   -- control flow
   If    :: ( GHC.Stack.HasCallStack
@@ -179,15 +179,15 @@ toTreeArgs UnMat    as = return (Node "UnMat"    as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"      ++ show (natVal n)) as)
 toTreeArgs (VectorAt   _ i) as = return (Node ("At "      ++ show (natVal i)) as)
-toTreeArgs (Get    k      ) as = return (Node ("Get @"    ++ symbolVal k ) as)
-toTreeArgs (Put    k      ) as = return (Node ("Put @"    ++ symbolVal k ) as)
+toTreeArgs (Get    l      ) as = return (Node ("Get @"    ++ showLensSing l) as)
+toTreeArgs (Put    l      ) as = return (Node ("Put @"    ++ showLensSing l) as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"    ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
 toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
-toTreeArgs (Lit        t a) as = return (Node ("Lit @" ++ show (primTyVal t) ++ " " ++ show a ) as)
-toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @(" ++ primFuncName f ++ ")") as)
-toTreeArgs (Pure   f      ) as = return (Node ("Pure @(" ++ primFuncName f ++ ")") as)
-toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("   ++ primFuncName f ++ ")") as)
+toTreeArgs (Lit        t a) as = return (Node ("Lit @("   ++ show (primTyVal t) ++ ") " ++ show a ) as)
+toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @("  ++ primFuncName f ++ ") ") as)
+toTreeArgs (Pure   f      ) as = return (Node ("Pure @("  ++ primFuncName f ++ ") ") as)
+toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("    ++ primFuncName f ++ ") ") as)
 
 toTree :: AST a -> Tree String
 toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )

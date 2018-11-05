@@ -6,6 +6,9 @@ module SPIRV.PrimTy where
 import Data.Word(Word32)
 import Prelude hiding (Integer, Floating)
 
+-- text-utf8
+import Data.Text(Text)
+
 -- fir
 import SPIRV.Operation hiding(Function)
 import SPIRV.Storage(StorageClass)
@@ -48,7 +51,7 @@ data PrimTy where
   Matrix       :: Word32 -> Word32 -> ScalarTy -> PrimTy
   Array        :: Word32 ->             PrimTy -> PrimTy
   RuntimeArray ::                       PrimTy -> PrimTy
-  Struct       :: [PrimTy]                     -> PrimTy
+  Struct       :: [(Text,PrimTy)]              -> PrimTy
   Pointer      :: StorageClass       -> PrimTy -> PrimTy
   Function     :: [PrimTy]           -> PrimTy -> PrimTy 
   -- todo: images, opaque types, ...

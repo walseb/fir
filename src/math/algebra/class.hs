@@ -39,10 +39,14 @@ import Math.Logic.Class(ifThenElse, Eq(Logic,(==)), Ord)
 class AdditiveGroup a where
   (+)  :: a -> a -> a
   zero :: a
+  fromInteger :: Integer -> a
+  -- technically should be a method of "Ring"
+  -- but there is no rebindable syntax for "fromNatural"
 
 instance Prelude.Num a => AdditiveGroup (Prelude a) where
   (+)  = coerce ( (Prelude.+) :: a -> a -> a )
   zero = coerce ( 0 :: a )
+  fromInteger = (coerce :: a -> Prelude a) . Prelude.fromInteger
 
 deriving via Prelude Word8  instance AdditiveGroup Word8
 deriving via Prelude Word16 instance AdditiveGroup Word16
@@ -85,12 +89,10 @@ deriving via Prelude Double instance Semiring Double
 class Semiring a => Ring a where
   (-)         :: a -> a -> a
   negate      :: a -> a
-  fromInteger :: Integer -> a
 
 instance Prelude.Num a => Ring (Prelude a) where
   (-)         = coerce ( (Prelude.-)    :: a -> a -> a )
   negate      = coerce ( Prelude.negate :: a -> a )
-  fromInteger = (coerce :: a -> Prelude a) . Prelude.fromInteger
 
 deriving via Prelude Int8   instance Ring Int8
 deriving via Prelude Int16  instance Ring Int16

@@ -17,8 +17,8 @@ import GHC.TypeLits( Symbol
                    )
 
 -- fir
-import Data.Type.Bindings ( BindingsMap, (:->)
-                          , BindingType, Binding
+import Data.Type.Bindings ( (:->)((:->))
+                          , Binding, BindingsMap, BindingType
                           , Elem, Lookup
                           , Remove
                           , Var, Permission(..)
@@ -114,17 +114,17 @@ type family NotHigherOrder (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap) 
 
 type family NotHigherOrder'
    (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap) (as_rec :: BindingsMap) (l_rec :: BindingsMap) :: Bool where
-  NotHigherOrder' _ _ _ '[]                          '[]   = 'True
-  NotHigherOrder' k as l ((_ :-> Var _ _) ': as_rec) l_rec = NotHigherOrder' k as l as_rec l_rec
-  NotHigherOrder' k as _ ((v :-> Fun _ _) ': _     ) _     = TypeError
+  NotHigherOrder' _ _ _ '[]                           '[]   = 'True
+  NotHigherOrder' k as l ((_ ':-> Var _ _) ': as_rec) l_rec = NotHigherOrder' k as l as_rec l_rec
+  NotHigherOrder' k as _ ((v ':-> Fun _ _) ': _     ) _     = TypeError
     (     Text "'fundef': forbidden higher order argument " :<>: ShowType v :<>: Text ","
      :$$: Text "in function definition for " :<>: ShowType k :<>: Text ","
      :$$: Text "when trying to abstract over:"
      :$$: ShowType as
      :$$: Text "Function definitions can only abstract over variables, not over functions."
     )
-  NotHigherOrder' k as l as_rec ((_ :-> Var _ _) ': l_rec) = NotHigherOrder' k as l as_rec l_rec
-  NotHigherOrder' k as l _      ((v :-> Fun _ _) ': _    ) = TypeError
+  NotHigherOrder' k as l as_rec ((_ ':-> Var _ _) ': l_rec) = NotHigherOrder' k as l as_rec l_rec
+  NotHigherOrder' k as l _      ((v ':-> Fun _ _) ': _    ) = TypeError
     (     Text "'fundef': unexpected nested function definition inside function " :<>: ShowType k :<>: Text ":"
      :$$: Text "local name " :<>: ShowType v :<>: Text " binds a function."
      :$$: Text "Local bindings for " :<>: ShowType k :<>: Text " are:"
@@ -164,9 +164,9 @@ type family NoNestedFunDefs (s :: Stage) ( l :: BindingsMap) :: Bool where
   NoNestedFunDefs s l = NoNestedFunDefs' s l l
 
 type family NoNestedFunDefs' (s :: stage) ( l :: BindingsMap ) ( l_rec :: BindingsMap ) where
-  NoNestedFunDefs' _ _ '[]                        = 'True
-  NoNestedFunDefs' s l ((_ :-> Var _ _) ': l_rec) = NoNestedFunDefs' s l l_rec
-  NoNestedFunDefs' s l ((v :-> Fun _ _) ': _    ) = TypeError
+  NoNestedFunDefs' _ _ '[]                         = 'True
+  NoNestedFunDefs' s l ((_ ':-> Var _ _) ': l_rec) = NoNestedFunDefs' s l l_rec
+  NoNestedFunDefs' s l ((v ':-> Fun _ _) ': _    ) = TypeError
     (     Text "'entryPoint': unexpected nested function definition inside " :<>: ShowType s :<>: Text " entry point:"
      :$$: Text "local name " :<>: ShowType v :<>: Text "binds a function."
      :$$: Text "Local bindings for " :<>: ShowType s :<>: Text " entry point are:"
@@ -193,8 +193,8 @@ type family BuiltinsDoNotAppearBefore
               (builtins :: BindingsMap )
               (i        :: BindingsMap )
               :: Bool where
-  BuiltinsDoNotAppearBefore _ '[]              _  = 'True
-  BuiltinsDoNotAppearBefore s ((b :-> _) ': bs) i 
+  BuiltinsDoNotAppearBefore _ '[]                _  = 'True
+  BuiltinsDoNotAppearBefore s ((b ':-> _) ': bs) i 
     = BuiltinDoesNotAppearBefore s b bs i (Lookup b i)
 
 type family BuiltinDoesNotAppearBefore 
