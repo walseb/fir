@@ -2,7 +2,6 @@
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeInType           #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -19,13 +18,12 @@ import GHC.TypeLits(Symbol)
 import Data.Text(Text)
 
 -- fir
-import Data.Type.Bindings( (:->)((:->))
-                         , BindingsMap
-                         , InsertionSort, Union
-                         , Var
-                         , Permission(Write)
-                         , R, W, RW
-                         )
+import Data.Type.Map( (:->)((:->))
+                    , InsertionSort, Union
+                    )
+import FIR.Binding ( BindingsMap, Var
+                   , Permission(Write), R, W, RW
+                   )
 import FIR.PrimTy(knownVars, Struct, RuntimeArray)
 import Math.Linear(V)
 import qualified SPIRV.Capability    as SPIRV(Capability)

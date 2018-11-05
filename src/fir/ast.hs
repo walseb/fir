@@ -1,23 +1,19 @@
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
-
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE TypeOperators       #-}
 
 module FIR.AST where
 
--- base  
+-- base
 import Data.Kind(Type)
 import Data.Proxy(Proxy)
 import qualified GHC.Stack
 import GHC.TypeLits(KnownSymbol, symbolVal)
-import GHC.TypeNats (Nat, KnownNat, natVal, type (-), type (<=?))             
+import GHC.TypeNats(KnownNat, natVal)
 
 -- containers
 import Data.Tree(Tree(Node))
@@ -31,29 +27,21 @@ import Data.Tree.View(showTree)
 -- fir
 import CodeGen.Instruction(ID(ID))
 import CodeGen.Monad(MonadFresh(fresh), runFreshSuccT)
+import Control.Type.Optic( Optic, SOptic, showSOptic
+                         , Gettable
+                         , Settable
+                         )
 import Control.Monad.Indexed((:=))
-import Data.Type.Bindings 
-  ( BindingType, Var, Fun
-  , Insert, Union
-  )
-import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint )
+import Data.Function.Variadic(NatVariadic)
+import Data.Type.Map(Insert, Union)
+import FIR.Binding(BindingType, Var, Fun)
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
-import FIR.Lens(Lens, SLens, Gettable, Getter, Settable, Setter, showLensSing)
+import FIR.Instances.Binding(ValidDef, ValidFunDef, ValidEntryPoint)
+import FIR.Instances.Optic(Getter, Setter)
 import FIR.PrimTy(PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
-
-------------------------------------------------------------
-
-type family Variadic (n :: Nat) a b = r where
-  Variadic n a b = Variadic' n a b (1 <=? n)
-
-type family Variadic' (n :: Nat) a b geq1 where
-  Variadic' _ _ b 'False = b
-  Variadic' n a b 'True  = a -> Variadic (n-1) a b
-
-------------------------------------------------------------
 
 ------------------------------------------------------------
 -- main AST data type
@@ -110,12 +98,12 @@ data AST :: Type -> Type where
                   -> (() := i) i
                 )
 
-  Get :: forall (lens :: Lens) i.
-        ( GHC.Stack.HasCallStack, Gettable lens i )
-      => SLens lens -> AST ( Getter lens i )
-  Put :: forall (lens :: Lens) i.
-        ( GHC.Stack.HasCallStack, Settable lens i )
-      => SLens lens -> AST ( Setter lens i )
+  Get :: forall (optic :: Optic) i.
+        ( GHC.Stack.HasCallStack, Gettable optic i )
+      => SOptic optic -> AST ( Getter optic i )
+  Put :: forall (optic :: Optic) i.
+        ( GHC.Stack.HasCallStack, Settable optic i )
+      => SOptic optic -> AST ( Setter optic i )
 
   -- control flow
   If    :: ( GHC.Stack.HasCallStack
@@ -141,7 +129,7 @@ data AST :: Type -> Type where
   MkVector :: (KnownNat n, PrimTy a)
            => Proxy n
            -> Proxy a
-           -> AST ( Variadic n a ( V n a ) )
+           -> AST ( NatVariadic n a ( V n a ) )
   VectorAt :: (KnownNat n, KnownNat i, PrimTy a)
            => Proxy a
            -> Proxy i
@@ -151,6 +139,14 @@ data AST :: Type -> Type where
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
 
   MkID :: (ID, SPIRV.PrimTy) -> AST a
+
+------------------------------------------------
+-- syntactic type class (Axelsson, Svenningsson)
+
+class Syntactic a where
+  type Internal a
+  toAST :: a -> AST (Internal a)
+  fromAST :: AST (Internal a) -> a
 
 ------------------------------------------------
 -- display AST for viewing
@@ -179,8 +175,8 @@ toTreeArgs UnMat    as = return (Node "UnMat"    as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"      ++ show (natVal n)) as)
 toTreeArgs (VectorAt   _ i) as = return (Node ("At "      ++ show (natVal i)) as)
-toTreeArgs (Get    l      ) as = return (Node ("Get @"    ++ showLensSing l) as)
-toTreeArgs (Put    l      ) as = return (Node ("Put @"    ++ showLensSing l) as)
+toTreeArgs (Get    o      ) as = return (Node ("Get @"    ++ showSOptic o) as)
+toTreeArgs (Put    o      ) as = return (Node ("Put @"    ++ showSOptic o) as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"    ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
 toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)

@@ -1,10 +1,8 @@
 {-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeInType             #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
@@ -28,11 +26,9 @@ import Data.Text(Text)
 
 -- fir
 import Control.Monad.Indexed((:=), Codensity)
-import Data.Type.Bindings( BindingsMap
-                         , Union
-                         , InsertionSort
-                         )
+import Data.Type.Map (Union, InsertionSort)
 import FIR.AST(AST)
+import FIR.Binding(BindingsMap)
 import FIR.PrimTy(KnownVars(knownVars))
 import qualified SPIRV.PrimTy as SPIRV
 

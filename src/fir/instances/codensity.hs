@@ -12,7 +12,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module FIR.Codensity where
+module FIR.Instances.Codensity where
 
 -- base
 import Prelude hiding( Eq(..), (&&), (||), not
@@ -34,16 +34,17 @@ import GHC.TypeNats(KnownNat)
 import Control.Monad.Indexed( (:=)(AtKey), Codensity(Codensity)
                             , ixFmap, ixPure, ixLiftA2
                             )
-import Data.Type.Bindings(Insert, Union, BindingType, Var, Fun, BindingsMap)
-import FIR.Binding ( ValidDef, ValidFunDef, ValidEntryPoint )
-import FIR.AST(AST(..))
+import Control.Type.Optic( Optic, KnownOptic, opticSing
+                         , Gettable(Get), Settable(Set)
+                         , RequiredIndices
+                         )
+import Data.Type.Map(Insert, Union, type (:++:))
+import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
+import FIR.Binding(BindingsMap, BindingType, Var, Fun)
 import FIR.Builtin(StageBuiltins, KnownStage)
-import FIR.Instances(Syntactic(Internal,toAST,fromAST)) -- also importing orphan instances
-import FIR.Lens( Lens, KnownLens, lensSing
-               , Gettable, Getter, Get
-               , Settable, Setter, Set
-               , RequiredIndices, type (:++:)
-               )
+import FIR.Instances.AST()
+import FIR.Instances.Binding(ValidDef, ValidFunDef, ValidEntryPoint)
+import FIR.Instances.Optic(Getter, Setter)
 import FIR.PrimTy(PrimTy, ScalarTy, KnownVars)
 import Math.Algebra.Class ( AdditiveGroup(..)
                           , Semiring(..), Ring(..)
@@ -103,30 +104,30 @@ entryPoint :: forall k s l i.
            => Codensity AST (AST () := l) (Union i (StageBuiltins s))
            -> Codensity AST (AST () := i) i
            
-get :: forall (lens :: Lens) i.
+get :: forall (optic :: Optic) i.
             ( GHC.Stack.HasCallStack
-            , KnownLens lens
-            , Gettable lens i
-            , Syntactic (CodGetter lens i)
-            , Internal (CodGetter lens i) ~ Getter lens i
+            , KnownOptic optic
+            , Gettable optic i
+            , Syntactic (CodGetter optic i)
+            , Internal (CodGetter optic i) ~ Getter optic i
             )
-          => CodGetter lens i
+          => CodGetter optic i
 
-put :: forall (lens :: Lens) i.
+put :: forall (optic :: Optic) i.
             ( GHC.Stack.HasCallStack
-            , KnownLens lens
-            , Settable lens i
-            , Syntactic (CodSetter lens i)
-            , Internal (CodSetter lens i) ~ Setter lens i
+            , KnownOptic optic
+            , Settable optic i
+            , Syntactic (CodSetter optic i)
+            , Internal (CodSetter optic i) ~ Setter optic i
             )
-          => CodSetter lens i
+          => CodSetter optic i
 
 
 def        = fromAST ( Def    @k @ps @a    @i Proxy Proxy       ) . toAST
 fundef'    = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
 entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
-get        = fromAST ( Get    @lens        @i lensSing          )
-put        = fromAST ( Put    @lens        @i lensSing          )
+get        = fromAST ( Get    @optic       @i opticSing         )
+put        = fromAST ( Put    @optic       @i opticSing         )
 
 
 fundef :: forall k as b l i r.

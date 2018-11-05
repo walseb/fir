@@ -3,15 +3,13 @@
 {-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE DeriveFoldable         #-}
 {-# LANGUAGE DeriveTraversable      #-}
-{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
@@ -38,12 +36,10 @@ import qualified Data.Text as Text
 
 -- fir
 import Data.Binary.Class.Put(Put)
-import Data.Type.Bindings( (:->)((:->))
-                         , Binding, BindingsMap
-                         , Var
-                         , Permission, permissions
-                         , KnownPermissions
-                         )
+import Data.Type.Map((:->)((:->)))
+import FIR.Binding ( Binding, BindingsMap, Var
+                   , Permission, KnownPermissions, permissions
+                   )
 import Math.Algebra.Class(Ring)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimTy as SPIRV
@@ -328,7 +324,7 @@ sScalarTy SHalf   = SPIRV.Floating         W16
 sScalarTy SFloat  = SPIRV.Floating         W32
 sScalarTy SDouble = SPIRV.Floating         W64
 
-
+------------------------------------------------------------
 class KnownVar (bd :: (Symbol :-> Binding)) where
   knownVar :: Proxy bd -> (Text.Text, (SPIRV.PrimTy, [Permission]))
 

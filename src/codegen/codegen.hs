@@ -85,12 +85,12 @@ import CodeGen.Instruction ( Args(..), toArgs
                            , ID(ID), Instruction(..)
                            , Pairs(Pairs)
                            )
-import FIR.AST(AST(..), toTree)
+import Control.Type.Optic(SOptic(..))
+import FIR.AST(AST(..), Syntactic(fromAST), toTree)
 import FIR.Builtin( Stage, stageVal
                   , stageBuiltins, stageCapabilities
                   )
-import FIR.Instances(Syntactic(fromAST))
-import FIR.Lens(SLens(..))
+import FIR.Instances.AST()
 import FIR.PrimTy( PrimTy(primTySing)
                  , primTy, primTyVal
                  , SPrimTy(..)
@@ -198,8 +198,8 @@ codeGen (Entry k s :$ body)
         ( stageVal s )
         ( Text.pack ( symbolVal k ) )
         ( codeGen body )
-codeGen (Get lensSing)
- = case lensSing of
+codeGen (Get singOptic)
+ = case singOptic of
 
     SName k -> 
       do let varName = Text.pack ( symbolVal k )
@@ -252,8 +252,8 @@ codeGen (Get lensSing)
                    , args  = Arg loadeeID EndArgs
                    }
                pure (v, ty)
-codeGen (Put lens :$ a)
-  = case lens of
+codeGen (Put singOptic :$ a)
+  = case singOptic of
 
       SName k ->
         do  let varName = Text.pack ( symbolVal k )
@@ -1115,7 +1115,7 @@ globalID globalName ty storage =
     ( pure . ( , (ty,storage) ) )
 
 stringLit :: (MonadState CGState m, MonadFresh ID m)
-         => Text -> m ID
+          => Text -> m ID
 stringLit lit =
   tryToUse ( _knownStringLit lit )
     id

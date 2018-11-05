@@ -25,16 +25,19 @@ library
     , CodeGen.State
     , Control.Arrow.Strength
     , Control.Monad.Indexed
+    , Control.Type.Optic
     , Data.Binary.Class.Put
-    , Data.Type.Bindings
+    , Data.Function.Variadic
+    , Data.Type.Map
     , Deriving.Prelude
     , FIR.AST
     , FIR.Binding
     , FIR.Builtin
-    , FIR.Codensity
-    , FIR.Instances
+    , FIR.Instances.AST
+    , FIR.Instances.Binding
+    , FIR.Instances.Codensity
+    , FIR.Instances.Optic
     , FIR.Labels
-    , FIR.Lens
     , FIR.PrimTy
     , FIR.Program
     , Math.Algebra.Class

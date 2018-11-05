@@ -1,22 +1,16 @@
 {-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeInType           #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Data.Type.Bindings where
+module Data.Type.Map where
 
 -- base 
 import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
 import Data.Type.Bool(If)
 import Data.Type.Equality(type (==))
-import GHC.TypeLits( Symbol, CmpSymbol
+import GHC.TypeLits( CmpSymbol
                    , TypeError, ErrorMessage(..)
                    )
 
@@ -29,7 +23,6 @@ data (:->) k v = k :-> v
 -- this synonym should only be used when we are working
 -- with lists that are known to be ordered
 type Map k v = [k :-> v]
-
 
 type family Key (a :: (k :-> v)) :: k where
   Key (k ':-> _) = k
@@ -77,49 +70,18 @@ type family InsertionSort (i :: [k :-> v]) :: Map k v where
   InsertionSort ((k ':-> v) : l) = Insert k v (InsertionSort l)
 
 ------------------------------------------------
--- bindings (variables, functions)
-
-data Permission = Read | Write
-  deriving (Eq, Show)
-
-type R  = '[ 'Read  ]
-type W  = '[ 'Write ]
-type RW = '[ 'Read, 'Write ]
+-- utility functions
 
 type family Elem x as where
   Elem x '[]       = 'False
   Elem x (x ': _ ) = 'True
   Elem x (_ ': as) = Elem x as
 
-data Binding where
-  Variable :: [Permission] -> Type -> Binding
-  Function :: [Symbol :-> Binding] -> Type -> Binding
+type family (:++:) (as :: [k]) (bs :: [k]) where
+  '[]       :++: bs = bs
+  (a ': as) :++: bs = a ': ( as :++: bs )
 
-type Var ps a    = 'Variable ps a
-type Fun as b    = 'Function as b
-type BindingsMap = Map Symbol Binding
-
-type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
-  Variadic '[]                b = b
-  Variadic ((_ ':-> a) ': as) b = BindingType a -> Variadic as b
-
-type family BindingType (bd :: Binding) :: Type where
-  BindingType (Var  _ a) = a
-  BindingType (Fun as b) = Variadic as b
-
-class KnownPermission (p :: Permission) where
-  permission :: Proxy p -> Permission
-
-instance KnownPermission 'Read where
-  permission _ = Read
-instance KnownPermission 'Write where
-  permission _ = Write
-
-class KnownPermissions (ps :: [Permission]) where
-  permissions :: Proxy ps -> [Permission]
-
-instance KnownPermissions '[] where
-  permissions _ = []
-instance (KnownPermission p, KnownPermissions ps)
-      => KnownPermissions ( p ': ps ) where
-  permissions _ = permission (Proxy @p) : permissions (Proxy @ps)
+type family Zip (msg :: ErrorMessage) (as :: [Type]) (bs :: [Type]) = (r :: [Type]) where
+  Zip _  '[]        '[]       = '[]
+  Zip msg (a ': as) (b ': bs) = (a,b) ': Zip msg as bs
+  Zip msg as bs = TypeError msg

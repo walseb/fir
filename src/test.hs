@@ -15,7 +15,6 @@ module Test where
 -- base
 --import Data.Int(Int32)
 --import Data.Word(Word32)
-import Data.Proxy(Proxy(Proxy))
 import Prelude hiding ( Functor(..), (<$>)
                       , Applicative(..), Monad(..)
                       , Num(..), Fractional(..), Integral(..), Floating(..)
@@ -33,15 +32,17 @@ import Data.Tree.View(drawTree)
 
 -- fir
 import FIR.AST
+import FIR.Binding
 import FIR.Builtin
-import FIR.Codensity
-import FIR.Instances
+import FIR.Instances.AST
+import FIR.Instances.Codensity
+import FIR.Instances.Optic
 import FIR.Labels
-import FIR.Lens
 import FIR.PrimTy
 import FIR.Program
 import Control.Monad.Indexed
-import Data.Type.Bindings
+import Control.Type.Optic
+import Data.Type.Map
 import Math.Linear
 import Math.Algebra.Class
 import Math.Logic.Class

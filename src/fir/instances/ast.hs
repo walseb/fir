@@ -15,12 +15,11 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeFamilyDependencies     #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
 
-module FIR.Instances where
+module FIR.Instances.AST where
 
 -- base
 import Prelude hiding( Eq(..), (&&), (||), not
@@ -42,8 +41,8 @@ import GHC.TypeNats( KnownNat, natVal
 import Type.Reflection(typeRep)
 
 -- fir  
-import FIR.AST(AST(..))
-import qualified FIR.AST as AST
+import Data.Function.Variadic(NatVariadic)
+import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
 import FIR.PrimTy( PrimTy, primTy, ScalarTy, scalarTy
                  , SPrimFunc(SFuncVector, SFuncMatrix)
                  )
@@ -56,11 +55,10 @@ import Math.Algebra.Class ( AdditiveGroup(..)
 import Math.Linear( Semimodule(..), Module(..)
                   , Inner(..)
                   , Matrix(..)
-                  , V, M
+                  , V, M(..)
                   , dfoldrV, buildV
                   , pattern V2, pattern V3, pattern V4
                   )
-import qualified Math.Linear
 import Math.Logic.Class ( Eq(..), Boolean(..)
                         , Choose(..), Triple
                         , Ord(..)
@@ -248,13 +246,7 @@ instance
   fmap = error "unreachable"
 
 ------------------------------------------------
--- syntactic
-
-class Syntactic a where
-  type Internal a
-  toAST :: a -> AST (Internal a)
-  fromAST :: AST (Internal a) -> a
-
+-- syntactic instances
 
 instance Syntactic (AST a) where
   type Internal (AST a) = a
@@ -272,7 +264,7 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   fromAST f = \a -> fromAST ( f :$ toAST a )
 
 -- utility type for the following instance declaration
-newtype B n a b i = B { unB :: AST (AST.Variadic (n-i) a b) }
+newtype B n a b i = B { unB :: AST (NatVariadic (n-i) a b) }
 
 instance (KnownNat n, Syntactic a, PrimTy (Internal a)) => Syntactic (V n a) where
   type Internal (V n a) = V n (Internal a)
@@ -288,14 +280,14 @@ instance (KnownNat n, Syntactic a, PrimTy (Internal a)) => Syntactic (V n a) whe
           a0 = B ( MkVector (Proxy @n) (Proxy @(Internal a)) )
           res :: B n (Internal a) (V n (Internal a)) n
           res = dfoldrV f a0 v
-          res' :: ((n-n) ~ 0) => AST (AST.Variadic 0 (Internal a) (V n (Internal a)))
+          res' :: ((n-n) ~ 0) => AST (NatVariadic 0 (Internal a) (V n (Internal a)))
           res' = unB res
 
   fromAST :: AST (V n (Internal a)) -> V n a
   fromAST = buildV ( \i v -> fromAST ( VectorAt (Proxy @(Internal a)) i :$ v) )
 
 deriving instance (KnownNat m, KnownNat n, Syntactic a, ScalarTy (Internal a))
-  => Syntactic (Math.Linear.M m n a)
+  => Syntactic (M m n a)
 
 -- these patterns and constructors could be generalised to have types such as:
 -- Vec2 :: (Syntactic a, PrimTy (Internal a)) => a -> a -> AST ( V 2 (Internal a) )
