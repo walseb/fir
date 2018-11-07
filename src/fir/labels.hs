@@ -23,7 +23,7 @@ import Control.Type.Optic(Optic(Name))
 import Data.Type.Map(Insert)
 import FIR.AST(AST)
 import FIR.Binding(BindingsMap, Var, R, RW)
-import FIR.Instances.Binding(ValidDef,Get,Put)
+import FIR.Instances.Bindings(ValidDef,Get, Put)
 import FIR.Instances.Codensity(def, get, put)
 import FIR.PrimTy(PrimTy)
 

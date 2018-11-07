@@ -34,9 +34,9 @@ library
     , FIR.Binding
     , FIR.Builtin
     , FIR.Instances.AST
-    , FIR.Instances.Binding
+    , FIR.Instances.Bindings
     , FIR.Instances.Codensity
-    , FIR.Instances.Optic
+    , FIR.Instances.Optics
     , FIR.Labels
     , FIR.PrimTy
     , FIR.Program

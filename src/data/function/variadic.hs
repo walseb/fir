@@ -6,8 +6,9 @@
 module Data.Function.Variadic where
 
 -- base
+import Data.Type.Bool(If)
 import Data.Kind(Type)
-import GHC.TypeNats(Nat, type (-), type (<=?))      
+import GHC.TypeNats(Nat, type (-), type (<=?))
 
 ------------------------------------------------------------
 
@@ -28,3 +29,17 @@ type family NatVariadic'
             where
   NatVariadic' _ _ b 'False = b
   NatVariadic' n a b 'True  = a -> NatVariadic (n-1) a b
+
+{-
+type family NatVariadic
+              ( n :: Nat  )
+              ( a :: Type )
+              ( b :: Type )
+            = ( r :: Type )
+            where
+  NatVariadic n a b
+    = If
+        ( 1 <=? n )
+        ( a -> NatVariadic (n-1) a b )
+        ( b )
+-}

@@ -36,7 +36,7 @@ import FIR.Binding
 import FIR.Builtin
 import FIR.Instances.AST
 import FIR.Instances.Codensity
-import FIR.Instances.Optic
+import FIR.Instances.Optics
 import FIR.Labels
 import FIR.PrimTy
 import FIR.Program
@@ -55,7 +55,7 @@ import CodeGen.State
 --type T a i = Codensity AST (AST a := i) i
 
 type Start
-  = '[ "model"      ':-> Var R  ( M 4 4 Float )
+  = '[ "model"      ':-> Var RW ( M 4 4 Float )
      , "view"       ':-> Var R  ( M 4 4 Float )
      , "projection" ':-> Var R  ( M 4 4 Float )
      , "vertexData" ':-> Var RW ( Struct [ "position" ':-> V 3 Float
@@ -70,7 +70,8 @@ type Start
                                                      )
                                         )
                         )
-          ]
+     , "arr2" ':-> Var RW ( Array 17 Float )     
+     ]
 
 
 program ::
@@ -95,7 +96,6 @@ program = do
     vertexDataPosition <- get @(Name "vertexData" :.: Name "position")
     lensTest <- get @(Name "arr1" :.: Index 3 :.: AnIndex :.: Index 0 :.: Index 2) 7
 
-    
 
     {-
 

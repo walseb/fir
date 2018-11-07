@@ -1,9 +1,11 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -12,17 +14,19 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module FIR.Instances.Optic where
+module FIR.Instances.Optics where
 
 -- base
 import Data.Kind(Type)
+import Data.Type.Bool(If)
+import Data.Type.Equality(type (==))
 import GHC.TypeLits( Symbol, KnownSymbol
                    , TypeError
                    , ErrorMessage(Text, ShowType, (:<>:), (:$$:))
                    )
 import GHC.TypeNats( Nat, KnownNat
-                   , CmpNat
-                   , type (-)
+                   , CmpNat, type (<=), type (<=?)
+                   , type (+), type (-)
                    )
 
 -- fir
@@ -31,15 +35,17 @@ import Control.Type.Optic( Optic(..)
                          , Gettable(Get)
                          , Settable(Set)
                          , RequiredIndices
+                         , Container(..)
+                         , MonoContainer(..)
                          )
-import Data.Type.Map ((:->)((:->)), Value
-                     , Lookup, LookupKey
+import Data.Type.Map ( (:->)((:->)), Key, Value
+                     , Lookup
                      , type (:++:)
                      )
 import FIR.Binding( BindingsMap
                   , Var, R, W, RW
                   )
-import qualified FIR.Instances.Binding as Binding
+import qualified FIR.Instances.Bindings as Binding
 import FIR.PrimTy(Array, RuntimeArray, Struct)
 import Math.Linear(V,M)
 
@@ -103,14 +109,17 @@ instance Gettable (Index n) (i :: [Symbol :-> v]) where
 instance (KnownNat n, KnownNat i)
       => Gettable (Index i) (Array n a) where
   type Get (Index i) (Array n a)
-    = IfLT (CmpNat i n)
+    = If
+        ( CmpNat i n == LT )
         a
-        (     Text "get: array index "
-         :<>: ShowType i
-         :<>: Text " is out of bounds."
-         :$$: Text "Array size is "
-         :<>: ShowType n :<>: Text "."
-         :$$: Text "Note: indexing starts from 0."
+        ( TypeError
+          (     Text "get: array index "
+           :<>: ShowType i
+           :<>: Text " is out of bounds."
+           :$$: Text "Array size is "
+           :<>: ShowType n :<>: Text "."
+           :$$: Text "Note: indexing starts from 0."
+          )
         )
 
 instance KnownNat i
@@ -159,14 +168,17 @@ instance Gettable AnIndex (Struct as) where
 instance KnownNat i
       => Gettable (Index i) (V n a) where
   type Get (Index i) (V n a)
-    = IfLT (CmpNat i n)
+    = If
+        (CmpNat i n == LT)
         a
-        (     Text "get: vector index "
-         :<>: ShowType i
-         :<>: Text " is out of bounds."
-         :$$: Text "Vector dimension is "
-         :<>: ShowType n :<>: Text "."
-         :$$: Text "Note: indexing starts from 0."
+        ( TypeError
+          (     Text "get: vector index "
+           :<>: ShowType i
+           :<>: Text " is out of bounds."
+           :$$: Text "Vector dimension is "
+           :<>: ShowType n :<>: Text "."
+           :$$: Text "Note: indexing starts from 0."
+          )
         )
 
 instance Gettable AnIndex (V n a) where
@@ -184,15 +196,18 @@ instance Gettable (Name k) (V n a) where
 instance KnownNat i
       => Gettable (Index i) (M m n a) where
     type Get (Index i) (M m n a)
-      = IfLT (CmpNat i n)
+      = If
+          (CmpNat i n == LT)
           (V m a)
-          (     Text "get: matrix column index "
-           :<>: ShowType i
-           :<>: Text " is out of bounds."
-           :$$: Text "This matrix has "
-           :<>: ShowType m :<>: Text " rows, "
-           :<>: ShowType n :<>: Text " columns."
-           :$$: Text "Note: indexing starts from 0."
+          ( TypeError
+            (     Text "get: matrix column index "
+             :<>: ShowType i
+             :<>: Text " is out of bounds."
+             :$$: Text "This matrix has "
+             :<>: ShowType m :<>: Text " rows, "
+             :<>: ShowType n :<>: Text " columns."
+             :$$: Text "Note: indexing starts from 0."
+            )
           )
 
 instance Gettable AnIndex (M m n a) where
@@ -206,24 +221,6 @@ instance Gettable (Name k) (M m n a) where
                 :<>: ShowType k :<>: Text "."
                 :$$: Text "Note: swizzling is not (yet?) supported."
                 )
-
--- composition
-instance ( Gettable g1 a
-         , Gettable g2 (Get g1 a)
-         ) => Gettable (g1 :.: g2) a where
-  type Get (g1 :.: g2) a = Get g2 (Get g1 a)
-
--- products
-instance (Gettable g1 (Struct as), Gettable g2 (Struct as))
-      => Gettable (g1 :&: g2) (Struct as) where
-  type Get (g1 :&: g2) (Struct as)
-    = Struct (Fields (Text "get :") (g1 :&: g2) as 'True)
-    -- this flag means we allow overlap for getters ^^^^
-
--- no equalisers for getters
-instance Gettable (Diag g) a where
-  type Get (Diag g) a
-    = TypeError ( Text "get: cannot use diagonal optic as a getter." )
 
 ----------------------------------------------------------------------
 -- setters
@@ -245,14 +242,17 @@ instance Settable (Index n) (i :: [Symbol :-> v]) where
 instance (KnownNat n, KnownNat i)
       => Settable (Index i) (Array n a) where
   type Set (Index i) (Array n a)
-    = IfLT (CmpNat i n)
+    = If
+        (CmpNat i n == LT)
         a
-        (     Text "set: array index "
-         :<>: ShowType i
-         :<>: Text " is out of bounds."
-         :$$: Text "Array size is "
-         :<>: ShowType n :<>: Text "."
-         :$$: Text "Note: indexing starts from 0."
+        ( TypeError
+          (     Text "set: array index "
+           :<>: ShowType i
+           :<>: Text " is out of bounds."
+           :$$: Text "Array size is "
+           :<>: ShowType n :<>: Text "."
+           :$$: Text "Note: indexing starts from 0."
+          )
         )
 
 instance KnownNat i
@@ -301,14 +301,17 @@ instance Settable AnIndex (Struct as) where
 instance KnownNat i
       => Settable (Index i) (V n a) where
   type Set (Index i) (V n a)
-    = IfLT (CmpNat i n)
+    = If
+        (CmpNat i n == LT)
         a
-        (     Text "set: vector index "
-         :<>: ShowType i
-         :<>: Text " is out of bounds."
-         :$$: Text "Vector dimension is "
-         :<>: ShowType n :<>: Text "."
-         :$$: Text "Note: indexing starts from 0."
+        ( TypeError
+          (     Text "set: vector index "
+           :<>: ShowType i
+           :<>: Text " is out of bounds."
+           :$$: Text "Vector dimension is "
+           :<>: ShowType n :<>: Text "."
+           :$$: Text "Note: indexing starts from 0."
+          )
         )
 
 instance Settable AnIndex (V n a) where
@@ -326,15 +329,18 @@ instance Settable (Name k) (V n a) where
 instance KnownNat i
       => Settable (Index i) (M m n a) where
     type Set (Index i) (M m n a)
-      = IfLT (CmpNat i n)
+      = If
+          (CmpNat i n == LT)
           (V m a)
-          (     Text "set: matrix column index "
-           :<>: ShowType i
-           :<>: Text " is out of bounds."
-           :$$: Text "This matrix has "
-           :<>: ShowType m :<>: Text " rows, "
-           :<>: ShowType n :<>: Text " columns."
-           :$$: Text "Note: indexing starts from 0."
+          ( TypeError
+            (     Text "set: matrix column index "
+             :<>: ShowType i
+             :<>: Text " is out of bounds."
+             :$$: Text "This matrix has "
+             :<>: ShowType m :<>: Text " rows, "
+             :<>: ShowType n :<>: Text " columns."
+             :$$: Text "Note: indexing starts from 0."
+            )
           )
 
 instance Settable AnIndex (M m n a) where
@@ -349,46 +355,75 @@ instance Settable (Name k) (M m n a) where
                 :$$: Text "Note: swizzling is not (yet?) supported."
                 )
                 
--- composition
-instance ( Settable s1 a
-         , Settable s2 (Set s1 a)
-         )
-      => Settable (s1 :.: s2) a where
-  type Set (s1 :.: s2) a = Set s2 (Set s1 a)
-
--- products
-instance (Settable s1 (Struct as), Settable s2 (Struct as))
-      => Settable (s1 :&: s2) (Struct as) where
-  type Set (s1 :&: s2) (Struct as)
-    = Struct (Fields (Text "set :") (s1 :&: s2) as 'False)
-    --                 disallow overlap for setters ^^^^^
-
--- equalisers
-instance Settable s (Struct as) => Settable (Diag s) (Struct as) where
-  type Set (Diag s) (Struct as) = MonoType (Set s (Struct as))
-
-type family MonoType (a :: polyKinded) :: Type where
-  MonoType (Struct '[])                 = ()
-  MonoType (Struct ( (_ ':-> v) ': as)) = IfAllEqual v as
-
-type family IfAllEqual (a :: v) (as :: [k :-> v]) = (r :: v) where
-  IfAllEqual v '[]                 = v
-  IfAllEqual v ( (_ ':-> v) ': as) = IfAllEqual v as
-  IfAllEqual v ( (_ ':-> w) ': _ )
-    = TypeError (     Text "IfAllEqual: type-level list inhabitants "
-                 :<>: ShowType v :<>: Text " and "
-                 :<>: ShowType w :<>: Text "do not match."
-                )
 
 ----------------------------------------------------------------------
--- helper type family for arrays, vectors, matrices
+-- type class instances for products 
 
-type family IfLT ( cmp  :: Ordering )                 
-                 ( a    :: Type )
-                 ( msg  :: ErrorMessage )
-               = ( r    :: Type ) where
-  IfLT LT a _   = a
-  IfLT _  _ msg = TypeError msg
+instance Container (V n a) where
+  type Combine (V n a) (V i a) (V j a) = V (i+j) a
+  type Singleton (V n a) _ a = V 1 a
+  type Overlapping (V n a) k _
+    = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
+                :$$: Text "Maybe you intended to use a swizzle?"
+                )
+
+instance Container (M m n a) where
+  type Combine (M m n a) (M m i a) (M m j a) = M m (i+j) a
+  type Singleton (M m n a) _ a = M m 1 a
+  type Overlapping (M m n a) k _
+    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
+
+instance Container (Struct as) where
+  type Combine (Struct as) (Struct xs) (Struct ys) = Struct (xs :++: ys)
+  type Singleton (Struct as) (Name k ) v = Struct '[ k ':-> v ]
+  type Singleton (Struct as) (Index i) v
+    = Struct 
+        '[ Key ( StructElemFromIndex 
+                  (Text "key: ")
+                  i as i as
+               )
+         ':-> v
+         ]
+  type Overlapping (Struct as) k i
+    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
+
+instance Container (Array n a) where
+  type Combine (Array n a) (Array i a) (Array j a) = Array (i+j) a
+  type Singleton (Array n a) _ a = Array 1 a
+  type Overlapping (Array n a) k _
+        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+
+instance Container (RuntimeArray a) where
+  type Combine (RuntimeArray a) (RuntimeArray a) (RuntimeArray a) = RuntimeArray a
+  type Singleton (RuntimeArray a) _ a = (RuntimeArray a)
+  type Overlapping (RuntimeArray a) k _
+        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+
+----------------------------------------------------------------------
+-- type class instances for equalisers
+
+instance MonoContainer (Array n a) where
+  type MonoType (Array n a) = a
+
+instance MonoContainer (RuntimeArray a) where
+  type MonoType (RuntimeArray a) = a
+
+instance (KnownNat n, 1 <= n)
+      => MonoContainer (V n a) where
+  type MonoType (V n a) = a
+
+instance (KnownNat m, 1 <= m)
+      => MonoContainer (M m n a) where
+  type MonoType (M m n a) = V m a
+
+instance (AllValuesEqual v as ~ 'True)
+      => MonoContainer (Struct ((k ':-> v) ': as)) where
+  type MonoType (Struct ((k ':-> v) ': as)) = v
+
+type family AllValuesEqual (a :: v) (as :: [k :-> v]) :: Bool where
+  AllValuesEqual v '[]                 = True
+  AllValuesEqual v ( (_ ':-> v) ': as) = AllValuesEqual v as
+  AllValuesEqual v ( (_ ':-> w) ': _ ) = False
 
 ----------------------------------------------------------------------
 -- helper type families for structs
@@ -406,7 +441,7 @@ type family StructElemFromName
                  :$$: Text "This struct has the following fields:"
                  :$$: ShowType as
                 )
-              
+
 type family StructElemFromIndex
     ( msg    :: ErrorMessage   )
     ( n      :: Nat            )
@@ -424,40 +459,24 @@ type family StructElemFromIndex
   StructElemFromIndex msg n as n_rec (_ ': as_rec)
     = StructElemFromIndex msg n as (n_rec - 1) as_rec
 
-type family Fields
-              ( msg :: ErrorMessage     )
-              ( o   :: Optic            )
-              ( as  :: [Symbol :-> v]   )
-              ( canOverlap :: Bool      )
-            = ( r   :: [Symbol :-> v]   ) where
-  Fields msg (Name k) as _
-     = '[ k ':-> 
-          StructElemFromName
-            msg
-            k as (Lookup k as)
-        ]
-  Fields msg (Index i) as _
-    = '[ StructElemFromIndex
-            msg
-            i as i as
-       ]
-  Fields msg (o1 :.: o2) as b     = Fields msg o1 as b
-  Fields msg (o1 :&: o2) as 'True
-    = Fields msg o1 as 'True :++: Fields msg o2 as 'True
-  Fields msg (o1 :&: o2) as 'False
-    = NoOverlap
-        'Nothing
-        (Fields msg o1 as 'False :++: Fields msg o2 as 'False)
+----------------------------------------------------------------------
+-- synonyms for vector/matrix optics
 
-type family NoOverlap
-              ( overlap :: Maybe k )
-              ( as :: [k :-> v]    )
-            = ( r  :: [k :-> v]    ) where
-  NoOverlap 'Nothing '[]                = '[]
-  NoOverlap 'Nothing ((k ':-> v) ': as)
-    = (k ':-> v) ': NoOverlap (LookupKey k as) as
-  NoOverlap ('Just k) _
-    = TypeError (     Text "set: cannot use this lens as a setter."
-                 :$$: Text "The key " :<>: ShowType k
-                 :<>: Text " appears more than once."
-                )
+type family MkRow (n :: Nat) (i :: Nat) (c :: Nat) :: Optic where
+  MkRow n i c
+    = MkRowHelper n i c (n <=? (c+1))
+
+type family MkRowHelper n i c b :: Optic where
+  MkRowHelper n i c False = (Index c :.: Index i) :&: MkRow n i (c+1)
+  MkRowHelper n i c True  = Index c :.: Index i
+
+type family MkDiag (n :: Nat) (i :: Nat) where
+  MkDiag n i = MkDiagHelper n i (n <=? (i+1))
+
+type family MkDiagHelper n i b where
+  MkDiagHelper n i False = (Index i :.: Index i) :&: MkDiag n (i+1)
+  MkDiagHelper n i True  = Index i :.: Index i
+
+--type Center = forall n. Diag (MkDiag n 0)
+
+--type Row i = forall n. MkRow n i 0

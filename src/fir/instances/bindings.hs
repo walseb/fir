@@ -4,10 +4,11 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module FIR.Instances.Binding where
+module FIR.Instances.Bindings where
 
 -- base
 import Data.Kind(Type)
+import Data.Type.Bool(If)
 import GHC.TypeLits( Symbol
                    , TypeError
                    , ErrorMessage(..)
@@ -33,45 +34,48 @@ import FIR.Builtin(Stage, StageBuiltins)
 -- constraints for 'get'
 
 type family Get (k :: Symbol) (i :: BindingsMap) :: Type where
-  Get k i = Get' k i (Lookup k i)
+  Get k i = GetBinding k i (Lookup k i)
 
-type family Get' (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :: Type where
-  Get' k i 'Nothing = TypeError
-    (      Text "'get': no binding named " :<>: ShowType k :<>: Text " is in scope."
-      :$$: Text "In-scope bindings are:"
-      :$$: ShowType i
-    )
-  Get' k _ ('Just (Var p a)) = Get'' k (Var p a) (Elem 'Read p)
-  Get' _ _ ('Just bd) = BindingType bd -- functions
-
-type family Get'' (k :: Symbol) (bd :: Binding) (readable :: Bool) :: Type where
-  Get'' k _ 'False = TypeError
-    ( Text "'get': variable named " :<>: ShowType k :<>: Text " is not readable." )
-  Get'' _ bd 'True = BindingType bd
+type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :: Type where
+  GetBinding  k i 'Nothing
+   = TypeError
+      (      Text "'get': no binding named " :<>: ShowType k :<>: Text " is in scope."
+        :$$: Text "In-scope bindings are:"
+        :$$: ShowType i
+      )
+  GetBinding  k _ ('Just (Var p a))
+    = If 
+        ( Elem 'Read p )
+        a
+        ( TypeError
+          ( Text "'get': variable named " :<>: ShowType k :<>: Text " is not readable." )
+        )
+  GetBinding  _ _ ('Just bd) = BindingType bd -- functions
 
 -------------------------------------------------
 -- constraints for 'put'
 
-type family Put (k :: Symbol) (i :: BindingsMap) :: Type where 
-  Put k i = PutAt k i (Lookup k i)
+type family Put (k :: Symbol) (i :: BindingsMap) :: Type where
+  Put k i = PutBinding k i (Lookup k i)
 
-type family PutAt (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding) :: Type where
-  PutAt k i 'Nothing = TypeError
+type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding) :: Type where
+  PutBinding k i 'Nothing = TypeError
     (      Text "'put': no binding named " :<>: ShowType k :<>: Text " is in scope."
       :$$: Text "To bind a new variable, use 'def'."
       :$$: Text "In-scope bindings are:"
       :$$: ShowType i
     )
-  PutAt k i ('Just (Fun as b)) = TypeError
+  PutBinding k i ('Just (Fun as b)) = TypeError
     (      Text "'put': function bound at name " :<>: ShowType k :<>: Text ": " :<>: ShowType (Fun as b) :<>: Text "."
       :$$: Text "Use 'fundef' to define a function."
     )
-  PutAt k i ('Just (Var ps a)) = PutIfWritable k a (Elem 'Write ps)
-
-type family PutIfWritable (k :: Symbol) (a :: Type) (writable :: Bool) :: Type where
-  PutIfWritable _ a 'True  = a
-  PutIfWritable k _ 'False = TypeError 
-    ( Text "'put': variable " :<>: ShowType k :<>: Text " is not writable." )
+  PutBinding k i ('Just (Var ps a))
+    = If
+        (Elem 'Write ps)
+        a
+        ( TypeError 
+          ( Text "'put': variable " :<>: ShowType k :<>: Text " is not writable." )
+        )
 
 -------------------------------------------------
 -- constraints for 'def'
@@ -155,9 +159,10 @@ type family ValidEntryPoint
               ( l :: BindingsMap ) 
               :: Bool where
   ValidEntryPoint s i l
-    = CheckEntryPointValidity s i
-        ( StageBuiltins s )
+    = If
         ( NoNestedFunDefs s (Remove i l) )
+        ( BuiltinsDoNotAppearBefore s ( StageBuiltins s ) i )
+        False
 
 type family NoNestedFunDefs (s :: Stage) ( l :: BindingsMap) :: Bool where
   NoNestedFunDefs s l = NoNestedFunDefs' s l l
@@ -171,21 +176,6 @@ type family NoNestedFunDefs' (s :: stage) ( l :: BindingsMap ) ( l_rec :: Bindin
      :$$: Text "Local bindings for " :<>: ShowType s :<>: Text " entry point are:"
      :$$: ShowType l
     )
-
-type family CheckEntryPointValidity
-              ( s         :: Stage )
-              ( i         :: BindingsMap )
-              ( builtins  :: BindingsMap )
-              ( notNested :: Bool )
-              :: Bool where
-  CheckEntryPointValidity s i builtins 'True
-    = BuiltinsDoNotAppearBefore s builtins i
-
-type family BuiltinsDoNotConflict 
-              (okBefore :: Bool)
-              (okWithin :: Bool)
-              :: Bool where
-  BuiltinsDoNotConflict 'True 'True = 'True
 
 type family BuiltinsDoNotAppearBefore 
               (s        :: Stage )

@@ -46,3 +46,7 @@ clean up all the type families called variadic:
   - variadic with map of bindings
   - variadic with type level nat
   - variadic with type level list
+
+make the lens design more extensible
+as opposed to baking in the various product types (V n a, M m n a, Struct as, BindingsMap)
+make a typeclass for objects which have products, with associated types (e.g. "combine", "singleton")
