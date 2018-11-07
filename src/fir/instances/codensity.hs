@@ -103,31 +103,33 @@ entryPoint :: forall k s l i.
              )
            => Codensity AST (AST () := l) (Union i (StageBuiltins s))
            -> Codensity AST (AST () := i) i
-           
-get :: forall (optic :: Optic) i.
-            ( GHC.Stack.HasCallStack
-            , KnownOptic optic
-            , Gettable optic i
-            , Syntactic (CodGetter optic i)
-            , Internal (CodGetter optic i) ~ Getter optic i
-            )
-          => CodGetter optic i
 
-put :: forall (optic :: Optic) i.
+-- would want to make i and a invisible
+get :: forall i a (optic :: Optic i a).
             ( GHC.Stack.HasCallStack
             , KnownOptic optic
-            , Settable optic i
-            , Syntactic (CodSetter optic i)
-            , Internal (CodSetter optic i) ~ Setter optic i
+            , Gettable i a optic
+            , Syntactic (CodGetter i optic)
+            , Internal (CodGetter i optic) ~ Getter i optic
             )
-          => CodSetter optic i
+          => CodGetter i optic
+
+-- would want to make i and a invisible
+put :: forall i a (optic :: Optic i a).
+            ( GHC.Stack.HasCallStack
+            , KnownOptic optic
+            , Settable i a optic
+            , Syntactic (CodSetter i optic)
+            , Internal (CodSetter i optic) ~ Setter i optic
+            )
+          => CodSetter i optic
 
 
 def        = fromAST ( Def    @k @ps @a    @i Proxy Proxy       ) . toAST
 fundef'    = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
 entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
-get        = fromAST ( Get    @optic       @i opticSing         )
-put        = fromAST ( Put    @optic       @i opticSing         )
+get        = fromAST ( Get @i @a @optic       opticSing         )
+put        = fromAST ( Put @i @a @optic       opticSing         )
 
 
 fundef :: forall k as b l i r.
@@ -146,8 +148,8 @@ fundef = fromAST . toAST . fundef' @k @as @b @l @i
 --------------------------------------------------------------------------
 -- utility types for get/put
 
-type CodGetter l i = CodVariadicList (RequiredIndices l                ) (Get l i) i
-type CodSetter l i = CodVariadicList (RequiredIndices l :++: '[Set l i]) ()        i
+type CodGetter i (o :: Optic i a) = CodVariadicList (RequiredIndices o              ) (Get o) i
+type CodSetter i (o :: Optic i a) = CodVariadicList (RequiredIndices o :++: '[Set o]) ()      i
 
 type family CodVariadicList
               ( as :: [Type]      )

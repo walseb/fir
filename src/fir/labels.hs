@@ -55,12 +55,12 @@ instance ( KnownSymbol k, PrimTy a
          , t ~ 'GetLabel k i
          )
       => IsLabel k a t (Codensity AST r i) where
-  fromLabel = get @(Name k)
+  fromLabel = get @i @a @(Name k)
 
 
 infixr 4 #=
 infixr 4 #=!
-infixr 4 .=
+--infixr 4 .=
 
 (#=) :: forall a k i.
         ( GHC.Stack.HasCallStack
@@ -84,6 +84,7 @@ _ #= a = def @k @RW a
      -> Codensity AST (AST a := Insert k (Var R a) i) i
 _ #=! a = def @k @R a
 
+{-
 (.=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
@@ -93,4 +94,5 @@ _ #=! a = def @k @R a
      => Label k a
      -> AST a
      -> Codensity AST (AST () := i) i
-_ .= a = put @(Name k) a
+_ .= a = put @i @a @(Name k) a
+-}

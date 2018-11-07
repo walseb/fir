@@ -98,12 +98,12 @@ data AST :: Type -> Type where
                   -> (() := i) i
                 )
 
-  Get :: forall (optic :: Optic) i.
-        ( GHC.Stack.HasCallStack, Gettable optic i )
-      => SOptic optic -> AST ( Getter optic i )
-  Put :: forall (optic :: Optic) i.
-        ( GHC.Stack.HasCallStack, Settable optic i )
-      => SOptic optic -> AST ( Setter optic i )
+  Get :: forall i a (optic :: Optic i a).
+        ( GHC.Stack.HasCallStack, Gettable i a optic )
+      => SOptic optic -> AST ( Getter i optic )
+  Put :: forall i a (optic :: Optic i a).
+        ( GHC.Stack.HasCallStack, Settable i a optic )
+      => SOptic optic -> AST ( Setter i optic )
 
   -- control flow
   If    :: ( GHC.Stack.HasCallStack

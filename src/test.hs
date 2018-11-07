@@ -83,18 +83,18 @@ program ::
 program = do
 
   (f :: AST Float -> AST Float) <- fundef @"f" do
-    u <- get @(Name "u")
+    u <- get @_ @_ @(Name "u")
     t <- def @"t" @RW @Float 11 -- local variable
     pure (u + t)
 
   entryPoint @"main" @Vertex do
 
-    model            <- get @(Name "model")
-    view             <- get @(Name "view")
-    projection       <- get @(Name "projection")
+    model            <- get @_ @_ @(Name "model")
+    view             <- get @_ @_ @(Name "view")
+    projection       <- get @_ @_ @(Name "projection")
 
-    vertexDataPosition <- get @(Name "vertexData" :.: Name "position")
-    lensTest <- get @(Name "arr1" :.: Index 3 :.: AnIndex :.: Index 0 :.: Index 2) 7
+    --vertexDataPosition <- get @_ @(V 3 Float) @(Name "vertexData" :.: Name "position")
+    --lensTest <- get @_ @_ @(Name "arr1" :.: Index 3 :.: AnIndex :.: Index 0 :.: Index 2) 7
 
 
     {-
@@ -115,8 +115,9 @@ program = do
     ~(Vec4 x y z _) <- def @"pos" ( mvp !*^ (fmapAST ((*3) .f) position') )
 
     -}
-    put @(Name "gl_Position") ( vec4 3 7 17 lensTest )
+    --put @_ @_ @(Name "gl_Position") ( vec4 3 7 17 lensTest )
     --put @"gl_Position" ( vec4 3 7 17 10 )
+    pure ( undefined :: AST () )
     
 
 

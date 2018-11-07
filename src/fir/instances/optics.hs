@@ -29,6 +29,9 @@ import GHC.TypeNats( Nat, KnownNat
                    , type (+), type (-)
                    )
 
+-- half
+import Numeric.Half(Half)
+
 -- fir
 import Control.Monad.Indexed((:=))
 import Control.Type.Optic( Optic(..)
@@ -92,23 +95,23 @@ type family VariadicList
 
 ----------------------------------------------------------------------
 
-type Getter g i = VariadicList (RequiredIndices g) (Get g i) i
+type Getter i (g :: Optic i a) = VariadicList (RequiredIndices g) (Get g) i
 
 -- bindings
-instance KnownSymbol k
-      => Gettable (Name k) (i :: BindingsMap) where
-  type Get (Name k) i = Binding.Get k i
+instance (KnownSymbol k, r ~ Binding.Get k i)
+      => Gettable (i :: BindingsMap) r (Name k) where
 
-instance Gettable (Index n) (i :: [Symbol :-> v]) where
-  type Get (Index n) i
+{-
+instance Gettable (i :: [Symbol :-> v]) (Index n) where
+  type Get i (Index n)
     = TypeError (    Text "get: cannot get a binding using a numeric index."
                 :$$: Text "Use the binding's name instead."
                 )
 
 -- arrays
 instance (KnownNat n, KnownNat i)
-      => Gettable (Index i) (Array n a) where
-  type Get (Index i) (Array n a)
+      => Gettable (Array n a) (Index i) where
+  type Get (Array n a) (Index i)
     = If
         ( CmpNat i n == LT )
         a
@@ -123,24 +126,24 @@ instance (KnownNat n, KnownNat i)
         )
 
 instance KnownNat i
-      => Gettable (Index i) (RuntimeArray a) where
-  type Get (Index i) (RuntimeArray a) = a
+      => Gettable (RuntimeArray a) (Index i) where
+  type Get (RuntimeArray a) (Index i)  = a
 
-instance Gettable AnIndex (Array l a) where
-  type Get AnIndex (Array l a) = a
+instance Gettable (Array l a) AnIndex where
+  type Get (Array l a) AnIndex = a
 
-instance Gettable AnIndex (RuntimeArray a) where
-  type Get AnIndex (RuntimeArray a) = a
+instance Gettable (RuntimeArray a) AnIndex  where
+  type Get (RuntimeArray a) AnIndex = a
 
-instance Gettable (Name k) (Array l a) where
-  type Get (Name k) (Array l a)
+instance Gettable (Array l a) (Name k) where
+  type Get (Array l a) (Name k)
     = TypeError (    Text "get: attempt to access array element \
                           \using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
                 )
 
-instance Gettable (Name k) (RuntimeArray a) where
-  type Get (Name k) (RuntimeArray a)
+instance Gettable (RuntimeArray a) (Name k) where
+  type Get (RuntimeArray a) (Name k) 
     = TypeError (    Text "get: attempt to access run-time array \
                           \element using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
@@ -148,100 +151,102 @@ instance Gettable (Name k) (RuntimeArray a) where
 
 -- structs
 instance KnownSymbol k
-       => Gettable (Name k) (Struct as) where
-  type Get (Name k) (Struct as)
+       => Gettable (Struct as) (Name k) where
+  type Get (Struct as) (Name k)
     = StructElemFromName (Text "get: ") k as (Lookup k as)
 
-instance KnownNat n => Gettable (Index n) (Struct as) where
-  type Get (Index n) (Struct as)
+instance KnownNat n => Gettable (Struct as) (Index n) where
+  type Get (Struct as) (Index n)
     = Value (StructElemFromIndex (Text "get: ") n as n as)
 
-instance Gettable AnIndex (Struct as) where
-  type Get AnIndex (Struct as)
+instance Gettable (Struct as) AnIndex where
+  type Get (Struct as) AnIndex
     = TypeError (    Text "get: attempt to access struct element \
                           \using run-time index."
                 :$$: Text "Structs can only be accessed using \
                           \compile-time indices or field names."
                 )
 
+-}
 -- vectors
-instance KnownNat i
-      => Gettable (Index i) (V n a) where
-  type Get (Index i) (V n a)
-    = If
-        (CmpNat i n == LT)
-        a
-        ( TypeError
-          (     Text "get: vector index "
-           :<>: ShowType i
-           :<>: Text " is out of bounds."
-           :$$: Text "Vector dimension is "
-           :<>: ShowType n :<>: Text "."
-           :$$: Text "Note: indexing starts from 0."
+instance ( KnownNat i
+         , r ~ If
+                 (CmpNat i n == LT)
+                 a
+                 ( TypeError
+                   (     Text "get: vector index "
+                    :<>: ShowType i
+                    :<>: Text " is out of bounds."
+                    :$$: Text "Vector dimension is "
+                    :<>: ShowType n :<>: Text "."
+                    :$$: Text "Note: indexing starts from 0."
+                   )
+                 )
           )
-        )
+      => Gettable (V n a) r (Index i) where
 
-instance Gettable AnIndex (V n a) where
-  type Get AnIndex (V n a) = a
+instance Gettable (V n a) a AnIndex where
 
-instance Gettable (Name k) (V n a) where
-  type Get (Name k) (V n a)
+{-
+instance Gettable (V n a) (Name k) where
+  type Get (V n a) (Name k)
     = TypeError (    Text "get: attempt to access vector element \
                           \using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
                 :$$: Text "Note: swizzling is not (yet?) supported."
                 )
+-}
 
 -- matrices
-instance KnownNat i
-      => Gettable (Index i) (M m n a) where
-    type Get (Index i) (M m n a)
-      = If
-          (CmpNat i n == LT)
-          (V m a)
-          ( TypeError
-            (     Text "get: matrix column index "
-             :<>: ShowType i
-             :<>: Text " is out of bounds."
-             :$$: Text "This matrix has "
-             :<>: ShowType m :<>: Text " rows, "
-             :<>: ShowType n :<>: Text " columns."
-             :$$: Text "Note: indexing starts from 0."
-            )
-          )
+instance ( KnownNat i
+         , r ~ If
+                  (CmpNat i n == LT)
+                  (V m a)
+                  ( TypeError
+                    (     Text "get: matrix column index "
+                     :<>: ShowType i
+                     :<>: Text " is out of bounds."
+                     :$$: Text "This matrix has "
+                     :<>: ShowType m :<>: Text " rows, "
+                     :<>: ShowType n :<>: Text " columns."
+                     :$$: Text "Note: indexing starts from 0."
+                    )
+                  )
+         )
 
-instance Gettable AnIndex (M m n a) where
-  type Get AnIndex (M m n a)
-    = V m a
+      => Gettable (M m n a) r (Index i) where
 
-instance Gettable (Name k) (M m n a) where
-  type Get (Name k) (M m n a)
+instance Gettable (M m n a) a AnIndex where
+
+{-
+instance Gettable (M m n a) (Name k) where
+  type Get (M m n a) (Name k)
     = TypeError (    Text "get: attempt to access matrix column \
                           \using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
                 :$$: Text "Note: swizzling is not (yet?) supported."
                 )
-
+-}
 ----------------------------------------------------------------------
 -- setters
 
-type Setter l i = VariadicList (RequiredIndices l :++: '[Set l i]) () i
-
+type Setter i (o :: Optic i a) = VariadicList (RequiredIndices o :++: '[Set o]) () i
+{-
 -- bindings
 instance KnownSymbol k
-      => Settable (Name k) (i :: BindingsMap) where
-  type Set (Name k) i = Binding.Put k i
+      => Settable (i :: BindingsMap) (Name k) where
+  type Set i (Name k) = Binding.Put k i
 
-instance Settable (Index n) (i :: [Symbol :-> v]) where
-  type Set (Index n) i
+instance Settable (i :: [Symbol :-> v]) (Index n) where
+  type Set i (Index n)
     = TypeError (    Text "set: cannot set binding using a numeric index."
                 :$$: Text "Use the binding's name instead."
                 )
 
 -- arrays
 instance (KnownNat n, KnownNat i)
-      => Settable (Index i) (Array n a) where
-  type Set (Index i) (Array n a)
+      => Settable (Array n a) (Index i) where
+  type Set (Array n a) (Index i)
     = If
         (CmpNat i n == LT)
         a
@@ -256,24 +261,24 @@ instance (KnownNat n, KnownNat i)
         )
 
 instance KnownNat i
-      => Settable (Index i) (RuntimeArray a) where
-  type Set (Index i) (RuntimeArray a) = a
+      => Settable (RuntimeArray a) (Index i) where
+  type Set (RuntimeArray a) (Index i) = a
 
-instance Settable AnIndex (Array l a) where
-  type Set AnIndex (Array l a) = a
+instance Settable (Array l a) AnIndex where
+  type Set (Array l a) AnIndex = a
 
-instance Settable AnIndex (RuntimeArray a) where
-  type Set AnIndex (RuntimeArray a) = a
+instance Settable (RuntimeArray a) AnIndex where
+  type Set (RuntimeArray a) AnIndex = a
   
-instance Settable (Name k) (Array l a) where
-  type Set (Name k) (Array l a)
+instance Settable (Array l a) (Name k) where
+  type Set (Array l a) (Name k) 
     = TypeError (    Text "set: attempt to update array element \
                           \using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
                 )
 
-instance Settable (Name k) (RuntimeArray a) where
-  type Set (Name k) (RuntimeArray a)
+instance Settable (RuntimeArray a) (Name k) where
+  type Set (RuntimeArray a) (Name k)
     = TypeError (    Text "set: attempt to update run-time array \
                           \element using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
@@ -281,16 +286,16 @@ instance Settable (Name k) (RuntimeArray a) where
 
 -- structs
 instance KnownSymbol k
-       => Settable (Name k) (Struct as) where
-  type Set (Name k) (Struct as)
+       => Settable (Struct as) (Name k) where
+  type Set (Struct as) (Name k)
     = StructElemFromName (Text "put: ") k as (Lookup k as)
 
-instance KnownNat n => Settable (Index n) (Struct as) where
-  type Set (Index n) (Struct as)
+instance KnownNat n => Settable (Struct as) (Index n) where
+  type Set (Struct as) (Index n)
     = Value (StructElemFromIndex (Text "put: ") n as n as)
 
-instance Settable AnIndex (Struct as) where
-  type Set AnIndex (Struct as)
+instance Settable (Struct as) AnIndex where
+  type Set (Struct as) AnIndex
     = TypeError (    Text "set: attempt to set struct element \
                           \using run-time index."
                 :$$: Text "Structs can only be modified using \
@@ -299,8 +304,8 @@ instance Settable AnIndex (Struct as) where
 
 -- vectors
 instance KnownNat i
-      => Settable (Index i) (V n a) where
-  type Set (Index i) (V n a)
+      => Settable (V n a) (Index i) where
+  type Set (V n a) (Index i)
     = If
         (CmpNat i n == LT)
         a
@@ -314,11 +319,11 @@ instance KnownNat i
           )
         )
 
-instance Settable AnIndex (V n a) where
-  type Set AnIndex (V n a) = a
+instance Settable (V n a) AnIndex where
+  type Set (V n a) AnIndex = a
 
-instance Settable (Name k) (V n a) where
-  type Set (Name k) (V n a)
+instance Settable (V n a) (Name k) where
+  type Set (V n a) (Name k)
     = TypeError (    Text "set: attempt to update vector element \
                           \using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
@@ -327,8 +332,8 @@ instance Settable (Name k) (V n a) where
 
 -- matrices
 instance KnownNat i
-      => Settable (Index i) (M m n a) where
-    type Set (Index i) (M m n a)
+      => Settable (M m n a) (Index i) where
+    type Set (M m n a) (Index i)
       = If
           (CmpNat i n == LT)
           (V m a)
@@ -343,19 +348,19 @@ instance KnownNat i
             )
           )
 
-instance Settable AnIndex (M m n a) where
-  type Set AnIndex (M m n a)
+instance Settable (M m n a) AnIndex where
+  type Set (M m n a) AnIndex
     = V m a
 
-instance Settable (Name k) (M m n a) where
-  type Set (Name k) (M m n a)
+instance Settable (M m n a) (Name k) where
+  type Set (M m n a) (Name k)
     = TypeError (    Text "set: attempt to update matrix column \
                           \using symbolic identifier "
                 :<>: ShowType k :<>: Text "."
                 :$$: Text "Note: swizzling is not (yet?) supported."
                 )
                 
-
+-}
 ----------------------------------------------------------------------
 -- type class instances for products 
 
@@ -375,7 +380,7 @@ instance Container (M m n a) where
 
 instance Container (Struct as) where
   type Combine (Struct as) (Struct xs) (Struct ys) = Struct (xs :++: ys)
-  type Singleton (Struct as) (Name k ) v = Struct '[ k ':-> v ]
+  type Singleton (Struct as) (Name k) v = Struct '[ k ':-> v ]
   type Singleton (Struct as) (Index i) v
     = Struct 
         '[ Key ( StructElemFromIndex 
@@ -461,12 +466,12 @@ type family StructElemFromIndex
 
 ----------------------------------------------------------------------
 -- synonyms for vector/matrix optics
-
-type family MkRow (n :: Nat) (i :: Nat) (c :: Nat) :: Optic where
+{-
+type family MkRow (n :: Nat) (i :: Nat) (c :: Nat) :: (Optic (M m n a)) where
   MkRow n i c
     = MkRowHelper n i c (n <=? (c+1))
 
-type family MkRowHelper n i c b :: Optic where
+type family MkRowHelper n i c b :: (Optic (M m n a)) where
   MkRowHelper n i c False = (Index c :.: Index i) :&: MkRow n i (c+1)
   MkRowHelper n i c True  = Index c :.: Index i
 
@@ -480,3 +485,15 @@ type family MkDiagHelper n i b where
 --type Center = forall n. Diag (MkDiag n 0)
 
 --type Row i = forall n. MkRow n i 0
+
+type family Center :: Optic (M n n a) (V n a) where
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1) :&: (Index 2 :.: Index 2))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1) :&: (Index 2 :.: Index 2) :&: (Index 3 :.: Index 3))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1) :&: (Index 2 :.: Index 2))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1) :&: (Index 2 :.: Index 2) :&: (Index 3 :.: Index 3))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1) :&: (Index 2 :.: Index 2))
+  Center = ((Index 0 :.: Index 0) :&: (Index 1 :.: Index 1) :&: (Index 2 :.: Index 2) :&: (Index 3 :.: Index 3))
+-}
