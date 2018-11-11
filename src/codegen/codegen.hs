@@ -85,12 +85,12 @@ import CodeGen.Instruction ( Args(..), toArgs
                            , ID(ID), Instruction(..)
                            , Pairs(Pairs)
                            )
-import Control.Type.Optic(SOptic(..))
 import FIR.AST(AST(..), Syntactic(fromAST), toTree)
 import FIR.Builtin( Stage, stageVal
                   , stageBuiltins, stageCapabilities
                   )
 import FIR.Instances.AST()
+import FIR.Instances.Optics(SOptic(..))
 import FIR.PrimTy( PrimTy(primTySing)
                  , primTy, primTyVal
                  , SPrimTy(..)
@@ -198,6 +198,7 @@ codeGen (Entry k s :$ body)
         ( stageVal s )
         ( Text.pack ( symbolVal k ) )
         ( codeGen body )
+{-
 codeGen (Get singOptic)
  = case singOptic of
 
@@ -290,7 +291,7 @@ codeGen (Put singOptic :$ a)
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
       _ -> throwError "codeGen: setter not supported"
-
+-}
 codeGen (Applied (PrimOp primOp _) as)
   = codeGenPrimOp primOp =<< codeGenASTList as
 codeGen (Applied (MkVector n_px ty_px) as)
@@ -1081,7 +1082,7 @@ constID a =
         
         SStruct _ ->
           createRec _knownAConstant
-            ( traverseStruct constID a )
+            ( traverseStruct constID a :: m [ID] )
             ( \ eltIDs ->
                   mkConstantInstruction
                     SPIRV.Op.ConstantComposite

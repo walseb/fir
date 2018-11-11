@@ -1,3 +1,9 @@
+Improvements waiting on GHC:
+  - making type/kind variables implicit
+      (avoid workaround in definition of get/put)
+  - coercions between type variables are promoted to the kind level
+      (avoid unsafe optics with overly general kinds to work around it)
+
 
 Compound types:
   - (Syntactic sugar for) complex numbers & quaternions
@@ -47,6 +53,10 @@ clean up all the type families called variadic:
   - variadic with type level nat
   - variadic with type level list
 
-make the lens design more extensible
-as opposed to baking in the various product types (V n a, M m n a, Struct as, BindingsMap)
-make a typeclass for objects which have products, with associated types (e.g. "combine", "singleton")
+
+finish implementing plain reified setters (structs, vectors, matrices)
+
+figure out how to write reifiable instances for product optics
+allow reified optics to work with internal types, such as 'AST a' or 'Codensity AST (AST a := i) i'
+
+add support for newtypes

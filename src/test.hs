@@ -14,7 +14,7 @@ module Test where
 
 -- base
 --import Data.Int(Int32)
---import Data.Word(Word32)
+import Data.Word(Word32)
 import Prelude hiding ( Functor(..), (<$>)
                       , Applicative(..), Monad(..)
                       , Num(..), Fractional(..), Integral(..), Floating(..)
@@ -24,8 +24,13 @@ import Prelude hiding ( Functor(..), (<$>)
 import qualified Prelude
 import System.FilePath((</>),(<.>))
 
+import Debug.Trace(trace)
+
 -- bytestring
 import qualified Data.ByteString.Lazy as ByteString
+
+-- vector
+import qualified Data.Vector as Array
 
 -- tree-view
 import Data.Tree.View(drawTree)
@@ -40,14 +45,15 @@ import FIR.Instances.Optics
 import FIR.Labels
 import FIR.PrimTy
 import FIR.Program
+import CodeGen.CodeGen
+import CodeGen.State
 import Control.Monad.Indexed
 import Control.Type.Optic
 import Data.Type.Map
 import Math.Linear
 import Math.Algebra.Class
 import Math.Logic.Class
-import CodeGen.CodeGen
-import CodeGen.State
+
 
 ------------------------------------------------
 -- program
@@ -55,24 +61,27 @@ import CodeGen.State
 --type T a i = Codensity AST (AST a := i) i
 
 type Start
-  = '[ "model"      ':-> Var RW ( M 4 4 Float )
-     , "view"       ':-> Var R  ( M 4 4 Float )
-     , "projection" ':-> Var R  ( M 4 4 Float )
-     , "vertexData" ':-> Var RW ( Struct [ "position" ':-> V 3 Float
-                                         , "colour"   ':-> V 4 Float
-                                         , "size"     ':-> Float
-                                         , "weight"   ':-> Float
-                                         ]
-                               )
+  = '[ "modelMatrix"      ':-> Var RW ( M 4 4 Float )
+     , "viewMatrix"       ':-> Var R  ( M 4 4 Float )
+     , "projectionMatrix" ':-> Var R  ( M 4 4 Float )
+     , "vertexData"       ':-> Var RW ( Struct [ "position" ':-> V 3 Float
+                                               , "colour"   ':-> V 4 Float
+                                               , "size"     ':-> Float
+                                               , "weight"   ':-> Float
+                                               ]
+                                     )
      , "arr1" ':-> Var R ( RuntimeArray (RuntimeArray ( Struct [ "label1" ':-> V 3 Float
                                                                , "label2" ':-> RuntimeArray Float
                                                                ]
-                                                     )
+                                                      )
                                         )
-                        )
+                         )
      , "arr2" ':-> Var RW ( Array 17 Float )     
      ]
 
+type Bds
+  = '[ "model" ':-> Var RW ( M 2 2 Float )
+     ]
 
 program ::
   Program
@@ -83,24 +92,26 @@ program ::
 program = do
 
   (f :: AST Float -> AST Float) <- fundef @"f" do
-    u <- get @_ @_ @(Name "u")
+    u <- use @(Name "u")
     t <- def @"t" @RW @Float 11 -- local variable
     pure (u + t)
 
   entryPoint @"main" @Vertex do
 
-    model            <- get @_ @_ @(Name "model")
-    view             <- get @_ @_ @(Name "view")
-    projection       <- get @_ @_ @(Name "projection")
+    modelMatrix       <- get @"model"
+    viewMatrix        <- get @"view"
+    projectionMatrix  <- get @"projection"
 
-    --vertexDataPosition <- get @_ @(V 3 Float) @(Name "vertexData" :.: Name "position")
-    --lensTest <- get @_ @_ @(Name "arr1" :.: Index 3 :.: AnIndex :.: Index 0 :.: Index 2) 7
+    vertexDataPosition <- use @( Name "vertexData" :.: Name "position" )
+    vertexData <- use @(Name "vertexData")
+    let vertexDataColour = view @(Name "colour") vertexData
+    row <- use @( Name "modelMatrix" :.: Row 2 )
+    diagonal <- use @(Name "modelMatrix" :.: Diag )
+    lensTest <- use @(Name "arr1" :.: Index 3 :.: AnIndex Word32 :.: Index 0 :.: Index 2) 7
 
+    #array @(Array 10 Float) #= (lit $ mkArray (Array.fromList [1,17,23,4,5,90,88,17,22,21]))
 
     {-
-
-    #array @(Array 10 Float) #= (lit $ MkArray [1,17,23,4,5,90,88,17,22,21])
-
     let mvp        = fmapAST (*11) $ projection !*! view !*! model
         position'  = vec4 px py pz 1
         func :: AST Float -> AST Float {--> AST Float-} -> AST Float
@@ -116,8 +127,7 @@ program = do
 
     -}
     --put @_ @_ @(Name "gl_Position") ( vec4 3 7 17 lensTest )
-    --put @"gl_Position" ( vec4 3 7 17 10 )
-    pure ( undefined :: AST () )
+    #gl_Position .= vec4 3 7 17 10
     
 
 

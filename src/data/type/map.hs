@@ -1,8 +1,9 @@
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module Data.Type.Map where
 
@@ -13,6 +14,7 @@ import Data.Type.Equality(type (==))
 import GHC.TypeLits( CmpSymbol
                    , TypeError, ErrorMessage(..)
                    )
+import GHC.TypeNats (Nat, type (+))
 
 ------------------------------------------------
 -- barebones type-level map functionality
@@ -85,3 +87,11 @@ type family Zip (msg :: ErrorMessage) (as :: [Type]) (bs :: [Type]) = (r :: [Typ
   Zip _  '[]        '[]       = '[]
   Zip msg (a ': as) (b ': bs) = (a,b) ': Zip msg as bs
   Zip msg as bs = TypeError msg
+
+type family Append (as :: [k]) (b :: k) = (r :: [k]) {-| r -> as b-} where
+  Append '[]       b = '[b]
+  Append (a ': as) b = a ': Append as b
+
+type family Length (as :: [k]) :: Nat where
+  Length '[]       = 0
+  Length (a ': as) = 1 + Length as

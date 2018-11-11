@@ -34,8 +34,12 @@ import Numeric.Half(Half)
 -- text-utf8
 import qualified Data.Text as Text
 
+-- vector
+import qualified Data.Vector as Array
+
 -- fir
 import Data.Binary.Class.Put(Put)
+import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map((:->)((:->)))
 import FIR.Binding ( Binding, BindingsMap, Var
                    , Permission, KnownPermissions, permissions
@@ -67,7 +71,13 @@ import SPIRV.PrimTy ( Signedness(Unsigned, Signed)
 -- arrays and structs
 
 data Array :: Nat -> Type -> Type where
-  MkArray :: forall n a. KnownNat n => [a] -> Array n a
+  MkArray :: forall n a. KnownNat n => Array.Vector a -> Array n a
+
+mkArray :: forall n a. KnownNat n => Array.Vector a -> Array n a
+mkArray arr
+  = let n = (fromIntegral (natVal (Proxy @n)))
+    in MkArray @n (Array.slice 0 n arr)
+    
 
 deriving instance Eq   a => Eq   (Array l a)
 deriving instance Ord  a => Ord  (Array l a)
@@ -76,7 +86,7 @@ deriving instance Functor     (Array n)
 deriving instance Foldable    (Array n)
 deriving instance Traversable (Array n)
 
-newtype RuntimeArray a = RuntimeArray [a]
+newtype RuntimeArray a = MkRuntimeArray (Array.Vector a)
 
 deriving instance Eq   a => Eq   (RuntimeArray a)
 deriving instance Ord  a => Ord  (RuntimeArray a)
@@ -84,6 +94,8 @@ deriving instance Show a => Show (RuntimeArray a)
 deriving instance Functor     RuntimeArray
 deriving instance Foldable    RuntimeArray
 deriving instance Traversable RuntimeArray
+
+infixr 4 :&
 
 -- order *matters* for structs (memory layout!)
 data Struct :: [Symbol :-> Type] -> Type where
@@ -156,7 +168,8 @@ data SPrimTyBindings :: [Symbol :-> Type] -> Type where
 
 class ( Show ty                    -- for convenience
       , Eq ty, Ord ty, Typeable ty -- to keep track of lists of constants
-      ) 
+      , ty ~ ListVariadic '[] ty   -- ty is not a function type... useful for optics
+      )
     => PrimTy ty where
   primTySing :: SPrimTy ty
 
@@ -193,7 +206,7 @@ instance ScalarTy Float  where
 instance ScalarTy Double where
   scalarTySing = SDouble
 
-class ScalarTy ty => IntegralTy ty where
+class (ScalarTy ty, Integral ty) => IntegralTy ty where
 instance IntegralTy Word8  where
 instance IntegralTy Word16 where
 instance IntegralTy Word32 where

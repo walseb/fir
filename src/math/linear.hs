@@ -47,7 +47,7 @@ import GHC.Base(Int#, Int(I#), (+#))
 import GHC.TypeLits.Compare((:<=?)(LE,NLE), (%<=?))
 import GHC.TypeNats( Nat, KnownNat, natVal
                    , type (+), type (-)
-                   , type (<=), type (<=?)
+                   , CmpNat, type (<=), type (<=?)
                    )
 import Numeric.Natural(Natural)
 import Unsafe.Coerce(unsafeCoerce)
@@ -166,6 +166,19 @@ instance (KnownNat n, Storable a) => Storable (V n a) where
   peek ptr = traverse (peekElemOff (castPtr ptr)) ixVec
       where ixVec :: V n Int
             ixVec = unfold pred (fromIntegral $ natVal (Proxy @n))
+
+infixl 9 ^!
+
+-- unsafe indexing
+(^!) :: V n a -> Int -> a
+(^!) (a :. _)  0 = a
+(^!) Nil       _ = error "empty vector"
+(^!) (_ :. as) n = as ^! (n-1)
+
+-- safe indexing
+at :: forall i n a. (KnownNat i, KnownNat n, CmpNat i n ~ Prelude.LT)
+   => V n a -> a
+at v = v ^! (fromIntegral (dim @i))
 
 -----------------------------------------------------------
 -- todo: temporary workaround

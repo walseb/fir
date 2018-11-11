@@ -17,139 +17,76 @@ module Control.Type.Optic where
 
 -- base
 import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
 import Data.Type.Bool(If, type (&&), Not)
-import Data.Word(Word32)
-import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
+import GHC.TypeLits( Symbol
                    , TypeError, ErrorMessage(..)
                    )
-import GHC.TypeNats(Nat, KnownNat, natVal)
+import GHC.TypeNats(Nat)
 
 -- fir
-import Data.Type.Map(Elem, Zip, type (:++:))
+import Data.Type.Map(type (:++:))
+import Data.Function.Variadic(ListVariadic)
 
 ----------------------------------------------------------------------
 
 infixr 9 :.:
-infixr 9 :%.:
 infixr 3 :&:
-infixr 3 :%&:
 
 -- optic data (kind)
-data Optic (s :: k) (a :: Type) where
-  -- built-in lenses
-  AnIndex :: Optic s a
-  Index   :: Nat    -> Optic s a
-  Name    :: Symbol -> Optic s a
-  -- optic combinators
-  All     :: Optic s a -> Optic s b              -- equaliser
-  (:.:)   :: Optic s a -> Optic t b -> Optic q c -- composition
-  (:&:)   :: Optic s a -> Optic s b -> Optic s c -- products
+data Optic (x :: [Type]) (s :: k) (a :: Type) where
+  -- built-in lenses (unsafe)
+  AnIndex_ :: Optic x s a
+  Index_   :: Nat    -> Optic x s a
+  Name_    :: Symbol -> Optic x s a
+  -- optic combinators (unsafe)
+  All_     :: Optic x s a -> Optic x s b
+  ComposeO :: Optic x s a -> Optic y a b -> Optic z s b
+  ProductO :: Optic x s a -> Optic x s b -> Optic y s c 
 
-
--- singletons for optics
-{-
-data SField :: Field -> Type where
-  SAnIndex :: SField AnIndexField
-  SIndex :: KnownNat n => Proxy n -> SField (IndexField n)
-  SName :: KnownSymbol k => Proxy k -> SField (NameField k)
-
-class KnownField f where
-  fieldSing :: SField f
-
-fieldVal :: KnownField f => Proxy f -> SField f
-fieldVal _ = fieldSing
-
-instance KnownField AnIndexField where
-  fieldSing = SAnIndex
-instance KnownNat n => KnownField (IndexField n) where
-  fieldSing = SIndex (Proxy @n)
-instance KnownSymbol k => KnownField (NameField k) where
-  fieldSing = SName (Proxy @k)
--}
-data SOptic :: Optic (s :: k) (a :: Type) -> Type where
-  --SFromField :: (KnownField f, HasField a f)
-  --           => Proxy a -> Proxy f -> SOptic (FromField f)
-  SAnIndex :: SOptic AnIndex
-  SIndex :: KnownNat    n => Proxy n -> SOptic (Index n)
-  SName  :: KnownSymbol k => Proxy k -> SOptic (Name  k)
-  SAll   :: SOptic o -> SOptic (All o)
-  (:%.:) :: SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
-  (:%&:) :: SOptic o1 -> SOptic o2 -> SOptic (o1 :&: o2)
-  
-
-showSOptic :: SOptic optic -> String
-{-
-showSOptic (SFromField a f)
-  = case fieldVal f of
-      SAnIndex -> "AnIndex"
-      SIndex n -> "Index " ++ show (natVal    n)
-      SName  k -> "Name "  ++ show (symbolVal k)
--}
-showSOptic SAnIndex   = "AnIndex"
-showSOptic (SIndex n) = "Index " ++ show (natVal    n)
-showSOptic (SName  k) = "Name "  ++ show (symbolVal k)
-showSOptic (SAll l) = "All " ++ showSOptic l
-showSOptic (l1 :%.: l2) = showSOptic l1 ++ " :.: " ++ showSOptic l2
-showSOptic (l1 :%&: l2) = showSOptic l1 ++ " :&: " ++ showSOptic l2
-
-
-class KnownOptic optic where
-  opticSing :: SOptic optic
-{-
-instance (KnownField f, HasField a f) => KnownOptic (FromField f :: Optic a) where
-  opticSing = SFromField (Proxy @a) (Proxy @f)
--}
-instance KnownOptic AnIndex where
-  opticSing = SAnIndex
-instance KnownNat n => KnownOptic (Index n) where
-  opticSing = SIndex (Proxy @n)
-instance KnownSymbol k => KnownOptic (Name k) where
-  opticSing = SName (Proxy @k)
-instance KnownOptic opt => KnownOptic (All opt) where
-  opticSing = SAll (opticSing @opt)
-instance (KnownOptic opt1, KnownOptic opt2)
-      => KnownOptic (opt1 :.: opt2) where
-  opticSing = (opticSing @opt1) :%.: (opticSing @opt2)
-instance (KnownOptic opt1, KnownOptic opt2)
-      => KnownOptic (opt1 :&: opt2) where
-  opticSing = (opticSing @opt1) :%&: (opticSing @opt2)
-
-
-----------------------------------------------------------------------
--- dealing with additional information that needs to be passed at runtime
--- this is mostly for passing an array index at runtime,
--- but can be used to pass vector/matrix indices at runtime too
-
-type family RequiredIndices (optic :: Optic s a) = (r :: [Type]) where
-  RequiredIndices (Name  _)   = '[]
-  RequiredIndices (Index _)   = '[]
-  RequiredIndices AnIndex     = '[Word32]
-  RequiredIndices (All l)     = RequiredIndices l
-  RequiredIndices (l1 :.: l2) = RequiredIndices l1 :++: RequiredIndices l2
-  RequiredIndices (l1 :&: l2)
-  -- using (possibly nested) pairs... not a great solution
-    = Zip (     Text "Cannot combine optics "
-           :<>: ShowType l1 :<>: Text " and " :<>: ShowType l2 :<>: Text "."
-           :$$: Text "These optics use different amounts of run-time indices."
-          )
-        (RequiredIndices l1)
-        (RequiredIndices l2) 
+-- safe synonyms (with correct kinds)
+type Name k = (Name_ k :: Optic '[] s a)
+type Index i = (Index_ i :: Optic '[] s a)
+type AnIndex ix = (AnIndex_ :: Optic '[ix] s a)
+type (:&:) (o1 :: Optic '[] s a) (o2 :: Optic '[] s b)
+  = ( (o1 `ProductO` o2)
+        :: Optic '[] s ( Product o1 o2 )
+    )
+type (:.:) (o1 :: Optic x s a) (o2 :: Optic y a b)
+  = ((o1 `ComposeO` o2) :: Optic (x :++: y) s b)
+type All (o :: Optic x s a) = (All_ o :: Optic x s (MonoType a))
 
 ----------------------------------------------------------------------
 -- type classes
 
-class Gettable s (a :: Type) (optic :: Optic s a) | optic -> s a where
-  type Get (optic :: Optic s a) :: Type
-  type Get (optic :: Optic s a) = a
+-- type level getter
+class Gettable (optic :: Optic i (s :: k) a) | optic -> i s a where
+  type Get (optic :: Optic i (s :: k) (a :: Type)) :: Type
+  type Get (optic :: Optic i s a) = a
 
-class Settable s (a :: Type) (optic :: Optic s a) | optic -> s a where
-  type Set (optic :: Optic s a) :: Type
-  type Set (optic :: Optic s a) = a
+type Getter (optic :: Optic i s a) = ListVariadic (i :++: '[s]) a
+
+-- type level getter which can be turned into a value-level getter
+class Gettable optic => ReifiedGetter optic
+      where
+  view :: Getter optic
+
+-- type level setter
+class Settable (optic :: Optic i (s :: k) (a :: Type)) | optic -> i s a where
+  type Set (optic :: Optic i (s :: k) (a :: Type)) :: Type
+  type Set (optic :: Optic i s a) = a
+
+type Setter (optic :: Optic i s a) = ListVariadic (i :++: '[a,s]) s
+
+-- type level setter which can be turned into a value-level setter
+class Settable optic => ReifiedSetter optic
+      where
+  set :: Setter optic
+
+-------------------------------
 
 class Container c where
   type Combine c (x :: Type) (y :: Type) :: Type
-  type Singleton c (o :: Optic s a) (x :: Type) = (r :: Type) | r -> x
+  type Singleton c (o :: Optic i s a) (x :: Type) = (r :: Type) | r -> x
   type Overlapping c (k :: Symbol) (n :: Nat) :: Bool
 
 class Container a => MonoContainer a where
@@ -158,101 +95,116 @@ class Container a => MonoContainer a where
 ----------------------------------------------------------------------
 -- composition
 
-instance forall a b s (o1 :: Optic s a) (o2 :: Optic a b).
-         ( Gettable s a o1
-         , Gettable a b o2
-         ) => Gettable s b ((o1 :: Optic s a) :.: (o2 :: Optic a b)) where
+instance forall k (s :: k) i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+         ( Gettable o1
+         , Gettable o2
+         , i3 ~ (i1 :++: i2)
+         ) => Gettable ((o1 `ComposeO` o2) :: Optic i3 s b) where
+instance forall k (s :: k) i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+         ( Settable o1
+         , Settable o2
+         , i3 ~ (i1 :++: i2)
+         ) => Settable ((o1 `ComposeO` o2) :: Optic i3 s b) where
 
 
-instance forall a b s (o1 :: Optic s a) (o2 :: Optic a b).
-         ( Settable s a o1
-         , Settable a b o2
+instance forall i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+         ( ReifiedGetter o1
+         , ReifiedGetter o2
+         , ComposeGetters i1 i2 s a b
+         , i3 ~ (i1 :++: i2)
          )
-      => Settable s b (o1 :.: o2) where
+      => ReifiedGetter ((o1 `ComposeO` o2) :: Optic i3 s b) where
+    view = composeGetters @i1 @i2 @s @a @b (view @o1) (view @o2)
+
+class ComposeGetters i j s a b where
+  composeGetters :: ListVariadic (i :++: '[s]) a
+                 -> ListVariadic (j :++: '[a]) b
+                 -> ListVariadic ((i :++: j) :++: '[s]) b
+instance (a ~ ListVariadic '[] a) => ComposeGetters '[] '[] s a b where
+  composeGetters view1 view2 = view2 . view1
+instance ComposeGetters is js s a b => ComposeGetters (i ': is) js s a b where
+  composeGetters view1 view2 i
+    = composeGetters @is @js @s @a @b (view1 i) view2
+instance ComposeGetters '[] js s a b => ComposeGetters '[] (j ': js) s a b where
+  composeGetters view1 view2 j
+    = composeGetters @'[] @js @s @a @b view1 (view2 j)
+
+instance forall i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+         ( ReifiedSetter o1
+         , ReifiedSetter o2
+         , ReifiedGetter o1
+         , ComposeSetters i1 i2 s a b
+         , i3 ~ (i1 :++: i2)
+         )
+      => ReifiedSetter ((o1 `ComposeO` o2) :: Optic i3 s b) where
+    set = composeSetters @i1 @i2 @s @a @b (view @o1) (set @o1) (set @o2)
+
+class ComposeSetters i j s a b where
+  composeSetters :: ListVariadic (i :++: '[s]) a
+                 -> ListVariadic (i :++: '[a,s]) s
+                 -> ListVariadic (j :++: '[b,a]) a
+                 -> ListVariadic ((i :++: j) :++: '[b,s]) s
+instance (a ~ ListVariadic '[] a) => ComposeSetters '[] '[] s a b where
+  composeSetters view1 set1 set2 b s
+    = set1 (set2 b (view1 s)) s
+instance ComposeSetters is js s a b => ComposeSetters (i ': is) js s a b where
+  composeSetters view1 set1 set2 i
+    = composeSetters @is @js @s @a @b (view1 i) (set1 i) set2
+instance ComposeSetters '[] js s a b => ComposeSetters '[] (j ': js) s a b where
+  composeSetters view1 set1 set2 j
+    = composeSetters @'[] @js @s @a @b view1 set1 (set2 j)
 
 ----------------------------------------------------------------------
 -- products
 
-type family Product
-              ( s  :: k         )
-              ( g1 :: Optic s a )
-              ( g2 :: Optic s b )
-              ( x  :: Type      )
-              ( y  :: Type      )
-            = ( r  :: Type      )
-              where
-  Product s (_ :&: _) (_ :&: _) x y
-    = Combine s
-        x
-        y
-  Product s o1 (_ :&: _) x y
-    = Combine s
-        (Singleton s o1 x)
-        y 
-  Product s (_ :&: _) o2 x y
-    = Combine s
-        x
-        (Singleton s o2 y)
-  Product s o1 o2 x y
-    = Combine s
-        (Singleton s o1 x)
-        (Singleton s o2 y)
-
-type family LastOptic (o :: Optic s a) :: Optic t a where
-  LastOptic (o1 :.: o2) = LastOptic o2
-  LastOptic (All o)     = All (LastOptic o) -- TODO: this case is not being dealt with properly
-  LastOptic o           = o
-
 -- getter products
-instance ( Gettable s a o1
-         , Gettable s b o2
-         , r ~ Product
-                (LastGettee s o1) -- find out which product structure to use
-                (LastOptic o1)        --    e.g. a product of two vector component getters 
-                (LastOptic o2)        --    should return a vector
-                (Get o1)
-                (Get o2)
-         ) => Gettable s r (o1 :&: o2) where
-
-type family LastGettee (s :: k) (o :: Optic s a) :: t where
-  LastGettee s (Name  k)   = s
-  LastGettee s (Index n)   = s
-  LastGettee s AnIndex     = s
-  LastGettee s (o  :&: _ ) = LastGettee s o -- could pick either factor
-  LastGettee s ((o1 :: Optic s a) :.: o2) = LastGettee a o2
-  LastGettee s _           = s
+instance forall i s a b (o1 :: Optic i s a) (o2 :: Optic i s b).
+         ( Gettable o1
+         , Gettable o2
+         , r ~ Product o1 o2
+         , empty ~ '[]
+         ) => Gettable ((o1 `ProductO` o2) :: Optic empty s r) where
 
 -- setter products
-instance ( Settable s a o1
-         , Settable s b o2
-         , r ~ ProductIfDisjoint
-                (LastSettee s o1)
-                (LastOptic o1)
-                (LastOptic o2)
-                (Set o1)
-                (Set o2)
-         ) => Settable s r (o1 :&: o2) where
+instance forall i s a b (o1 :: Optic i s a) (o2 :: Optic i s b) .
+         ( Settable o1
+         , Settable o2
+         , r ~ ProductIfDisjoint o1 o2
+         , empty ~ '[]
+         ) => Settable ((o1 `ProductO` o2) :: Optic empty s r) where
 
-type family LastSettee (s :: k) (o :: Optic s a) :: t where
-  LastSettee s (Name  k)   = s
-  LastSettee s (Index n)   = s
-  LastSettee s AnIndex     = s
-  LastSettee s (o  :&: _ ) = LastSettee s o -- could pick either factor
-  LastSettee s ((o1 :: Optic s a) :.: o2) = LastSettee a o2
-  LastSettee s o           = s
+
+type family Product
+              ( o1 :: Optic i s a )
+              ( o2 :: Optic i s b )
+            = ( r  :: Type        )
+              where
+  Product (o1 :: Optic i s a) (o2 :: Optic i s b)
+    = Combine (LastAccessee o2) -- hackish
+        ( If (IsProduct o1) a (Singleton (LastAccessee o1) o1 a) )
+        ( If (IsProduct o2) b (Singleton (LastAccessee o2) o2 b) )
+
+type family IsProduct (o :: Optic i s a) :: Bool where
+  IsProduct (_ `ProductO` _) = True
+  IsProduct (_ `ComposeO` o) = IsProduct o
+  IsProduct o                = False
+
+type family LastAccessee (o :: Optic i (s :: Type) a) :: Type where
+  LastAccessee (_ `ComposeO` o) = LastAccessee o
+  LastAccessee (_ `ProductO` o) = LastAccessee o -- hack
+  LastAccessee (o :: Optic i s a) = s
+
+
 
 type family ProductIfDisjoint
-              ( s  :: k         )
-              ( o1 :: Optic s a )
-              ( o2 :: Optic s b )
-              ( x  :: Type      )
-              ( y  :: Type      )
-            = ( r  :: Type      )
+              ( o1 :: Optic i s a )
+              ( o2 :: Optic i s b )
+            = ( r  :: Type        )
               where
-  ProductIfDisjoint s o1 o2 x y
+  ProductIfDisjoint o1 o2
     = If
-        ( Disjoint s o1 o2 )
-        ( Product s o1 o2 x y)
+        ( Disjoint o1 o2 )
+        ( Product  o1 o2 )
         ( TypeError 
            ( Text "set: cannot create product setter."
             :$$: Text "Setters " :<>: ShowType o1
@@ -262,50 +214,53 @@ type family ProductIfDisjoint
         )
 
 type family Disjoint
-              ( s  :: k         ) -- accessee
-              ( o1 :: Optic s a )
-              ( o2 :: Optic s b )
-            = ( r  :: Bool      )
+              ( o1 :: Optic i s a )
+              ( o2 :: Optic j t b )
+            = ( r  :: Bool        )
               where
-  Disjoint _ (Name  k) (Name  k) = False
-  Disjoint _ (Index n) (Index n) = False
-  Disjoint _ AnIndex   _       
+  Disjoint (Name_  k) (Name_  k) = False
+  Disjoint (Index_ n) (Index_ n) = False
+  Disjoint AnIndex_   _       
     = TypeError (    Text "set: cannot create a product setter involving run-time indices."
                 :$$: Text "Impossible to verify the required disjointness property."
                 )
-  Disjoint s o AnIndex
-    = Disjoint s AnIndex o
-  Disjoint s (Name k) (Index n)
+  Disjoint o AnIndex_
+    = Disjoint AnIndex_ o
+  Disjoint ((Name_ k) :: Optic i s a) ((Index_ n) :: Optic j s b)
     = Not (Overlapping s k n)
-  Disjoint s (Index n) (Name k)
-    = Disjoint s (Name  k) (Index n)
-  Disjoint s (o1 :&: o3) (o2 :&: o4)
-    =  Disjoint s o1 o2
-    && Disjoint s o1 o4
-    && Disjoint s o3 o2
-    && Disjoint s o3 o4
-  Disjoint s (o1 :&: o3) o2
-    =  Disjoint s o1 o2
-    && Disjoint s o3 o2
-  Disjoint s o1 (o2 :&: o4)
-    =  Disjoint s o1 o2
-    && Disjoint s o1 o4
-  Disjoint s ((o1 :: Optic s a) :.: o2) (o3 :.: o4)
+  Disjoint ((Index_ n) :: Optic i s a) ((Name_ k) :: Optic j s b)
+    = Not (Overlapping s k n)
+  Disjoint (o1 `ProductO` o3) (o2 `ProductO` o4)
+    =  Disjoint o1 o2
+    && Disjoint o1 o4
+    && Disjoint o3 o2
+    && Disjoint o3 o4
+  Disjoint (o1 `ProductO` o3) o2
+    =  Disjoint o1 o2
+    && Disjoint o3 o2
+  Disjoint o1 (o2 `ProductO` o4)
+    =  Disjoint o1 o2
+    && Disjoint o1 o4
+  Disjoint ((o1 :: Optic i s a) `ComposeO` o2)
+           ((o3 :: Optic i t b) `ComposeO` o4)
     = If
-        ( Disjoint s o1 o3 )
-        ( Disjoint a o2 o4 )
+        ( Disjoint o1 o3 )
+        ( Disjoint o2 o4 )
         'True
-  Disjoint _ _ _ = 'True
+  Disjoint _ _ = 'True
 
 ----------------------------------------------------------------------
 -- equalisers
 
+
 instance
   ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
-  => Gettable s a (All o) where
-instance 
-  ( Settable s a (o :: Optic s a)
-  , MonoContainer s
-  , r ~ MonoType s
-  ) => Settable s r (All o)
+  => Gettable (All_ o :: Optic i s r) where
+
+
+instance forall i s a (o :: Optic i s a).
+         ( Settable o
+         , MonoContainer a
+         , r ~ MonoType a
+         ) => Settable (All_ o :: Optic i s r)
         where

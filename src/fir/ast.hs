@@ -27,17 +27,14 @@ import Data.Tree.View(showTree)
 -- fir
 import CodeGen.Instruction(ID(ID))
 import CodeGen.Monad(MonadFresh(fresh), runFreshSuccT)
-import Control.Type.Optic( Optic, SOptic, showSOptic
-                         , Gettable
-                         , Settable
-                         )
+import Control.Type.Optic(Optic, Gettable, Settable)
 import Control.Monad.Indexed((:=))
 import Data.Function.Variadic(NatVariadic)
 import Data.Type.Map(Insert, Union)
 import FIR.Binding(BindingType, Var, Fun)
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
-import FIR.Instances.Optics(Getter, Setter)
+import FIR.Instances.Optics(User, Assigner, KnownOptic, SOptic, showSOptic)
 import FIR.PrimTy(PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
@@ -98,12 +95,12 @@ data AST :: Type -> Type where
                   -> (() := i) i
                 )
 
-  Get :: forall i a (optic :: Optic i a).
-        ( GHC.Stack.HasCallStack, Gettable i a optic )
-      => SOptic optic -> AST ( Getter i optic )
-  Put :: forall i a (optic :: Optic i a).
-        ( GHC.Stack.HasCallStack, Settable i a optic )
-      => SOptic optic -> AST ( Setter i optic )
+  Use :: forall optic.
+        ( GHC.Stack.HasCallStack, KnownOptic optic, Gettable optic )
+      => SOptic optic -> AST ( User optic )
+  Assign :: forall optic.
+        ( GHC.Stack.HasCallStack, KnownOptic optic, Settable optic )
+      => SOptic optic -> AST ( Assigner optic )
 
   -- control flow
   If    :: ( GHC.Stack.HasCallStack
@@ -173,17 +170,17 @@ toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
-toTreeArgs (MkVector   n _) as = return (Node ("Vec"      ++ show (natVal n)) as)
-toTreeArgs (VectorAt   _ i) as = return (Node ("At "      ++ show (natVal i)) as)
-toTreeArgs (Get    o      ) as = return (Node ("Get @"    ++ showSOptic o) as)
-toTreeArgs (Put    o      ) as = return (Node ("Put @"    ++ showSOptic o) as)
-toTreeArgs (Def    k _    ) as = return (Node ("Def @"    ++ symbolVal k ) as)
-toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @" ++ symbolVal k ) as)
-toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"  ++ show (stageVal s)) as)
-toTreeArgs (Lit        t a) as = return (Node ("Lit @("   ++ show (primTyVal t) ++ ") " ++ show a ) as)
-toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @("  ++ primFuncName f ++ ") ") as)
-toTreeArgs (Pure   f      ) as = return (Node ("Pure @("  ++ primFuncName f ++ ") ") as)
-toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("    ++ primFuncName f ++ ") ") as)
+toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
+toTreeArgs (VectorAt   _ i) as = return (Node ("At "       ++ show (natVal i)) as)
+toTreeArgs (Use    o      ) as = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
+toTreeArgs (Assign o      ) as = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)
+toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
+toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
+toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"   ++ show (stageVal s)) as)
+toTreeArgs (Lit        t a) as = return (Node ("Lit @("    ++ show (primTyVal t) ++ ") " ++ show a ) as)
+toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @("   ++ primFuncName f ++ ") ") as)
+toTreeArgs (Pure   f      ) as = return (Node ("Pure @("   ++ primFuncName f ++ ") ") as)
+toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("     ++ primFuncName f ++ ") ") as)
 
 toTree :: AST a -> Tree String
 toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )

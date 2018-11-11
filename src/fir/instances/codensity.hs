@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -34,17 +35,14 @@ import GHC.TypeNats(KnownNat)
 import Control.Monad.Indexed( (:=)(AtKey), Codensity(Codensity)
                             , ixFmap, ixPure, ixLiftA2
                             )
-import Control.Type.Optic( Optic, KnownOptic, opticSing
-                         , Gettable(Get), Settable(Set)
-                         , RequiredIndices
-                         )
-import Data.Type.Map(Insert, Union, type (:++:))
+import Control.Type.Optic(Optic, Name, Gettable, Settable)
+import Data.Type.Map(Insert, Union, Append)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
 import FIR.Binding(BindingsMap, BindingType, Var, Fun)
 import FIR.Builtin(StageBuiltins, KnownStage)
 import FIR.Instances.AST()
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
-import FIR.Instances.Optics(Getter, Setter)
+import FIR.Instances.Optics(User, Assigner, KnownOptic, opticSing)
 import FIR.PrimTy(PrimTy, ScalarTy, KnownVars)
 import Math.Algebra.Class ( AdditiveGroup(..)
                           , Semiring(..), Ring(..)
@@ -104,33 +102,40 @@ entryPoint :: forall k s l i.
            => Codensity AST (AST () := l) (Union i (StageBuiltins s))
            -> Codensity AST (AST () := i) i
 
--- would want to make i and a invisible
-get :: forall i a (optic :: Optic i a).
-            ( GHC.Stack.HasCallStack
-            , KnownOptic optic
-            , Gettable i a optic
-            , Syntactic (CodGetter i optic)
-            , Internal (CodGetter i optic) ~ Getter i optic
-            )
-          => CodGetter i optic
+use :: forall optic.
+             ( GHC.Stack.HasCallStack
+             , KnownOptic optic
+             , Gettable optic
+             , Syntactic (CodUser optic)
+             , Internal (CodUser optic) ~ User optic
+             )
+           => CodUser optic
 
--- would want to make i and a invisible
-put :: forall i a (optic :: Optic i a).
-            ( GHC.Stack.HasCallStack
-            , KnownOptic optic
-            , Settable i a optic
-            , Syntactic (CodSetter i optic)
-            , Internal (CodSetter i optic) ~ Setter i optic
-            )
-          => CodSetter i optic
+assign :: forall optic.
+             ( GHC.Stack.HasCallStack
+             , KnownOptic optic
+             , Settable optic
+             , Syntactic (CodAssigner optic)
+             , Internal (CodAssigner optic) ~ Assigner optic
+             )
+           => CodAssigner optic
 
 
 def        = fromAST ( Def    @k @ps @a    @i Proxy Proxy       ) . toAST
 fundef'    = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
 entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
-get        = fromAST ( Get @i @a @optic       opticSing         )
-put        = fromAST ( Put @i @a @optic       opticSing         )
+use        = fromAST ( Use    @optic          opticSing         )
+assign     = fromAST ( Assign @optic          opticSing         )
 
+get :: forall k a (i :: BindingsMap).
+       ( KnownSymbol k, Gettable (Name k :: Optic '[] i a))
+    => Codensity AST (AST a := i) i
+get = use @(Name k :: Optic '[] i a)
+
+put :: forall k a (i :: BindingsMap).
+       ( KnownSymbol k, Settable (Name k :: Optic '[] i a))
+    => AST a -> Codensity AST (AST () := i) i
+put = assign @(Name k :: Optic '[] i a)
 
 fundef :: forall k as b l i r.
            ( GHC.Stack.HasCallStack
@@ -148,17 +153,21 @@ fundef = fromAST . toAST . fundef' @k @as @b @l @i
 --------------------------------------------------------------------------
 -- utility types for get/put
 
-type CodGetter i (o :: Optic i a) = CodVariadicList (RequiredIndices o              ) (Get o) i
-type CodSetter i (o :: Optic i a) = CodVariadicList (RequiredIndices o :++: '[Set o]) ()      i
-
-type family CodVariadicList
+type family ListVariadicCod
               ( as :: [Type]      )
               ( b  :: Type        )
               ( i  :: BindingsMap )
             = ( r  :: Type        )
             | r -> as i b  where
-  CodVariadicList '[]       b i = Codensity AST (AST b := i) i
-  CodVariadicList (a ': as) b i = AST a -> CodVariadicList as b i
+  ListVariadicCod '[]       b i = Codensity AST (AST b := i) i
+  ListVariadicCod (a ': as) b i = AST a -> ListVariadicCod as b i
+
+-- recall (defined in FIR.Instances.Optics):
+-- type User     (g :: Optic as i b) = ListVariadicIx as            b  i
+-- type Assigner (g :: Optic as i b) = ListVariadicIx (Append as b) () i
+
+type CodUser     (optic :: Optic ix i b) = ListVariadicCod ix            b  i
+type CodAssigner (optic :: Optic ix i b) = ListVariadicCod (Append ix b) () i
 
 --------------------------------------------------------------------------
 -- instances for codensity representation

@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
@@ -13,54 +14,56 @@
 module FIR.Labels where
 
 -- base
+import Data.Kind(Type)
+import Data.Proxy(Proxy)
 import qualified GHC.Stack
 import GHC.TypeLits(Symbol, KnownSymbol)
 import Prelude(Bool(True))
 
 -- fir
 import Control.Monad.Indexed(Codensity, (:=))
-import Control.Type.Optic(Optic(Name))
+import Control.Type.Optic(Optic, Name, Settable(Set))
 import Data.Type.Map(Insert)
 import FIR.AST(AST)
 import FIR.Binding(BindingsMap, Var, R, RW)
 import FIR.Instances.Bindings(ValidDef,Get, Put)
-import FIR.Instances.Codensity(def, get, put)
+import FIR.Instances.Codensity(def, use, assign)
 import FIR.PrimTy(PrimTy)
 
 -- short type synonym helpful for disambiguating
 -- e.g. : [...] @(S _ _)
 type S a i = Codensity AST (AST a := i) i
 
--- label 'k' for something of type 'a'
-data Label k a = Label
+data Label (k :: Symbol) (a :: Type) = Label
 
-data LabelAction
-  = AssignLabel
-  | GetLabel Symbol BindingsMap
+data LabelUsage
+  = Symbolic
+  | Use Symbol BindingsMap
 
-class IsLabel k a (t :: LabelAction) v
-    | v -> a, t v -> k, v k -> t
+class IsLabel k a (usage :: LabelUsage) v
+    | v -> a, usage v -> k, v k -> usage
     where
   fromLabel :: GHC.Stack.HasCallStack => v
 
-instance ( KnownSymbol k, PrimTy a
-         , t ~ AssignLabel
+instance ( KnownSymbol k
+         , PrimTy a
+         , usage ~ Symbolic
          )
-      => IsLabel k a t (Label k a) where
-  fromLabel = Label
+       => IsLabel k a usage (Label k a) where
+  fromLabel = Label @k @a
 
 instance ( KnownSymbol k, PrimTy a
          , a ~ Get k i
          , r ~ (AST a := i)
-         , t ~ 'GetLabel k i
+         , usage ~ 'Use k i
          )
-      => IsLabel k a t (Codensity AST r i) where
-  fromLabel = get @i @a @(Name k)
+      => IsLabel k a usage (Codensity AST r i) where
+  fromLabel = use @(Name k :: Optic '[] i a)
 
 
 infixr 4 #=
 infixr 4 #=!
---infixr 4 .=
+infixr 4 .=
 
 (#=) :: forall a k i.
         ( GHC.Stack.HasCallStack
@@ -84,7 +87,7 @@ _ #= a = def @k @RW a
      -> Codensity AST (AST a := Insert k (Var R a) i) i
 _ #=! a = def @k @R a
 
-{-
+
 (.=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
@@ -94,5 +97,4 @@ _ #=! a = def @k @R a
      => Label k a
      -> AST a
      -> Codensity AST (AST () := i) i
-_ .= a = put @i @a @(Name k) a
--}
+_ .= a = assign @(Name k :: Optic '[] i a) a
