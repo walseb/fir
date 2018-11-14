@@ -4,6 +4,8 @@ dist-newstyle/
 .ghc.*
 *.html
 *.project
+*.tmp
+*.fail
 
 shaders/
 

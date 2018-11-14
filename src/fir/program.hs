@@ -8,6 +8,7 @@
 
 module FIR.Program
   ( Program
+  , CodensityProgram
   , programGlobals
   )
   where
@@ -30,7 +31,8 @@ import Data.Type.Map (Union, InsertionSort)
 import FIR.AST(AST)
 import FIR.Binding(BindingsMap)
 import FIR.PrimTy(KnownVars(knownVars))
-import qualified SPIRV.PrimTy as SPIRV
+import qualified SPIRV.PrimTy  as SPIRV
+import qualified SPIRV.Storage as Storage
 
 type family Program 
     ( i :: BindingsMap )
@@ -56,4 +58,6 @@ type family CodensityProgram
 
 programGlobals :: forall i j a. KnownVars i
                => CodensityProgram i j a -> Map Text SPIRV.PrimTy
-programGlobals _ = Map.fromList . map (second fst) $ knownVars (Proxy @i)
+programGlobals _ = Map.fromList
+                 . map ( second ( \ (ty, _) -> SPIRV.Pointer Storage.Uniform ty ) )
+                 $ knownVars (Proxy @i)

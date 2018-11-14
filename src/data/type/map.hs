@@ -46,7 +46,7 @@ type family LookupKey (s :: k) (i :: [k :-> v]) :: Maybe k where
 -- insert a key/value pair in an already-sorted map
 type family Insert (s :: k) (t :: v) (i :: Map k v) :: Map k v where
   Insert k v '[]              = '[ k ':-> v ]
-  Insert k v ((k ':-> a) ': b) = TypeError
+  Insert k v ((k ':-> a) ': _) = TypeError
       (     Text "Duplicate key: "
        :$$: ShowType '[ (k ':-> v), (k ':-> a) ]
       )
@@ -59,7 +59,7 @@ type family Union (i :: Map k v) (j :: Map k v) :: Map k v where
   Union i ( (k ':-> a) ': b) = Union (Insert k a i) b
 
 type family Delete (s :: k) (i :: [k :-> v]) :: [k :-> v] where
-  Delete k '[]                = '[]
+  Delete _ '[]                = '[]
   Delete k ( (k ':-> _) ': i) = i -- assumes there are no duplicates
   Delete k ( _          ': i) = Delete k i
 
@@ -75,7 +75,7 @@ type family InsertionSort (i :: [k :-> v]) :: Map k v where
 -- utility functions
 
 type family Elem x as where
-  Elem x '[]       = 'False
+  Elem _ '[]       = 'False
   Elem x (x ': _ ) = 'True
   Elem x (_ ': as) = Elem x as
 
@@ -86,7 +86,7 @@ type family (:++:) (as :: [k]) (bs :: [k]) where
 type family Zip (msg :: ErrorMessage) (as :: [Type]) (bs :: [Type]) = (r :: [Type]) where
   Zip _  '[]        '[]       = '[]
   Zip msg (a ': as) (b ': bs) = (a,b) ': Zip msg as bs
-  Zip msg as bs = TypeError msg
+  Zip msg _ _ = TypeError msg
 
 type family Append (as :: [k]) (b :: k) = (r :: [k]) {-| r -> as b-} where
   Append '[]       b = '[b]
@@ -94,4 +94,4 @@ type family Append (as :: [k]) (b :: k) = (r :: [k]) {-| r -> as b-} where
 
 type family Length (as :: [k]) :: Nat where
   Length '[]       = 0
-  Length (a ': as) = 1 + Length as
+  Length (_ ': as) = 1 + Length as

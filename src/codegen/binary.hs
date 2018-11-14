@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments    #-}
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -25,6 +26,7 @@ import qualified Data.Set as Set
 
 -- text
 import Data.Text(Text)
+import qualified Data.Text as Text
 
 -- transformers
 import Control.Monad.Except(ExceptT)
@@ -43,7 +45,6 @@ import qualified SPIRV.ExecutionMode as SPIRV
 import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
-import qualified SPIRV.Storage       as SPIRV
 
 ----------------------------------------------------------------------------
 
@@ -228,22 +229,27 @@ putTypesAndConstants as bs
 -- annotations (decorations)
 
 putGlobals :: Map SPIRV.PrimTy Instruction
-           -> Map Text (ID, (SPIRV.PrimTy,SPIRV.StorageClass))          
+           -> Map Text (ID, SPIRV.PrimTy)          
            -> ExceptT Text Binary.PutM ()
 putGlobals typeIDs
   = traverse_
-      ( \(globalID, (ty, storage)) ->
-        do let ptrTy = SPIRV.Pointer storage ty
-           ptrTyID 
-             <- note
-                  ( error ( "putGlobals: pointer type " ++ show ptrTy ++ " not bound to any ID." ) )
-                  ( resID =<< Map.lookup ptrTy typeIDs )
-           lift $ putInstruction Map.empty
-                 Instruction
-                   { operation = SPIRV.Op.Variable
-                   , resTy = Just ptrTyID
-                   , resID = Just globalID
-                   , args  = Arg storage EndArgs
-                   }
+      ( \(globalID, ptrTy) ->
+        do  storage
+              <- note ( "putGlobals: non-pointer type " <> Text.pack (show ptrTy) )
+                    case ptrTy of
+                      SPIRV.Pointer stor _
+                        -> Just stor
+                      _ -> Nothing
+            ptrTyID 
+              <- note
+                   ( "putGlobals: pointer type " <> Text.pack (show ptrTy) <> " not bound to any ID." )
+                   ( resID =<< Map.lookup ptrTy typeIDs )
+            lift $ putInstruction Map.empty
+                  Instruction
+                    { operation = SPIRV.Op.Variable
+                    , resTy = Just ptrTyID
+                    , resID = Just globalID
+                    , args  = Arg storage EndArgs
+                    }
       )
                 

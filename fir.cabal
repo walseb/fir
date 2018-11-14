@@ -10,82 +10,116 @@ cabal-version:  >= 1.10
 
 library
 
+    hs-source-dirs:
+        src
+  
+    exposed-modules:
+        FIR
+      , FIR.Labels
+      , Math.Linear
+
+    other-modules:
+        CodeGen.Binary
+      , CodeGen.CodeGen
+      , CodeGen.Declarations
+      , CodeGen.Instruction
+      , CodeGen.Monad
+      , CodeGen.State
+      , Control.Arrow.Strength
+      , Control.Monad.Indexed
+      , Control.Type.Optic
+      , Data.Binary.Class.Put
+      , Data.Function.Variadic
+      , Data.Type.Map
+      , Deriving.Prelude
+      , FIR.AST
+      , FIR.Binding
+      , FIR.Builtin
+      , FIR.Instances.AST
+      , FIR.Instances.Bindings
+      , FIR.Instances.Codensity
+      , FIR.Instances.Optics
+      , FIR.PrimTy
+      , FIR.Program
+      , Math.Algebra.Class
+      , Math.Logic.Class
+      , SPIRV.Builtin
+      , SPIRV.Capability
+      , SPIRV.Decoration
+      , SPIRV.ExecutionMode
+      , SPIRV.Extension
+      , SPIRV.Operation
+      , SPIRV.PrimOp
+      , SPIRV.PrimTy
+      , SPIRV.Storage
+
+    build-depends: 
+        base
+          >= 4.12
+      , filepath
+      , binary
+      , bytestring
+      , containers
+      , mtl
+      , transformers
+      , tree-view
+      , text-utf8
+      , vector
+          >= 0.12.0.1
+      , data-binary-ieee754
+          >= 0.4.4
+      , half
+          >= 0.3
+      , lens
+          >= 4.16
+      , distributive
+          >= 0.6
+      , typelits-witnesses
+          >= 0.2.3
+      , ghc-typelits-knownnat 
+          >= 0.6
+      , ghc-typelits-natnormalise 
+          >= 0.6.2
+      -- for testing
+      , directory
+          >= 1.3.3.0
+      , process
+          >= 1.6.3.0
+
+    default-language:
+        Haskell2010
+
+    ghc-options:
+        -Wall
+        -fno-warn-orphans
+        -fno-warn-unticked-promoted-constructors
+        -fno-warn-unused-do-bind
+        -fwarn-missing-local-signatures
+        -fwarn-incomplete-uni-patterns
+        -fwarn-redundant-constraints
+
+    if impl(ghc >= 8.6)
+        default-extensions:
+            NoStarIsType
+
+
+test-suite fir-test
+
   hs-source-dirs:
-      src
+      test
 
-  exposed-modules:
-      CodeGen.Binary
-    , CodeGen.CodeGen
-    , CodeGen.Declarations
-    , CodeGen.Instruction
-    , CodeGen.Monad
-    , CodeGen.State
-    , Control.Arrow.Strength
-    , Control.Monad.Indexed
-    , Control.Type.Optic
-    , Data.Binary.Class.Put
-    , Data.Function.Variadic
-    , Data.Type.Map
-    , Deriving.Prelude
-    , FIR.AST
-    , FIR.Binding
-    , FIR.Builtin
-    , FIR.Instances.AST
-    , FIR.Instances.Bindings
-    , FIR.Instances.Codensity
-    , FIR.Instances.Optics
-    , FIR.Labels
-    , FIR.PrimTy
-    , FIR.Program
-    , Math.Algebra.Class
-    , Math.Logic.Class
-    , Math.Linear
-    , SPIRV.Builtin
-    , SPIRV.Capability
-    , SPIRV.Decoration
-    , SPIRV.ExecutionMode
-    , SPIRV.Extension
-    , SPIRV.Operation
-    , SPIRV.PrimOp
-    , SPIRV.PrimTy
-    , SPIRV.Storage
-    , Test
+  type:
+      detailed-0.9
 
-  build-depends: 
-      base
+  test-module:
+      Test
+
+  build-depends:
+      base 
         >= 4.12
-    , filepath
-    , binary
-    , bytestring
-    , containers
-    , mtl
-    , transformers
-    , tree-view
-    , text-utf8
-    , vector
-        >= 0.12.0.1
-    , data-binary-ieee754
-        >= 0.4.4
-    , half
-        >= 0.3
-    , lens
-        >= 4.16
-    , distributive
-        >= 0.6
-    , typelits-witnesses
-        >= 0.2.3
-    , ghc-typelits-knownnat 
-        >= 0.6
-    , ghc-typelits-natnormalise 
-        >= 0.6.2
+    , fir
 
-  default-language: Haskell2010
-  ghc-options: -Wall 
-               -fno-warn-orphans
-               -fno-warn-unticked-promoted-constructors
-               -fno-warn-unused-do-bind
-               -fwarn-missing-local-signatures
-               -fwarn-incomplete-uni-patterns
+  default-language:
+        Haskell2010
 
-  if impl(ghc >= 8.6)
-    default-extensions: NoStarIsType
+  

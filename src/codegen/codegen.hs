@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TupleSections       #-}
@@ -18,9 +19,11 @@ module CodeGen.CodeGen
 -- base
 import Control.Arrow(second)
 import Control.Monad((>>=),(>>), when, void)
+import Data.Coerce(coerce)
 import Data.Foldable(traverse_, toList)
 import Data.List(foldl1')
-import Data.Maybe(fromJust)
+import Data.Maybe(fromJust, listToMaybe)
+import Data.Semigroup(First(First))
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
 import GHC.TypeNats(natVal)
@@ -86,11 +89,14 @@ import CodeGen.Instruction ( Args(..), toArgs
                            , Pairs(Pairs)
                            )
 import FIR.AST(AST(..), Syntactic(fromAST), toTree)
+import FIR.Binding( Permission(Write)
+                  , KnownPermissions(permissions)
+                  )
 import FIR.Builtin( Stage, stageVal
                   , stageBuiltins, stageCapabilities
                   )
 import FIR.Instances.AST()
-import FIR.Instances.Optics(SOptic(..))
+import FIR.Instances.Optics(SOptic(..), showSOptic)
 import FIR.PrimTy( PrimTy(primTySing)
                  , primTy, primTyVal
                  , SPrimTy(..)
@@ -138,9 +144,27 @@ codeGenASTList = sequence . reverse . go
           go Nil = []
           go (as :& a) = codeGen a : go as
 
-astLength :: ASTList -> Int
-astLength Nil        = 0
-astLength (as :& _ ) = 1 + astLength as
+codeGenAny :: AnyAST -> CGMonad (ID, SPIRV.PrimTy)
+codeGenAny (AnyAST a) = codeGen a
+
+astListLength :: ASTList -> Int
+astListLength Nil        = 0
+astListLength (as :& _ ) = 1 + astListLength as
+
+astListHeadTail :: ASTList -> Maybe (AnyAST, ASTList)
+astListHeadTail Nil = Nothing
+astListHeadTail (as :& a) = Just (go a as)
+    where go :: AST a -> ASTList -> (AnyAST, ASTList)
+          go b Nil       = (AnyAST b, Nil)
+          go b (cs :& c) = second (:& b) (go c cs)
+
+----------------------------------------------------------------------------
+-- left-biased semigroup operation
+
+infixl 6 <<>
+
+(<<>) :: forall x. Maybe x -> Maybe x -> Maybe x
+(<<>) = coerce ( (<>) @(Maybe (First x)) )
 
 ----------------------------------------------------------------------------
 -- main code generator
@@ -154,7 +178,7 @@ codeGen (Applied (MkID ident@(_,ty)) as)
         case ty of
           SPIRV.Function xs y
             -> let totalArgs = length xs
-                   givenArgs = astLength as
+                   givenArgs = astListLength as
                in case compare totalArgs givenArgs of
                     EQ -> do retTyID <- typeID y
                              codeGenFunctionCall (retTyID, y) ident =<< codeGenASTList as
@@ -176,11 +200,29 @@ codeGen (Bind :$ a :$ f)
   = do cg <- codeGen a
        codeGen $ (fromAST f) (MkID cg)
 -- stateful operations
-codeGen (Def k _ :$ a)
-  = do  let name = Text.pack ( symbolVal k )
-        a_ID <- codeGen a
-        assign ( _knownBinding name ) (Just a_ID)
-        pure a_ID
+codeGen (Def k perms :$ a)
+  = do  let name     = Text.pack ( symbolVal k )
+            writable = Write `elem` permissions perms
+        debug ( putSrcInfo GHC.Stack.callStack ) 
+        (a_ID, a_ty) <- codeGen a
+        
+        -- check if we should make this into a pointer or not
+        let makeMutable
+              = case (a_ty, writable) of
+                  (SPIRV.Array _ _     , True) -> True
+                  (SPIRV.RuntimeArray _, True) -> True
+                  (SPIRV.Struct _      , True) -> True
+                  _                            -> False
+        a_ty2 <-
+            if makeMutable
+            then do let ptrTy = SPIRV.Pointer Storage.Function a_ty
+                    _ <- typeID ptrTy -- ensures pointer type is declared
+                    pure ptrTy
+            else pure a_ty
+        let cgRes = (a_ID, a_ty2)
+        
+        assign ( _localBinding name ) ( Just cgRes )
+        pure cgRes
 codeGen (FunDef k as b :$ body)
   = let argTys = map (second fst) (knownVars as)
         retTy  = primTyVal b
@@ -198,100 +240,70 @@ codeGen (Entry k s :$ body)
         ( stageVal s )
         ( Text.pack ( symbolVal k ) )
         ( codeGen body )
-{-
-codeGen (Get singOptic)
- = case singOptic of
-
-    SName k -> 
-      do let varName = Text.pack ( symbolVal k )
-         ctxt <- use _functionContext
-
-         case ctxt of
-
-           -- do we need to load a built-in variable?
-           EntryPoint stage stageName
-             | Just (ty, Storage.Input) <- lookup varName (stageBuiltins stage)
-             -> do builtin <- builtinID stage stageName varName
-                   loadInstruction ty Storage.Input builtin
-
-           -- are we looking up the value of a function argument?
-           Function as
-             | Just _ <- lookup varName as
-               -> note
-                    ( "codeGen: inconsistent local bindings for name " <> varName )
-                    =<< use ( _localBinding varName )
-
-           -- are we loading a user-defined variable (e.g. a uniform?)
-           _ -> do mbGlobal <- view ( _userGlobal varName )
-                   case mbGlobal of
-                      Just ty
-                        -> do global <- globalID varName ty Storage.Uniform
-                              loadInstruction ty Storage.Uniform global
-
-                      Nothing
-                        -> do mbKnown <- use ( _knownBinding varName )
-                              note
-                                ( "codeGen: cannot get variable,\
-                                  \ no variable with name " <> varName
-                                )
-                                mbKnown
-
-    _ -> throwError "codeGen: getter not supported"
-
-  where loadInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
-        loadInstruction ty storage loadeeID
-          = do tyID <- typeID ty
-               -- inelegantly ensure the TypePointer declaration exists
-               -- TODO: include this into the builtinID function?
-               _ <- typeID (SPIRV.Pointer storage ty)
-               v <- fresh
-               liftPut $ putInstruction Map.empty
-                 Instruction
-                   { operation = SPIRV.Op.Load
-                   , resTy = Just tyID
-                   , resID = Just v
-                   , args  = Arg loadeeID EndArgs
-                   }
-               pure (v, ty)
-codeGen (Put singOptic :$ a)
+codeGen (Applied (Use singOptic) is)
   = case singOptic of
 
-      SName k ->
+      SBinding k ->
         do  let varName = Text.pack ( symbolVal k )
-            (a_ID,a_ty) <- codeGen a
-            ctxt <- use _functionContext
+            bd@(bdID, bdTy) <- bindingID varName
+            case bdTy of
+              SPIRV.Pointer storage ty
+                -> loadInstruction ty storage bdID
+              _ -> pure bd
 
-            case ctxt of
+      SBinding k :%.: getter -> 
+        do  let varName = Text.pack ( symbolVal k )
+            bd@(bdID, bdTy) <- bindingID varName
+            indices <- map fst <$> codeGenASTList is
 
-               -- do we need to store into a built-in variable?
-               EntryPoint stage stageName
-                 | Just (ty, Storage.Output) <- lookup varName (stageBuiltins stage)
-                 -> do builtin <- builtinID stage stageName varName
-                       -- inelegantly ensure the TypePointer declaration exists
-                       -- TODO: include this into the builtinID function?
-                       _ <- typeID (SPIRV.Pointer Storage.Output ty)
-                       liftPut $ putInstruction Map.empty
-                         Instruction
-                           { operation = SPIRV.Op.Store
-                           , resTy = Nothing
-                           , resID = Nothing
-                           , args = Arg builtin
-                                  $ Arg a_ID EndArgs
-                           }
+            case bdTy of
+              SPIRV.Pointer storage ty
+                -> loadThroughAccessChain bdID indices getter
+              _ -> extractUsingGetter     bdID indices getter
 
-               -- is the variable local to a function?
-               Function as
-                 | Just _ <- lookup varName as
-                 -> assign (_localBinding varName) (Just (a_ID,a_ty))
+      _ -> throwError (   "codeGen: cannot 'use', unsupported optic:\n"
+                       <> Text.pack (showSOptic singOptic) <> "\n"
+                       <> "Optic does not start by accessing a binding."
+                      )
 
-               -- as we cannot store into user defined variables (e.g. uniforms)
-               -- there is only one possible case left to deal with
-               _ -> assign ( _knownBinding varName) (Just (a_ID,a_ty))
+codeGen (Applied (Assign singOptic) as)
+  = do  (a, is) <- note
+                      "codeGen: 'assign' not provided any arguments"
+                      ( astListHeadTail as )
 
-            pure (ID 0, SPIRV.Unit) -- ID should never be used
+        indices <- map fst <$> codeGenASTList is
 
-      _ -> throwError "codeGen: setter not supported"
--}
+        case singOptic of
+
+          SBinding k ->
+            do  let varName = Text.pack ( symbolVal k )
+                (a_ID,a_ty)     <- codeGenAny a
+                bd@(bdID, bdTy) <- bindingID varName
+
+                case bdTy of
+                  SPIRV.Pointer storage ty
+                    -> storeInstruction ty storage bdID a_ID
+                  _ -> assign ( _localBinding varName ) (Just bd)
+
+                pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+          SBinding k :%.: setter ->
+            do  let varName = Text.pack ( symbolVal k )
+                (a_ID,a_ty)     <- codeGenAny a
+                bd@(bdID, bdTy) <- bindingID varName
+
+                case bdTy of
+                  SPIRV.Pointer storage ty
+                    -> storeThroughAccessChain bdID a_ID indices setter 
+                  _ -> insertUsingSetter       bdID a_ID indices setter 
+
+                pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+          _ -> throwError (   "codeGen: cannot 'assign', unsupported optic:\n"
+                           <> Text.pack (showSOptic singOptic) <> "\n"
+                           <> "Optic does not start by accessing a binding."
+                          )
+
 codeGen (Applied (PrimOp primOp _) as)
   = codeGenPrimOp primOp =<< codeGenASTList as
 codeGen (Applied (MkVector n_px ty_px) as)
@@ -545,15 +557,18 @@ codeGen (While :$ cond :$ loopBody)
         block mergeBlock
         pure (ID 0, SPIRV.Unit) -- ID should never be used
        
-codeGen (Lam f) = error ( "codeGen: unexpected lambda abstraction:\n"
-                         <> show (Lam f)
-                        )
-codeGen (f :$ a) = error ( "codeGen: unsupported function application:\n"
-                          <> show (toTree (f :$ a))
-                         )
-codeGen other = error ( "codeGen: non-exhaustive pattern match:\n"
-                        <> show other
-                      )
+codeGen (Lam f)
+  = throwError ( "codeGen: unexpected lambda abstraction:\n"
+                <> Text.pack ( show (Lam f) )
+               )
+codeGen (f :$ a)
+  = throwError ( "codeGen: unsupported function application:\n"
+                 <> Text.pack ( show (toTree (f :$ a)) )
+                )
+codeGen other
+  = throwError ( "codeGen: non-exhaustive pattern match:\n"
+                 <> Text.pack ( show other )
+               )
 
 codeGenPrimOp :: SPIRV.PrimOp -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
 codeGenPrimOp primOp as
@@ -831,6 +846,39 @@ inEntryPointContext stage stageName action
        assign _functionContext TopLevel
        pure a
 
+
+
+----------------------------------------------------------------------------
+-- load/store through pointers
+
+loadInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
+loadInstruction ty storage loadeeID
+  = do  tyID <- typeID ty
+        -- inelegantly ensure the TypePointer declaration exists
+        _ <- typeID (SPIRV.Pointer storage ty)
+        v <- fresh
+        liftPut $ putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.Load
+            , resTy = Just tyID
+            , resID = Just v
+            , args  = Arg loadeeID EndArgs
+            }
+        pure (v, ty) 
+
+storeInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> ID -> CGMonad ()
+storeInstruction ty storage pointerID storeeID
+        -- ditto: ensure the TypePointer declaration exists
+  = do  _ <- typeID (SPIRV.Pointer storage ty)
+        liftPut $ putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.Store
+            , resTy = Nothing
+            , resID = Nothing
+            , args = Arg pointerID
+                   $ Arg storeeID EndArgs
+            }
+
 ----------------------------------------------------------------------------
 -- phi instructions
 
@@ -873,10 +921,87 @@ phiInstructions isRelevant blocks bindings
                       , resID = Just v
                       , args  = toArgs bdAndBlockIDs
                       }
-                  assign ( _knownBinding name ) (Just (v, ty))
+                  assign ( _localBinding name ) (Just (v, ty))
           _ -> pure ()
       )
       ( conflicts isRelevant bindings )
+
+----------------------------------------------------------------------------
+-- optics
+
+{-
+data OpticalNode
+  = Leaf
+  | Continue OpticalTree
+  | Combine  OpticalTree OpticalTree
+
+data OpticalTree = Node ID OpticalNode
+
+opticalTree :: [ID] -> SOptic optic -> m OpticalTree
+opticalTree (i : _) SAnIndexV   = pure (Node i Leaf)
+opticalTree (i : _) SAnIndexRTA = pure (Node i Leaf)
+opticalTree (i : _) SAnIndexA   = pure (Node i Leaf)
+opticalTree _ (SIndex n_px)
+  = let n :: Word32
+        n = fromIntegral ( natVal n_px )
+    in (\i -> Node i Leaf) <$> constID n
+opticalTree _ (SName k bds)
+  = let n :: Word32
+        n = error "todo" -- find which index "k" refers to
+    in (\i -> Node i Leaf) <$> constID n
+opticalTree is (opt1 :%.: opt2)
+  = do  let (is1, is2) = splitAt _ is
+        res1 = go is1 opt1
+        res2 = go is2 opt2
+        pure ( res1 `continue` res2 )
+    where continue :: OpticalTree -> OpticalTree -> OpticalTree
+          continue (Node i  Leaf          ) next
+            = Node i ( Continue next )
+          continue (Node i (Continue t)   ) next
+            = Node i ( Continue (t `continue` next) )
+          continue(Node i (Combine t1 t2)) next
+            = Node i ( Combine
+                          (t1 `continue` next)
+                          (t2 `continue` next)
+                     )
+opticalTree is (opt1 :%&: opt2)
+  = do (is1, is2) = unzip is
+       Combine <$> go is1 opt1 <*> go is2 opt2 
+opticalTree [] SAnIndexV
+  = throwError "opticalTree: missing runtime index for dynamic vector extraction"
+opticalTree [] SAnIndexRTA
+  = throwError "opticalTree: missing runtime index to access runtime array"
+opticalTree [] SAnIndexA
+  = throwError "opticalTree: missing runtime index to access array"
+opticalTree _ SBinding
+  = throwError "opticalTree: trying to access a binding within a binding"
+opticalTree is (SAll opt) = error "todo"
+-}
+
+
+loadThroughAccessChain
+  :: MonadError Text m
+  => ID -> [ID] -> SOptic optic -> m (ID, SPIRV.PrimTy)
+loadThroughAccessChain basePtrID indices soptic
+  = throwError "loadThroughAccessChain: todo"
+
+extractUsingGetter
+  :: MonadError Text m
+  => ID -> [ID] -> SOptic optic -> m (ID, SPIRV.PrimTy)
+extractUsingGetter baseID indices soptic
+  = throwError "extractUsingGetter: todo"
+
+storeThroughAccessChain
+  :: MonadError Text m
+  => ID -> ID -> [ID] -> SOptic optic -> m ()
+storeThroughAccessChain ptrID valID indices soptic
+  = throwError "storeThroughAccessChain: todo"
+
+insertUsingSetter
+  :: MonadError Text m
+  => ID -> ID -> [ID] -> SOptic optic -> m ()
+insertUsingSetter baseID valID indices soptic
+  = throwError "insertUsingSetter: todo"
 
 ----------------------------------------------------------------------------
 -- instructions generated along the way that need to be floated to the top
@@ -1092,7 +1217,6 @@ constID a =
   where _knownAConstant :: Lens' CGState (Maybe Instruction)
         _knownAConstant = _knownConstant ( aConstant a )
 
-
 builtinID :: (MonadState CGState m, MonadFresh ID m)
           => Stage -> Text -> Text -> m ID
 builtinID stage stageName builtinName =
@@ -1100,6 +1224,29 @@ builtinID stage stageName builtinName =
     id
     pure
 
+bindingID :: ( MonadState CGState m
+             , MonadReader CGContext m
+             , MonadError Text m
+             , MonadFresh ID m
+             ) => Text -> m (ID, SPIRV.PrimTy)
+bindingID varName
+  = do  ctxt <- use _functionContext
+        case ctxt of
+          EntryPoint stage stageName
+            | Just ptrTy <- lookup varName (stageBuiltins stage)
+            -> do builtin <- builtinID stage stageName varName
+                  pure (builtin, ptrTy)
+                
+          _ -> do loc   <- use ( _localBinding varName )
+                  known <- use ( _knownBinding varName )
+                  glob  <- globalID varName
+                  case loc <<> known <<> glob of
+                    Nothing
+                      -> throwError ( "codeGen: no binding with name "
+                                      <> varName
+                                    )
+        
+                    Just idTy -> pure idTy
 
 addMemberName :: MonadState CGState m 
               => ID -> Word32 -> Text -> m ()
@@ -1108,12 +1255,21 @@ addMemberName structTyID index name
       ( Set.insert (structTyID, Right (index,name)) )
 
 
-globalID :: (MonadState CGState m, MonadFresh ID m)
-         => Text -> SPIRV.PrimTy -> SPIRV.StorageClass -> m ID
-globalID globalName ty storage =
-  tryToUse ( _usedGlobal globalName )
-    fst
-    ( pure . ( , (ty,storage) ) )
+globalID :: ( MonadState CGState m
+            , MonadReader CGContext m
+            , MonadFresh ID m
+            )
+         => Text -> m ( Maybe (ID, SPIRV.PrimTy) )
+globalID globalName
+  = do glob <- view ( _userGlobal globalName )
+       case glob of
+         Nothing
+           -> pure Nothing
+         Just ptrTy
+           -> do ident <- tryToUse ( _usedGlobal globalName )
+                            fst
+                            ( pure . ( , ptrTy ) )
+                 pure ( Just (ident, ptrTy) )
 
 stringLit :: (MonadState CGState m, MonadFresh ID m)
           => Text -> m ID

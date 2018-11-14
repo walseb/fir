@@ -31,7 +31,6 @@ import FIR.PrimTy(AConstant)
 import qualified SPIRV.Capability as SPIRV
 import qualified SPIRV.Extension  as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV
-import qualified SPIRV.Storage    as SPIRV
 
 ----------------------------------------------------------------------------
 -- code generator monad
@@ -52,7 +51,7 @@ data CGState
       , annotations         :: Set               Instruction
       , knownTypes          :: Map SPIRV.PrimTy  Instruction
       , knownConstants      :: Map AConstant     Instruction
-      , usedGlobals         :: Map Text          (ID, (SPIRV.PrimTy, SPIRV.StorageClass))
+      , usedGlobals         :: Map Text          (ID, SPIRV.PrimTy)
       , knownBindings       :: Map Text          (ID, SPIRV.PrimTy)
       , localBindings       :: Map Text          (ID, SPIRV.PrimTy)
       }
@@ -129,10 +128,10 @@ _knownStringLit lit = _knownStringLits . at lit
 _names :: Lens' CGState ( Set (ID, Either Text (Word32, Text)) )
 _names = lens names ( \s v -> s { names = v } )
 
-_usedGlobals :: Lens' CGState (Map Text (ID, (SPIRV.PrimTy, SPIRV.StorageClass)))
+_usedGlobals :: Lens' CGState (Map Text (ID, SPIRV.PrimTy))
 _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
 
-_usedGlobal :: Text -> Lens' CGState (Maybe (ID, (SPIRV.PrimTy, SPIRV.StorageClass)))
+_usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _usedGlobal name = _usedGlobals . at name
 
 _interfaces :: Lens' CGState (Map (Stage, Text) (Set Text))
@@ -151,7 +150,7 @@ _builtin stage stageName builtinName
       ( \s mb_i -> case mb_i of
          Nothing -> s
          Just i  -> set _interfaceBuiltin (Just ())
-                  . set _usedBuiltin      (Just (i,(ty,storage)))
+                  . set _usedBuiltin      (Just (i,ty))
                   $ s
       )
   where affineTraverse :: (Monoid a, Functor f) => (a -> f b) -> (Maybe a -> f (Maybe b))
@@ -163,12 +162,11 @@ _builtin stage stageName builtinName
                           . affineTraverse
                           . at builtinName
 
-        _usedBuiltin :: Lens' CGState (Maybe (ID, (SPIRV.PrimTy, SPIRV.StorageClass)))
+        _usedBuiltin :: Lens' CGState (Maybe (ID, SPIRV.PrimTy))
         _usedBuiltin = _usedGlobal builtinName
 
         ty :: SPIRV.PrimTy
-        storage :: SPIRV.StorageClass
-        (ty, storage) =
+        ty =
           fromMaybe
             ( error ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
                         \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName

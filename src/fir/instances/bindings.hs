@@ -65,11 +65,13 @@ type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding
       :$$: Text "In-scope bindings are:"
       :$$: ShowType i
     )
-  PutBinding k i ('Just (Fun as b)) = TypeError
-    (      Text "'put': function bound at name " :<>: ShowType k :<>: Text ": " :<>: ShowType (Fun as b) :<>: Text "."
+  PutBinding k _ ('Just (Fun as b)) = TypeError
+    (      Text "'put': function bound at name "
+      :<>: ShowType k :<>: Text ": "
+      :<>: ShowType (Fun as b) :<>: Text "."
       :$$: Text "Use 'fundef' to define a function."
     )
-  PutBinding k i ('Just (Var ps a))
+  PutBinding k _ ('Just (Var ps a))
     = If
         (Elem 'Write ps)
         a
@@ -127,7 +129,7 @@ type family NotHigherOrder'
      :$$: Text "Function definitions can only abstract over variables, not over functions."
     )
   NotHigherOrder' k as l as_rec ((_ ':-> Var _ _) ': l_rec) = NotHigherOrder' k as l as_rec l_rec
-  NotHigherOrder' k as l _      ((v ':-> Fun _ _) ': _    ) = TypeError
+  NotHigherOrder' k _  l _      ((v ':-> Fun _ _) ': _    ) = TypeError
     (     Text "'fundef': unexpected nested function definition inside function " :<>: ShowType k :<>: Text ":"
      :$$: Text "local name " :<>: ShowType v :<>: Text " binds a function."
      :$$: Text "Local bindings for " :<>: ShowType k :<>: Text " are:"

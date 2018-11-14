@@ -77,7 +77,7 @@ mkArray :: forall n a. KnownNat n => Array.Vector a -> Array n a
 mkArray arr
   = let n = (fromIntegral (natVal (Proxy @n)))
     in MkArray @n (Array.slice 0 n arr)
-    
+
 
 deriving instance Eq   a => Eq   (Array l a)
 deriving instance Ord  a => Ord  (Array l a)

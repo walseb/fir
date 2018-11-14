@@ -70,16 +70,16 @@ import Math.Algebra.Class(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRin
 infixr 3 :.
 
 data V :: Nat -> Type -> Type where
-  Nil :: V 0 a
-  (:.) :: KnownNat n => a -> V n a -> V (n+1) a
+  Nil  :: V 0 a
+  (:.) :: a -> V n a -> V (n+1) a
 
-deriving instance KnownNat n => Functor     (V n)
-deriving instance KnownNat n => Foldable    (V n)
-deriving instance KnownNat n => Traversable (V n)
-deriving instance (KnownNat n, Show a) => Show (V n a)
+deriving instance Functor     (V n)
+deriving instance Foldable    (V n)
+deriving instance Traversable (V n)
+deriving instance Show a => Show (V n a)
 
-deriving instance (KnownNat n, Prelude.Eq  a) => Prelude.Eq  (V n a)
-deriving instance (KnownNat n, Prelude.Ord a) => Prelude.Ord (V n a)
+deriving instance Prelude.Eq  a => Prelude.Eq  (V n a)
+deriving instance Prelude.Ord a => Prelude.Ord (V n a)
 
 instance (KnownNat n, Binary a) => Binary (V n a) where
   put = traverse_ put
@@ -449,12 +449,12 @@ class Module (Vector m) => Matrix m where
   (*!) = flip (!*) -- SPIRV defines MatrixTimesScalar
 
 newtype M m n a = M { unM :: V m (V n a) }
-deriving instance (KnownNat m, KnownNat n, Prelude.Eq  a) => Prelude.Eq  (M m n a)
+deriving instance Prelude.Eq a => Prelude.Eq (M m n a)
 deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
 deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
 deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
-deriving instance (KnownNat m, KnownNat n) => Functor     (M m n)
+deriving instance Functor (M m n)
 deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
 deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
 deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)

@@ -29,7 +29,7 @@ import Math.Linear(V)
 import qualified SPIRV.Capability    as SPIRV(Capability)
 import qualified SPIRV.Capability    as Capability
 import qualified SPIRV.ExecutionMode as SPIRV(ExecutionModel(ExecutionModel))
-import qualified SPIRV.PrimTy        as SPIRV(PrimTy)
+import qualified SPIRV.PrimTy        as SPIRV(PrimTy(Pointer))
 import qualified SPIRV.Storage       as SPIRV
 
 
@@ -176,20 +176,26 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_SubgroupLocalInvocationId" ':-> Var R Word32
        ]
 
-stageBuiltins :: Stage -> [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
-stageBuiltins Vertex                 = builtinStorage . knownVars $ Proxy @(StageBuiltins Vertex                )
-stageBuiltins TessellationControl    = builtinStorage . knownVars $ Proxy @(StageBuiltins TessellationControl   )
-stageBuiltins TessellationEvaluation = builtinStorage . knownVars $ Proxy @(StageBuiltins TessellationEvaluation)
-stageBuiltins Geometry               = builtinStorage . knownVars $ Proxy @(StageBuiltins Geometry              )
-stageBuiltins Fragment               = builtinStorage . knownVars $ Proxy @(StageBuiltins Fragment              )
-stageBuiltins GLCompute              = builtinStorage . knownVars $ Proxy @(StageBuiltins GLCompute             )
-stageBuiltins Kernel                 = builtinStorage . knownVars $ Proxy @(StageBuiltins Kernel                )
+stageBuiltins :: Stage -> [ (Text, SPIRV.PrimTy) ]
+stageBuiltins Vertex                 = builtinPointer . knownVars $ Proxy @(StageBuiltins Vertex                )
+stageBuiltins TessellationControl    = builtinPointer . knownVars $ Proxy @(StageBuiltins TessellationControl   )
+stageBuiltins TessellationEvaluation = builtinPointer . knownVars $ Proxy @(StageBuiltins TessellationEvaluation)
+stageBuiltins Geometry               = builtinPointer . knownVars $ Proxy @(StageBuiltins Geometry              )
+stageBuiltins Fragment               = builtinPointer . knownVars $ Proxy @(StageBuiltins Fragment              )
+stageBuiltins GLCompute              = builtinPointer . knownVars $ Proxy @(StageBuiltins GLCompute             )
+stageBuiltins Kernel                 = builtinPointer . knownVars $ Proxy @(StageBuiltins Kernel                )
 
 storageFromPermissions :: [Permission] -> SPIRV.StorageClass
 storageFromPermissions p
   | Write `elem` p = SPIRV.Output
   | otherwise      = SPIRV.Input
 
-builtinStorage :: [ (Text, (SPIRV.PrimTy, [Permission])) ]
-               -> [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
-builtinStorage = map (second (second storageFromPermissions))
+builtinPointer :: [ (Text, (SPIRV.PrimTy, [Permission])) ]
+               -> [ (Text, SPIRV.PrimTy) ]
+builtinPointer
+  = map 
+      ( second
+          ( ( \ (ty, storage) -> SPIRV.Pointer storage ty )
+          . second storageFromPermissions
+          )
+      )

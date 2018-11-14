@@ -15,14 +15,13 @@ module FIR.Labels where
 
 -- base
 import Data.Kind(Type)
-import Data.Proxy(Proxy)
 import qualified GHC.Stack
 import GHC.TypeLits(Symbol, KnownSymbol)
 import Prelude(Bool(True))
 
 -- fir
 import Control.Monad.Indexed(Codensity, (:=))
-import Control.Type.Optic(Optic, Name, Settable(Set))
+import Control.Type.Optic(Optic, Name)
 import Data.Type.Map(Insert)
 import FIR.AST(AST)
 import FIR.Binding(BindingsMap, Var, R, RW)

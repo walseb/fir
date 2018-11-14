@@ -38,7 +38,7 @@ import Control.Monad.Indexed( (:=)(AtKey), Codensity(Codensity)
 import Control.Type.Optic(Optic, Name, Gettable, Settable)
 import Data.Type.Map(Insert, Union, Append)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
-import FIR.Binding(BindingsMap, BindingType, Var, Fun)
+import FIR.Binding(BindingsMap, BindingType, Var, Fun, KnownPermissions)
 import FIR.Builtin(StageBuiltins, KnownStage)
 import FIR.Instances.AST()
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
@@ -77,6 +77,7 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 def :: forall k ps a i.
        ( GHC.Stack.HasCallStack
        , KnownSymbol k
+       , KnownPermissions ps
        , PrimTy a
        , ValidDef k i ~ 'True
        )

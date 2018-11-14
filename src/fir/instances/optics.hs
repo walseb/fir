@@ -21,7 +21,6 @@ import Data.Kind(Type)
 import Data.Type.Bool(If)
 import Data.Type.Equality(type (==))
 import Data.Proxy(Proxy(Proxy))
-import Data.Word(Word32)
 import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
                    , TypeError
                    , ErrorMessage(Text, ShowType, (:<>:), (:$$:))
@@ -56,45 +55,14 @@ import FIR.Binding( BindingsMap
                   )
 import qualified FIR.Instances.Bindings as Binding
 import FIR.PrimTy( PrimTy, IntegralTy
-                 , SPrimTy(SStruct)
                  , ScalarTy(scalarTySing), SScalarTy
                  , PrimTyBindings(primTyBindings)
-                 , SPrimTyBindings(SNilBindings,SConsBindings)
+                 , SPrimTyBindings
                  , Array(MkArray)
                  , RuntimeArray(MkRuntimeArray)
-                 , Struct(End,(:&))
+                 , Struct((:&))
                  )
 import Math.Linear(V, M(M), (^!), at)
-
-----------------------------------------------------------------------
--- for testing
-
--- to force evaluation in GHCi
-type family Id (a :: k) :: k
-type instance Id (a :: k) = a
-
-type I = '[ "x" ':-> Var W (M 3 4 Int)
-          , "y" ':-> Var R (Array 4 Float)
-          , "z" ':-> Var RW
-                      ( Struct 
-                         '[ "f1" ':-> Float
-                          , "f2" ':-> Array 17 (M 3 4 Double)
-                          , "f3" ':-> Struct '[ "x" ':-> RuntimeArray Word
-                                              , "l" ':-> Bool
-                                              ]
-                          , "f4" ':-> Float
-                          ]
-                      )
-          , "w" ':-> Var RW
-                      ( RuntimeArray
-                        ( RuntimeArray
-                            ( Struct '[ "m" ':-> Int
-                                      , "n" ':-> Array 9 Word
-                                      ]
-                            )
-                        )
-                      )
-          ]
 
 ----------------------------------------------------------------------
 -- singletons
@@ -306,7 +274,7 @@ instance ( KnownSymbol k
        => ReifiedGetter
              (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
        where
-  view (a :& as) = a
+  view (a :& _) = a
 instance {-# OVERLAPPABLE #-}
          ( KnownSymbol k
          , r ~ StructElemFromName
@@ -323,7 +291,7 @@ instance {-# OVERLAPPABLE #-}
        => ReifiedGetter
             (Name_ k :: Optic empty (Struct (a ': as)) r)
        where
-  view (a :& as) = view @(Name_ (If (r == r) k k) :: Optic '[] (Struct as) r) as
+  view (_ :& as) = view @(Name_ (If (r == r) k k) :: Optic '[] (Struct as) r) as
 
 
 instance ( KnownNat n
@@ -336,7 +304,7 @@ instance ( r ~ Value (StructElemFromIndex (Text "get: ") 0 (a ': as) 0 (a ': as)
       => ReifiedGetter
            (Index_ 0 :: Optic empty (Struct (a ': as)) r)
        where
-  view (a :& as) = a
+  view (a :& _) = a
 instance {-# OVERLAPPABLE #-}
          ( KnownNat n, 1 <= n
          , r ~ Value (StructElemFromIndex (Text "get: ") n (a ': as) n (a ': as))
@@ -348,7 +316,7 @@ instance {-# OVERLAPPABLE #-}
       => ReifiedGetter
           (Index_ n :: Optic empty (Struct (a ': as)) r)
       where
-  view (a :& as) = view @(Index_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) as
+  view (_ :& as) = view @(Index_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) as
 
 instance
     TypeError (    Text "get: attempt to access struct element \
@@ -728,9 +696,9 @@ instance (AllValuesEqual v as ~ 'True)
   type MonoType (Struct ((k ':-> v) ': as)) = v
 
 type family AllValuesEqual (a :: v) (as :: [k :-> v]) :: Bool where
-  AllValuesEqual v '[]                 = True
+  AllValuesEqual _ '[]                 = True
   AllValuesEqual v ( (_ ':-> v) ': as) = AllValuesEqual v as
-  AllValuesEqual v ( (_ ':-> w) ': _ ) = False
+  AllValuesEqual _ _                   = False
 
 ----------------------------------------------------------------------
 -- helper type families for structs
@@ -823,7 +791,7 @@ type family Diag :: Optic '[] (M n n a) (V n a) where
 type Center = All Diag
 
 type family SwizzleReturn (a :: Type) (ks :: [Symbol]) :: Type where
-  SwizzleReturn a '[k] = a
+  SwizzleReturn a '[_] = a
   SwizzleReturn a  ks  = V (Length ks) a
 
 type family Swizzle (swizzle :: [Symbol]) :: Optic '[] (V n a) (SwizzleReturn a swizzle) where

@@ -15,7 +15,7 @@ import GHC.TypeNats(Nat)
 import qualified Data.Vector as Array
 
 -- fir
-import Data.Type.Map((:->)((:->)))
+import Data.Type.Map((:->))
 
 ------------------------------------------------------------
 

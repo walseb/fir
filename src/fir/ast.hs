@@ -27,11 +27,11 @@ import Data.Tree.View(showTree)
 -- fir
 import CodeGen.Instruction(ID(ID))
 import CodeGen.Monad(MonadFresh(fresh), runFreshSuccT)
-import Control.Type.Optic(Optic, Gettable, Settable)
+import Control.Type.Optic(Gettable, Settable)
 import Control.Monad.Indexed((:=))
 import Data.Function.Variadic(NatVariadic)
 import Data.Type.Map(Insert, Union)
-import FIR.Binding(BindingType, Var, Fun)
+import FIR.Binding(BindingType, Var, Fun, KnownPermissions)
 import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
 import FIR.Instances.Optics(User, Assigner, KnownOptic, SOptic, showSOptic)
@@ -57,6 +57,7 @@ data AST :: Type -> Type where
   Def :: forall k ps a i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
+        , KnownPermissions ps
         , PrimTy a
         , ValidDef k i ~ 'True
         )

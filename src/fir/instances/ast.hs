@@ -41,8 +41,7 @@ import GHC.TypeNats( KnownNat, natVal
 import Type.Reflection(typeRep)
 
 -- fir
-import Control.Type.Optic( Optic(..)
-                         , Gettable, ReifiedGetter(view)
+import Control.Type.Optic( Gettable, ReifiedGetter(view)
                          , Settable, ReifiedSetter(set)
                          )
 import Data.Function.Variadic(NatVariadic)
@@ -261,6 +260,15 @@ instance Syntactic () where
   type Internal () = ()
   toAST   = lit
   fromAST = const ()
+
+{-
+instance (Syntactic a, Syntactic b) => Syntactic (a,b) where
+  type Internal (a,b) = Struct '[ "_0" ':-> a
+                                , "_1" ':-> b
+                                ]
+  toAST (a,b) = a :& b :& End
+  fromAST (a :& b :& End) = (a,b)
+-}
 
 instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   type Internal (a -> b) = Internal a -> Internal b
