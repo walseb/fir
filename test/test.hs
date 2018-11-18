@@ -6,8 +6,7 @@ module Test where
 -- base
 import Control.Arrow ( second )
 import Control.Monad ( when, replicateM )
-import Prelude hiding ( readFile, writeFile )
-import System.IO ( openBinaryTempFile, hClose, hWaitForInput )
+import System.IO ( openBinaryTempFile, hClose )
 
 -- bytestring
 import Data.ByteString ( ByteString )
@@ -17,17 +16,17 @@ import qualified Data.ByteString       as ByteString ( readFile, writeFile
 import qualified Data.ByteString.Char8 as ByteString ( lines, unlines )
 
 -- directory
-import System.Directory( doesFileExist, renameFile, removeFile )
+import System.Directory ( doesFileExist, renameFile, removeFile )
 
 -- filepath
-import System.FilePath( (</>), (<.>), replaceExtension, splitFileName )
+import System.FilePath ( (</>), (<.>), replaceExtension, splitFileName )
 
 -- process
-import System.Process( proc, createProcess
-                     , CreateProcess(std_in, std_out, std_err)
-                     , StdStream(UseHandle, CreatePipe)
-                     , waitForProcess
-                     )
+import System.Process ( proc, createProcess
+                      , CreateProcess(std_in, std_out, std_err)
+                      , StdStream(UseHandle, CreatePipe)
+                      , waitForProcess
+                      )
 
 -- text-utf8
 import Data.Text ( Text )
@@ -38,16 +37,18 @@ import qualified Data.Text    as Text ( pack, lines
 import qualified Data.Text.IO as Text ( readFile, hPutStrLn )
 
 -- fir
-import FIR(Arg(NoCode, Debug))
+import FIR ( Arg(NoCode, Debug) )
 
 --------------------------------------------------
 
 tests :: [ (FilePath, Test) ]
-tests = [ ("functor" </> "applicative"  , Validate )
-        , ("functor" </> "functor"      , Validate )
-        , ("optics"  </> "good"         , Validate )
-        , ("optics"  </> "nostructfield", TypeCheck)
-        , ("optics"  </> "nostructindex", TypeCheck)
+tests = [ ( "control" </> "toplevel"     , TypeCheck )
+        , ( "control" </> "loop"         , Validate  )
+        , ( "functor" </> "applicative"  , Validate  )
+        , ( "functor" </> "functor"      , Validate  )
+        , ( "optics"  </> "good"         , Validate  )
+        , ( "optics"  </> "nostructfield", TypeCheck )
+        , ( "optics"  </> "nostructindex", TypeCheck )
         ]
 
 runTests :: IO [ (FilePath, Test, TestOutput) ]

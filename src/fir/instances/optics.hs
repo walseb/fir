@@ -40,7 +40,7 @@ import qualified Data.Vector as Array
 import Control.Monad.Indexed((:=))
 import Control.Type.Optic( Optic(..)
                          , Gettable, ReifiedGetter(view)
-                         , Settable, ReifiedSetter(set)
+                         , Settable, ReifiedSetter(set )
                          , Container(..)
                          , MonoContainer(..)
                          , (:.:), (:&:), Index, All
@@ -50,9 +50,7 @@ import Data.Type.Map ( (:->)((:->)), Key, Value
                      , Append, type (:++:)
                      , Length
                      )
-import FIR.Binding( BindingsMap
-                  , Var, R, W, RW
-                  )
+import FIR.Binding( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
 import FIR.PrimTy( PrimTy, IntegralTy
                  , ScalarTy(scalarTySing), SScalarTy

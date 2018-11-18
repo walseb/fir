@@ -68,7 +68,7 @@ import Math.Logic.Class hiding(All)
 ------------------------------------------------
 
 draw :: Program i j a -> IO ()
-draw program = drawTree . toTree . toAST $ program
+draw = drawTree . toTree . toAST
 
 data Arg
   = NoCode

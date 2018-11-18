@@ -35,7 +35,8 @@ import GHC.TypeNats(KnownNat)
 import Control.Monad.Indexed( (:=)(AtKey), Codensity(Codensity)
                             , ixFmap, ixPure, ixLiftA2
                             )
-import Control.Type.Optic(Optic, Name, Gettable, Settable)
+import qualified Control.Monad.Indexed as Indexed
+import Control.Type.Optic(Optic, Name, Gettable, Settable, Part, Whole, Indices)
 import Data.Type.Map(Insert, Union, Append)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
 import FIR.Binding(BindingsMap, BindingType, Var, Fun, KnownPermissions)
@@ -61,6 +62,12 @@ import Math.Logic.Class ( Eq(..), Boolean(..)
                         )
 
 --------------------------------------------------------------------------
+-- utility type synonym, useful for disambiguation
+
+type C a i = Codensity AST ( AST a := i ) i
+
+--------------------------------------------------------------------------
+-- syntactic
 
 instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
   type Internal (Codensity AST (a := j) i) = (Internal a := j) i
@@ -121,7 +128,6 @@ assign :: forall optic.
              )
            => CodAssigner optic
 
-
 def        = fromAST ( Def    @k @ps @a    @i Proxy Proxy       ) . toAST
 fundef'    = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
 entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
@@ -129,12 +135,12 @@ use        = fromAST ( Use    @optic          opticSing         )
 assign     = fromAST ( Assign @optic          opticSing         )
 
 get :: forall k a (i :: BindingsMap).
-       ( KnownSymbol k, Gettable (Name k :: Optic '[] i a))
+       ( KnownSymbol k, Gettable (Name k :: Optic '[] i a) )
     => Codensity AST (AST a := i) i
 get = use @(Name k :: Optic '[] i a)
 
 put :: forall k a (i :: BindingsMap).
-       ( KnownSymbol k, Settable (Name k :: Optic '[] i a))
+       ( KnownSymbol k, Settable (Name k :: Optic '[] i a) )
     => AST a -> Codensity AST (AST () := i) i
 put = assign @(Name k :: Optic '[] i a)
 
@@ -152,23 +158,69 @@ fundef :: forall k as b l i r.
 fundef = fromAST . toAST . fundef' @k @as @b @l @i
 
 --------------------------------------------------------------------------
--- utility types for get/put
+-- type synonyms for use/assign
 
 type family ListVariadicCod
               ( as :: [Type]      )
               ( b  :: Type        )
-              ( i  :: BindingsMap )
+              ( s  :: BindingsMap )
             = ( r  :: Type        )
-            | r -> as i b  where
-  ListVariadicCod '[]       b i = Codensity AST (AST b := i) i
-  ListVariadicCod (a ': as) b i = AST a -> ListVariadicCod as b i
+            | r -> as b s  where
+  ListVariadicCod '[]       b s = Codensity AST (AST b := s) s
+  ListVariadicCod (a ': as) b s = AST a -> ListVariadicCod as b s
 
 -- recall (defined in FIR.Instances.Optics):
--- type User     (g :: Optic as i b) = ListVariadicIx as            b  i
--- type Assigner (g :: Optic as i b) = ListVariadicIx (Append as b) () i
+-- type User     (g :: Optic is s a) = ListVariadicIx is            a  s
+-- type Assigner (g :: Optic is s a) = ListVariadicIx (Append is a) () s
 
-type CodUser     (optic :: Optic ix i b) = ListVariadicCod ix            b  i
-type CodAssigner (optic :: Optic ix i b) = ListVariadicCod (Append ix b) () i
+type CodUser     (optic :: Optic is s a) = ListVariadicCod is            a  s
+type CodAssigner (optic :: Optic is s a) = ListVariadicCod (Append is a) () s
+
+--------------------------------------------------------------------------
+-- modifying
+
+type family VariadicCodModifier
+              ( is :: [Type] )
+              ( s  :: BindingsMap )
+              ( a  :: Type )
+            = ( r  :: Type )
+            | r -> is s a
+            where
+  VariadicCodModifier '[]       s a = (AST a -> AST a) -> Codensity AST (AST () := s) s
+  VariadicCodModifier (i ': is) s a = AST i -> VariadicCodModifier is s a
+
+type CodModifier (optic :: Optic is s a) = VariadicCodModifier is s a
+
+modifying
+    :: forall optic.
+       ( GHC.Stack.HasCallStack
+       , KnownOptic optic
+       , Settable optic
+       , Gettable optic
+       , Syntactic (CodUser optic)
+       , Internal (CodUser optic) ~ User optic
+       , Syntactic (CodAssigner optic)
+       , Internal (CodAssigner optic) ~ Assigner optic
+       , Modifier (Indices optic) (Whole optic) (Part optic)
+       )
+    => CodModifier optic
+modifying
+  = modifier @(Indices optic) @(Whole optic) @(Part optic)
+      ( use    @optic )
+      ( assign @optic )
+
+class Modifier is s a where
+  modifier :: ListVariadicCod is            a  s
+           -> ListVariadicCod (Append is a) () s
+           -> VariadicCodModifier is s a
+
+instance Modifier '[] s b where
+  modifier used assigned f
+    = (ixFmap f used) Indexed.>>= assigned
+
+instance Modifier is s b => Modifier (i ': is) s b where
+  modifier used assigned i
+    = modifier @is @s @b (used i) (assigned i)
 
 --------------------------------------------------------------------------
 -- instances for codensity representation

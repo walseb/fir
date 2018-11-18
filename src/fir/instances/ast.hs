@@ -41,9 +41,6 @@ import GHC.TypeNats( KnownNat, natVal
 import Type.Reflection(typeRep)
 
 -- fir
-import Control.Type.Optic( Gettable, ReifiedGetter(view)
-                         , Settable, ReifiedSetter(set)
-                         )
 import Data.Function.Variadic(NatVariadic)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
 import FIR.PrimTy( PrimTy, primTy, ScalarTy, scalarTy

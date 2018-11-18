@@ -26,7 +26,7 @@ import Data.Type.Map(Insert)
 import FIR.AST(AST)
 import FIR.Binding(BindingsMap, Var, R, RW)
 import FIR.Instances.Bindings(ValidDef,Get, Put)
-import FIR.Instances.Codensity(def, use, assign)
+import FIR.Instances.Codensity(def, use, assign, modifying)
 import FIR.PrimTy(PrimTy)
 
 -- short type synonym helpful for disambiguating
@@ -97,3 +97,14 @@ _ #=! a = def @k @R a
      -> AST a
      -> Codensity AST (AST () := i) i
 _ .= a = assign @(Name k :: Optic '[] i a) a
+
+(%=) :: forall a k i.
+        ( GHC.Stack.HasCallStack
+        , KnownSymbol k
+        , a ~ Put k i
+        , a ~ Get k i
+        )
+     => Label k a
+     -> (AST a -> AST a)
+     -> Codensity AST (AST () := i) i
+_ %= f = modifying @(Name k :: Optic '[] i a) f

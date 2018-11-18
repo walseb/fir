@@ -33,15 +33,15 @@ infixr 9 :.:
 infixr 3 :&:
 
 -- optic data (kind)
-data Optic (x :: [Type]) (s :: k) (a :: Type) where
+data Optic (is :: [Type]) (s :: k) (a :: Type) where
   -- built-in lenses (unsafe)
-  AnIndex_ :: Optic x s a
-  Index_   :: Nat    -> Optic x s a
-  Name_    :: Symbol -> Optic x s a
+  AnIndex_ :: Optic is s a
+  Index_   :: Nat    -> Optic is s a
+  Name_    :: Symbol -> Optic is s a
   -- optic combinators (unsafe)
-  All_     :: Optic x s a -> Optic x s b
-  ComposeO :: Optic x s a -> Optic y a b -> Optic z s b
-  ProductO :: Optic x s a -> Optic x s b -> Optic y s c 
+  All_     :: Optic is s a -> Optic is s b
+  ComposeO :: Optic is s a -> Optic js a b -> Optic ks s b
+  ProductO :: Optic is s a -> Optic ix s b -> Optic js s c 
 
 -- safe synonyms (with correct kinds)
 type Name k = (Name_ k :: Optic '[] s a)
@@ -51,42 +51,38 @@ type (:&:) (o1 :: Optic '[] s a) (o2 :: Optic '[] s b)
   = ( (o1 `ProductO` o2)
         :: Optic '[] s ( Product o1 o2 )
     )
-type (:.:) (o1 :: Optic x s a) (o2 :: Optic y a b)
-  = ((o1 `ComposeO` o2) :: Optic (x :++: y) s b)
-type All (o :: Optic x s a) = (All_ o :: Optic x s (MonoType a))
+type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
+  = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
+type All (o :: Optic is s a) = (All_ o :: Optic is s (MonoType a))
 
 ----------------------------------------------------------------------
--- type classes
+-- type classes and synonyms
+
+type Whole   (optic :: Optic is s a) = s
+type Part    (optic :: Optic is s a) = a
+type Indices (optic :: Optic is s a) = is
 
 -- type level getter
-class Gettable (optic :: Optic i (s :: k) a) | optic -> i s a where
-  type Get (optic :: Optic i (s :: k) (a :: Type)) :: Type
-  type Get (optic :: Optic i s a) = a
-
-type Getter (optic :: Optic i s a) = ListVariadic (i :++: '[s]) a
+class Gettable (optic :: Optic is (s :: k) a) | optic -> is s a where
+type  Getter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[s]) a
 
 -- type level getter which can be turned into a value-level getter
-class Gettable optic => ReifiedGetter optic
-      where
+class Gettable optic => ReifiedGetter optic where
   view :: Getter optic
 
 -- type level setter
-class Settable (optic :: Optic i (s :: k) (a :: Type)) | optic -> i s a where
-  type Set (optic :: Optic i (s :: k) (a :: Type)) :: Type
-  type Set (optic :: Optic i s a) = a
-
-type Setter (optic :: Optic i s a) = ListVariadic (i :++: '[a,s]) s
+class Settable (optic :: Optic is (s :: k) a) | optic -> is s a where
+type  Setter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[a,s]) s
 
 -- type level setter which can be turned into a value-level setter
-class Settable optic => ReifiedSetter optic
-      where
+class Settable optic => ReifiedSetter optic where
   set :: Setter optic
 
 -------------------------------
 
 class Container c where
   type Combine c (x :: Type) (y :: Type) :: Type
-  type Singleton c (o :: Optic i s a) (x :: Type) = (r :: Type) | r -> x
+  type Singleton c (o :: Optic is s a) (x :: Type) = (r :: Type) | r -> x
   type Overlapping c (k :: Symbol) (n :: Nat) :: Bool
 
 class Container a => MonoContainer a where
@@ -95,31 +91,30 @@ class Container a => MonoContainer a where
 ----------------------------------------------------------------------
 -- composition
 
-instance forall k (s :: k) i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+instance forall k (s :: k) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( Gettable o1
          , Gettable o2
-         , i3 ~ (i1 :++: i2)
-         ) => Gettable ((o1 `ComposeO` o2) :: Optic i3 s b) where
-instance forall k (s :: k) i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+         , ks ~ (is :++: js)
+         ) => Gettable ((o1 `ComposeO` o2) :: Optic ks s b) where
+instance forall k (s :: k) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( Settable o1
          , Settable o2
-         , i3 ~ (i1 :++: i2)
-         ) => Settable ((o1 `ComposeO` o2) :: Optic i3 s b) where
+         , ks ~ (is :++: js)
+         ) => Settable ((o1 `ComposeO` o2) :: Optic ks s b) where
 
-
-instance forall i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+instance forall s is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( ReifiedGetter o1
          , ReifiedGetter o2
-         , ComposeGetters i1 i2 s a b
-         , i3 ~ (i1 :++: i2)
+         , ComposeGetters is js s a b
+         , ks ~ (is :++: js)
          )
-      => ReifiedGetter ((o1 `ComposeO` o2) :: Optic i3 s b) where
-    view = composeGetters @i1 @i2 @s @a @b (view @o1) (view @o2)
+      => ReifiedGetter ((o1 `ComposeO` o2) :: Optic ks s b) where
+    view = composeGetters @is @js @s @a @b (view @o1) (view @o2)
 
-class ComposeGetters i j s a b where
-  composeGetters :: ListVariadic (i :++: '[s]) a
-                 -> ListVariadic (j :++: '[a]) b
-                 -> ListVariadic ((i :++: j) :++: '[s]) b
+class ComposeGetters is js s a b where
+  composeGetters :: ListVariadic (is :++: '[s]) a
+                 -> ListVariadic (js :++: '[a]) b
+                 -> ListVariadic ((is :++: js) :++: '[s]) b
 instance (a ~ ListVariadic '[] a) => ComposeGetters '[] '[] s a b where
   composeGetters view1 view2 = view2 . view1
 instance ComposeGetters is js s a b => ComposeGetters (i ': is) js s a b where
@@ -129,21 +124,21 @@ instance ComposeGetters '[] js s a b => ComposeGetters '[] (j ': js) s a b where
   composeGetters view1 view2 j
     = composeGetters @'[] @js @s @a @b view1 (view2 j)
 
-instance forall i1 i2 i3 a b (o1 :: Optic i1 s a) (o2 :: Optic i2 a b).
+instance forall s is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( ReifiedSetter o1
          , ReifiedSetter o2
          , ReifiedGetter o1
-         , ComposeSetters i1 i2 s a b
-         , i3 ~ (i1 :++: i2)
+         , ComposeSetters is js s a b
+         , ks ~ (is :++: js)
          )
-      => ReifiedSetter ((o1 `ComposeO` o2) :: Optic i3 s b) where
-    set = composeSetters @i1 @i2 @s @a @b (view @o1) (set @o1) (set @o2)
+      => ReifiedSetter ((o1 `ComposeO` o2) :: Optic ks s b) where
+    set = composeSetters @is @js @s @a @b (view @o1) (set @o1) (set @o2)
 
-class ComposeSetters i j s a b where
-  composeSetters :: ListVariadic (i :++: '[s]) a
-                 -> ListVariadic (i :++: '[a,s]) s
-                 -> ListVariadic (j :++: '[b,a]) a
-                 -> ListVariadic ((i :++: j) :++: '[b,s]) s
+class ComposeSetters is js s a b where
+  composeSetters :: ListVariadic (is :++: '[s]) a
+                 -> ListVariadic (is :++: '[a,s]) s
+                 -> ListVariadic (js :++: '[b,a]) a
+                 -> ListVariadic ((is :++: js) :++: '[b,s]) s
 instance (a ~ ListVariadic '[] a) => ComposeSetters '[] '[] s a b where
   composeSetters view1 set1 set2 b s
     = set1 (set2 b (view1 s)) s
@@ -158,7 +153,7 @@ instance ComposeSetters '[] js s a b => ComposeSetters '[] (j ': js) s a b where
 -- products
 
 -- getter products
-instance forall i s a b (o1 :: Optic i s a) (o2 :: Optic i s b).
+instance forall empty i s a b r (o1 :: Optic i s a) (o2 :: Optic i s b).
          ( Gettable o1
          , Gettable o2
          , r ~ Product o1 o2
@@ -166,7 +161,7 @@ instance forall i s a b (o1 :: Optic i s a) (o2 :: Optic i s b).
          ) => Gettable ((o1 `ProductO` o2) :: Optic empty s r) where
 
 -- setter products
-instance forall i s a b (o1 :: Optic i s a) (o2 :: Optic i s b) .
+instance forall empty i s a b r (o1 :: Optic i s a) (o2 :: Optic i s b) .
          ( Settable o1
          , Settable o2
          , r ~ ProductIfDisjoint o1 o2
@@ -258,7 +253,7 @@ instance
   => Gettable (All_ o :: Optic i s r) where
 
 
-instance forall i s a (o :: Optic i s a).
+instance forall i s a r (o :: Optic i s a).
          ( Settable o
          , MonoContainer a
          , r ~ MonoType a

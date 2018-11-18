@@ -22,7 +22,7 @@ import Control.Monad((>>=),(>>), when, void)
 import Data.Coerce(coerce)
 import Data.Foldable(traverse_, toList)
 import Data.List(foldl1')
-import Data.Maybe(fromJust, listToMaybe)
+import Data.Maybe(fromJust)
 import Data.Semigroup(First(First))
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
@@ -253,11 +253,11 @@ codeGen (Applied (Use singOptic) is)
 
       SBinding k :%.: getter -> 
         do  let varName = Text.pack ( symbolVal k )
-            bd@(bdID, bdTy) <- bindingID varName
+            (bdID, bdTy) <- bindingID varName
             indices <- map fst <$> codeGenASTList is
 
             case bdTy of
-              SPIRV.Pointer storage ty
+              SPIRV.Pointer _ _
                 -> loadThroughAccessChain bdID indices getter
               _ -> extractUsingGetter     bdID indices getter
 
@@ -277,7 +277,7 @@ codeGen (Applied (Assign singOptic) as)
 
           SBinding k ->
             do  let varName = Text.pack ( symbolVal k )
-                (a_ID,a_ty)     <- codeGenAny a
+                (a_ID, _)       <- codeGenAny a
                 bd@(bdID, bdTy) <- bindingID varName
 
                 case bdTy of
@@ -289,11 +289,11 @@ codeGen (Applied (Assign singOptic) as)
 
           SBinding k :%.: setter ->
             do  let varName = Text.pack ( symbolVal k )
-                (a_ID,a_ty)     <- codeGenAny a
-                bd@(bdID, bdTy) <- bindingID varName
+                (a_ID, a_ty) <- codeGenAny a
+                (bdID, bdTy) <- bindingID varName
 
                 case bdTy of
-                  SPIRV.Pointer storage ty
+                  SPIRV.Pointer _ _
                     -> storeThroughAccessChain bdID a_ID indices setter 
                   _ -> insertUsingSetter       bdID a_ID indices setter 
 

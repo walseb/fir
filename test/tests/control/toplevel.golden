@@ -1,0 +1,3 @@
+This should not type-check, as only functions (/entrypoints) are allowed as top-level bindings in SPIR-V.
+Potentially the code-generation could be modified to inline the definitions into all functions that need them,
+  which would produce valid SPIR-V code.
