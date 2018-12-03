@@ -67,3 +67,5 @@ create a test that fails because of stuff defined outside of function definition
 find a better name for the "All" setter to avoid conflict with All/Any boolean newtypes
 
 reinstate the type error instance for MonadIxFail (why did it disappear??)
+
+move struct/array/runtimearray definitions to a new module (hopefully removing the cyclic dependencies)

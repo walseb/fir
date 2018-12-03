@@ -60,6 +60,7 @@ import Data.Distributive(Distributive(..))
 
 -- fir
 import Control.Arrow.Strength(strong)
+import Math.Algebra.GradedSemigroup(GradedSemigroup(..), GradedPresentedSemigroup(..))
 import Math.Logic.Class( Boolean(..), Eq(Logic,(==))
                        , Choose(choose), ifThenElse, Triple
                        , (#.)
@@ -71,7 +72,7 @@ infixr 3 :.
 
 data V :: Nat -> Type -> Type where
   Nil  :: V 0 a
-  (:.) :: a -> V n a -> V (n+1) a
+  (:.) :: a -> V n a -> V (1+n) a
 
 deriving instance Functor     (V n)
 deriving instance Foldable    (V n)
@@ -236,13 +237,6 @@ unfold f a
             case deduceZero nle of
                  Refl -> Nil
 
-infixl 6 <++>
-
-(<++>) :: (KnownNat n, KnownNat m) => V n a -> V m a -> V (n+m) a
-(<++>) Nil      v = v
-(<++>) (a:.Nil) v = a :. v
-(<++>) (a:.as)  v = a :. (as <++> v)
-
 {-# COMPLETE V0 #-}
 pattern V0 :: V 0 a
 pattern V0 = Nil
@@ -262,6 +256,22 @@ pattern V3 x y z = x :. y :. z :. Nil
 {-# COMPLETE V4 #-}
 pattern V4 :: a -> a -> a -> a -> V 4 a
 pattern V4 x y z w = x :. y :. z :. w :. Nil
+
+------------------------------------------------------------------
+-- graded semigroup for vectors
+
+instance GradedSemigroup (V 0 a) Nat where
+  type Apply Nat (V 0 a) i = V i a
+  type i :<!>: j = i + j
+  (<!>) :: V i a -> V j a -> V (i+j) a
+  (<!>) Nil      v = v
+  (<!>) (a:.as)  v = a :. (as <!> v)
+
+instance GradedPresentedSemigroup (V 0 a) Nat () where
+  type Element    (V 0 a) ()  _  = a
+  type Degree Nat (V 0 a) () '() = 1
+  generator :: a -> V (Degree Nat (V 0 a) () unit) a
+  generator a = unsafeCoerce (a :. Nil)
 
 ------------------------------------------------------------------
 
@@ -413,11 +423,43 @@ columnMatrix = fmap (:. Nil)
 
 blockSum :: forall m1 m2 n1 n2 a. (KnownNat m1, KnownNat m2, KnownNat n1, KnownNat n2, Semiring a) 
          => V m1 (V n1 a)-> V m2 (V n2 a) -> V (m1+m2) (V (n1+n2) a)
-blockSum mat1 mat2 = fmap (<++> pure zero) mat1 <++> fmap (pure zero <++>) mat2
+blockSum mat1 mat2 = fmap (<!> pure zero) mat1 <!> fmap (pure zero <!>) mat2
 
 fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> V m (V l a)
 fromColumns = addCols ( pure Nil :: V m (V 0 a))
 
+
+------------------------------------------------------------------
+-- matrix newtype
+
+newtype M m n a = M { unM :: V m (V n a) }
+deriving instance Prelude.Eq a => Prelude.Eq (M m n a)
+deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
+deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
+deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
+deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
+deriving instance Functor (M m n)
+deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
+deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
+deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
+
+deriving via '(V m (V n x), V m (V n y), V m (V n z))
+  instance (KnownNat m, KnownNat n, Choose b '(x,y,z)) => Choose b '(M m n x, M m n y, M m n z)
+
+------------------------------------------------------------------
+-- graded semigroup for matrices
+
+instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
+  type Apply Nat (M m 0 a) i = M m i a
+  type i :<!>: j = i + j
+  (<!>) :: M m i a -> M m j a -> M m (i+j) a
+  (M m1) <!> (M m2) = M (liftA2 (<!>) m1 m2)
+
+instance KnownNat m => GradedPresentedSemigroup (M m 0 a) Nat () where
+  type Element    (M m 0 a) ()  _  = V m a
+  type Degree Nat (M m 0 a) () '() = 1
+  generator :: V m a -> M m (Degree Nat (M m 0 a) () unit) a
+  generator v = unsafeCoerce ( M (v :. Nil) )
 
 ------------------------------------------------------------------
 -- type classes for matrix operations
@@ -447,20 +489,6 @@ class Module (Vector m) => Matrix m where
 
   identity = diag 1
   (*!) = flip (!*) -- SPIRV defines MatrixTimesScalar
-
-newtype M m n a = M { unM :: V m (V n a) }
-deriving instance Prelude.Eq a => Prelude.Eq (M m n a)
-deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
-deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
-deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
-deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
-deriving instance Functor (M m n)
-deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
-deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
-deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
-
-deriving via '(V m (V n x), V m (V n y), V m (V n z))
-  instance (KnownNat m, KnownNat n, Choose b '(x,y,z)) => Choose b '(M m n x, M m n y, M m n z)
 
 instance Ring a => Matrix (M 0 0 a) where
   type Vector (M 0 0 a) = V 0 a

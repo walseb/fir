@@ -42,6 +42,7 @@ library
       , FIR.PrimTy
       , FIR.Program
       , Math.Algebra.Class
+      , Math.Algebra.GradedSemigroup
       , Math.Logic.Class
       , SPIRV.Builtin
       , SPIRV.Capability

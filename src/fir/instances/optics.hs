@@ -3,11 +3,13 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TemplateHaskell        #-} -- needed to help along GHC's SCC analysis
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -27,7 +29,7 @@ import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
                    )
 import GHC.TypeNats( Nat, KnownNat, natVal
                    , CmpNat, type (<=)
-                   , type (+), type (-)
+                   , type (-)
                    )
 
 -- distributive
@@ -41,14 +43,13 @@ import Control.Monad.Indexed((:=))
 import Control.Type.Optic( Optic(..)
                          , Gettable, ReifiedGetter(view)
                          , Settable, ReifiedSetter(set )
-                         , Container(..)
-                         , MonoContainer(..)
-                         , (:.:), (:&:), Index, All
+                         , Contained(..)
+                         , ContainerKind, DegreeKind, LabelKind
+                         , MonoContained(..)
+                         , (:.:), (:*:), Index, All
                          )
 import Data.Type.Map ( (:->)((:->)), Key, Value
-                     , Lookup
-                     , Append, type (:++:)
-                     , Length
+                     , Lookup, Append, Length
                      )
 import FIR.Binding( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
@@ -66,7 +67,7 @@ import Math.Linear(V, M(M), (^!), at)
 -- singletons
 
 infixr 9 :%.:
-infixr 3 :%&:
+infixr 3 :%*:
 
 data SOptic (optic :: Optic i s a) :: Type where
   -- split up run-time indexing: SPIR-V supports two different cases
@@ -85,7 +86,7 @@ data SOptic (optic :: Optic i s a) :: Type where
            -> SOptic (Name_ k :: Optic i (as :: BindingsMap) b)
   SAll     :: SOptic o  -> SOptic (All_ o)
   (:%.:)   :: SOptic o1 -> SOptic o2 -> SOptic (o1 `ComposeO` o2)
-  (:%&:)   :: SOptic o1 -> SOptic o2 -> SOptic (o1 `ProductO` o2)
+  (:%*:)   :: SOptic o1 -> SOptic o2 -> SOptic (o1 `ProductO` o2)
 
 
 showSOptic :: SOptic (o :: Optic i s a) -> String
@@ -104,7 +105,7 @@ showSOptic (SName  k _) = "Name "  ++ show (symbolVal k)
 showSOptic (SBinding k) = "Name "  ++ show (symbolVal k)
 showSOptic (SAll     l) = "All ( "   ++ showSOptic l ++ " )"
 showSOptic (l1 :%.: l2) = showSOptic l1 ++ " :.: " ++ showSOptic l2
-showSOptic (l1 :%&: l2) = showSOptic l1 ++ " :&: " ++ showSOptic l2
+showSOptic (l1 :%*: l2) = showSOptic l1 ++ " :*: " ++ showSOptic l2
 
 
 class KnownOptic optic where
@@ -132,7 +133,7 @@ instance (KnownOptic o1, KnownOptic o2)
   opticSing = (opticSing @o1) :%.: (opticSing @o2)
 instance (KnownOptic o1, KnownOptic o2)
       => KnownOptic (o1 `ProductO` o2) where
-  opticSing = (opticSing @o1) :%&: (opticSing @o2)
+  opticSing = (opticSing @o1) :%*: (opticSing @o2)
 
 
 ----------------------------------------------------------------------
@@ -630,67 +631,25 @@ instance
     => Settable (Name_ k :: Optic empty (M m n a) r) where
 
 ----------------------------------------------------------------------
--- type class instances for products
-
-instance Container (V n a) where
-  type Combine (V n a) (V i a) (V j a) = V (i+j) a
-  type Singleton (V n a) _ a = V 1 a
-  type Overlapping (V n a) k _
-    = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
-                :$$: Text "Maybe you intended to use a swizzle?"
-                )
-
-instance Container (M m n a) where
-  type Combine (M m n a) (M m i a) (M m j a) = M m (i+j) a
-  type Singleton (M m n a) _ a = M m 1 a
-  type Overlapping (M m n a) k _
-    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
-
-instance Container (Struct as) where
-  type Combine (Struct as) (Struct xs) (Struct ys) = Struct (xs :++: ys)
-  type Singleton (Struct as) (Name_  k) v = Struct '[ k ':-> v ]
-  type Singleton (Struct as) (Index_ i) v
-    = Struct 
-        '[ Key ( StructElemFromIndex 
-                  (Text "key: ")
-                  i as i as
-               )
-         ':-> v
-         ]
-  type Overlapping (Struct as) k i
-    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
-
-instance Container (Array n a) where
-  type Combine (Array n a) (Array i a) (Array j a) = Array (i+j) a
-  type Singleton (Array n a) _ a = Array 1 a
-  type Overlapping (Array n a) k _
-        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
-
-instance Container (RuntimeArray a) where
-  type Combine (RuntimeArray a) (RuntimeArray a) (RuntimeArray a) = RuntimeArray a
-  type Singleton (RuntimeArray a) _ a = (RuntimeArray a)
-  type Overlapping (RuntimeArray a) k _
-        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
-
-----------------------------------------------------------------------
 -- type class instances for equalisers
 
-instance MonoContainer (Array n a) where
+instance MonoContained (Array n a) where
   type MonoType (Array n a) = a
 
-instance MonoContainer (RuntimeArray a) where
+instance MonoContained (RuntimeArray a) where
   type MonoType (RuntimeArray a) = a
 
 instance (KnownNat n, 1 <= n)
-      => MonoContainer (V n a) where
+      => MonoContained (V n a) where
   type MonoType (V n a) = a
 
 instance (KnownNat m, 1 <= m)
-      => MonoContainer (M m n a) where
+      => MonoContained (M m n a) where
   type MonoType (M m n a) = V m a
 
 instance (AllValuesEqual v as ~ 'True)
-      => MonoContainer (Struct ((k ':-> v) ': as)) where
+      => MonoContained (Struct ((k ':-> v) ': as))
+      where
   type MonoType (Struct ((k ':-> v) ': as)) = v
 
 type family AllValuesEqual (a :: v) (as :: [k :-> v]) :: Bool where
@@ -734,8 +693,79 @@ type family StructElemFromIndex
     = StructElemFromIndex msg n as (n_rec - 1) as_rec
 
 ----------------------------------------------------------------------
--- synonyms
+-- type class instances for products
 
+type instance ContainerKind (V n a) = Type
+type instance DegreeKind    (V n a) = Nat
+type instance LabelKind     (V n a) = ()
+
+type instance ContainerKind (M m n a) = Type
+type instance DegreeKind    (M m n a) = Nat
+type instance LabelKind     (M m n a) = ()
+
+type instance ContainerKind (Struct as) = [Symbol :-> Type] -> Type
+type instance DegreeKind    (Struct as) = [Symbol :-> Type]
+type instance LabelKind     (Struct as) = [Symbol :-> Type]
+
+type instance ContainerKind (Array n a) = Type
+type instance DegreeKind    (Array n a) = Nat
+type instance LabelKind     (Array n a) = ()
+
+type instance ContainerKind (RuntimeArray a) = Type
+type instance DegreeKind    (RuntimeArray a) = ()
+type instance LabelKind     (RuntimeArray a) = ()
+
+-- need to separate the above open type family instances before all their uses
+-- https://ghc.haskell.org/trac/ghc/ticket/15987#comment:2
+$(pure [])
+
+instance Contained (V n a) where
+  type Container (V n a)   = V 0 a
+  type DegreeOf  (V n a)   = n
+  type LabelOf   (V n a) _ = '()
+  type Overlapping (V n a) k _
+    = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
+                :$$: Text "Maybe you intended to use a swizzle?"
+                )
+
+instance Contained (M m n a) where
+  type Container (M m n a)   = M m 0 a
+  type DegreeOf  (M m n a)   = n
+  type LabelOf   (M m n a) _ = '()
+  type Overlapping (M m n a) k _
+    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
+
+instance Contained (Struct as) where
+  type Container (Struct as) = Struct
+  type DegreeOf  (Struct as) = as
+  type LabelOf   (Struct as) (Name_  k :: Optic _ (Struct as) a)
+    =  '[ k ':-> a ]
+  type LabelOf   (Struct as) (Index_ i :: Optic _ (Struct as) a)
+    =  '[ Key ( StructElemFromIndex
+                 (Text "key: ")
+                 i as i as
+              )
+        ':-> a
+        ]
+  type Overlapping (Struct as) k i
+    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
+
+instance Contained (Array n a) where
+  type Container (Array n a)   = Array 0 a
+  type DegreeOf  (Array n a)   = n
+  type LabelOf   (Array n a) _ = '()
+  type Overlapping (Array n a) k _
+        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+
+instance Contained (RuntimeArray a) where
+  type Container (RuntimeArray a)   = RuntimeArray a
+  type DegreeOf  (RuntimeArray a)   = '()
+  type LabelOf   (RuntimeArray a) _ = '()
+  type Overlapping (RuntimeArray a) k _
+        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+
+----------------------------------------------------------------------
+-- synonyms
 
 type family Col i = (r :: Optic '[] (M m n a) (V m a)) | r -> i where
   Col i = Index i
@@ -744,45 +774,44 @@ type family Ix i = (r :: Optic '[] (V m a) a) | r -> i where
 
 type family Row (i :: Nat) = (optic :: Optic '[] (M m n a) (V n a)) | optic -> i where
   Row i = ( (     (Col 0 :.: Ix i) 
-       `ProductO` (Col 1 :.: Ix i)
+              :*: (Col 1 :.: Ix i)
             ) :: Optic '[] (M m 2 a) (V 2 a)
           )
   Row i = ( ( ( (     ( Col 0 :.: Ix i ) 
-           `ProductO` ( Col 1 :.: Ix i )
+                  :*: ( Col 1 :.: Ix i )
                 ) :: Optic '[] (M m 3 a) (V 2 a)
               )
-              `ProductO` ( Col 2 :.: Ix i )
+              :*: ( Col 2 :.: Ix i )
             ) :: Optic '[] (M m 3 a) (V 3 a)
           )
   Row i = ( ( ( ( ( (     ( Col 0 :.: Ix i )
-               `ProductO` ( Col 1 :.: Ix i )
+                      :*: ( Col 1 :.: Ix i )
                     ) :: Optic '[] (M m 4 a) (V 2 a)
                   )
-                  `ProductO` ( Col 2 :.: Ix i )
+                  :*: ( Col 2 :.: Ix i )
                 ) :: Optic '[] (M m 4 a) (V 3 a)
               )
-              `ProductO` ( Col 3 :.: Ix i )
+              :*: ( Col 3 :.: Ix i )
             ) :: Optic '[] (M m 4 a) (V 4 a)
           )
 
-
 type family Diag :: Optic '[] (M n n a) (V n a) where
   Diag = ( (     (Col 0 :.: Ix 0)
-      `ProductO` (Col 1 :.: Ix 1)
+             :*: (Col 1 :.: Ix 1)
            ) :: Optic '[] (M 2 2 a) (V 2 a)
          )
   Diag = ( ( ( (     (Col 0 :.: Ix 0)
-          `ProductO` (Col 1 :.: Ix 1)
+                 :*: (Col 1 :.: Ix 1)
                ) :: Optic '[] (M 3 3 a) (V 2 a)
-             ) `ProductO`  (Col 2 :.: Ix 2)
+             ) :*: (Col 2 :.: Ix 2)
            ) :: Optic '[] (M 3 3 a) (V 3 a)
          )
   Diag = ( ( ( ( ( (    (Col 0 :.: Ix 0)
-             `ProductO` (Col 1 :.: Ix 1)
+                    :*: (Col 1 :.: Ix 1)
                    ) :: Optic '[] (M 4 4 a) (V 2 a)
-                 ) `ProductO`  (Col 2 :.: Ix 2)
+                 ) :*: (Col 2 :.: Ix 2)
                ) :: Optic '[] (M 4 4 a) (V 3 a)
-             ) `ProductO`  (Col 3 :.: Ix 3)
+             ) :*: (Col 3 :.: Ix 3)
            ) :: Optic '[] (M 4 4 a) (V 4 a)
          )
 

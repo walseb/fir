@@ -24,13 +24,16 @@ import GHC.TypeLits( Symbol
 import GHC.TypeNats(Nat)
 
 -- fir
-import Data.Type.Map(type (:++:))
+import Data.Type.Map(Zip, type (:++:))
 import Data.Function.Variadic(ListVariadic)
+import Math.Algebra.GradedSemigroup ( GradedSemigroup(..)
+                                    , DegreeAt
+                                    )
 
 ----------------------------------------------------------------------
 
 infixr 9 :.:
-infixr 3 :&:
+infixr 3 :*:
 
 -- optic data (kind)
 data Optic (is :: [Type]) (s :: k) (a :: Type) where
@@ -47,9 +50,20 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 type Name k = (Name_ k :: Optic '[] s a)
 type Index i = (Index_ i :: Optic '[] s a)
 type AnIndex ix = (AnIndex_ :: Optic '[ix] s a)
-type (:&:) (o1 :: Optic '[] s a) (o2 :: Optic '[] s b)
+type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
   = ( (o1 `ProductO` o2)
-        :: Optic '[] s ( Product o1 o2 )
+        :: Optic
+              ( Zip
+                  (      Text "Cannot create product optic: \
+                              \different amounts of runtime indices."
+                    :$$: Text "First factor indices: "  :<>: ShowType is
+                    :$$: Text "Second factor indices: " :<>: ShowType js
+                  )
+                  is
+                  js
+              )
+              s
+              ( Product o1 o2 )
     )
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
   = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
@@ -58,6 +72,8 @@ type All (o :: Optic is s a) = (All_ o :: Optic is s (MonoType a))
 ----------------------------------------------------------------------
 -- type classes and synonyms
 
+-- synonyms that allow kind variables to remain invisible
+-- https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0026-explicit-specificity.rst
 type Whole   (optic :: Optic is s a) = s
 type Part    (optic :: Optic is s a) = a
 type Indices (optic :: Optic is s a) = is
@@ -80,13 +96,18 @@ class Settable optic => ReifiedSetter optic where
 
 -------------------------------
 
-class Container c where
-  type Combine c (x :: Type) (y :: Type) :: Type
-  type Singleton c (o :: Optic is s a) (x :: Type) = (r :: Type) | r -> x
-  type Overlapping c (k :: Symbol) (n :: Nat) :: Bool
+type family ContainerKind (s :: Type) :: k
+type family DegreeKind    (s :: Type) :: d
+type family LabelKind     (s :: Type) :: l
 
-class Container a => MonoContainer a where
-  type MonoType a
+class Contained (s :: Type) where
+  type Container  s :: ContainerKind s
+  type DegreeOf   s :: DegreeKind s
+  type LabelOf    s (o :: Optic i s a) :: LabelKind s
+  type Overlapping s (k :: Symbol) (n :: Nat) :: Bool
+
+class Contained s => MonoContained s where
+  type MonoType s
 
 ----------------------------------------------------------------------
 -- composition
@@ -168,33 +189,70 @@ instance forall empty i s a b r (o1 :: Optic i s a) (o2 :: Optic i s b) .
          , empty ~ '[]
          ) => Settable ((o1 `ProductO` o2) :: Optic empty s r) where
 
-
-type family Product
-              ( o1 :: Optic i s a )
-              ( o2 :: Optic i s b )
-            = ( r  :: Type        )
-              where
-  Product (o1 :: Optic i s a) (o2 :: Optic i s b)
-    = Combine (LastAccessee o2) -- hackish
-        ( If (IsProduct o1) a (Singleton (LastAccessee o1) o1 a) )
-        ( If (IsProduct o2) b (Singleton (LastAccessee o2) o2 b) )
-
-type family IsProduct (o :: Optic i s a) :: Bool where
+type family IsProduct (o :: Optic is s a) :: Bool where
   IsProduct (_ `ProductO` _) = True
   IsProduct (_ `ComposeO` o) = IsProduct o
   IsProduct o                = False
 
-type family LastAccessee (o :: Optic i (s :: Type) a) :: Type where
-  LastAccessee (_ `ComposeO` o) = LastAccessee o
-  LastAccessee (_ `ProductO` o) = LastAccessee o -- hack
-  LastAccessee (o :: Optic i s a) = s
+type family Product
+              ( o1 :: Optic is s a )
+              ( o2 :: Optic js t b )
+            = ( r  :: Type         )
+              where
+  Product (o1 `ComposeO` o3) o2 = Product o3 o2
+  Product o1 (o2 `ComposeO` o4) = Product o1 o4
+  Product (o1 :: Optic is s a) (o2 :: Optic js t b)
+    = Combine o1 o2
+        ( IsProduct o1 ) ( IsProduct o2 )
+        ( ContainerKind s ) ( ContainerKind a ) ( ContainerKind t ) ( ContainerKind b )
+        ( Container s ) ( Container a ) ( Container t ) ( Container b )
+        ( DegreeKind s ) ( DegreeKind a ) ( DegreeKind t ) ( DegreeKind b )
+        ( DegreeAt (DegreeKind s) (Container s) (LabelOf s o1) )
+        ( DegreeOf a )
+        ( DegreeAt (DegreeKind t) (Container t) (LabelOf t o2) )
+        ( DegreeOf b )
 
-
+-- sorry about this
+type family Combine
+              ( o1 :: Optic is s a) ( o2 :: Optic js t b )
+              ( b1 :: Bool ) ( b2 :: Bool )
+              ck1 ck2 ck3 ck4
+              ( c1 :: ck1 ) ( c2 :: ck2 ) ( c3 :: ck3 ) ( c4 :: ck4 )
+              kha kva khb kvb
+              ( ha :: kha ) ( va :: kva ) ( hb :: khb ) ( vb :: kvb )
+            = ( r :: Type )
+              where
+  Combine o1 o2 True True _ ck _ ck _ c _ c _ k _ k _ (va :: k) _ (vb :: k)
+    = Apply k c ( va :<!>: vb )
+  Combine o1 o2 True False _ ck ck _ _ c c _ _ k k _ _ (va :: k) (hb :: k) _
+    = Apply k c ( va :<!>: hb )
+  Combine o1 o2 False True ck _ _ ck c _ _ c k _ _ k (ha :: k) _ _ (vb :: k)
+    = Apply k c ( ha :<!>: vb )
+  Combine o1 o2 False False ck _ ck _ c _ c _ k _ k _ (ha :: k) _ (hb :: k) _
+    = Apply k c ( ha :<!>: hb )
+  Combine o1 o2 _ _ _ _ _ _ c1 c2 c3 c4 _ _ _ _ _ _ _ _
+    = TypeError (     Text "Cannot create product optic: incompatible containers."
+                 :$$: Text "LHS containers: " :<>: ShowType c1 :<>: Text " and " :<>: ShowType c2
+                 :$$: Text "RHS containers: " :<>: ShowType c3 :<>: Text " and " :<>: ShowType c4
+                 :$$: Text "When creating product of LHS optic"
+                 :$$: ShowType o1
+                 :$$: Text "and RHS optic"
+                 :$$: ShowType o2
+                )
+  Combine o1 o2 _ _ _ _ _ _ _ _ _ _ k1 k2 k3 k4 _ _ _ _
+    = TypeError (     Text "Cannot create product optic: incompatible gradings."
+                 :$$: Text "LHS gradings: " :<>: ShowType k1 :<>: Text " and " :<>: ShowType k2
+                 :$$: Text "RHS gradings: " :<>: ShowType k3 :<>: Text " and " :<>: ShowType k4
+                 :$$: Text "When creating product of LHS optic"
+                 :$$: ShowType o1
+                 :$$: Text "and RHS optic"
+                 :$$: ShowType o2
+                )
 
 type family ProductIfDisjoint
-              ( o1 :: Optic i s a )
-              ( o2 :: Optic i s b )
-            = ( r  :: Type        )
+              ( o1 :: Optic is s a )
+              ( o2 :: Optic js s b )
+            = ( r  :: Type         )
               where
   ProductIfDisjoint o1 o2
     = If
@@ -209,9 +267,9 @@ type family ProductIfDisjoint
         )
 
 type family Disjoint
-              ( o1 :: Optic i s a )
-              ( o2 :: Optic j t b )
-            = ( r  :: Bool        )
+              ( o1 :: Optic is s a )
+              ( o2 :: Optic js t b )
+            = ( r  :: Bool         )
               where
   Disjoint (Name_  k) (Name_  k) = False
   Disjoint (Index_ n) (Index_ n) = False
@@ -221,9 +279,9 @@ type family Disjoint
                 )
   Disjoint o AnIndex_
     = Disjoint AnIndex_ o
-  Disjoint ((Name_ k) :: Optic i s a) ((Index_ n) :: Optic j s b)
+  Disjoint ((Name_ k) :: Optic is s a) ((Index_ n) :: Optic js s b)
     = Not (Overlapping s k n)
-  Disjoint ((Index_ n) :: Optic i s a) ((Name_ k) :: Optic j s b)
+  Disjoint ((Index_ n) :: Optic is s a) ((Name_ k) :: Optic js s b)
     = Not (Overlapping s k n)
   Disjoint (o1 `ProductO` o3) (o2 `ProductO` o4)
     =  Disjoint o1 o2
@@ -236,12 +294,12 @@ type family Disjoint
   Disjoint o1 (o2 `ProductO` o4)
     =  Disjoint o1 o2
     && Disjoint o1 o4
-  Disjoint ((o1 :: Optic i s a) `ComposeO` o2)
-           ((o3 :: Optic i t b) `ComposeO` o4)
-    = If
+  Disjoint (o1 `ComposeO` o2)
+           (o3 `ComposeO` o4)
+    = If 
         ( Disjoint o1 o3 )
-        ( Disjoint o2 o4 )
         'True
+        ( Disjoint o2 o4 )
   Disjoint _ _ = 'True
 
 ----------------------------------------------------------------------
@@ -255,7 +313,7 @@ instance
 
 instance forall i s a r (o :: Optic i s a).
          ( Settable o
-         , MonoContainer a
+         , MonoContained a
          , r ~ MonoType a
          ) => Settable (All_ o :: Optic i s r)
         where

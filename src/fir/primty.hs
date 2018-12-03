@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
+
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveFunctor          #-}
@@ -5,11 +7,14 @@
 {-# LANGUAGE DeriveTraversable      #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
@@ -26,7 +31,8 @@ import Data.Word(Word8, Word16, Word32, Word64)
 import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
                    , TypeError, ErrorMessage(Text)
                    )
-import GHC.TypeNats(Nat, KnownNat, natVal)
+import GHC.TypeNats(Nat, KnownNat, natVal, type (+))
+import Unsafe.Coerce(unsafeCoerce)
 
 -- half
 import Numeric.Half(Half)
@@ -40,11 +46,12 @@ import qualified Data.Vector as Array
 -- fir
 import Data.Binary.Class.Put(Put)
 import Data.Function.Variadic(ListVariadic)
-import Data.Type.Map((:->)((:->)))
+import Data.Type.Map((:->)((:->)), type (:++:))
 import FIR.Binding ( Binding, BindingsMap, Var
                    , Permission, KnownPermissions, permissions
                    )
 import Math.Algebra.Class(Ring)
+import Math.Algebra.GradedSemigroup(GradedSemigroup(..), GradedPresentedSemigroup(..))
 import Math.Linear(V, M)
 import qualified SPIRV.PrimTy as SPIRV
 import SPIRV.PrimTy ( Signedness(Unsigned, Signed)
@@ -86,6 +93,18 @@ deriving instance Functor     (Array n)
 deriving instance Foldable    (Array n)
 deriving instance Traversable (Array n)
 
+instance GradedSemigroup (Array 0 a) Nat where
+  type Apply Nat (Array 0 a) l = Array l a
+  type l1 :<!>: l2 = l1 + l2
+  (<!>) :: forall l1 l2. Array l1 a -> Array l2 a -> Array (l1+l2) a
+  MkArray v1 <!> MkArray v2 = MkArray @(l1+l2) (v1 Array.++ v2)
+
+instance GradedPresentedSemigroup (Array 0 a) Nat () where
+  type Element    (Array 0 a) ()  _  = a
+  type Degree Nat (Array 0 a) () '() = 1
+  generator :: a -> Array (Degree Nat (Array 0 a) () unit) a
+  generator a = unsafeCoerce (MkArray @1 (Array.singleton a))
+
 newtype RuntimeArray a = MkRuntimeArray (Array.Vector a)
 
 deriving instance Eq   a => Eq   (RuntimeArray a)
@@ -94,6 +113,23 @@ deriving instance Show a => Show (RuntimeArray a)
 deriving instance Functor     RuntimeArray
 deriving instance Foldable    RuntimeArray
 deriving instance Traversable RuntimeArray
+
+instance GradedSemigroup (RuntimeArray a) () where
+  type Apply () (RuntimeArray a) '() = RuntimeArray a
+  type l1 :<!>: l2 = '()
+  (<!>) :: Apply () (RuntimeArray a) unit1
+        -> Apply () (RuntimeArray a) unit2
+        -> Apply () (RuntimeArray a) unit3
+  arr1 <!> arr2 = unsafeCoerce (MkRuntimeArray (v1 Array.++ v2))
+    where v1, v2 :: Array.Vector a
+          MkRuntimeArray v1 = unsafeCoerce arr1
+          MkRuntimeArray v2 = unsafeCoerce arr2
+          
+instance GradedPresentedSemigroup (RuntimeArray a) () () where
+  type Element   (RuntimeArray a) () _ = a
+  type Degree () (RuntimeArray a) () '() = '()
+  generator :: a -> Apply () (RuntimeArray a) (Degree () (RuntimeArray a) () unit)
+  generator a = unsafeCoerce ( MkRuntimeArray (Array.singleton a) )
 
 infixr 4 :&
 
@@ -106,6 +142,30 @@ data Struct :: [Symbol :-> Type] -> Type where
 deriving instance Eq   (Struct as)
 deriving instance Ord  (Struct as)
 deriving instance Show (Struct as)
+
+instance GradedSemigroup Struct [Symbol :-> Type] where
+  type Apply [Symbol :-> Type] Struct as = Struct as
+  type as :<!>: bs = as :++: bs
+  (<!>) :: Struct as -> Struct bs -> Struct (as :++: bs)
+  End <!> t = t
+  (a :& s) <!> t = a :& ( s <!> t )
+
+data KeyWithValue (kv :: (Symbol :-> Type)) where
+  KeyValue :: (KnownSymbol k, PrimTy a) => a -> KeyWithValue (k ':-> a)
+
+
+instance GradedPresentedSemigroup
+            Struct
+            [Symbol :-> Type]
+            (Symbol :-> Type)
+            where
+    type Element                  Struct (Symbol :-> Type) kv = KeyWithValue kv
+    type Degree [Symbol :-> Type] Struct (Symbol :-> Type) kv = '[ kv ]
+    generator :: forall (kv :: (Symbol :-> Type)).
+                 KeyWithValue kv
+              -> Struct '[ kv ]
+    generator (KeyValue a)
+      = (:&) a End
 
 foldrStruct
   :: forall as b.

@@ -6,7 +6,7 @@ module FIR
   ( draw, compile
   , Arg(Debug, NoCode)
   , module Control.Monad.Indexed
-  , (Control.Type.Optic.:&:)
+  , (Control.Type.Optic.:*:)
   , (Control.Type.Optic.:.:)
   , Control.Type.Optic.All
   , Control.Type.Optic.AnIndex
