@@ -17,8 +17,8 @@ module FIR
   , (Data.Type.Map.:->)((:->))
   , FIR.AST.AST((:$))
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
-  , FIR.Binding.Var
-  , FIR.Binding.Fun
+  , FIR.Binding.Binding(Variable,Function)
+  , FIR.Binding.Var, FIR.Binding.Fun
   , FIR.Binding.R
   , FIR.Binding.W
   , FIR.Binding.RW

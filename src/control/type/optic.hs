@@ -47,9 +47,9 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
   ProductO :: Optic is s a -> Optic ix s b -> Optic js s c 
 
 -- safe synonyms (with correct kinds)
-type Name k = (Name_ k :: Optic '[] s a)
-type Index i = (Index_ i :: Optic '[] s a)
-type AnIndex ix = (AnIndex_ :: Optic '[ix] s a)
+type Name (k :: Symbol) = (Name_ k :: Optic '[] s a)
+type Index (i :: Nat) = (Index_ i :: Optic '[] s a)
+type AnIndex (ix :: Type) = (AnIndex_ :: Optic '[ix] s a)
 type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
   = ( (o1 `ProductO` o2)
         :: Optic
@@ -260,8 +260,8 @@ type family ProductIfDisjoint
         ( Product  o1 o2 )
         ( TypeError 
            ( Text "set: cannot create product setter."
-            :$$: Text "Setters " :<>: ShowType o1
-            :$$: Text "and "     :<>: ShowType o2
+            :$$: Text "Setters " :$$: Text "  " :<>: ShowType o1
+            :$$: Text "and "     :$$: Text "  " :<>: ShowType o2
             :$$: Text "are not disjoint."
            )
         )

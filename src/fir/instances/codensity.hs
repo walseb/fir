@@ -28,7 +28,7 @@ import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
 import Data.Word(Word16)
 import qualified GHC.Stack
-import GHC.TypeLits(KnownSymbol)
+import GHC.TypeLits(Symbol, KnownSymbol)
 import GHC.TypeNats(KnownNat)
 
 -- fir
@@ -134,12 +134,12 @@ entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
 use        = fromAST ( Use    @optic          opticSing         )
 assign     = fromAST ( Assign @optic          opticSing         )
 
-get :: forall k a (i :: BindingsMap).
+get :: forall (k :: Symbol) a (i :: BindingsMap).
        ( KnownSymbol k, Gettable (Name k :: Optic '[] i a) )
     => Codensity AST (AST a := i) i
 get = use @(Name k :: Optic '[] i a)
 
-put :: forall k a (i :: BindingsMap).
+put :: forall (k :: Symbol) a (i :: BindingsMap).
        ( KnownSymbol k, Settable (Name k :: Optic '[] i a) )
     => AST a -> Codensity AST (AST () := i) i
 put = assign @(Name k :: Optic '[] i a)
