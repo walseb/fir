@@ -12,12 +12,13 @@
 module Math.Algebra.Class where
 
 -- base
-import Prelude( id, (.)
-              , Bool
-              , Integer, Rational
-              , Word, Int
-              , Float, Double
-              )
+import Prelude
+  ( id, (.)
+  , Bool
+  , Integer, Rational
+  , Word, Int
+  , Float, Double
+  )
 import qualified Prelude
 import Data.Coerce(coerce)
 import Data.Int(Int8, Int16, Int32, Int64)

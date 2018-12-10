@@ -28,12 +28,13 @@
 module Math.Linear where
 
 -- base
-import Prelude hiding( Eq(..), (&&), (||)
-                     , Ord(..)
-                     , Num(..), sum
-                     , Fractional(..), Floating(..)
-                     , Ordering(..)
-                     )
+import Prelude hiding
+  ( Eq(..), (&&), (||)
+  , Ord(..)
+  , Num(..), sum
+  , Fractional(..), Floating(..)
+  , Ordering(..)
+  )
 import qualified Prelude
 import Control.Applicative(liftA2)
 import Control.Arrow(second)
@@ -45,10 +46,11 @@ import Foreign.Ptr(Ptr, castPtr)
 import Foreign.Storable(Storable(alignment, sizeOf, peek, poke, peekElemOff, pokeElemOff))
 import GHC.Base(Int#, Int(I#), (+#))
 import GHC.TypeLits.Compare((:<=?)(LE,NLE), (%<=?))
-import GHC.TypeNats( Nat, KnownNat, natVal
-                   , type (+), type (-)
-                   , CmpNat, type (<=), type (<=?)
-                   )
+import GHC.TypeNats
+  ( Nat, KnownNat, natVal
+  , type (+), type (-)
+  , CmpNat, type (<=), type (<=?)
+  )
 import Numeric.Natural(Natural)
 import Unsafe.Coerce(unsafeCoerce)
 
@@ -63,15 +65,17 @@ import Control.Lens.Iso(Iso', iso)
 
 -- fir
 import Control.Arrow.Strength(strong)
-import Math.Algebra.GradedSemigroup ( GradedSemigroup(..)
-                                    , GradedPresentedSemigroup(..)
-                                    , GradedFreeSemigroup(..)
-                                    )
-import Math.Logic.Class( Boolean(..), Eq(Logic,(==))
-                       , Choose(choose), ifThenElse, Triple
-                       , (#.)
-                       , Ord(..)
-                       )
+import Math.Algebra.GradedSemigroup
+  ( GradedSemigroup(..)
+  , GradedPresentedSemigroup(..)
+  , GradedFreeSemigroup(..)
+  )
+import Math.Logic.Class
+  ( Boolean(..), Eq(Logic,(==))
+  , Choose(choose), ifThenElse, Triple
+  , (#.)
+  , Ord(..)
+  )
 import Math.Algebra.Class(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Floating(..))
 
 infixr 3 :.

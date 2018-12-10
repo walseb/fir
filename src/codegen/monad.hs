@@ -19,9 +19,10 @@ import qualified Data.Binary.Put as Binary
 import Data.ByteString.Lazy(ByteString)
 
 -- lens
-import Control.Lens( Lens'
-                   , use, assign, (<<%=)
-                   )
+import Control.Lens
+  ( Lens'
+  , use, assign, (<<%=)
+  )
 
 -- mtl
 import Control.Monad.Except(MonadError , ExceptT, runExceptT, throwError)

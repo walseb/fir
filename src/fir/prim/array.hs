@@ -33,10 +33,11 @@ import Control.Lens.Iso(Iso', iso)
 import qualified Data.Vector as Array
 
 -- fir
-import Math.Algebra.GradedSemigroup( GradedSemigroup(..)
-                                   , GradedPresentedSemigroup(..)
-                                   , GradedFreeSemigroup(..)
-                                   )
+import Math.Algebra.GradedSemigroup
+  ( GradedSemigroup(..)
+  , GradedPresentedSemigroup(..)
+  , GradedFreeSemigroup(..)
+  )
 
 ------------------------------------------------------------
 -- arrays

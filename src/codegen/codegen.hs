@@ -58,43 +58,48 @@ import qualified Data.Text as Text
 -- fir
 import CodeGen.Binary(putInstruction, traverseWithKey_)
 import CodeGen.Declarations(putASM)
-import CodeGen.Monad( CGMonad, runCGMonad
-                    , MonadFresh(fresh)
-                    , liftPut
-                    , create, createRec
-                    , tryToUse, tryToUseWith
-                    , note
-                    )
-import CodeGen.State( CGState(currentBlock, knownBindings, localBindings)
-                    , CGContext
-                    , FunctionContext(TopLevel, Function, EntryPoint)
-                    , _currentBlock
-                    , _functionContext
-                    , _neededCapability
-                    , _knownExtInsts, _knownExtInst
-                    , _knownStringLit
-                    , _names
-                    , _knownBindings, _knownBinding
-                    , _localBindings, _localBinding
-                    , _knownType
-                    , _knownConstant
-                    , _builtin
-                    , _interface
-                    , _usedGlobal
-                    , _userGlobal
-                    , _debugMode
-                    )
-import CodeGen.Instruction ( Args(..), toArgs
-                           , ID(ID), Instruction(..)
-                           , Pairs(Pairs)
-                           )
+import CodeGen.Monad
+  ( CGMonad, runCGMonad
+  , MonadFresh(fresh)
+  , liftPut
+  , create, createRec
+  , tryToUse, tryToUseWith
+  , note
+  )
+import CodeGen.State
+  ( CGState(currentBlock, knownBindings, localBindings)
+  , CGContext
+  , FunctionContext(TopLevel, Function, EntryPoint)
+  , _currentBlock
+  , _functionContext
+  , _neededCapability
+  , _knownExtInsts, _knownExtInst
+  , _knownStringLit
+  , _names
+  , _knownBindings, _knownBinding
+  , _localBindings, _localBinding
+  , _knownType
+  , _knownConstant
+  , _builtin
+  , _interface
+  , _usedGlobal
+  , _userGlobal
+  , _debugMode
+  )
+import CodeGen.Instruction
+  ( Args(..), toArgs
+  , ID(ID), Instruction(..)
+  , Pairs(Pairs)
+  )
 import FIR.AST(AST(..), Syntactic(fromAST), toTree)
-import FIR.Binding( Permission(Write)
-                  , KnownPermissions(permissions)
-                  )
-import FIR.Builtin( Stage, stageVal
-                  , stageBuiltins, stageCapabilities
-                  )
+import FIR.Binding
+  ( Permission(Write)
+  , KnownPermissions(permissions)
+  )
+import FIR.Builtin
+  ( Stage, stageVal
+  , stageBuiltins, stageCapabilities
+  )
 import FIR.Instances.AST()
 import FIR.Instances.Optics(SOptic(..), showSOptic)
 import FIR.Prim.Singletons

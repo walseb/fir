@@ -22,22 +22,24 @@
 module FIR.Instances.AST where
 
 -- base
-import Prelude hiding( Eq(..), (&&), (||), not
-                     , Ord(..)
-                     , Num(..), Floating(..)
-                     , Integral(..)
-                     , Fractional(..), fromRational
-                     , Functor(..)
-                     , Applicative(..)
-                     )
+import Prelude hiding
+  ( Eq(..), (&&), (||), not
+  , Ord(..)
+  , Num(..), Floating(..)
+  , Integral(..)
+  , Fractional(..), fromRational
+  , Functor(..)
+  , Applicative(..)
+  )
 import qualified Prelude
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
 import Data.Word(Word16, Word32)
 import GHC.TypeLits(TypeError, ErrorMessage(..))
-import GHC.TypeNats( KnownNat, natVal
-                   , type (+), type (-), type (<=?)
-                   )
+import GHC.TypeNats
+  ( KnownNat, natVal
+   , type (+), type (-), type (<=?)
+   )
 import Type.Reflection(typeRep)
 
 -- fir
@@ -47,23 +49,26 @@ import FIR.Prim.Singletons
   ( PrimTy, primTy, ScalarTy, scalarTy
   , SPrimFunc(SFuncVector, SFuncMatrix)
   )
-import Math.Algebra.Class ( AdditiveGroup(..)
-                          , Semiring(..), Ring(..)
-                          , DivisionRing(..)
-                          , Signed(..), Archimedean(..)
-                          , Convert(..)
-                          )
-import Math.Linear( Semimodule(..), Module(..)
-                  , Inner(..)
-                  , Matrix(..)
-                  , V, M(..)
-                  , dfoldrV, buildV
-                  , pattern V2, pattern V3, pattern V4
-                  )
-import Math.Logic.Class ( Eq(..), Boolean(..)
-                        , Choose(..), Triple
-                        , Ord(..)
-                        )
+import Math.Algebra.Class
+  ( AdditiveGroup(..)
+  , Semiring(..), Ring(..)
+  , DivisionRing(..)
+  , Signed(..), Archimedean(..)
+  , Convert(..)
+  )
+import Math.Linear
+  ( Semimodule(..), Module(..)
+  , Inner(..)
+  , Matrix(..)
+  , V, M(..)
+  , dfoldrV, buildV
+  , pattern V2, pattern V3, pattern V4
+  )
+import Math.Logic.Class
+  ( Eq(..), Boolean(..)
+  , Choose(..), Triple
+  , Ord(..)
+  )
 import qualified SPIRV.PrimOp as SPIRV
 
 --------------------------------------------------------------------------------------

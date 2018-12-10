@@ -26,10 +26,11 @@ import Control.Lens.Iso(Iso', iso)
 
 -- fir
 import Data.Type.Map((:->)((:->)), type (:++:))
-import Math.Algebra.GradedSemigroup( GradedSemigroup(..)
-                                   , GradedPresentedSemigroup(..)
-                                   , GradedFreeSemigroup(..)
-                                   )
+import Math.Algebra.GradedSemigroup
+  ( GradedSemigroup(..)
+  , GradedPresentedSemigroup(..)
+  , GradedFreeSemigroup(..)
+  )
 import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy)
 
 ------------------------------------------------------------

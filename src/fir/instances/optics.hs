@@ -23,14 +23,16 @@ import Data.Kind(Type)
 import Data.Type.Bool(If)
 import Data.Type.Equality(type (==))
 import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
-                   , TypeError
-                   , ErrorMessage(Text, ShowType, (:<>:), (:$$:))
-                   )
-import GHC.TypeNats( Nat, KnownNat, natVal
-                   , CmpNat, type (<=)
-                   , type (-)
-                   )
+import GHC.TypeLits
+  ( Symbol, KnownSymbol, symbolVal
+  , TypeError
+  , ErrorMessage(Text, ShowType, (:<>:), (:$$:))
+  )
+import GHC.TypeNats
+  ( Nat, KnownNat, natVal
+  , CmpNat, type (<=)
+  , type (-)
+  )
 
 -- distributive
 import Data.Distributive(Distributive(..))
@@ -40,17 +42,19 @@ import qualified Data.Vector as Array
 
 -- fir
 import Control.Monad.Indexed((:=))
-import Control.Type.Optic( Optic(..)
-                         , Gettable, ReifiedGetter(view)
-                         , Settable, ReifiedSetter(set )
-                         , Contained(..)
-                         , ContainerKind, DegreeKind, LabelKind
-                         , MonoContained(..)
-                         , (:.:), (:*:), Index, All
-                         )
-import Data.Type.Map ( (:->)((:->)), Key, Value
-                     , Lookup, Append, Length
-                     )
+import Control.Type.Optic
+  ( Optic(..)
+  , Gettable, ReifiedGetter(view)
+  , Settable, ReifiedSetter(set )
+  , Contained(..)
+  , ContainerKind, DegreeKind, LabelKind
+  , MonoContained(..)
+  , (:.:), (:*:), Index, All
+  )
+import Data.Type.Map
+  ( (:->)((:->)), Key, Value
+  , Lookup, Append, Length
+  )
 import FIR.Binding( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
 import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))

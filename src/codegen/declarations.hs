@@ -16,19 +16,20 @@ import Control.Monad.Except(ExceptT)
 import Control.Monad.Trans.Class(lift)
 
 -- fir
-import CodeGen.Binary ( putHeader
-                      , putCapabilities
-                      , putExtendedInstructions
-                      , putMemoryModel
-                      , putEntryPoints
-                      , putKnownStringLits
-                      , putBindingAnnotations                      
-                      , putNames
-                    --, putDecorations
-                    --, putExecutionModes
-                      , putTypesAndConstants
-                      , putGlobals
-                      )
+import CodeGen.Binary
+  ( putHeader
+  , putCapabilities
+  , putExtendedInstructions
+  , putMemoryModel
+  , putEntryPoints
+  , putKnownStringLits
+  , putBindingAnnotations                      
+  , putNames
+--, putDecorations
+--, putExecutionModes
+  , putTypesAndConstants
+  , putGlobals
+  )
 import CodeGen.Instruction (ID(..))
 import CodeGen.Monad(CGMonad, runCGMonad, runExceptTPutM)
 import CodeGen.State(CGState(..), CGContext(..), initialState)

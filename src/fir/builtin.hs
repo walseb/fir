@@ -18,12 +18,14 @@ import GHC.TypeLits(Symbol)
 import Data.Text(Text)
 
 -- fir
-import Data.Type.Map( (:->)((:->))
-                    , InsertionSort, Union
-                    )
-import FIR.Binding ( BindingsMap, Var
-                   , Permission(Write), R, W, RW
-                   )
+import Data.Type.Map
+  ( (:->)((:->))
+  , InsertionSort, Union
+  )
+import FIR.Binding
+  ( BindingsMap, Var
+  , Permission(Write), R, W, RW
+  )
 import FIR.Prim.Array(RuntimeArray)
 import FIR.Prim.Singletons(knownVars)
 import FIR.Prim.Struct(Struct)

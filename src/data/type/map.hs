@@ -11,9 +11,10 @@ module Data.Type.Map where
 import Data.Kind(Type)
 import Data.Type.Bool(If)
 import Data.Type.Equality(type (==))
-import GHC.TypeLits( CmpSymbol
-                   , TypeError, ErrorMessage(..)
-                   )
+import GHC.TypeLits
+  ( CmpSymbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats (Nat, type (+))
 
 ------------------------------------------------

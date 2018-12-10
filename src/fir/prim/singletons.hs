@@ -26,9 +26,10 @@ import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl))
 import Data.Typeable(Typeable, eqT)
 import Data.Word(Word8, Word16, Word32, Word64)
-import GHC.TypeLits( Symbol, KnownSymbol, symbolVal
-                   , TypeError, ErrorMessage(Text)
-                   )
+import GHC.TypeLits
+  ( Symbol, KnownSymbol, symbolVal
+  , TypeError, ErrorMessage(Text)
+  )
 import GHC.TypeNats(KnownNat, natVal)
 
 -- half
@@ -41,17 +42,19 @@ import qualified Data.Text as Text
 import Data.Binary.Class.Put(Put)
 import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map((:->)((:->)))
-import FIR.Binding ( Binding, BindingsMap, Var
-                   , Permission, KnownPermissions, permissions
-                   )
+import FIR.Binding
+  ( Binding, BindingsMap, Var
+  , Permission, KnownPermissions, permissions
+  )
 import FIR.Prim.Array(Array,RuntimeArray)
 import FIR.Prim.Struct(Struct)
 import Math.Algebra.Class(Ring)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimTy as SPIRV
-import SPIRV.PrimTy ( Signedness(Unsigned, Signed)
-                    , Width(W8,W16,W32,W64)
-                    )
+import SPIRV.PrimTy
+  ( Signedness(Unsigned, Signed)
+  , Width(W8,W16,W32,W64)
+  )
 
 ------------------------------------------------------------
 -- singletons for primitive types

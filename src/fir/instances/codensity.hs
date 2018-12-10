@@ -16,14 +16,15 @@
 module FIR.Instances.Codensity where
 
 -- base
-import Prelude hiding( Eq(..), (&&), (||), not
-                     , Ord(..)
-                     , Num(..), Floating(..)
-                     , Integral(..)
-                     , Fractional(..), fromRational
-                     , Functor(..)
-                     , Applicative(..)
-                     )
+import Prelude hiding
+  ( Eq(..), (&&), (||), not
+  , Ord(..)
+  , Num(..), Floating(..)
+  , Integral(..)
+  , Fractional(..), fromRational
+  , Functor(..)
+  , Applicative(..)
+  )
 import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
 import Data.Word(Word16)
@@ -32,9 +33,10 @@ import GHC.TypeLits(Symbol, KnownSymbol)
 import GHC.TypeNats(KnownNat)
 
 -- fir
-import Control.Monad.Indexed( (:=)(AtKey), Codensity(Codensity)
-                            , ixFmap, ixPure, ixLiftA2
-                            )
+import Control.Monad.Indexed
+  ( (:=)(AtKey), Codensity(Codensity)
+  , ixFmap, ixPure, ixLiftA2
+  )
 import qualified Control.Monad.Indexed as Indexed
 import Control.Type.Optic(Optic, Name, Gettable, Settable, Part, Whole, Indices)
 import Data.Type.Map(Insert, Union, Append)
@@ -45,21 +47,24 @@ import FIR.Instances.AST()
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
 import FIR.Instances.Optics(User, Assigner, KnownOptic, opticSing)
 import FIR.Prim.Singletons(PrimTy, ScalarTy, KnownVars)
-import Math.Algebra.Class ( AdditiveGroup(..)
-                          , Semiring(..), Ring(..)
-                          , DivisionRing(..)
-                          , Signed(..), Archimedean(..)
-                          , Convert(..)
-                          )
-import Math.Linear( Semimodule(..), Module(..)
-                  , Inner(..)
-                  , Matrix(..)
-                  , V, M
-                  )
-import Math.Logic.Class ( Eq(..), Boolean(..)
-                        , Choose(..)
-                        , Ord(..)
-                        )
+import Math.Algebra.Class
+  ( AdditiveGroup(..)
+  , Semiring(..), Ring(..)
+  , DivisionRing(..)
+  , Signed(..), Archimedean(..)
+  , Convert(..)
+  )
+import Math.Linear
+  ( Semimodule(..), Module(..)
+  , Inner(..)
+  , Matrix(..)
+  , V, M
+  )
+import Math.Logic.Class
+  ( Eq(..), Boolean(..)
+  , Choose(..)
+  , Ord(..)
+  )
 
 --------------------------------------------------------------------------
 -- utility type synonym, useful for disambiguation

@@ -33,10 +33,11 @@ import Control.Monad.Except(ExceptT)
 import Control.Monad.Trans.Class(lift)
 
 -- fir
-import CodeGen.Instruction ( Args(..), putArgs, toArgs
-                           , ID(..), Instruction(..)
-                           , wordCount
-                           )
+import CodeGen.Instruction
+  ( Args(..), putArgs, toArgs
+  , ID(..), Instruction(..)
+  , wordCount
+  )
 import CodeGen.Monad(note)
 import Data.Binary.Class.Put(Put(put))
 import FIR.Builtin(Stage, executionModel)

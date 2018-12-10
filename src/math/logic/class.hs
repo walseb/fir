@@ -14,12 +14,13 @@
 module Math.Logic.Class where
 
 -- base
-import Prelude( Bool(..)
-              , Int, Word, Float, Double
-              , Semigroup, Monoid
-              , Foldable(..)
-              , flip
-              )
+import Prelude
+  ( Bool(..)
+  , Int, Word, Float, Double
+  , Semigroup, Monoid
+  , Foldable(..)
+  , flip
+  )
 import qualified Prelude
 import Data.Coerce(Coercible, coerce)
 import Data.Int(Int8,Int16,Int32,Int64)

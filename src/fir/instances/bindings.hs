@@ -9,20 +9,23 @@ module FIR.Instances.Bindings where
 -- base
 import Data.Kind(Type)
 import Data.Type.Bool(If)
-import GHC.TypeLits( Symbol
-                   , TypeError
-                   , ErrorMessage(..)
-                   )
+import GHC.TypeLits
+  ( Symbol
+  , TypeError
+  , ErrorMessage(..)
+  )
 
 -- fir
-import Data.Type.Map ( (:->)((:->))
-                     , Lookup, Remove
-                     , Elem
-                     )
-import FIR.Binding( Binding, BindingsMap, BindingType
-                  , Permission(Read,Write)
-                  , Var, Fun
-                  )
+import Data.Type.Map
+  ( (:->)((:->))
+  , Lookup, Remove
+  , Elem
+  )
+import FIR.Binding
+  ( Binding, BindingsMap, BindingType
+  , Permission(Read,Write)
+  , Var, Fun
+  )
 import FIR.Builtin(Stage, StageBuiltins)
 
 

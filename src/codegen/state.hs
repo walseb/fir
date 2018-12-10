@@ -13,19 +13,21 @@ import Data.Set(Set)
 import qualified Data.Set as Set
 
 -- lens
-import Control.Lens( Lens', lens
-                   , at
-                   , view, set
-                   )
+import Control.Lens
+  ( Lens', lens
+  , at
+  , view, set
+  )
 
 -- text-utf8
 import Data.Text(Text)
 import qualified Data.Text as Text
 
 -- fir
-import CodeGen.Instruction( ID(ID)
-                          , Instruction
-                          )
+import CodeGen.Instruction
+  ( ID(ID)
+  , Instruction
+  )
 import FIR.Builtin(Stage(..), stageBuiltins)
 import FIR.Prim.Singletons(AConstant)
 import qualified SPIRV.Capability as SPIRV

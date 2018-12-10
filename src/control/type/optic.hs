@@ -18,23 +18,25 @@ module Control.Type.Optic where
 -- base
 import Data.Kind(Type)
 import Data.Type.Bool(If, type (&&), Not)
-import GHC.TypeLits( Symbol
-                   , TypeError, ErrorMessage(..)
-                   )
+import GHC.TypeLits
+  ( Symbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats(Nat)
 
 -- lens
-import qualified Control.Lens as Lens(view)
+import qualified Control.Lens     as Lens(view)
 import qualified Control.Lens.Iso as Lens(from)
 
 -- fir
 import Data.Type.Map(type (:++:))
 import Data.Function.Variadic(ListVariadic)
-import Math.Algebra.GradedSemigroup ( GradedSemigroup(..)
-                                    , GradedPresentedSemigroup(..)
-                                    , GradedFreeSemigroup(..)
-                                    , DegreeAt
-                                    )
+import Math.Algebra.GradedSemigroup
+  ( GradedSemigroup(..)
+  , GradedPresentedSemigroup(..)
+  , GradedFreeSemigroup(..)
+  , DegreeAt
+  )
 
 ----------------------------------------------------------------------
 
