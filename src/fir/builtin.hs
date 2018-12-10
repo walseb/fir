@@ -24,7 +24,9 @@ import Data.Type.Map( (:->)((:->))
 import FIR.Binding ( BindingsMap, Var
                    , Permission(Write), R, W, RW
                    )
-import FIR.PrimTy(knownVars, Struct, RuntimeArray)
+import FIR.Prim.Array(RuntimeArray)
+import FIR.Prim.Singletons(knownVars)
+import FIR.Prim.Struct(Struct)
 import Math.Linear(V)
 import qualified SPIRV.Capability    as SPIRV(Capability)
 import qualified SPIRV.Capability    as Capability

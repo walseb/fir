@@ -30,7 +30,7 @@ import Control.Monad.Indexed((:=), Codensity)
 import Data.Type.Map (Union, InsertionSort)
 import FIR.AST(AST)
 import FIR.Binding(BindingsMap)
-import FIR.PrimTy(KnownVars(knownVars))
+import FIR.Prim.Singletons(KnownVars(knownVars))
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 

@@ -1,8 +1,10 @@
 
 test\tests\optics\overlapping.hs:44:5: error:
     • set: cannot create product setter.
-      Setters 'fir-0.0.0:Control.Type.Optic.Name_ "n"
-      and 'fir-0.0.0:Control.Type.Optic.Index_ 0
+      Setters 
+        'fir-0.0.0:Control.Type.Optic.Name_ "n"
+      and 
+        'fir-0.0.0:Control.Type.Optic.Index_ 0
       are not disjoint.
     • In a stmt of a 'do' block:
         assign

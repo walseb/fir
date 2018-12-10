@@ -27,7 +27,7 @@ import CodeGen.Instruction( ID(ID)
                           , Instruction
                           )
 import FIR.Builtin(Stage(..), stageBuiltins)
-import FIR.PrimTy(AConstant)
+import FIR.Prim.Singletons(AConstant)
 import qualified SPIRV.Capability as SPIRV
 import qualified SPIRV.Extension  as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV

@@ -27,7 +27,7 @@ import FIR.AST(AST)
 import FIR.Binding(BindingsMap, Var, R, RW)
 import FIR.Instances.Bindings(ValidDef,Get, Put)
 import FIR.Instances.Codensity(def, use, assign, modifying)
-import FIR.PrimTy(PrimTy)
+import FIR.Prim.Singletons(PrimTy)
 
 -- short type synonym helpful for disambiguating
 -- e.g. : [...] @(S _ _)

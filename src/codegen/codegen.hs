@@ -97,14 +97,15 @@ import FIR.Builtin( Stage, stageVal
                   )
 import FIR.Instances.AST()
 import FIR.Instances.Optics(SOptic(..), showSOptic)
-import FIR.PrimTy( PrimTy(primTySing)
-                 , primTy, primTyVal
-                 , SPrimTy(..)
-                 , SPrimFunc(..)
-                 , aConstant
-                 , KnownVars(knownVars)
-                 , traverseStruct
-                 )
+import FIR.Prim.Singletons
+  ( PrimTy(primTySing)
+  , primTy, primTyVal
+  , SPrimTy(..)
+  , SPrimFunc(..)
+  , aConstant
+  , KnownVars(knownVars)
+  )
+import FIR.Prim.Struct(traverseStruct)
 import Math.Linear(V((:.)), M(unM), Matrix(transpose))
 import qualified SPIRV.Capability as SPIRV(Capability, primTyCapabilities)
 import qualified SPIRV.Extension  as SPIRV

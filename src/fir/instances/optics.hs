@@ -53,14 +53,14 @@ import Data.Type.Map ( (:->)((:->)), Key, Value
                      )
 import FIR.Binding( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
-import FIR.PrimTy( PrimTy, IntegralTy
-                 , ScalarTy(scalarTySing), SScalarTy
-                 , PrimTyBindings(primTyBindings)
-                 , SPrimTyBindings
-                 , Array(MkArray)
-                 , RuntimeArray(MkRuntimeArray)
-                 , Struct((:&))
-                 )
+import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))
+import FIR.Prim.Singletons
+  ( PrimTy, IntegralTy
+  , ScalarTy(scalarTySing), SScalarTy
+  , PrimTyBindings(primTyBindings)
+  , SPrimTyBindings
+  )
+import FIR.Prim.Struct(Struct((:&)))
 import Math.Linear(V, M(M), (^!), at)
 
 ----------------------------------------------------------------------

@@ -58,9 +58,15 @@ import Data.Binary(Binary(put,get))
 -- distributive
 import Data.Distributive(Distributive(..))
 
+-- lens
+import Control.Lens.Iso(Iso', iso)
+
 -- fir
 import Control.Arrow.Strength(strong)
-import Math.Algebra.GradedSemigroup(GradedSemigroup(..), GradedPresentedSemigroup(..))
+import Math.Algebra.GradedSemigroup ( GradedSemigroup(..)
+                                    , GradedPresentedSemigroup(..)
+                                    , GradedFreeSemigroup(..)
+                                    )
 import Math.Logic.Class( Boolean(..), Eq(Logic,(==))
                        , Choose(choose), ifThenElse, Triple
                        , (#.)
@@ -270,8 +276,24 @@ instance GradedSemigroup (V 0 a) Nat where
 instance GradedPresentedSemigroup (V 0 a) Nat () where
   type Element    (V 0 a) ()  _  = a
   type Degree Nat (V 0 a) () '() = 1
-  generator :: a -> V (Degree Nat (V 0 a) () unit) a
-  generator a = unsafeCoerce (a :. Nil)
+  homogeneous :: Iso' (V (Degree Nat (V 0 a) () unit) a) a
+  homogeneous 
+    = iso
+        ( unsafeCoerce (headV :: V 1 a -> a) )
+        ( unsafeCoerce ( (:. Nil) :: a -> V 1 a ) )
+
+instance GradedFreeSemigroup (V 0 a) Nat () where
+  type ValidDegree (V 0 a) n = KnownNat n
+  (>!<) :: forall i j. (KnownNat i, KnownNat j) => V (i+j) a -> ( V i a, V j a )
+  (>!<) Nil = unsafeCoerce ( Nil, Nil )
+  (>!<) (a :. as)
+    = case Proxy @1 %<=? Proxy @i of
+         LE Refl   ->
+            let u :: V (i-1) a
+                v :: V j a
+                (u, v) = (>!<) (as :: V ((i+j)-1) a)
+            in (a :. u, v)
+         NLE _ _ -> unsafeCoerce ( Nil, a :. as )
 
 ------------------------------------------------------------------
 
@@ -458,8 +480,20 @@ instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
 instance KnownNat m => GradedPresentedSemigroup (M m 0 a) Nat () where
   type Element    (M m 0 a) ()  _  = V m a
   type Degree Nat (M m 0 a) () '() = 1
-  generator :: V m a -> M m (Degree Nat (M m 0 a) () unit) a
-  generator v = unsafeCoerce ( M (v :. Nil) )
+  homogeneous :: Iso' (M m (Degree Nat (M m 0 a) () unit) a) (V m a)
+  homogeneous
+    = iso
+        ( unsafeCoerce ( (\(M m) -> (headV (distribute m) )) :: M m 1 a -> V m a ) )
+        ( unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a ) )
+
+instance KnownNat m => GradedFreeSemigroup (M m 0 a) Nat () where
+  type ValidDegree (M m 0 a) i = KnownNat i
+  (>!<) :: forall i j. (KnownNat i, KnownNat j) => M m (i+j) a -> ( M m i a, M m j a )
+  (>!<) (M m)
+    = let u :: V i (V m a)
+          v :: V j (V m a)
+          (u, v) = (>!<) (distribute m)
+      in (M (distribute u), M (distribute v))
 
 ------------------------------------------------------------------
 -- type classes for matrix operations

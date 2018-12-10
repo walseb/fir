@@ -43,9 +43,10 @@ import Type.Reflection(typeRep)
 -- fir
 import Data.Function.Variadic(NatVariadic)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
-import FIR.PrimTy( PrimTy, primTy, ScalarTy, scalarTy
-                 , SPrimFunc(SFuncVector, SFuncMatrix)
-                 )
+import FIR.Prim.Singletons
+  ( PrimTy, primTy, ScalarTy, scalarTy
+  , SPrimFunc(SFuncVector, SFuncMatrix)
+  )
 import Math.Algebra.Class ( AdditiveGroup(..)
                           , Semiring(..), Ring(..)
                           , DivisionRing(..)

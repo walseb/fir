@@ -39,7 +39,9 @@ library
       , FIR.Instances.Bindings
       , FIR.Instances.Codensity
       , FIR.Instances.Optics
-      , FIR.PrimTy
+      , FIR.Prim.Array
+      , FIR.Prim.Singletons
+      , FIR.Prim.Struct
       , FIR.Program
       , Math.Algebra.Class
       , Math.Algebra.GradedSemigroup

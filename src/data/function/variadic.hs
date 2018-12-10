@@ -16,7 +16,8 @@ import GHC.TypeNats(Nat, type (-), type (<=?))
 import Numeric.Half(Half)
 
 -- fir
-import {-# SOURCE #-} FIR.PrimTy(Array,RuntimeArray,Struct)
+import FIR.Prim.Array(Array,RuntimeArray)
+import {-# SOURCE #-} FIR.Prim.Struct(Struct)
 import Math.Linear(V,M)
 
 ------------------------------------------------------------

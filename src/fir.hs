@@ -26,10 +26,10 @@ module FIR
   , module FIR.Instances.AST
   , module FIR.Instances.Codensity
   , module FIR.Instances.Optics
-  , FIR.PrimTy.Array
-  , FIR.PrimTy.mkArray
-  , FIR.PrimTy.RuntimeArray(MkRuntimeArray)
-  , FIR.PrimTy.Struct(End,(:&))
+  , FIR.Prim.Array.Array
+  , FIR.Prim.Array.mkArray
+  , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
+  , FIR.Prim.Struct.Struct(End,(:&))
   , FIR.Program.Program
   , module Math.Algebra.Class
   , module Math.Logic.Class
@@ -60,7 +60,9 @@ import FIR.Builtin
 import FIR.Instances.AST
 import FIR.Instances.Codensity
 import FIR.Instances.Optics
-import FIR.PrimTy
+import FIR.Prim.Array
+import FIR.Prim.Struct
+import FIR.Prim.Singletons(KnownVars)
 import FIR.Program
 import Math.Algebra.Class
 import Math.Logic.Class hiding(All)

@@ -23,10 +23,16 @@ import GHC.TypeLits( Symbol
                    )
 import GHC.TypeNats(Nat)
 
+-- lens
+import qualified Control.Lens as Lens(view)
+import qualified Control.Lens.Iso as Lens(from)
+
 -- fir
-import Data.Type.Map(Zip, type (:++:))
+import Data.Type.Map(type (:++:))
 import Data.Function.Variadic(ListVariadic)
 import Math.Algebra.GradedSemigroup ( GradedSemigroup(..)
+                                    , GradedPresentedSemigroup(..)
+                                    , GradedFreeSemigroup(..)
                                     , DegreeAt
                                     )
 
@@ -50,18 +56,16 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 type Name (k :: Symbol) = (Name_ k :: Optic '[] s a)
 type Index (i :: Nat) = (Index_ i :: Optic '[] s a)
 type AnIndex (ix :: Type) = (AnIndex_ :: Optic '[ix] s a)
+
+type family ProductIndices (is :: [Type]) (js :: [Type]) :: [Type] where
+  ProductIndices '[] js = js
+  ProductIndices is '[] = is
+  ProductIndices (i ': is) (j ': js) = (i,j) ': ProductIndices is js
+
 type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
   = ( (o1 `ProductO` o2)
         :: Optic
-              ( Zip
-                  (      Text "Cannot create product optic: \
-                              \different amounts of runtime indices."
-                    :$$: Text "First factor indices: "  :<>: ShowType is
-                    :$$: Text "Second factor indices: " :<>: ShowType js
-                  )
-                  is
-                  js
-              )
+              ( ProductIndices is js )
               s
               ( Product o1 o2 )
     )
@@ -123,14 +127,14 @@ instance forall k (s :: k) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b
          , ks ~ (is :++: js)
          ) => Settable ((o1 `ComposeO` o2) :: Optic ks s b) where
 
-instance forall s is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( ReifiedGetter o1
          , ReifiedGetter o2
          , ComposeGetters is js s a b
          , ks ~ (is :++: js)
          )
       => ReifiedGetter ((o1 `ComposeO` o2) :: Optic ks s b) where
-    view = composeGetters @is @js @s @a @b (view @o1) (view @o2)
+  view = composeGetters @is @js @s @a @b (view @o1) (view @o2)
 
 class ComposeGetters is js s a b where
   composeGetters :: ListVariadic (is :++: '[s]) a
@@ -145,7 +149,7 @@ instance ComposeGetters '[] js s a b => ComposeGetters '[] (j ': js) s a b where
   composeGetters view1 view2 j
     = composeGetters @'[] @js @s @a @b view1 (view2 j)
 
-instance forall s is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( ReifiedSetter o1
          , ReifiedSetter o2
          , ReifiedGetter o1
@@ -153,7 +157,7 @@ instance forall s is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          , ks ~ (is :++: js)
          )
       => ReifiedSetter ((o1 `ComposeO` o2) :: Optic ks s b) where
-    set = composeSetters @is @js @s @a @b (view @o1) (set @o1) (set @o2)
+  set = composeSetters @is @js @s @a @b (view @o1) (set @o1) (set @o2)
 
 class ComposeSetters is js s a b where
   composeSetters :: ListVariadic (is :++: '[s]) a
@@ -174,25 +178,33 @@ instance ComposeSetters '[] js s a b => ComposeSetters '[] (j ': js) s a b where
 -- products
 
 -- getter products
-instance forall empty i s a b r (o1 :: Optic i s a) (o2 :: Optic i s b).
+instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
          ( Gettable o1
          , Gettable o2
-         , r ~ Product o1 o2
-         , empty ~ '[]
-         ) => Gettable ((o1 `ProductO` o2) :: Optic empty s r) where
+         , ks ~ ProductIndices is js
+         , c ~ Product o1 o2
+         ) => Gettable ((o1 `ProductO` o2) :: Optic ks s c) where
 
 -- setter products
-instance forall empty i s a b r (o1 :: Optic i s a) (o2 :: Optic i s b) .
+instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b) .
          ( Settable o1
          , Settable o2
-         , r ~ ProductIfDisjoint o1 o2
-         , empty ~ '[]
-         ) => Settable ((o1 `ProductO` o2) :: Optic empty s r) where
+         , ks ~ ProductIndices is js
+         , c ~ ProductIfDisjoint o1 o2
+         ) => Settable ((o1 `ProductO` o2) :: Optic ks s c) where
 
 type family IsProduct (o :: Optic is s a) :: Bool where
   IsProduct (_ `ProductO` _) = True
   IsProduct (_ `ComposeO` o) = IsProduct o
   IsProduct o                = False
+
+type family WithKind (a :: l) k :: k where
+  WithKind (a :: k) k = a
+  WithKind (a :: l) k
+    = TypeError (     Text "Kind coercion: non-matching kinds."
+                 :$$: Text "Expected kind: " :<>: ShowType k
+                 :$$: Text "Actual kind: " :<>: ShowType l
+                )
 
 type family Product
               ( o1 :: Optic is s a )
@@ -204,50 +216,6 @@ type family Product
   Product (o1 :: Optic is s a) (o2 :: Optic js t b)
     = Combine o1 o2
         ( IsProduct o1 ) ( IsProduct o2 )
-        ( ContainerKind s ) ( ContainerKind a ) ( ContainerKind t ) ( ContainerKind b )
-        ( Container s ) ( Container a ) ( Container t ) ( Container b )
-        ( DegreeKind s ) ( DegreeKind a ) ( DegreeKind t ) ( DegreeKind b )
-        ( DegreeAt (DegreeKind s) (Container s) (LabelOf s o1) )
-        ( DegreeOf a )
-        ( DegreeAt (DegreeKind t) (Container t) (LabelOf t o2) )
-        ( DegreeOf b )
-
--- sorry about this
-type family Combine
-              ( o1 :: Optic is s a) ( o2 :: Optic js t b )
-              ( b1 :: Bool ) ( b2 :: Bool )
-              ck1 ck2 ck3 ck4
-              ( c1 :: ck1 ) ( c2 :: ck2 ) ( c3 :: ck3 ) ( c4 :: ck4 )
-              kha kva khb kvb
-              ( ha :: kha ) ( va :: kva ) ( hb :: khb ) ( vb :: kvb )
-            = ( r :: Type )
-              where
-  Combine o1 o2 True True _ ck _ ck _ c _ c _ k _ k _ (va :: k) _ (vb :: k)
-    = Apply k c ( va :<!>: vb )
-  Combine o1 o2 True False _ ck ck _ _ c c _ _ k k _ _ (va :: k) (hb :: k) _
-    = Apply k c ( va :<!>: hb )
-  Combine o1 o2 False True ck _ _ ck c _ _ c k _ _ k (ha :: k) _ _ (vb :: k)
-    = Apply k c ( ha :<!>: vb )
-  Combine o1 o2 False False ck _ ck _ c _ c _ k _ k _ (ha :: k) _ (hb :: k) _
-    = Apply k c ( ha :<!>: hb )
-  Combine o1 o2 _ _ _ _ _ _ c1 c2 c3 c4 _ _ _ _ _ _ _ _
-    = TypeError (     Text "Cannot create product optic: incompatible containers."
-                 :$$: Text "LHS containers: " :<>: ShowType c1 :<>: Text " and " :<>: ShowType c2
-                 :$$: Text "RHS containers: " :<>: ShowType c3 :<>: Text " and " :<>: ShowType c4
-                 :$$: Text "When creating product of LHS optic"
-                 :$$: ShowType o1
-                 :$$: Text "and RHS optic"
-                 :$$: ShowType o2
-                )
-  Combine o1 o2 _ _ _ _ _ _ _ _ _ _ k1 k2 k3 k4 _ _ _ _
-    = TypeError (     Text "Cannot create product optic: incompatible gradings."
-                 :$$: Text "LHS gradings: " :<>: ShowType k1 :<>: Text " and " :<>: ShowType k2
-                 :$$: Text "RHS gradings: " :<>: ShowType k3 :<>: Text " and " :<>: ShowType k4
-                 :$$: Text "When creating product of LHS optic"
-                 :$$: ShowType o1
-                 :$$: Text "and RHS optic"
-                 :$$: ShowType o2
-                )
 
 type family ProductIfDisjoint
               ( o1 :: Optic is s a )
@@ -260,11 +228,111 @@ type family ProductIfDisjoint
         ( Product  o1 o2 )
         ( TypeError 
            ( Text "set: cannot create product setter."
-            :$$: Text "Setters " :$$: Text "  " :<>: ShowType o1
-            :$$: Text "and "     :$$: Text "  " :<>: ShowType o2
+            :$$: Text "Setters "
+            :$$: Text "  " :<>: ShowType o1
+            :$$: Text "and "
+            :$$: Text "  " :<>: ShowType o2
             :$$: Text "are not disjoint."
            )
         )
+
+type family LastAccessee ( o :: Optic is (s :: Type) a ) :: Type where
+  LastAccessee (o1 `ComposeO` o2) = LastAccessee o2
+  LastAccessee (o :: Optic is s a) = s
+
+type family LastIndices ( o :: Optic is s a ) :: [Type] where
+  LastIndices (o1 `ComposeO` o2) = LastIndices o2
+  LastIndices (o :: Optic is s a) = s
+
+type family LastOptic ( o :: Optic is s a) :: Optic (LastIndices o) (LastAccessee o) a where
+  LastOptic (o1 `ComposeO` o2) = LastOptic o2
+  LastOptic (o :: Optic is s a) = o `WithKind` ( Optic (LastIndices o) (LastAccessee o) a )
+
+
+type family WhichKind
+              ( b1 :: Bool ) ( b2 :: Bool )
+              k1 k2 k3 k4
+              where
+  WhichKind True  True  _ k _ k = k
+  WhichKind True  False _ k k _ = k
+  WhichKind False True  k _ _ k = k
+  WhichKind False False k _ k _ = k
+
+type family WhichContainer
+                ( b1 :: Bool ) ( b2 :: Bool )
+                ck1 ck2 ck3 ck4
+                ( c1 :: ck1 ) ( c2 :: ck2 ) ( c3 :: ck3 ) ( c4 :: ck4 )
+              = ( r :: WhichKind b1 b2 ck1 ck2 ck3 ck4 )
+                where
+  WhichContainer True  True  _  ck _  ck _ c _ c = c
+  WhichContainer True  False _  ck ck _  _ c c _ = c
+  WhichContainer False True  ck _  _  ck c _ _ c = c
+  WhichContainer False False ck _  ck _  c _ c _ = c
+  WhichContainer _ _ _ _ _ _ c1 c2 c3 c4
+    = TypeError (     Text "Cannot create product optic: incompatible containers."
+                 :$$: Text "LHS containers: " :<>: ShowType c1 :<>: Text " and " :<>: ShowType c2
+                 :$$: Text "RHS containers: " :<>: ShowType c3 :<>: Text " and " :<>: ShowType c4
+                )
+
+type family WhichDegree
+              ( b1 :: Bool ) ( b2 :: Bool )
+              kha kva khb kvb
+              ( ha :: kha ) ( va :: kva ) ( hb :: khb ) ( vb :: kvb )
+            = ( r :: WhichKind b1 b2 kha kva khb kvb )
+              where
+  WhichDegree True  True  _ k _ k _  va _  vb = va :<!>: vb
+  WhichDegree True  False _ k k _ _  va hb _  = va :<!>: hb
+  WhichDegree False True  k _ _ k ha _  _  vb = ha :<!>: vb
+  WhichDegree False False k _ k _ ha _  hb _  = ha :<!>: hb
+  WhichDegree _ _ _ _ _ _ ha va hb vb
+    = TypeError (     Text "Cannot create product optic: incompatible gradings."
+                 :$$: Text "LHS gradings: " :<>: ShowType ha :<>: Text " and " :<>: ShowType va
+                 :$$: Text "RHS gradings: " :<>: ShowType hb :<>: Text " and " :<>: ShowType vb
+                )
+
+type family ProductContainer
+                ( o1 :: Optic is s a ) ( o2 :: Optic js t b )
+                ( b1 :: Bool ) ( b2 :: Bool )
+              = ( r :: WhichKind b1 b2
+                          ( ContainerKind s )
+                          ( ContainerKind a )
+                          ( ContainerKind t )
+                          ( ContainerKind b )
+                )
+                where
+  ProductContainer (o1 :: Optic is s a) (o2 :: Optic js t b) b1 b2
+    = WhichContainer b1 b2
+        (ContainerKind s) (ContainerKind a) (ContainerKind t) (ContainerKind b)
+        (Container s) (Container a) (Container t) (Container b )
+
+type family ProductDegree
+                ( o1 :: Optic is s a ) ( o2 :: Optic js t b )
+                ( b1 :: Bool ) ( b2 :: Bool )
+              = ( r :: WhichKind b1 b2
+                          ( DegreeKind s )
+                          ( DegreeKind a )
+                          ( DegreeKind t )
+                          ( DegreeKind b )
+                )
+                where
+  ProductDegree (o1 :: Optic is s a) (o2 :: Optic js t b) b1 b2
+    = WhichDegree b1 b2
+        (DegreeKind s) (DegreeKind a) (DegreeKind t) (DegreeKind b)
+        ( DegreeAt (DegreeKind s) (Container s) (LabelOf s o1) )
+        ( DegreeOf a )
+        ( DegreeAt (DegreeKind t) (Container t) (LabelOf t o2) )
+        ( DegreeOf b )
+
+type family Combine
+                ( o1 :: Optic is s a ) ( o2 :: Optic js t b )
+                ( b1 :: Bool ) ( b2 :: Bool )
+              = ( r :: Type )
+                where
+  Combine (o1 :: Optic is s a) (o2 :: Optic js t b) b1 b2
+    = Apply
+        ( WhichKind b1 b2 (DegreeKind s) (DegreeKind a) (DegreeKind t) (DegreeKind b) )
+        ( ProductContainer o1 o2 b1 b2 )
+        ( ProductDegree o1 o2 b1 b2 )
 
 type family Disjoint
               ( o1 :: Optic is s a )
@@ -302,9 +370,336 @@ type family Disjoint
         ( Disjoint o2 o4 )
   Disjoint _ _ = 'True
 
+class MultiplyGetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
+  multiplyGetters :: ListVariadic (is :++: '[s]) a
+                  -> ListVariadic (js :++: '[s]) b
+                  -> ListVariadic (ProductIndices is js :++: '[s]) c
+
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , a ~ ListVariadic '[] a
+         , a ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf a `WithKind` DegreeKind c)
+         , b ~ ListVariadic '[] b
+         , b ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf b `WithKind` DegreeKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (       (DegreeOf a `WithKind` DegreeKind c)
+                    :<!>: (DegreeOf b `WithKind` DegreeKind c)
+                  )
+         )
+      => MultiplyGetters '[] '[] s a b c 'Nothing 'Nothing where
+  multiplyGetters view1 view2 s
+    = (<!>) @(Container c) @_ @(DegreeOf a `WithKind` DegreeKind c) @(DegreeOf b `WithKind` DegreeKind c)
+        (view1 s)
+        (view2 s)
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ ListVariadic '[] a
+         , a ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf a `WithKind` DegreeKind c)
+         , b ~ ListVariadic '[] b
+         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hdb ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (lb `WithKind` LabelKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  ((DegreeOf a `WithKind` DegreeKind c) :<!>: hdb)
+         )
+      => MultiplyGetters '[] '[] s a b c 'Nothing ('Just lb) where
+  multiplyGetters view1 view2 s
+    = (<!>) @(Container c) @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb
+        ( view1 s )
+        ( (Lens.view . Lens.from)
+            ( homogeneous
+                @(Container c)
+                @(DegreeKind c)
+                @(LabelKind c)
+                @(lb `WithKind` LabelKind c)
+            )
+          ( view2 s )
+        )
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ ListVariadic '[] a
+         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , b ~ ListVariadic '[] b
+         , b ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf b `WithKind` DegreeKind c)
+         , hda ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (la `WithKind` LabelKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (hda :<!>: (DegreeOf b `WithKind` DegreeKind c))
+         )
+      => MultiplyGetters '[] '[] s a b c ('Just la) 'Nothing where
+  multiplyGetters view1 view2 s
+    = (<!>) @(Container c) @_ @hda @(DegreeOf b `WithKind` DegreeKind c)
+        ( (Lens.view . Lens.from)
+            ( homogeneous
+                @(Container c)
+                @(DegreeKind c)
+                @(LabelKind c)
+                @(la `WithKind` LabelKind c)
+            )
+          ( view1 s )
+        )
+        ( view2 s )
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ ListVariadic '[] a
+         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , b ~ ListVariadic '[] b
+         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hda ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (la `WithKind` LabelKind c)
+         , hdb ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (lb `WithKind` LabelKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (hda :<!>: hdb)
+         )
+      => MultiplyGetters '[] '[] s a b c ('Just la) ('Just lb) where
+  multiplyGetters view1 view2 s
+    = (<!>) @(Container c) @_ @hda @hdb
+        ( (Lens.view . Lens.from)
+            ( homogeneous
+                @(Container c)
+                @(DegreeKind c)
+                @(LabelKind c)
+                @(la `WithKind` LabelKind c)
+            )
+          ( view1 s )
+        )
+        ( (Lens.view . Lens.from)
+            ( homogeneous
+                @(Container c)
+                @(DegreeKind c)
+                @(LabelKind c)
+                @(lb `WithKind` LabelKind c)
+            )
+          ( view2 s )
+        )
+
+
+instance MultiplyGetters is        js        s a b c mla mlb
+      => MultiplyGetters (i ': is) (j ': js) s a b c mla mlb where
+  multiplyGetters view1 view2 (i,j)
+    = multiplyGetters @is @js @s @a @b @c @mla @mlb (view1 i) (view2 j)
+      :: ListVariadic (ProductIndices is js :++: '[s]) c
+instance MultiplyGetters '[] js        s a b c mla mlb
+      => MultiplyGetters '[] (j ': js) s a b c mla mlb where
+  multiplyGetters view1 view2 j
+    = multiplyGetters @'[] @js @s @a @b @c @mla @mlb view1 (view2 j)
+      :: ListVariadic (ProductIndices '[] js :++: '[s]) c
+instance MultiplyGetters is        '[] s a b c mla mlb
+      => MultiplyGetters (i ': is) '[] s a b c mla mlb where
+  multiplyGetters view1 view2 i
+    = multiplyGetters @is @'[] @s @a @b @c @mla @mlb (view1 i) view2
+      :: ListVariadic (ProductIndices is '[] :++: '[s]) c
+
+instance forall is js ks (s :: Type) a b c
+               (o1 :: Optic is s a) (o2 :: Optic js s b)
+               (mla :: Maybe (LabelKind (LastAccessee o1)))
+               (mlb :: Maybe (LabelKind (LastAccessee o2)))
+       . ( ReifiedGetter o1
+         , ReifiedGetter o2
+         , ks ~ ProductIndices is js
+         , c ~ Product o1 o2
+         , mla ~ ( If (IsProduct o1) 'Nothing ('Just (LabelOf (LastAccessee o1) (LastOptic o1))) )
+         , mlb ~ ( If (IsProduct o2) 'Nothing ('Just (LabelOf (LastAccessee o2) (LastOptic o2))) )
+         , MultiplyGetters
+            is js s a b c mla mlb
+         )
+      => ReifiedGetter ((o1 `ProductO` o2) :: Optic ks s c) where
+  view = multiplyGetters @is @js @s @a @b @c @mla @mlb (view @o1) (view @o2)
+
+
+class MultiplySetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
+  multiplySetters :: ListVariadic (is :++: '[a,s]) s
+                  -> ListVariadic (js :++: '[b,s]) s
+                  -> ListVariadic (ProductIndices is js :++: '[c,s]) s
+
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf a `WithKind` DegreeKind c)
+         , b ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf b `WithKind` DegreeKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (      (DegreeOf a `WithKind` DegreeKind c)
+                   :<!>: (DegreeOf b `WithKind` DegreeKind c)
+                  )
+         , s ~ ListVariadic '[] s
+         , ValidDegree (Container c) (DegreeOf a `WithKind` DegreeKind c)
+         , ValidDegree (Container c) (DegreeOf b `WithKind` DegreeKind c)
+         )
+       => MultiplySetters '[] '[] s a b c 'Nothing 'Nothing where
+  multiplySetters set1 set2 c
+    = let (a,b) = (>!<) c
+      in  set2 b . set1 a
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf a `WithKind` DegreeKind c)
+         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hdb ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (lb `WithKind` LabelKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  ((DegreeOf a `WithKind` DegreeKind c) :<!>: hdb)
+         , s ~ ListVariadic '[] s
+         , ValidDegree (Container c) (DegreeOf a `WithKind` DegreeKind c)
+         , ValidDegree (Container c) hdb
+         )
+      => MultiplySetters '[] '[] s a b c 'Nothing ('Just lb) where
+  multiplySetters set1 set2 c
+    = let (a,hb) = (>!<) @(Container c) @_ @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb c
+          b = Lens.view
+                ( homogeneous @(Container c) @_ @_ @(lb `WithKind` LabelKind c) )
+                hb
+      in set2 b . set1 a
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , hda ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (la `WithKind` LabelKind c)
+         , b ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (DegreeOf b `WithKind` DegreeKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (hda :<!>: (DegreeOf b `WithKind` DegreeKind c))
+         , s ~ ListVariadic '[] s
+         , ValidDegree (Container c) hda
+         , ValidDegree (Container c) (DegreeOf b `WithKind` DegreeKind c)
+         )
+       => MultiplySetters '[] '[] s a b c ('Just la) 'Nothing where
+  multiplySetters set1 set2 c
+    = let (ha,b) = (>!<) @(Container c) @_ @_ @hda @(DegreeOf b `WithKind` DegreeKind c) c
+          a = Lens.view
+                ( homogeneous @(Container c) @_ @_ @(la `WithKind` LabelKind c) )
+                ha
+      in set2 b . set1 a
+instance ( GradedSemigroup (Container c) (DegreeKind c)
+         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , hda ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (la `WithKind` LabelKind c)
+         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hdb ~ Degree
+                    (DegreeKind c)
+                    (Container c)
+                    (LabelKind c)
+                    (lb `WithKind` LabelKind c)
+         , c ~ ListVariadic '[] c
+         , c ~ Apply
+                  (DegreeKind c)
+                  (Container c)
+                  (hda :<!>: hdb)
+         , s ~ ListVariadic '[] s
+         , ValidDegree (Container c) hda
+         , ValidDegree (Container c) hdb
+         )
+      => MultiplySetters '[] '[] s a b c ('Just la) ('Just lb) where
+  multiplySetters set1 set2 c
+    = let (ha,hb) = (>!<) @(Container c) @_ @_ @hda @hdb c
+          a = Lens.view
+                ( homogeneous @(Container c) @_ @_ @(la `WithKind` LabelKind c) )
+                ha
+          b = Lens.view
+                ( homogeneous @(Container c) @_ @_ @(lb `WithKind` LabelKind c) )
+                hb
+      in set2 b . set1 a
+
+instance MultiplySetters is        js        s a b c mla mlb
+      => MultiplySetters (i ': is) (j ': js) s a b c mla mlb where
+  multiplySetters set1 set2 (i,j)
+    = multiplySetters @is @js @s @a @b @c @mla @mlb (set1 i) (set2 j)
+      :: ListVariadic (ProductIndices is js :++: '[c,s]) s
+instance MultiplySetters '[] js        s a b c mla mlb
+      => MultiplySetters '[] (j ': js) s a b c mla mlb where
+  multiplySetters set1 set2 j
+    = multiplySetters @'[] @js @s @a @b @c @mla @mlb set1 (set2 j)
+      :: ListVariadic (ProductIndices '[] js :++: '[c,s]) s
+instance MultiplySetters is        '[] s a b c mla mlb
+      => MultiplySetters (i ': is) '[] s a b c mla mlb where
+  multiplySetters set1 set2 i
+    = multiplySetters @is @'[] @s @a @b @c @mla @mlb (set1 i) set2
+      :: ListVariadic (ProductIndices is '[] :++: '[c,s]) s
+
+instance forall is js ks (s :: Type) a b c
+               (o1 :: Optic is s a) (o2 :: Optic js s b)
+               (mla :: Maybe (LabelKind (LastAccessee o1)))
+               (mlb :: Maybe (LabelKind (LastAccessee o2)))
+       . ( ReifiedSetter o1
+         , ReifiedSetter o2
+         , ks ~ ProductIndices is js
+         , c ~ ProductIfDisjoint o1 o2
+         , mla ~ ( If (IsProduct o1) 'Nothing ('Just (LabelOf (LastAccessee o1) (LastOptic o1))) )
+         , mlb ~ ( If (IsProduct o2) 'Nothing ('Just (LabelOf (LastAccessee o2) (LastOptic o2))) )
+         , MultiplySetters
+            is js s a b c mla mlb
+         )
+      => ReifiedSetter ((o1 `ProductO` o2) :: Optic ks s c) where
+  set = multiplySetters @is @js @s @a @b @c @mla @mlb (set @o1) (set @o2)
+
 ----------------------------------------------------------------------
 -- equalisers
-
 
 instance
   ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
