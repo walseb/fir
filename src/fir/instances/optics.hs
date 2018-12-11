@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise       #-}
+
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -66,7 +69,7 @@ import FIR.Prim.Singletons
   , SPrimTys
   )
 import FIR.Prim.Struct(Struct((:&)))
-import Math.Linear(V, M(M), (^!), at)
+import Math.Linear(V((:.)), M(M), (^!), at)
 
 ----------------------------------------------------------------------
 -- singletons
@@ -665,17 +668,54 @@ instance ( KnownNat i
          )
       => Settable (Index_ i :: Optic empty (V n a) r) where
 
+instance ( KnownNat n, 1 <= n
+         , empty ~ '[]
+         , r ~ a
+         , r ~ ListVariadic '[] r
+         , Settable (Index_ 0 :: Optic empty (V n a) r)
+         )
+      => ReifiedSetter
+           (Index_ 0 :: Optic empty (V n a) r)
+       where
+  set b (_ :. as) = b :. as
+instance {-# OVERLAPPABLE #-}
+         ( KnownNat n, KnownNat i, 1 <= n
+         , CmpNat i n ~ 'LT
+         , r ~ a
+         , empty ~ '[]
+         , Settable (Index_ i :: Optic empty (V n a) r)
+         , ReifiedSetter
+             -- as above, force evaluation of r for correct error message
+             (Index_ (If (r == r) (i-1) (i-1)) :: Optic empty (V (n-1) a) r)
+         )
+      => ReifiedSetter
+          (Index_ i :: Optic empty (V n a) r)
+      where
+  set b (a :. as) = a :. set @(Index_ (If (r == r) (i-1) (i-1)) :: Optic '[] (V (n-1) a) r) b as
+
 instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
+         , KnownNat n, 1 <= n
          )
     => Settable (AnIndex_ :: Optic ix (V n a) r) where
+instance ( IntegralTy ty
+         , ix ~ '[ty]
+         , r ~ a
+         , KnownNat n, 1 <= n
+         )
+    => ReifiedSetter (AnIndex_ :: Optic ix (V n a) r) where
+  set i b (a :. as)
+    = if i == 0
+      then b :. as
+      else a :. set @(AnIndex_ :: Optic ix (V (n-1) a) r) (i-1) b as
 
 instance
     TypeError (    Text "set: attempt to update vector element \
                         \using symbolic identifier "
               :<>: ShowType k :<>: Text "."
-              :$$: Text "Note: swizzling is not (yet?) supported."
+              :$$: Text "For a vector swizzle, use 'Swizzle' (e.g. Swizzle '[\"x\",\"z\",\"y\"]),"
+              :$$: Text "or a synonym such as XZY (limited to X/Y/Z/W)."
               )
     => Settable (Name_ k :: Optic empty (V n a) r) where
 
@@ -697,12 +737,41 @@ instance ( KnownNat i
                   )
          )
       => Settable (Index_ i :: Optic empty (M m n a) r) where
+instance ( KnownNat m, KnownNat n, KnownNat i, 1 <= n
+         , empty ~ '[]
+         , CmpNat i n ~ 'LT
+         , r ~ V m a
+         , Settable (Index_ i :: Optic empty (M m n a) r)
+         , ReifiedSetter ( Index_ i :: Optic '[] (V n (V m a)) (V m a) )
+         )
+      => ReifiedSetter
+           (Index_ i :: Optic empty (M m n a) r)
+       where
+  set c (M m)
+    = ( M
+      . distribute
+      . set @(Index_ i :: Optic '[] (V n (V m a)) (V m a)) c
+      . distribute
+      ) m
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
-         , r ~ a
+         , r ~ V m a
          )
-    => Settable (AnIndex_ :: Optic ix (M m n a) r) where
+       => Settable (AnIndex_ :: Optic ix (M m n a) r) where
+instance ( IntegralTy ty
+         , ix ~ '[ty]
+         , r ~ V m a
+         , KnownNat m, KnownNat n, 1 <= n
+         )
+       => ReifiedSetter (AnIndex_ :: Optic ix (M m n a) r)
+       where
+  set i c (M m)
+    = ( M
+      . distribute
+      . set @(AnIndex_ :: Optic ix (V n (V m a)) (V m a)) i c
+      . distribute
+      ) m
 
 instance
     TypeError (    Text "set: attempt to update matrix column \

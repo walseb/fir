@@ -894,7 +894,7 @@ conflicts :: forall k a. (Ord k, Eq a)
           -> Map k [a]
 conflicts keyIsOK
   = Map.mapMaybeWithKey
-      ( \k as -> if keyIsOK k && not (all (== head as) as)
+      ( \k as -> if keyIsOK k && any (/= head as) as
                  then Just as
                  else Nothing
       )
