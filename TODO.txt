@@ -5,31 +5,11 @@ Improvements waiting on GHC:
       (avoid unsafe optics with overly general kinds to work around it)
 
 
-Compound types:
-  - (Syntactic sugar for) complex numbers & quaternions
-  - (Syntactic sugar for) tuples
-
-Operations:
-  - comparison (using Ordering, not just < <= > >=)
-  - rounding operations
-  - bitwise operations on numeric types
-  - glsl utility operations (clamp, mix, step, smoothstep, ...)
-
-Control flow:
-  - switch
-
-
-fix vector indexing to start from 0 and not 1
-
 figure out how to use fmap for internal vectors/matrices/structs/etc
 also need zipWith, e.g. shift operators (zipWith shiftRight intvec datavec)
 
 
 apply RowMajor decoration to matrix type declarations?
-
-write pattern synonyms for creating matrices out of rows/columns
-same for destructuring
-(could uses lenses?)
 
 
 program optimisation: when possible, bundle together the vector indexing "At" things into a OpVectorShuffle
@@ -48,24 +28,12 @@ can it be renamed gl_in and gl_out ??
 check correctness with function arguments and local variables (and entry point local variables)
 maybe local variables & function arguments are not being updated properly (depending on whether they use load/store or SSA)
 
-clean up all the type families called variadic:
-  - variadic with map of bindings
-  - variadic with type level nat
-  - variadic with type level list
 
 
 finish implementing reified setters (vectors, matrices)
-
-figure out how to write reifiable instances for product optics
 allow reified optics to work with internal types, such as 'AST a' or 'Codensity AST (AST a := i) i'
 
-add support for newtypes
-
-
-create a test that fails because of stuff defined outside of function definitions
 
 find a better name for the "All" setter to avoid conflict with All/Any boolean newtypes
 
 reinstate the type error instance for MonadIxFail (why did it disappear??)
-
-move struct/array/runtimearray definitions to a new module (hopefully removing the cyclic dependencies)

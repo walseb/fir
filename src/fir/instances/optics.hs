@@ -353,10 +353,21 @@ instance ( KnownNat i
       => Gettable (Index_ i :: Optic empty (V n a) r) where
 instance ( KnownNat n
          , KnownNat i
-         , LT ~ CmpNat i n
-         , r ~ a
+         , r ~ If
+                 (CmpNat i n == LT)
+                 a
+                 ( TypeError
+                   (     Text "get: vector index "
+                    :<>: ShowType i
+                    :<>: Text " is out of bounds."
+                    :$$: Text "Vector dimension is "
+                    :<>: ShowType n :<>: Text "."
+                    :$$: Text "Note: indexing starts from 0."
+                   )
+                 )
          , empty ~ '[]
          , PrimTy a
+         , CmpNat i n ~ 'LT
          )
       => ReifiedGetter
             (Index_ i :: Optic empty (V n a) r)
@@ -411,8 +422,21 @@ instance ( KnownNat n
 instance ( KnownNat m
          , KnownNat n
          , KnownNat i
-         , LT ~ CmpNat i n
-         , r ~ V m a
+         , r ~ If
+                  (CmpNat i n == LT)
+                  (V m a)
+                  ( TypeError
+                    (     Text "get: matrix column index "
+                     :<>: ShowType i
+                     :<>: Text " is out of bounds."
+                     :$$: Text "This matrix has "
+                     :<>: ShowType m :<>: Text " rows, "
+                     :<>: ShowType n :<>: Text " columns."
+                     :$$: Text "Note: indexing starts from 0."
+                    )
+                  )
+         , ListVariadic '[] r ~ V m a
+         , CmpNat i n ~ 'LT
          , empty ~ '[]
          )
       => ReifiedGetter

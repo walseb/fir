@@ -44,7 +44,7 @@ data Array :: Nat -> Type -> Type where
 
 mkArray :: forall n a. KnownNat n => Array.Vector a -> Array n a
 mkArray arr
-  = let n = (fromIntegral (natVal (Proxy @n)))
+  = let n = fromIntegral (natVal (Proxy @n))
     in MkArray @n (Array.slice 0 n arr)
 
 
@@ -64,7 +64,7 @@ instance GradedSemigroup (Array 0 a) Nat where
 instance GradedPresentedSemigroup (Array 0 a) Nat () where
   type Element    (Array 0 a) ()  _  = a
   type Degree Nat (Array 0 a) () '() = 1
-  homogeneous :: a -> (Array (Degree Nat (Array 0 a) () unit) a)
+  homogeneous :: a -> Array (Degree Nat (Array 0 a) () unit) a
   homogeneous a = unsafeCoerce (MkArray @1 (Array.singleton a))
 
 instance GradedFreeSemigroup (Array 0 a) Nat () where
@@ -100,7 +100,7 @@ instance GradedSemigroup (RuntimeArray a) () where
 instance GradedPresentedSemigroup (RuntimeArray a) () () where
   type Element   (RuntimeArray a) () _ = a
   type Degree () (RuntimeArray a) () '() = '()
-  homogeneous :: a -> (Apply () (RuntimeArray a) (Degree () (RuntimeArray a) () unit))
+  homogeneous :: a -> Apply () (RuntimeArray a) (Degree () (RuntimeArray a) () unit)
   homogeneous a = unsafeCoerce ( MkRuntimeArray (Array.singleton a) )
 
 
