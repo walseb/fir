@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
@@ -17,21 +18,17 @@ module FIR.Prim.Struct where
 import Control.Applicative(liftA2)
 import Control.Arrow(first)
 import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits(Symbol, KnownSymbol)
+import GHC.TypeLits(Symbol)
 import Unsafe.Coerce(unsafeCoerce)
 
--- lens
-import Control.Lens.Iso(Iso', iso)
-
 -- fir
-import Data.Type.Map((:->)((:->)), type (:++:))
+import Data.Type.Map((:->)((:->)), type (:++:), Key, Value)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GradedPresentedSemigroup(..)
   , GradedFreeSemigroup(..)
   )
-import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy)
+import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTys(SNil, SCons), PrimTys(primTys))
 
 ------------------------------------------------------------
 -- structs
@@ -40,12 +37,44 @@ infixr 4 :&
 -- order *matters* for structs (memory layout!)
 data Struct :: [Symbol :-> Type] -> Type where
   End  :: Struct '[]
-  (:&) :: forall k a as. (KnownSymbol k, PrimTy a)
-       => a -> Struct as -> Struct ((k ':-> a) ': as)
+  (:&) :: forall k a as. a -> Struct as -> Struct ((k ':-> a) ': as)
 
-deriving instance Eq   (Struct as)
-deriving instance Ord  (Struct as)
-deriving instance Show (Struct as)
+
+instance PrimTys as => Eq (Struct as) where
+  s1 == s2 = case primTys @as of
+    SNil
+      -> True
+    SCons _ _ _
+      -> case (s1, s2) of
+            (a :& as, b :& bs)
+              -> a == b && as == bs
+
+instance PrimTys as => Ord (Struct as) where
+  compare s1 s2 = case primTys @as of
+    SNil
+      -> EQ
+    SCons _ _ _
+      -> case (s1, s2) of
+            (a :& as, b :& bs)
+              -> case compare a b of
+                    EQ -> compare as bs
+                    un -> un
+
+class Display as where
+  display :: as -> String
+instance PrimTys as => Display (Struct as) where
+  display s = case primTys @as of
+    SNil
+      -> ""
+    SCons _ _ _
+      -> case s of
+            (a :& as)
+              -> case display as of
+                    "" -> show a
+                    d  -> show a ++ ", " ++ d
+
+instance PrimTys as => Show (Struct as) where
+  show s = "{ " ++ display s ++ " }" 
 
 instance GradedSemigroup Struct [Symbol :-> Type] where
   type Apply [Symbol :-> Type] Struct as = Struct as
@@ -54,70 +83,60 @@ instance GradedSemigroup Struct [Symbol :-> Type] where
   End <!> t = t
   (a :& s) <!> t = a :& ( s <!> t )
 
-data KeyWithValue (kv :: (Symbol :-> Type)) where
-  KeyValue :: (KnownSymbol k, PrimTy a) => a -> KeyWithValue (k ':-> a)
-
-
 instance GradedPresentedSemigroup
             Struct
             [Symbol :-> Type]
             (Symbol :-> Type)
             where
-  type Element                  Struct (Symbol :-> Type) kv = KeyWithValue kv
-  type Degree [Symbol :-> Type] Struct (Symbol :-> Type) kv = '[ kv ]    
-  homogeneous
-    :: forall (kv :: (Symbol :-> Type)).
-       Iso' (Struct '[ kv ]) (KeyWithValue kv)
-  homogeneous
-    = iso
-        ( \(a :& End) -> KeyValue a )
-        ( \(KeyValue a) -> a :& End )
+  type Element                  Struct (Symbol :-> Type) kv = Value kv
+  type Degree [Symbol :-> Type] Struct (Symbol :-> Type) kv = '[ kv ]
+  homogeneous :: forall (kv :: Symbol :-> Type). Value kv -> Struct '[ kv ]
+  homogeneous a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv])
 
-data SLength :: [k] -> Type where
-  SNil  :: SLength '[]
-  SCons :: KnownLength as => Proxy as -> SLength (a ': as)
 
-class KnownLength (as :: [k]) where
-  lengthVal :: Proxy as -> SLength as
-
-instance KnownLength '[] where
-  lengthVal _ = SNil
-instance KnownLength as => KnownLength (a ': as) where
-  lengthVal _ = SCons Proxy
-
-asProxyStructTypeOf :: Struct as -> Proxy as -> Struct as
-asProxyStructTypeOf s _ = s
+asProxyProxyTypeOf :: proxy1 as -> proxy2 as -> proxy1 as
+asProxyProxyTypeOf s _ = s
 
 instance GradedFreeSemigroup
             Struct
             [Symbol :-> Type]
             (Symbol :-> Type)
             where
-  type ValidDegree Struct as = KnownLength as
-  (>!<) :: forall as bs. (KnownLength as, KnownLength bs)
+  type ValidDegree Struct as = PrimTys as
+  (>!<) :: forall as bs. (PrimTys as, PrimTys bs)
         => Struct (as :++: bs) -> ( Struct as, Struct bs )
   (>!<) End = unsafeCoerce ( End, End ) -- GHC cannot deduce (as ~ '[], bs ~ '[]) from (as :++: bs) ~ '[]
   (>!<) (s :& ss)
-    = case lengthVal (Proxy @as) of
-        SNil -> ( End, s :& ss )
-        SCons tail_as
+    = case primTys @as of
+        SNil
+          -> ( End, s :& ss )
+        SCons _ _ nxt
           ->  let
                 r :: Struct bs
                 -- workaround to specify the type of l
-                (l,r) = first (`asProxyStructTypeOf` tail_as)
+                (l,r) = first (`asProxyProxyTypeOf` nxt)
                           ( (>!<) @_ @_ @_ @_ @bs ss)
               in ( s :& l, r )
+  generator :: Struct '[ kv ] -> Value kv
+  generator (a :& End) = a
 
-foldrStruct
-  :: forall as b.
-  (forall a. PrimTy a => a -> b -> b)
-  -> b -> Struct as -> b
-foldrStruct f b = go @as
-  where go :: forall xs. Struct xs -> b
-        go End       = b
-        go (a :& as) = f a (go as)
 
-traverseStruct :: Applicative f =>
+class FoldrStruct x where
+  foldrStruct
+    :: forall b.
+       (forall a. PrimTy a => a -> b -> b)
+    -> b -> x -> b
+
+instance PrimTys as => FoldrStruct (Struct as) where
+  foldrStruct f b s = case primTys @as of
+    SNil
+      -> b
+    SCons _ _ _
+      -> case s of
+          (a :& as)
+            -> f a (foldrStruct f b as)
+
+traverseStruct :: (Applicative f, FoldrStruct (Struct as)) =>
   ( forall a. PrimTy a => a -> f b )
   -> Struct as
   -> f [b]

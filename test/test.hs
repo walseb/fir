@@ -50,6 +50,7 @@ tests = [ ( "control" </> "toplevel"     , TypeCheck )
         , ( "optics"  </> "nostructfield", TypeCheck )
         , ( "optics"  </> "nostructindex", TypeCheck )
         , ( "optics"  </> "overlapping"  , TypeCheck )
+        , ( "optics"  </> "products"     , TypeCheck )
         ]
 
 runTests :: IO [ (FilePath, Test, TestOutput) ]

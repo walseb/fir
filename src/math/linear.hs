@@ -60,9 +60,6 @@ import Data.Binary(Binary(put,get))
 -- distributive
 import Data.Distributive(Distributive(..))
 
--- lens
-import Control.Lens.Iso(Iso', iso)
-
 -- fir
 import Control.Arrow.Strength(strong)
 import Math.Algebra.GradedSemigroup
@@ -280,11 +277,8 @@ instance GradedSemigroup (V 0 a) Nat where
 instance GradedPresentedSemigroup (V 0 a) Nat () where
   type Element    (V 0 a) ()  _  = a
   type Degree Nat (V 0 a) () '() = 1
-  homogeneous :: Iso' (V (Degree Nat (V 0 a) () unit) a) a
-  homogeneous 
-    = iso
-        ( unsafeCoerce (headV :: V 1 a -> a) )
-        ( unsafeCoerce ( (:. Nil) :: a -> V 1 a ) )
+  homogeneous :: a -> (V (Degree Nat (V 0 a) () unit) a)
+  homogeneous a = unsafeCoerce (a :. Nil)
 
 instance GradedFreeSemigroup (V 0 a) Nat () where
   type ValidDegree (V 0 a) n = KnownNat n
@@ -298,6 +292,8 @@ instance GradedFreeSemigroup (V 0 a) Nat () where
                 (u, v) = (>!<) (as :: V ((i+j)-1) a)
             in (a :. u, v)
          NLE _ _ -> unsafeCoerce ( Nil, a :. as )
+  generator :: (V (Degree Nat (V 0 a) () unit) a) -> a
+  generator = unsafeCoerce (headV :: V 1 a -> a)
 
 ------------------------------------------------------------------
 
@@ -484,11 +480,8 @@ instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
 instance KnownNat m => GradedPresentedSemigroup (M m 0 a) Nat () where
   type Element    (M m 0 a) ()  _  = V m a
   type Degree Nat (M m 0 a) () '() = 1
-  homogeneous :: Iso' (M m (Degree Nat (M m 0 a) () unit) a) (V m a)
-  homogeneous
-    = iso
-        ( unsafeCoerce ( (\(M m) -> (headV (distribute m) )) :: M m 1 a -> V m a ) )
-        ( unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a ) )
+  homogeneous :: V m a -> M m (Degree Nat (M m 0 a) () unit) a
+  homogeneous = ( unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a ) )
 
 instance KnownNat m => GradedFreeSemigroup (M m 0 a) Nat () where
   type ValidDegree (M m 0 a) i = KnownNat i
@@ -498,6 +491,8 @@ instance KnownNat m => GradedFreeSemigroup (M m 0 a) Nat () where
           v :: V j (V m a)
           (u, v) = (>!<) (distribute m)
       in (M (distribute u), M (distribute v))
+  generator :: M m (Degree Nat (M m 0 a) () unit) a -> V m a
+  generator = ( unsafeCoerce ( (\(M m) -> (headV (distribute m) )) :: M m 1 a -> V m a ) )
 
 ------------------------------------------------------------------
 -- type classes for matrix operations

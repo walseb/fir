@@ -26,9 +26,6 @@ import Data.Proxy(Proxy(Proxy))
 import GHC.TypeNats(Nat, KnownNat, natVal, type (+))
 import Unsafe.Coerce(unsafeCoerce)
 
--- lens
-import Control.Lens.Iso(Iso', iso)
-
 -- vector
 import qualified Data.Vector as Array
 
@@ -67,11 +64,8 @@ instance GradedSemigroup (Array 0 a) Nat where
 instance GradedPresentedSemigroup (Array 0 a) Nat () where
   type Element    (Array 0 a) ()  _  = a
   type Degree Nat (Array 0 a) () '() = 1
-  homogeneous :: Iso' (Array (Degree Nat (Array 0 a) () unit) a) a
-  homogeneous
-    = iso
-        ( \(MkArray arr) -> Array.head arr )
-        ( \a -> unsafeCoerce (MkArray @1 (Array.singleton a)) )
+  homogeneous :: a -> (Array (Degree Nat (Array 0 a) () unit) a)
+  homogeneous a = unsafeCoerce (MkArray @1 (Array.singleton a))
 
 instance GradedFreeSemigroup (Array 0 a) Nat () where
   type ValidDegree (Array 0 a) n = KnownNat n
@@ -80,6 +74,8 @@ instance GradedFreeSemigroup (Array 0 a) Nat () where
     = let tk, dp :: Array.Vector a
           (tk, dp) = Array.splitAt (fromIntegral (natVal (Proxy @n))) arr
       in (MkArray @n @a tk, MkArray @m @a dp)
+  generator :: (Array (Degree Nat (Array 0 a) () unit) a) -> a
+  generator (MkArray arr) = Array.head arr
 
 newtype RuntimeArray a = MkRuntimeArray (Array.Vector a)
 
@@ -104,13 +100,9 @@ instance GradedSemigroup (RuntimeArray a) () where
 instance GradedPresentedSemigroup (RuntimeArray a) () () where
   type Element   (RuntimeArray a) () _ = a
   type Degree () (RuntimeArray a) () '() = '()
-  homogeneous :: Iso' (Apply () (RuntimeArray a) (Degree () (RuntimeArray a) () unit)) a
-  homogeneous
-    = iso
-        ( unsafeCoerce arrayHead )
-        ( \a -> unsafeCoerce ( MkRuntimeArray (Array.singleton a) ) )
-      where arrayHead :: RuntimeArray a -> a
-            arrayHead (MkRuntimeArray arr) = Array.head arr
+  homogeneous :: a -> (Apply () (RuntimeArray a) (Degree () (RuntimeArray a) () unit))
+  homogeneous a = unsafeCoerce ( MkRuntimeArray (Array.singleton a) )
+
 
 -- no graded free semigroup instance for runtime arrays,
 -- because knowing rtarr = rtarr1 ++ rtarr2

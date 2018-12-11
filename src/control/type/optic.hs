@@ -24,10 +24,6 @@ import GHC.TypeLits
   )
 import GHC.TypeNats(Nat)
 
--- lens
-import qualified Control.Lens     as Lens(view)
-import qualified Control.Lens.Iso as Lens(from)
-
 -- fir
 import Data.Type.Map(type (:++:))
 import Data.Function.Variadic(ListVariadic)
@@ -239,17 +235,23 @@ type family ProductIfDisjoint
         )
 
 type family LastAccessee ( o :: Optic is (s :: Type) a ) :: Type where
-  LastAccessee (o1 `ComposeO` o2) = LastAccessee o2
+  LastAccessee (o1 `ComposeO` o2 ) = LastAccessee o2
+  LastAccessee (All_ o           ) = LastAccessee o
   LastAccessee (o :: Optic is s a) = s
 
 type family LastIndices ( o :: Optic is s a ) :: [Type] where
-  LastIndices (o1 `ComposeO` o2) = LastIndices o2
+  LastIndices (o1 `ComposeO` o2 ) = LastIndices o2
+  LastIndices (All_ o           ) = LastIndices o
   LastIndices (o :: Optic is s a) = s
 
 type family LastOptic ( o :: Optic is s a) :: Optic (LastIndices o) (LastAccessee o) a where
   LastOptic (o1 `ComposeO` o2) = LastOptic o2
-  LastOptic (o :: Optic is s a) = o `WithKind` ( Optic (LastIndices o) (LastAccessee o) a )
-
+  LastOptic (All_ o          ) = LastOptic o
+  LastOptic AnIndex_           = AnIndex_
+  LastOptic (Index_ i        ) = Index_ i
+  LastOptic (Name_  k        ) = Name_  k
+  LastOptic (o1 `ProductO` o2) = o1 `ProductO` o2
+  --LastOptic (o :: Optic is s a) = o `WithKind` ( Optic (LastIndices o) (LastAccessee o) a )
 
 type family WhichKind
               ( b1 :: Bool ) ( b2 :: Bool )
@@ -425,14 +427,12 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb
         ( view1 s )
-        ( (Lens.view . Lens.from)
-            ( homogeneous
-                @(Container c)
-                @(DegreeKind c)
-                @(LabelKind c)
-                @(lb `WithKind` LabelKind c)
-            )
-          ( view2 s )
+        ( homogeneous
+            @(Container c)
+            @(DegreeKind c)
+            @(LabelKind c)
+            @(lb `WithKind` LabelKind c)
+            ( view2 s )
         )
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
@@ -457,14 +457,12 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplyGetters '[] '[] s a b c ('Just la) 'Nothing where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @hda @(DegreeOf b `WithKind` DegreeKind c)
-        ( (Lens.view . Lens.from)
-            ( homogeneous
-                @(Container c)
-                @(DegreeKind c)
-                @(LabelKind c)
-                @(la `WithKind` LabelKind c)
-            )
-          ( view1 s )
+        ( homogeneous
+            @(Container c)
+            @(DegreeKind c)
+            @(LabelKind c)
+            @(la `WithKind` LabelKind c)
+            ( view1 s )
         )
         ( view2 s )
 instance ( GradedSemigroup (Container c) (DegreeKind c)
@@ -492,23 +490,19 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplyGetters '[] '[] s a b c ('Just la) ('Just lb) where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @hda @hdb
-        ( (Lens.view . Lens.from)
-            ( homogeneous
-                @(Container c)
-                @(DegreeKind c)
-                @(LabelKind c)
-                @(la `WithKind` LabelKind c)
-            )
-          ( view1 s )
+        ( homogeneous
+            @(Container c)
+            @(DegreeKind c)
+            @(LabelKind c)
+            @(la `WithKind` LabelKind c)
+            ( view1 s )
         )
-        ( (Lens.view . Lens.from)
-            ( homogeneous
-                @(Container c)
-                @(DegreeKind c)
-                @(LabelKind c)
-                @(lb `WithKind` LabelKind c)
-            )
-          ( view2 s )
+        ( homogeneous
+            @(Container c)
+            @(DegreeKind c)
+            @(LabelKind c)
+            @(lb `WithKind` LabelKind c)
+            ( view2 s )
         )
 
 
@@ -600,9 +594,7 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplySetters '[] '[] s a b c 'Nothing ('Just lb) where
   multiplySetters set1 set2 c
     = let (a,hb) = (>!<) @(Container c) @_ @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb c
-          b = Lens.view
-                ( homogeneous @(Container c) @_ @_ @(lb `WithKind` LabelKind c) )
-                hb
+          b = generator @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
       in set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
@@ -629,9 +621,7 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
        => MultiplySetters '[] '[] s a b c ('Just la) 'Nothing where
   multiplySetters set1 set2 c
     = let (ha,b) = (>!<) @(Container c) @_ @_ @hda @(DegreeOf b `WithKind` DegreeKind c) c
-          a = Lens.view
-                ( homogeneous @(Container c) @_ @_ @(la `WithKind` LabelKind c) )
-                ha
+          a = generator @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
       in set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
@@ -660,12 +650,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplySetters '[] '[] s a b c ('Just la) ('Just lb) where
   multiplySetters set1 set2 c
     = let (ha,hb) = (>!<) @(Container c) @_ @_ @hda @hdb c
-          a = Lens.view
-                ( homogeneous @(Container c) @_ @_ @(la `WithKind` LabelKind c) )
-                ha
-          b = Lens.view
-                ( homogeneous @(Container c) @_ @_ @(lb `WithKind` LabelKind c) )
-                hb
+          a = generator @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
+          b = generator @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
       in set2 b . set1 a
 
 instance MultiplySetters is        js        s a b c mla mlb

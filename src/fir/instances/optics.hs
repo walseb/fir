@@ -51,6 +51,7 @@ import Control.Type.Optic
   , MonoContained(..)
   , (:.:), (:*:), Index, All
   )
+import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map
   ( (:->)((:->)), Key, Value
   , Lookup, Append, Length
@@ -61,8 +62,8 @@ import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))
 import FIR.Prim.Singletons
   ( PrimTy, IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
-  , PrimTyBindings(primTyBindings)
-  , SPrimTyBindings
+  , PrimTys(primTys)
+  , SPrimTys
   )
 import FIR.Prim.Struct(Struct((:&)))
 import Math.Linear(V, M(M), (^!), at)
@@ -83,7 +84,7 @@ data SOptic (optic :: Optic i s a) :: Type where
   SIndex   :: KnownNat    n => Proxy n -> SOptic (Index_ n)
   SName    :: KnownSymbol k
            => Proxy k
-           -> SPrimTyBindings as
+           -> SPrimTys as
            -> SOptic (Name_  k :: Optic i (Struct as) b)
   SBinding :: KnownSymbol k
            => Proxy k
@@ -126,8 +127,8 @@ instance IntegralTy ix => KnownOptic (AnIndex_ :: Optic '[ix] (Array n a) a) whe
   opticSing = SAnIndexA (scalarTySing @ix)
 instance KnownNat n => KnownOptic (Index_ n) where
   opticSing = SIndex (Proxy @n)
-instance (KnownSymbol k, PrimTyBindings as) => KnownOptic (Name_ k :: Optic i (Struct as) a) where
-  opticSing = SName (Proxy @k) (primTyBindings @as)
+instance (KnownSymbol k, PrimTys as) => KnownOptic (Name_ k :: Optic i (Struct as) a) where
+  opticSing = SName (Proxy @k) (primTys @as)
 instance KnownSymbol k => KnownOptic (Name_ k :: Optic i (bds :: BindingsMap) a) where
   opticSing = SBinding (Proxy @k)
 instance KnownOptic o => KnownOptic (All_ o) where
@@ -152,6 +153,7 @@ type family ListVariadicIx
   ListVariadicIx (a ': as) b i = a -> ListVariadicIx as b i
 
 ----------------------------------------------------------------------
+-- getters
 
 type User (g :: Optic as i b) = ListVariadicIx as b i
 
@@ -272,11 +274,12 @@ instance ( KnownSymbol k
                  ((k ':-> a) ': as)
                  (Lookup k ((k ':-> a) ': as))
          , empty ~ '[]
+         , a ~ ListVariadic '[] a
          , Gettable (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
          )
-       => ReifiedGetter
-             (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
-       where
+      => ReifiedGetter
+            (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
+      where
   view (a :& _) = a
 instance {-# OVERLAPPABLE #-}
          ( KnownSymbol k
@@ -291,9 +294,9 @@ instance {-# OVERLAPPABLE #-}
              -- this is needed to have the correct error messages
              (Name_ (If (r == r) k k) :: Optic '[] (Struct as) r)
          )
-       => ReifiedGetter
+      => ReifiedGetter
             (Name_ k :: Optic empty (Struct (a ': as)) r)
-       where
+      where
   view (_ :& as) = view @(Name_ (If (r == r) k k) :: Optic '[] (Struct as) r) as
 
 
@@ -303,6 +306,7 @@ instance ( KnownNat n
          ) => Gettable (Index_ n :: Optic empty (Struct as) r) where
 instance ( r ~ Value (StructElemFromIndex (Text "get: ") 0 (a ': as) 0 (a ': as))
          , empty ~ '[]
+         , r ~ ListVariadic '[] r
          )
       => ReifiedGetter
            (Index_ 0 :: Optic empty (Struct (a ': as)) r)
@@ -551,15 +555,65 @@ instance
 
 -- structs
 instance ( KnownSymbol k
-         , r ~ StructElemFromName (Text "put: ") k as (Lookup k as)
+         , r ~ StructElemFromName (Text "set: ") k as (Lookup k as)
          , empty ~ '[]
          )
   => Settable (Name_ k :: Optic empty (Struct as) r) where
+instance ( KnownSymbol k
+         , r ~ StructElemFromName
+                  (Text "set: ")
+                  k
+                  ((k ':-> a) ': as)
+                  (Lookup k ((k ':-> a) ': as))
+         , empty ~ '[]
+         , Settable (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
+         )
+      => ReifiedSetter
+            (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
+      where
+  set b (_ :& as) = b :& as
+instance {-# OVERLAPPABLE #-}
+         ( KnownSymbol k
+         , r ~ StructElemFromName
+                  (Text "set: ")
+                  k
+                  (a ': as)
+                  (Lookup k (a ': as))
+         , empty ~ '[]
+         , ReifiedSetter
+             -- this forces evaluation of r before looking for the constraint
+             -- this is needed to have the correct error messages
+             (Name_ (If (r == r) k k) :: Optic '[] (Struct as) r)
+         )
+      => ReifiedSetter
+            (Name_ k :: Optic empty (Struct (a ': as)) r)
+      where
+  set b (a :& as) = a :& set @(Name_ (If (r == r) k k) :: Optic '[] (Struct as) r) b as
 
 instance ( KnownNat n
-         , r ~ Value (StructElemFromIndex (Text "put: ") n as n as)
+         , r ~ Value (StructElemFromIndex (Text "set: ") n as n as)
          , empty ~ '[]
          ) => Settable (Index_ n :: Optic empty (Struct as) r) where
+instance ( r ~ Value (StructElemFromIndex (Text "set: ") 0 (a ': as) 0 (a ': as))
+         , empty ~ '[]
+         , r ~ ListVariadic '[] r
+         )
+      => ReifiedSetter
+           (Index_ 0 :: Optic empty (Struct (a ': as)) r)
+       where
+  set b (_ :& as) = b :& as
+instance {-# OVERLAPPABLE #-}
+         ( KnownNat n, 1 <= n
+         , r ~ Value (StructElemFromIndex (Text "set: ") n (a ': as) n (a ': as))
+         , empty ~ '[]
+         , ReifiedSetter
+             -- as above, force evaluation of r for correct error message
+             (Index_ (If (r == r) (n-1) (n-1)) :: Optic empty (Struct as) r)
+         )
+      => ReifiedSetter
+          (Index_ n :: Optic empty (Struct (a ': as)) r)
+      where
+  set b (a :& as) = a :& set @(Index_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) b as
 
 instance
     TypeError (    Text "set: attempt to set struct element \
@@ -664,6 +718,13 @@ type family AllValuesEqual (a :: v) (as :: [k :-> v]) :: Bool where
 ----------------------------------------------------------------------
 -- helper type families for structs
 
+type Field ( k :: Symbol )
+  = ( Name_ k
+        :: Optic '[]
+            (Struct as)
+            (StructElemFromName (Text "optic: ") k as (Lookup k as))
+    )
+
 type family StructElemFromName
     ( msg :: ErrorMessage   )
     ( k   :: Symbol         )
@@ -709,7 +770,7 @@ type instance LabelKind     (M m n a) = ()
 
 type instance ContainerKind (Struct as) = [Symbol :-> Type] -> Type
 type instance DegreeKind    (Struct as) = [Symbol :-> Type]
-type instance LabelKind     (Struct as) = [Symbol :-> Type]
+type instance LabelKind     (Struct as) = (Symbol :-> Type)
 
 type instance ContainerKind (Array n a) = Type
 type instance DegreeKind    (Array n a) = Nat
@@ -743,14 +804,13 @@ instance Contained (Struct as) where
   type Container (Struct as) = Struct
   type DegreeOf  (Struct as) = as
   type LabelOf   (Struct as) (Name_  k :: Optic _ (Struct as) a)
-    =  '[ k ':-> a ]
+    = k ':-> a
   type LabelOf   (Struct as) (Index_ i :: Optic _ (Struct as) a)
-    =  '[ Key ( StructElemFromIndex
-                 (Text "key: ")
-                 i as i as
-              )
-        ':-> a
-        ]
+    = Key ( StructElemFromIndex
+              (Text "key: ")
+              i as i as
+          )
+      ':-> a
   type Overlapping (Struct as) k i
     = k == Key (StructElemFromIndex (Text "key: ") i as i as)
 
@@ -798,6 +858,8 @@ type family Row (i :: Nat) = (optic :: Optic '[] (M m n a) (V n a)) | optic -> i
               :*: ( Col 3 :.: Ix i )
             ) :: Optic '[] (M m 4 a) (V 4 a)
           )
+
+type Entry (i :: Nat) (j :: Nat) = ( (Col i :.: Ix j) :: Optic '[] (M m n a) a )
 
 type family Diag :: Optic '[] (M n n a) (V n a) where
   Diag = ( (     (Col 0 :.: Ix 0)

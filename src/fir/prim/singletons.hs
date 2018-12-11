@@ -87,15 +87,16 @@ data SPrimTy :: Type -> Type where
   SRuntimeArray
           :: PrimTy a
           => SPrimTy a -> SPrimTy (RuntimeArray a)
-  SStruct :: SPrimTyBindings as -> SPrimTy (Struct as)
+  SStruct :: PrimTys as
+          => SPrimTys as -> SPrimTy (Struct as)
 
-data SPrimTyBindings :: [Symbol :-> Type] -> Type where
-  SNilBindings  :: SPrimTyBindings '[]
-  SConsBindings :: (KnownSymbol k, PrimTy a)
-                => Proxy k
-                -> SPrimTy a
-                -> SPrimTyBindings as
-                -> SPrimTyBindings ((k ':-> a) ': as)
+data SPrimTys :: [Symbol :-> Type] -> Type where
+  SNil  :: SPrimTys '[]
+  SCons :: (KnownSymbol k, PrimTy a, PrimTys as)
+        => Proxy k
+        -> SPrimTy a
+        -> SPrimTys as
+        -> SPrimTys ((k ':-> a) ': as)
 
 
 class ( Show ty                    -- for convenience
@@ -210,23 +211,23 @@ instance PrimTy a => PrimTy (RuntimeArray a) where
   primTySing = SRuntimeArray (primTySing @a)
 
 
-class PrimTyBindings as where
-  primTyBindings :: SPrimTyBindings as
+class PrimTys as where
+  primTys :: SPrimTys as
 
-instance PrimTyBindings '[] where
-  primTyBindings = SNilBindings
+instance PrimTys '[] where
+  primTys = SNil
 
-instance (KnownSymbol k, PrimTy a, PrimTyBindings as)
-       => PrimTyBindings ((k ':-> a) ': as) where
-  primTyBindings
-    = SConsBindings
+instance (KnownSymbol k, PrimTy a, PrimTys as)
+       => PrimTys ((k ':-> a) ': as) where
+  primTys
+    = SCons
         ( Proxy @k )
         ( primTySing @a )
-        ( primTyBindings @as )
+        ( primTys @as )
 
-instance ( Typeable as, PrimTyBindings as )
+instance ( Typeable as, PrimTys as )
        => PrimTy (Struct as) where
-  primTySing = SStruct (primTyBindings @as)
+  primTySing = SStruct (primTys @as)
 
 
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
@@ -246,12 +247,12 @@ sPrimTy (SVector n     a) = SPIRV.Vector (val n)         (sPrimTy   a)
 sPrimTy (SMatrix m n   a) = SPIRV.Matrix (val m) (val n) (sScalarTy a)
 sPrimTy (SArray l      a) = SPIRV.Array  (val l)         (sPrimTy   a)
 sPrimTy (SRuntimeArray a) = SPIRV.RuntimeArray           (sPrimTy   a)
-sPrimTy (SStruct      as) = SPIRV.Struct (sPrimTyBindings as)
+sPrimTy (SStruct      as) = SPIRV.Struct (sPrimTys as)
 
-sPrimTyBindings :: SPrimTyBindings ty -> [(Text.Text, SPIRV.PrimTy)]
-sPrimTyBindings SNilBindings           = []
-sPrimTyBindings (SConsBindings k a as) = (Text.pack (symbolVal k), sPrimTy a)
-                                       : sPrimTyBindings as
+sPrimTys :: SPrimTys ty -> [(Text.Text, SPIRV.PrimTy)]
+sPrimTys SNil           = []
+sPrimTys (SCons k a as) = (Text.pack (symbolVal k), sPrimTy a)
+                        : sPrimTys as
 
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
 scalarTy = sScalarTy ( scalarTySing @ty )

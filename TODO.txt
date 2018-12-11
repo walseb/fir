@@ -54,7 +54,7 @@ clean up all the type families called variadic:
   - variadic with type level list
 
 
-finish implementing plain reified setters (structs, vectors, matrices)
+finish implementing reified setters (vectors, matrices)
 
 figure out how to write reifiable instances for product optics
 allow reified optics to work with internal types, such as 'AST a' or 'Codensity AST (AST a := i) i'
