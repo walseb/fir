@@ -1,5 +1,8 @@
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
@@ -96,3 +99,16 @@ type family Append (as :: [k]) (b :: k) = (r :: [k]) {-| r -> as b-} where
 type family Length (as :: [k]) :: Nat where
   Length '[]       = 0
   Length (_ ': as) = 1 + Length as
+
+data SLength (is :: [k]) where
+  SZero :: SLength '[]
+  SSucc :: SLength is -> SLength (i ': is)
+
+class KnownLength (is :: [k]) where
+  sLength :: SLength is
+
+instance KnownLength '[] where
+  sLength = SZero
+
+instance KnownLength is => KnownLength (i ': is) where
+  sLength = SSucc ( sLength @_ @is )

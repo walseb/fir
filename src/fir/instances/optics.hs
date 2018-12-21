@@ -3,7 +3,6 @@
 
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE InstanceSigs           #-}
@@ -52,12 +51,15 @@ import Control.Type.Optic
   , Contained(..)
   , ContainerKind, DegreeKind, LabelKind
   , MonoContained(..)
-  , (:.:), (:*:), Index, All
+  , (:.:), (:*:), AnIndex, Index, Name, Joint
+  , Product, ProductIndices
   )
 import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map
   ( (:->)((:->)), Key, Value
   , Lookup, Append, Length
+  , type (:++:)
+  , SLength, KnownLength(sLength)
   )
 import FIR.Binding( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
@@ -67,6 +69,7 @@ import FIR.Prim.Singletons
   , ScalarTy(scalarTySing), SScalarTy
   , PrimTys(primTys)
   , SPrimTys
+  , HasField
   )
 import FIR.Prim.Struct(Struct((:&)))
 import Math.Linear(V((:.)), M(M), (^!), at)
@@ -74,91 +77,135 @@ import Math.Linear(V((:.)), M(M), (^!), at)
 ----------------------------------------------------------------------
 -- singletons
 
-infixr 9 :%.:
-infixr 3 :%*:
+
 
 data SOptic (optic :: Optic i s a) :: Type where
   -- split up run-time indexing: SPIR-V supports two different cases
   --  - vectors with VectorExtractDynamic / VectorInsertDynamic
   --  - arrays with OpAccessChain
-  SAnIndexV   :: SScalarTy ix -> SOptic (AnIndex_ :: Optic '[ix] (V       n    a) a)
-  SAnIndexRTA :: SScalarTy ix -> SOptic (AnIndex_ :: Optic '[ix] (RuntimeArray a) a)
-  SAnIndexA   :: SScalarTy ix -> SOptic (AnIndex_ :: Optic '[ix] (Array   n    a) a)
-  SIndex   :: KnownNat    n => Proxy n -> SOptic (Index_ n)
-  SName    :: KnownSymbol k
-           => Proxy k
-           -> SPrimTys as
-           -> SOptic (Name_  k :: Optic i (Struct as) b)
-  SBinding :: KnownSymbol k
-           => Proxy k
-           -> SOptic (Name_ k :: Optic i (as :: BindingsMap) b)
-  SAll     :: SOptic o  -> SOptic (All_ o)
-  (:%.:)   :: SOptic o1 -> SOptic o2 -> SOptic (o1 `ComposeO` o2)
-  (:%*:)   :: SOptic o1 -> SOptic o2 -> SOptic (o1 `ProductO` o2)
+  SAnIndexV   :: SScalarTy ix -> SOptic (AnIndex ix)
+  SAnIndexRTA :: SScalarTy ix -> SOptic (AnIndex ix)
+  SAnIndexA   :: SScalarTy ix -> SOptic (AnIndex ix)
+  SIndex    :: KnownNat    n => Proxy n -> SOptic (Index n)
+  SName     :: (KnownSymbol k, HasField k as)
+            => Proxy k
+            -> SPrimTys as
+            -> SOptic (Name k :: Optic '[] (Struct as) b)
+  SBinding  :: KnownSymbol k
+            => Proxy k
+            -> SOptic (Name k :: Optic '[] (as :: BindingsMap) b)
+  SJoint    :: SOptic o  -> SOptic (Joint o)
+  SComposeO :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+               SLength is -> SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
+     --        ^^^^^^^^^^
+     -- we need to know the length of the first list to generate code for composite optics
+     -- see the function 'opticalTree' in the code generator
+     --
+     -- same for products
+  SProductO  :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js s b).
+                SLength is -> SLength js -> SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
 
+infixr 9 %:.:
+infixr 3 %:*:
+
+(%:.:) :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+           KnownLength is
+        => SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
+o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
+
+(%:*:) :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js s b).
+          ( KnownLength is, KnownLength js )
+        => SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
+o1 %:*: o2 = SProductO (sLength @_ @is) (sLength @_ @js) o1 o2
 
 showSOptic :: SOptic (o :: Optic i s a) -> String
-{-
-showSOptic (SFromField a f)
-  = case fieldVal f of
-      SAnIndex -> "AnIndex"
-      SIndex n -> "Index " ++ show (natVal    n)
-      SName  k -> "Name "  ++ show (symbolVal k)
--}
 showSOptic (SAnIndexV   _) = "AnIndexV"
 showSOptic (SAnIndexRTA _) = "AnIndexRTA"
 showSOptic (SAnIndexA   _) = "AnIndexA"
-showSOptic (SIndex n  ) = "Index " ++ show (natVal    n)
-showSOptic (SName  k _) = "Name "  ++ show (symbolVal k)
-showSOptic (SBinding k) = "Name "  ++ show (symbolVal k)
-showSOptic (SAll     l) = "All ( "   ++ showSOptic l ++ " )"
-showSOptic (l1 :%.: l2) = showSOptic l1 ++ " :.: " ++ showSOptic l2
-showSOptic (l1 :%*: l2) = showSOptic l1 ++ " :*: " ++ showSOptic l2
+showSOptic (SIndex n  ) = "Index "   ++ show (natVal    n)
+showSOptic (SName  k _) = "Name "    ++ show (symbolVal k)
+showSOptic (SBinding k) = "Binding " ++ show (symbolVal k)
+showSOptic (SJoint   o) = "Joint ( " ++ showSOptic o ++ " )"
+showSOptic (SComposeO _ o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
+showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
 
 
 class KnownOptic optic where
   opticSing :: SOptic optic
-{-
-instance (KnownField f, HasField a f) => KnownOptic (FromField f :: Optic a) where
-  opticSing = SFromField (Proxy @a) (Proxy @f)
--}
-instance IntegralTy ix => KnownOptic (AnIndex_ :: Optic '[ix] (V n a) a) where
+
+instance ( is ~ '[ix], IntegralTy ix )
+        => KnownOptic (AnIndex_ :: Optic is (V n a) a)
+        where
   opticSing = SAnIndexV (scalarTySing @ix)
-instance IntegralTy ix => KnownOptic (AnIndex_ :: Optic '[ix] (RuntimeArray a) a) where
+instance ( is ~ '[ix], IntegralTy ix )
+        => KnownOptic (AnIndex_ :: Optic is (RuntimeArray a) a)
+        where
   opticSing = SAnIndexRTA (scalarTySing @ix)
-instance IntegralTy ix => KnownOptic (AnIndex_ :: Optic '[ix] (Array n a) a) where
+instance ( is ~ '[ix], IntegralTy ix )
+        => KnownOptic (AnIndex_ :: Optic is (Array n a) a)
+        where
   opticSing = SAnIndexA (scalarTySing @ix)
-instance KnownNat n => KnownOptic (Index_ n) where
+instance ( KnownNat n
+         , empty ~ '[]
+         )
+       => KnownOptic (Index_ n :: Optic empty s a)
+       where
   opticSing = SIndex (Proxy @n)
-instance (KnownSymbol k, PrimTys as) => KnownOptic (Name_ k :: Optic i (Struct as) a) where
+instance ( KnownSymbol k
+         , PrimTys as
+         , HasField k as
+         , empty ~ '[]
+         ) => KnownOptic (Name_ k :: Optic empty (Struct as) a)
+         where
   opticSing = SName (Proxy @k) (primTys @as)
-instance KnownSymbol k => KnownOptic (Name_ k :: Optic i (bds :: BindingsMap) a) where
+instance ( KnownSymbol k
+         , empty ~ '[]
+         )
+      => KnownOptic (Name_ k :: Optic empty (bds :: BindingsMap) a)
+      where
   opticSing = SBinding (Proxy @k)
-instance KnownOptic o => KnownOptic (All_ o) where
-  opticSing = SAll (opticSing @o)
-instance (KnownOptic o1, KnownOptic o2)
-      => KnownOptic (o1 `ComposeO` o2) where
-  opticSing = (opticSing @o1) :%.: (opticSing @o2)
-instance (KnownOptic o1, KnownOptic o2)
-      => KnownOptic (o1 `ProductO` o2) where
-  opticSing = (opticSing @o1) :%*: (opticSing @o2)
+instance forall is s a mono (o :: Optic is s a).
+         ( KnownOptic o
+         , mono ~ MonoType a
+         )
+       => KnownOptic (Joint_ o :: Optic is s mono )
+       where
+  opticSing = SJoint (opticSing @o)
+instance forall is js ks s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+         ( KnownOptic o1
+         , KnownOptic o2
+         , ks ~ (is :++: js)
+         , KnownLength is
+         )
+       => KnownOptic ((o1 `ComposeO` o2) :: Optic ks s b) where
+  opticSing = (opticSing @o1) %:.: (opticSing @o2)
+instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
+         ( KnownOptic o1
+         , KnownOptic o2
+         , ks ~ ProductIndices is js
+         , c ~ Product o1 o2
+         , KnownLength is
+         , KnownLength js
+         )
+      => KnownOptic ((o1 `ProductO` o2) :: Optic ks s c) where
+  opticSing = (opticSing @o1) %:*: (opticSing @o2)
 
 
 ----------------------------------------------------------------------
 
 type family ListVariadicIx
               ( as :: [Type]      )
-              ( b  :: Type        )
               ( i  :: BindingsMap )
+              ( b  :: Type        )
             = ( r  :: Type        )
             | r -> as i b  where
-  ListVariadicIx '[]       b i = (b := i) i
-  ListVariadicIx (a ': as) b i = a -> ListVariadicIx as b i
+  ListVariadicIx '[]       i b = (b := i) i
+  ListVariadicIx (a ': as) i b = a -> ListVariadicIx as i b
 
 ----------------------------------------------------------------------
 -- getters
 
-type User (g :: Optic as i b) = ListVariadicIx as b i
+type User (g :: Optic as i b) = ListVariadicIx as i b
 
 -- bindings
 instance ( KnownSymbol k
@@ -474,7 +521,7 @@ instance
 ----------------------------------------------------------------------
 -- setters
 
-type Assigner (g :: Optic as i b) = ListVariadicIx (Append as b) () i
+type Assigner (g :: Optic as i b) = ListVariadicIx (Append as b) i ()
 
 
 -- bindings
@@ -777,7 +824,6 @@ instance
     TypeError (    Text "set: attempt to update matrix column \
                         \using symbolic identifier "
               :<>: ShowType k :<>: Text "."
-              :$$: Text "Note: swizzling is not (yet?) supported."
               )
     => Settable (Name_ k :: Optic empty (M m n a) r) where
 
@@ -974,7 +1020,7 @@ type family Diag :: Optic '[] (M n n a) (V n a) where
            ) :: Optic '[] (M 4 4 a) (V 4 a)
          )
 
-type Center = All Diag
+type Center = Joint Diag
 
 type family SwizzleReturn (a :: Type) (ks :: [Symbol]) :: Type where
   SwizzleReturn a '[_] = a

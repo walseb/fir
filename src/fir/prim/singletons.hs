@@ -6,7 +6,6 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
-{-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -98,6 +97,21 @@ data SPrimTys :: [Symbol :-> Type] -> Type where
         -> SPrimTys as
         -> SPrimTys ((k ':-> a) ': as)
 
+------------------------------------------------
+
+class HasField (k :: Symbol) (as :: [ Symbol :-> Type ]) where
+  fieldIndex :: Proxy k -> SPrimTys as -> Word32
+
+instance HasField k ( (k ':-> v) ': as) where
+  fieldIndex _ _ = 0
+
+instance {-# OVERLAPPABLE #-} HasField k as
+       => HasField k ( (l ':-> v) ': as)
+       where
+  fieldIndex _ (SCons _ _ as)
+    = succ ( fieldIndex @k @as Proxy as )
+
+------------------------------------------------
 
 class ( Show ty                    -- for convenience
       , Eq ty, Ord ty, Typeable ty -- to keep track of lists of constants

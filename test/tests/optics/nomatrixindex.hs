@@ -37,7 +37,6 @@ type Uniforms
 
 type Functions = '[]
 
-
 program :: Program Uniforms Functions ()
 program = do
 

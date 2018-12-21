@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -166,20 +165,21 @@ fundef = fromAST . toAST . fundef' @k @as @b @l @i
 -- type synonyms for use/assign
 
 type family ListVariadicCod
-              ( as :: [Type]      )
-              ( b  :: Type        )
+              ( is :: [Type]      )
               ( s  :: BindingsMap )
+              ( a  :: Type        )
             = ( r  :: Type        )
-            | r -> as b s  where
-  ListVariadicCod '[]       b s = Codensity AST (AST b := s) s
-  ListVariadicCod (a ': as) b s = AST a -> ListVariadicCod as b s
+            | r -> is s a where
+  ListVariadicCod '[]        s a = Codensity AST (AST a := s) s
+  ListVariadicCod ( i ': is) s a = AST i -> ListVariadicCod is s a
+
 
 -- recall (defined in FIR.Instances.Optics):
--- type User     (g :: Optic is s a) = ListVariadicIx is            a  s
--- type Assigner (g :: Optic is s a) = ListVariadicIx (Append is a) () s
+-- type User     (g :: Optic is s a) = ListVariadicIx is            s a
+-- type Assigner (g :: Optic is s a) = ListVariadicIx (Append is a) s ()
 
-type CodUser     (optic :: Optic is s a) = ListVariadicCod is            a  s
-type CodAssigner (optic :: Optic is s a) = ListVariadicCod (Append is a) () s
+type CodUser     (optic :: Optic is s a) = ListVariadicCod is            s a
+type CodAssigner (optic :: Optic is s a) = ListVariadicCod (Append is a) s ()
 
 --------------------------------------------------------------------------
 -- modifying
@@ -215,9 +215,9 @@ modifying
       ( assign @optic )
 
 class Modifier is s a where
-  modifier :: ListVariadicCod is            a  s
-           -> ListVariadicCod (Append is a) () s
-           -> VariadicCodModifier is s a
+  modifier :: ListVariadicCod         is    s a
+           -> ListVariadicCod (Append is a) s ()
+           -> VariadicCodModifier     is    s a
 
 instance Modifier '[] s b where
   modifier used assigned f

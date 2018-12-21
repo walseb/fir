@@ -29,10 +29,6 @@ import FIR.Instances.Bindings(ValidDef,Get, Put)
 import FIR.Instances.Codensity(def, use, assign, modifying)
 import FIR.Prim.Singletons(PrimTy)
 
--- short type synonym helpful for disambiguating
--- e.g. : [...] @(S _ _)
-type S a i = Codensity AST (AST a := i) i
-
 data Label (k :: Symbol) (a :: Type) = Label
 
 data LabelUsage

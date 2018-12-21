@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -17,11 +18,12 @@ module CodeGen.CodeGen
   where
 
 -- base
-import Control.Arrow(second)
+import Control.Arrow(first, second)
 import Control.Monad((>>=),(>>), when, void)
 import Data.Coerce(coerce)
 import Data.Foldable(traverse_, toList)
 import Data.List(foldl1')
+import Data.Kind(Type)
 import Data.Maybe(fromJust)
 import Data.Semigroup(First(First))
 import Data.Word(Word32)
@@ -91,6 +93,8 @@ import CodeGen.Instruction
   , ID(ID), Instruction(..)
   , Pairs(Pairs)
   )
+import Control.Type.Optic(Optic, ProductIndices)
+import Data.Type.Map(SLength(SZero,SSucc), type (:++:))
 import FIR.AST(AST(..), Syntactic(fromAST), toTree)
 import FIR.Binding
   ( Permission(Write)
@@ -106,6 +110,7 @@ import FIR.Prim.Singletons
   ( PrimTy(primTySing)
   , primTy, primTyVal
   , SPrimTy(..)
+  , HasField(fieldIndex)
   , SPrimFunc(..)
   , aConstant
   , KnownVars(knownVars)
@@ -121,19 +126,38 @@ import qualified SPIRV.Storage    as Storage
 import qualified SPIRV.Storage    as SPIRV(StorageClass)
 
 ----------------------------------------------------------------------------
--- pattern for applied function with any number of arguments
-
-infixl 5 :&
-
-data ASTList where
-  Nil  :: ASTList
-  (:&) :: ASTList -> AST a -> ASTList
+-- existential data types to emulate untyped AST
 
 data AnyAST where
   AnyAST :: AST a -> AnyAST
 
-deriving instance Show ASTList
 deriving instance Show AnyAST
+
+data ASTList where
+  NilAST  :: ASTList
+  SnocAST :: ASTList -> AST a -> ASTList
+
+deriving instance Show ASTList
+
+astListLength :: ASTList -> Int
+astListLength NilAST            = 0
+astListLength (as `SnocAST` _ ) = 1 + astListLength as
+
+astListHeadTail :: ASTList -> Maybe (AnyAST, ASTList)
+astListHeadTail NilAST           = Nothing
+astListHeadTail (as `SnocAST` a) = Just (go a as)
+    where go :: AST a -> ASTList -> (AnyAST, ASTList)
+          go b NilAST           = (AnyAST b, NilAST)
+          go b (cs `SnocAST` c) = second (`SnocAST` b) (go c cs)
+
+-- internal data type to deal with run-time indices
+-- the user-facing interface is through variadic functions
+data ASTIndexList (is :: [Type]) :: Type where
+  INil  :: ASTIndexList '[]
+  ICons :: AST i -> ASTIndexList is -> ASTIndexList (i ': is)
+
+----------------------------------------------------------------------------
+-- pattern for applied function with any number of arguments
 
 pattern Applied :: AST a -> ASTList -> AST b
 pattern Applied f as <- (unapply . AnyAST -> (AnyAST f,as))
@@ -141,36 +165,20 @@ pattern Applied f as <- (unapply . AnyAST -> (AnyAST f,as))
 unapply :: AnyAST -> (AnyAST, ASTList)
 unapply (AnyAST (f :$ a))
   = case unapply (AnyAST f) of
-        (AnyAST g, as) -> (AnyAST g, as :& a)
-unapply (AnyAST f) = (AnyAST f, Nil)
+        (AnyAST g, as) -> (AnyAST g, as `SnocAST` a)
+unapply (AnyAST f) = (AnyAST f, NilAST)
+
+----------------------------------------------------------------------------
+-- code generation for the existential AST data types
 
 codeGenASTList :: ASTList -> CGMonad [ (ID, SPIRV.PrimTy)  ]
 codeGenASTList = sequence . reverse . go
     where go :: ASTList -> [ CGMonad (ID, SPIRV.PrimTy) ]
-          go Nil = []
-          go (as :& a) = codeGen a : go as
+          go NilAST           = []
+          go (as `SnocAST` a) = codeGen a : go as
 
 codeGenAny :: AnyAST -> CGMonad (ID, SPIRV.PrimTy)
 codeGenAny (AnyAST a) = codeGen a
-
-astListLength :: ASTList -> Int
-astListLength Nil        = 0
-astListLength (as :& _ ) = 1 + astListLength as
-
-astListHeadTail :: ASTList -> Maybe (AnyAST, ASTList)
-astListHeadTail Nil = Nothing
-astListHeadTail (as :& a) = Just (go a as)
-    where go :: AST a -> ASTList -> (AnyAST, ASTList)
-          go b Nil       = (AnyAST b, Nil)
-          go b (cs :& c) = second (:& b) (go c cs)
-
-----------------------------------------------------------------------------
--- left-biased semigroup operation
-
-infixl 6 <<>
-
-(<<>) :: forall x. Maybe x -> Maybe x -> Maybe x
-(<<>) = coerce ( (<>) @(Maybe (First x)) )
 
 ----------------------------------------------------------------------------
 -- main code generator
@@ -179,8 +187,8 @@ codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
 codeGen (Applied (MkID ident@(_,ty)) as)
   = case as of
-      Nil -> pure ident
-      _   ->
+      NilAST -> pure ident
+      _      ->
         case ty of
           SPIRV.Function xs y
             -> let totalArgs = length xs
@@ -257,7 +265,7 @@ codeGen (Applied (Use singOptic) is)
                 -> loadInstruction ty storage bdID
               _ -> pure bd
 
-      SBinding k :%.: getter -> 
+      SComposeO _ (SBinding k) getter ->
         do  let varName = Text.pack ( symbolVal k )
             (bdID, bdTy) <- bindingID varName
             indices <- map fst <$> codeGenASTList is
@@ -293,9 +301,9 @@ codeGen (Applied (Assign singOptic) as)
 
                 pure (ID 0, SPIRV.Unit) -- ID should never be used
 
-          SBinding k :%.: setter ->
+          SComposeO _ (SBinding k) setter  ->
             do  let varName = Text.pack ( symbolVal k )
-                (a_ID, a_ty) <- codeGenAny a
+                (a_ID, _) <- codeGenAny a
                 (bdID, bdTy) <- bindingID varName
 
                 case bdTy of
@@ -935,54 +943,86 @@ phiInstructions isRelevant blocks bindings
 ----------------------------------------------------------------------------
 -- optics
 
-{-
 data OpticalNode
-  = Leaf
-  | Continue OpticalTree
-  | Combine  OpticalTree OpticalTree
+  = Leaf     ID
+  | Continue ID OpticalTree
+  | Combine  [OpticalTree]
 
-data OpticalTree = Node ID OpticalNode
+data OpticalTree = Node IndexSafeness OpticalNode
 
-opticalTree :: [ID] -> SOptic optic -> m OpticalTree
-opticalTree (i : _) SAnIndexV   = pure (Node i Leaf)
-opticalTree (i : _) SAnIndexRTA = pure (Node i Leaf)
-opticalTree (i : _) SAnIndexA   = pure (Node i Leaf)
+data IndexSafeness
+  = Unsafe
+  | Safe
+  deriving ( Eq, Show )
+
+instance Semigroup IndexSafeness where
+  Safe <> x = x
+  _    <> _ = Unsafe
+
+composedIndices
+  :: SLength is
+  -> ASTIndexList (is :++: js)
+  -> (ASTIndexList is, ASTIndexList js)
+composedIndices SZero js = ( INil, js )
+composedIndices (SSucc tail_is) (k `ICons` ks)
+  = first ( k `ICons` ) (composedIndices tail_is ks)
+
+combinedIndices
+  :: SLength is
+  -> SLength js
+  -> ASTIndexList (ProductIndices is js)
+  -> (ASTIndexList is, ASTIndexList js)
+combinedIndices SZero SZero _ = ( INil, INil )
+combinedIndices SZero (SSucc _) ks = ( INil, ks )
+combinedIndices (SSucc _) SZero ks = ( ks, INil )
+combinedIndices (SSucc is) (SSucc js) (k1k2 `ICons` ks)
+  = case combinedIndices is js ks of
+         ( is', js' ) -> ( (Fst :$ k1k2) `ICons` is', (Snd :$ k1k2) `ICons` js' )
+
+opticalTree :: forall k is (s :: k) a (optic :: Optic is s a).
+               ASTIndexList is -> SOptic optic -> CGMonad OpticalTree
+opticalTree (i `ICons` _) (SAnIndexV   _) = Node Unsafe . Leaf . fst <$> codeGen i
+opticalTree (i `ICons` _) (SAnIndexRTA _) = Node Unsafe . Leaf . fst <$> codeGen i
+opticalTree (i `ICons` _) (SAnIndexA   _) = Node Unsafe . Leaf . fst <$> codeGen i
 opticalTree _ (SIndex n_px)
   = let n :: Word32
         n = fromIntegral ( natVal n_px )
-    in (\i -> Node i Leaf) <$> constID n
+    in Node Safe . Leaf <$> constID n
 opticalTree _ (SName k bds)
   = let n :: Word32
-        n = error "todo" -- find which index "k" refers to
-    in (\i -> Node i Leaf) <$> constID n
-opticalTree is (opt1 :%.: opt2)
-  = do  let (is1, is2) = splitAt _ is
-        res1 = go is1 opt1
-        res2 = go is2 opt2
+        n = fieldIndex k bds
+    in Node Safe . Leaf <$> constID n
+opticalTree is (SComposeO lg1 opt1 opt2)
+  = do  let (is1, is2) = composedIndices lg1 is
+        res1 <- opticalTree is1 opt1
+        res2 <- opticalTree is2 opt2
         pure ( res1 `continue` res2 )
     where continue :: OpticalTree -> OpticalTree -> OpticalTree
-          continue (Node i  Leaf          ) next
-            = Node i ( Continue next )
-          continue (Node i (Continue t)   ) next
-            = Node i ( Continue (t `continue` next) )
-          continue(Node i (Combine t1 t2)) next
-            = Node i ( Combine
-                          (t1 `continue` next)
-                          (t2 `continue` next)
-                     )
-opticalTree is (opt1 :%&: opt2)
-  = do (is1, is2) = unzip is
-       Combine <$> go is1 opt1 <*> go is2 opt2 
-opticalTree [] SAnIndexV
-  = throwError "opticalTree: missing runtime index for dynamic vector extraction"
-opticalTree [] SAnIndexRTA
-  = throwError "opticalTree: missing runtime index to access runtime array"
-opticalTree [] SAnIndexA
-  = throwError "opticalTree: missing runtime index to access array"
-opticalTree _ SBinding
+          continue (Node safe1 (Leaf i) ) next@(Node safe2 _)
+            = Node (safe1 <> safe2) ( Continue  i next )
+          continue (Node safe1 (Continue i t) ) next@(Node safe2 _)
+            = Node (safe1 <> safe2) ( Continue i (t `continue` next) )
+          continue (Node safe1 (Combine ts)) next@(Node safe2 _)
+            = Node (safe1 <> safe2)
+            . Combine
+            $ map (`continue` next) ts
+opticalTree is (SProductO lg1 lg2 o1 o2)
+  = do  let (is1, is2) = combinedIndices lg1 lg2 is
+        t1 <- opticalTree is1 o1
+        t2 <- opticalTree is2 o2
+        let combined = case ( t1, t2 ) of
+              ( Node safe1 n1, Node safe2 n2 )
+                -> let children = case ( n1, n2 ) of
+                          (Combine ts1, Combine ts2) -> ts1 ++ ts2
+                          (Combine ts1, _          ) -> ts1 ++ [t2]
+                          (_          , Combine ts2) -> t1 : ts2
+                          (_          , _          ) -> [t1, t2]
+                   in Node (safe1 <> safe2) (Combine children)
+        pure combined
+opticalTree _ (SBinding _)
   = throwError "opticalTree: trying to access a binding within a binding"
-opticalTree is (SAll opt) = error "todo"
--}
+opticalTree is (SJoint opt) = error "todo"
+
 
 
 loadThroughAccessChain
@@ -1230,6 +1270,11 @@ builtinID stage stageName builtinName =
     id
     pure
 
+-- left-biased semigroup operation
+infixl 6 <<?>
+(<<?>) :: forall x. Maybe x -> Maybe x -> Maybe x
+(<<?>) = coerce ( (<>) @(Maybe (First x)) )
+
 bindingID :: ( MonadState CGState m
              , MonadReader CGContext m
              , MonadError Text m
@@ -1246,7 +1291,7 @@ bindingID varName
           _ -> do loc   <- use ( _localBinding varName )
                   known <- use ( _knownBinding varName )
                   glob  <- globalID varName
-                  case loc <<> known <<> glob of
+                  case loc <<?> known <<?> glob of
                     Nothing
                       -> throwError ( "codeGen: no binding with name "
                                       <> varName

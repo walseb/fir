@@ -46,7 +46,7 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
   Index_   :: Nat    -> Optic is s a
   Name_    :: Symbol -> Optic is s a
   -- optic combinators (unsafe)
-  All_     :: Optic is s a -> Optic is s b
+  Joint_   :: Optic is s a -> Optic is s b
   ComposeO :: Optic is s a -> Optic js a b -> Optic ks s b
   ProductO :: Optic is s a -> Optic ix s b -> Optic js s c 
 
@@ -54,6 +54,12 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 type Name (k :: Symbol) = (Name_ k :: Optic '[] s a)
 type Index (i :: Nat) = (Index_ i :: Optic '[] s a)
 type AnIndex (ix :: Type) = (AnIndex_ :: Optic '[ix] s a)
+
+
+data Foo (is :: [Type]) where
+  AnyFoo :: Foo is
+
+type NilFoo = ( AnyFoo :: Foo '[] )
 
 type family ProductIndices (is :: [Type]) (js :: [Type]) :: [Type] where
   ProductIndices '[] js = js
@@ -69,7 +75,7 @@ type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
     )
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
   = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
-type All (o :: Optic is s a) = (All_ o :: Optic is s (MonoType a))
+type Joint (o :: Optic is s a) = (Joint_ o :: Optic is s (MonoType a))
 
 ----------------------------------------------------------------------
 -- type classes and synonyms
@@ -81,7 +87,7 @@ type Part    (optic :: Optic is s a) = a
 type Indices (optic :: Optic is s a) = is
 
 -- type level getter
-class Gettable (optic :: Optic is (s :: k) a) | optic -> is s a where
+class Gettable (optic :: Optic is (s :: k) a) | optic -> is k s a where
 type  Getter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[s]) a
 
 -- type level getter which can be turned into a value-level getter
@@ -89,7 +95,7 @@ class Gettable optic => ReifiedGetter optic where
   view :: Getter optic
 
 -- type level setter
-class Settable (optic :: Optic is (s :: k) a) | optic -> is s a where
+class Settable (optic :: Optic is (s :: k) a) | optic -> is k s a where
 type  Setter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[a,s]) s
 
 -- type level setter which can be turned into a value-level setter
@@ -236,17 +242,17 @@ type family ProductIfDisjoint
 
 type family LastAccessee ( o :: Optic is (s :: Type) a ) :: Type where
   LastAccessee (o1 `ComposeO` o2 ) = LastAccessee o2
-  LastAccessee (All_ o           ) = LastAccessee o
+  LastAccessee (Joint_ o         ) = LastAccessee o
   LastAccessee (o :: Optic is s a) = s
 
 type family LastIndices ( o :: Optic is s a ) :: [Type] where
   LastIndices (o1 `ComposeO` o2 ) = LastIndices o2
-  LastIndices (All_ o           ) = LastIndices o
+  LastIndices (Joint_ o         ) = LastIndices o
   LastIndices (o :: Optic is s a) = s
 
 type family LastOptic ( o :: Optic is s a) :: Optic (LastIndices o) (LastAccessee o) a where
   LastOptic (o1 `ComposeO` o2) = LastOptic o2
-  LastOptic (All_ o          ) = LastOptic o
+  LastOptic (Joint_ o        ) = LastOptic o
   LastOptic AnIndex_           = AnIndex_
   LastOptic (Index_ i        ) = Index_ i
   LastOptic (Name_  k        ) = Name_  k
@@ -691,12 +697,12 @@ instance forall is js ks (s :: Type) a b c
 
 instance
   ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
-  => Gettable (All_ o :: Optic i s r) where
+  => Gettable (Joint_ o :: Optic i s r) where
 
 
 instance forall i s a r (o :: Optic i s a).
          ( Settable o
          , MonoContained a
          , r ~ MonoType a
-         ) => Settable (All_ o :: Optic i s r)
+         ) => Settable (Joint_ o :: Optic i s r)
         where

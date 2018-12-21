@@ -277,7 +277,7 @@ instance GradedSemigroup (V 0 a) Nat where
 instance GradedPresentedSemigroup (V 0 a) Nat () where
   type Element    (V 0 a) ()  _  = a
   type Degree Nat (V 0 a) () '() = 1
-  homogeneous :: a -> (V (Degree Nat (V 0 a) () unit) a)
+  homogeneous :: a -> V (Degree Nat (V 0 a) () unit) a
   homogeneous a = unsafeCoerce (a :. Nil)
 
 instance GradedFreeSemigroup (V 0 a) Nat () where

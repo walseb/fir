@@ -9,7 +9,7 @@ module FIR
   , Control.Type.Optic.Optic
   , (Control.Type.Optic.:*:)
   , (Control.Type.Optic.:.:)
-  , Control.Type.Optic.All
+  , Control.Type.Optic.Joint
   , Control.Type.Optic.AnIndex
   , Control.Type.Optic.Index
   , Control.Type.Optic.Name
@@ -66,7 +66,7 @@ import FIR.Prim.Struct
 import FIR.Prim.Singletons(KnownVars)
 import FIR.Program
 import Math.Algebra.Class
-import Math.Logic.Class hiding(All)
+import Math.Logic.Class
 
 ------------------------------------------------
 

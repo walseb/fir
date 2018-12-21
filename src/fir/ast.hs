@@ -136,6 +136,12 @@ data AST :: Type -> Type where
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
 
+  -- pairs (for internal use at the moment)
+  Pair :: AST ( a -> b -> (a,b) )
+  Fst  :: AST ( (a,b) -> a )
+  Snd  :: AST ( (a,b) -> b )
+
+  -- used to bypass the type-system by injecting IDs at any type
   MkID :: (ID, SPIRV.PrimTy) -> AST a
 
 ------------------------------------------------
@@ -170,6 +176,9 @@ toTreeArgs Return   as = return (Node "Return"   as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
+toTreeArgs Pair     as = return (Node "Pair"     as)
+toTreeArgs Fst      as = return (Node "Fst"      as)
+toTreeArgs Snd      as = return (Node "Snd"      as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
 toTreeArgs (VectorAt   _ i) as = return (Node ("At "       ++ show (natVal i)) as)
