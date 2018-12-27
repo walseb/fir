@@ -133,12 +133,11 @@ ixLiftA2 :: IxApplicative f
 ixLiftA2 f a b = f <<$>> a <<*>> b
 
 ixLiftA3 :: IxApplicative f
-       => (a -> b -> c -> d)
-       -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := l) i
+         => (a -> b -> c -> d)
+         -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := l) i
 ixLiftA3 f a b c = f <<$>> a <<*>> b <<*>> c
 
 ixLiftA4 :: IxApplicative f
-       => (a -> b -> c -> d -> e)
-       -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := m) l -> f (e := m) i
+         => (a -> b -> c -> d -> e)
+         -> f (a := j) i -> f (b := k) j -> f (c := l) k -> f (d := m) l -> f (e := m) i
 ixLiftA4 f a b c d = f <<$>> a <<*>> b <<*>> c <<*>> d
-

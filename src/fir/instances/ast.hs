@@ -28,6 +28,7 @@ import Prelude hiding
   , Num(..), Floating(..)
   , Integral(..)
   , Fractional(..), fromRational
+  , Floating(..)
   , Functor(..)
   , Applicative(..)
   )
@@ -54,6 +55,7 @@ import Math.Algebra.Class
   , Semiring(..), Ring(..)
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
+  , Floating(..)
   , Convert(..)
   )
 import Math.Linear
@@ -128,6 +130,25 @@ instance ( ScalarTy a
   mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (scalarTy @a)) mod
   rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (scalarTy @a)) rem
 
+instance (ScalarTy a, Floating a) => Floating (AST a) where
+  pi      = lit pi
+  exp     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FExp     (scalarTy @a)) exp
+  log     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FLog     (scalarTy @a)) log
+  sqrt    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FSqrt    (scalarTy @a)) sqrt
+  invSqrt = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FInvsqrt (scalarTy @a)) invSqrt
+  sin     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FSin     (scalarTy @a)) sin
+  cos     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FCos     (scalarTy @a)) cos
+  tan     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FTan     (scalarTy @a)) tan
+  asin    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAsin    (scalarTy @a)) asin
+  acos    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAcos    (scalarTy @a)) acos
+  atan    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtan    (scalarTy @a)) atan
+  sinh    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FSinh    (scalarTy @a)) sinh
+  cosh    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FCosh    (scalarTy @a)) cosh
+  tanh    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FTanh    (scalarTy @a)) tanh
+  asinh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAsinh   (scalarTy @a)) asinh
+  acosh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAcosh   (scalarTy @a)) acosh
+  atanh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtanh   (scalarTy @a)) atanh
+  (**)    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FPow     (scalarTy @a)) (**)
 
 -- numeric conversions
 instance (ScalarTy a, ScalarTy b, Convert '(a,b))

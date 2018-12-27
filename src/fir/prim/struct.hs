@@ -94,7 +94,7 @@ instance GradedPresentedSemigroup
   homogeneous a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv])
 
 
-asProxyProxyTypeOf :: proxy1 as -> proxy2 as -> proxy1 as
+asProxyProxyTypeOf :: proxy1 a -> proxy2 a -> proxy1 a
 asProxyProxyTypeOf s _ = s
 
 instance GradedFreeSemigroup

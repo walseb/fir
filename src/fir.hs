@@ -33,11 +33,12 @@ module FIR
   , FIR.Prim.Struct.Struct(End,(:&))
   , FIR.Program.Program
   , module Math.Algebra.Class
+  , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Class
   ) where
 
 -- base
-import Control.Monad(unless)
+import qualified Control.Monad as Monad (unless)
 import Prelude
 
 -- bytestring
@@ -66,6 +67,7 @@ import FIR.Prim.Struct
 import FIR.Prim.Singletons(KnownVars)
 import FIR.Program
 import Math.Algebra.Class
+import Math.Algebra.GradedSemigroup
 import Math.Logic.Class
 
 ------------------------------------------------
@@ -86,7 +88,7 @@ compile :: KnownVars i
 compile filePath args program = case runCodeGen cgContext (toAST program) of
     Left  err -> Prelude.pure ( Left err )
     Right bin
-      ->  do  unless ( NoCode `elem` args )
+      ->  do  Monad.unless ( NoCode `elem` args )
                 ( ByteString.writeFile filePath bin )
               Prelude.pure ( Right "OK" )
   where cgContext :: CGContext

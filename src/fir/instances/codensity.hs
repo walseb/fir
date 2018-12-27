@@ -5,6 +5,7 @@
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RebindableSyntax       #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
@@ -21,6 +22,7 @@ import Prelude hiding
   , Num(..), Floating(..)
   , Integral(..)
   , Fractional(..), fromRational
+  , Floating(..)
   , Functor(..)
   , Applicative(..)
   )
@@ -51,6 +53,7 @@ import Math.Algebra.Class
   , Semiring(..), Ring(..)
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
+  , Floating(..)
   , Convert(..)
   )
 import Math.Linear
@@ -61,7 +64,7 @@ import Math.Linear
   )
 import Math.Logic.Class
   ( Eq(..), Boolean(..)
-  , Choose(..)
+  , Choose(..), ifThenElse
   , Ord(..)
   )
 
@@ -69,6 +72,21 @@ import Math.Logic.Class
 -- utility type synonym, useful for disambiguation
 
 type C a i = Codensity AST ( AST a := i ) i
+
+--------------------------------------------------------------------------
+-- utility functions
+
+when :: forall i. AST Bool -> Codensity AST (AST () := i) i -> Codensity AST (AST () := i) i
+when b action
+  = if b
+    then action
+    else ixPure (Lit Proxy ()) :: C () i
+
+unless :: forall i. AST Bool -> Codensity AST (AST () := i) i -> Codensity AST (AST () := i) i
+unless b action
+  = if b
+    then ixPure (Lit Proxy ()) :: C () i
+    else action
 
 --------------------------------------------------------------------------
 -- syntactic
@@ -305,6 +323,26 @@ instance ( ScalarTy a
          ) => Archimedean (Codensity AST (AST a := j) i) where
   mod    = ixLiftA2 mod
   rem    = ixLiftA2 rem
+
+instance (ScalarTy a, Floating a, j ~ i) => Floating (Codensity AST (AST a := j) i) where
+  pi      = ixPure pi
+  exp     = ixFmap exp
+  log     = ixFmap log
+  sqrt    = ixFmap sqrt
+  invSqrt = ixFmap invSqrt
+  sin     = ixFmap sin
+  cos     = ixFmap cos
+  tan     = ixFmap tan
+  asin    = ixFmap asin
+  acos    = ixFmap acos
+  atan    = ixFmap atan
+  sinh    = ixFmap sinh
+  cosh    = ixFmap cosh
+  tanh    = ixFmap tanh
+  asinh   = ixFmap asinh
+  acosh   = ixFmap acosh
+  atanh   = ixFmap atanh
+  (**)    = ixLiftA2 (**)
 
 
 -- numeric conversions
