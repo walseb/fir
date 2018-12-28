@@ -436,7 +436,21 @@ codeGen (Ap functorSing ty_px :$ f :$ a)
 codeGen (Mat :$ m)   = codeGen m
 codeGen (UnMat :$ m) = codeGen m
 -- control flow
-codeGen (Locally :$ a) = codeGen a
+codeGen (Locally :$ a)
+  = do
+        bindingsBefore <- use _knownBindings
+        bindingsLBefore <- use _localBindings
+
+        localBlock <- fresh
+        branch localBlock
+        cg <- codeGen a
+
+        assign _knownBindings bindingsBefore
+        assign _localBindings bindingsLBefore
+        outsideBlock <- fresh
+        branch outsideBlock
+        pure cg
+
 codeGen (If :$ c :$ t :$ f)
  = codeGen (IfM :$ c :$ (Return :$ t) :$ (Return :$ f))
 codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)

@@ -19,6 +19,7 @@ module FIR
   , FIR.AST.AST((:$))
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.Binding.Binding(Variable,Function)
+  , FIR.Binding.BindingsMap
   , FIR.Binding.Var, FIR.Binding.Fun
   , FIR.Binding.R
   , FIR.Binding.W
