@@ -31,6 +31,8 @@ module FIR
   , FIR.Prim.Array.mkArray
   , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
   , FIR.Prim.Struct.Struct(End,(:&))
+  , FIR.Program.Module
+  , FIR.Program.Procedure
   , FIR.Program.Program
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup

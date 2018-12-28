@@ -7,8 +7,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 module FIR.Program
-  ( Program
-  , CodensityProgram
+  ( Procedure, Module, Program, CodensityProgram
   , programGlobals
   )
   where
@@ -34,10 +33,22 @@ import FIR.Prim.Singletons(KnownVars(knownVars))
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 
+--------------------------------------------------------------------------
+-- type (family) synonyms, all wrappers around main internal representation
+-- Codensity AST (AST a := j) i
+
+type Procedure (a :: Type) (i :: BindingsMap) (j :: BindingsMap)
+  = Codensity AST (AST a := j) i
+
+type Module (a :: Type) (i :: BindingsMap)
+  = Procedure a i i
+-- 'module' in the sense of Mathematica: a computation which runs
+-- without creating any new variables
+
 type family Program 
-    ( i :: BindingsMap )
-    ( j :: BindingsMap )
-    ( a :: Type ) 
+    ( i :: BindingsMap ) -- available data at the start (e.g. uniforms)
+    ( j :: BindingsMap ) -- top-level functions of the program (currently this doesn't include entry points)
+    ( a :: Type )
   = ( r :: Type ) where
   Program i j a = Program' (InsertionSort i) (InsertionSort j) a
 

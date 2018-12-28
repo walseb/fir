@@ -69,23 +69,18 @@ import Math.Logic.Class
   )
 
 --------------------------------------------------------------------------
--- utility type synonym, useful for disambiguation
-
-type C a i = Codensity AST ( AST a := i ) i
-
---------------------------------------------------------------------------
 -- utility functions
 
 when :: forall i. AST Bool -> Codensity AST (AST () := i) i -> Codensity AST (AST () := i) i
 when b action
   = if b
     then action
-    else ixPure (Lit Proxy ()) :: C () i
+    else ixPure (Lit Proxy ()) :: Codensity AST (AST () := i) i
 
 unless :: forall i. AST Bool -> Codensity AST (AST () := i) i -> Codensity AST (AST () := i) i
 unless b action
   = if b
-    then ixPure (Lit Proxy ()) :: C () i
+    then ixPure (Lit Proxy ()) :: Codensity AST (AST () := i) i
     else action
 
 locally :: Codensity AST (AST a := j) i -> Codensity AST (AST a := i) i
