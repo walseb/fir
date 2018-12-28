@@ -436,6 +436,7 @@ codeGen (Ap functorSing ty_px :$ f :$ a)
 codeGen (Mat :$ m)   = codeGen m
 codeGen (UnMat :$ m) = codeGen m
 -- control flow
+codeGen (Locally :$ a) = codeGen a
 codeGen (If :$ c :$ t :$ f)
  = codeGen (IfM :$ c :$ (Return :$ t) :$ (Return :$ f))
 codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)

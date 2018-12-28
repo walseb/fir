@@ -113,6 +113,8 @@ data AST :: Type -> Type where
   While :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (a := j) i -> (a := i) i )
 
+  Locally :: AST ( (a := j) i -> (a := i) i )
+
   -- functor, applicative
   -- passing a singleton representing the functor
   Fmap :: PrimTy a
@@ -172,6 +174,7 @@ toTreeArgs (PrimOp op _ ) as
 toTreeArgs If       as = return (Node "If"       as)
 toTreeArgs IfM      as = return (Node "IfM"      as)
 toTreeArgs While    as = return (Node "While"    as)
+toTreeArgs Locally  as = return (Node "Locally"  as)
 toTreeArgs Return   as = return (Node "Return"   as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)

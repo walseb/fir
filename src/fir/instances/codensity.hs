@@ -88,6 +88,9 @@ unless b action
     then ixPure (Lit Proxy ()) :: C () i
     else action
 
+locally :: Codensity AST (AST a := j) i -> Codensity AST (AST a := i) i
+locally = fromAST Locally
+
 --------------------------------------------------------------------------
 -- syntactic
 
