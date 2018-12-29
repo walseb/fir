@@ -269,12 +269,16 @@ pattern OuterProduct      = Code 147
 pattern Dot               :: Operation
 pattern Dot               = Code 148
 -- boolean instructions
-pattern LogicalOr  :: Operation
-pattern LogicalOr  = Code 166
-pattern LogicalAnd :: Operation
-pattern LogicalAnd = Code 167
-pattern LogicalNot :: Operation
-pattern LogicalNot = Code 168
+pattern LogicalEqual    :: Operation
+pattern LogicalEqual    = Code 164
+pattern LogicalNotEqual :: Operation
+pattern LogicalNotEqual = Code 165
+pattern LogicalOr       :: Operation
+pattern LogicalOr       = Code 166
+pattern LogicalAnd      :: Operation
+pattern LogicalAnd      = Code 167
+pattern LogicalNot      :: Operation
+pattern LogicalNot      = Code 168
 -- integer comparisons
 pattern IEqual            :: Operation
 pattern IEqual            = Code 170

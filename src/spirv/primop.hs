@@ -154,8 +154,10 @@ booleanOp Not = LogicalNot
 equalityOp :: EqPrimOp -> PrimTy -> Operation
 equalityOp Equal    (Scalar (Floating  _)) = FOrdEqual -- not reflexive!
 equalityOp Equal    (Scalar (Integer _ _)) = IEqual
+equalityOp Equal    Boolean                = LogicalEqual
 equalityOp NotEqual (Scalar (Floating  _)) = FOrdNotEqual
 equalityOp NotEqual (Scalar (Integer _ _)) = INotEqual
+equalityOp NotEqual Boolean                = LogicalNotEqual
 equalityOp primOp ty = error $ "unsupported type " ++ show ty ++ " with equality operation " ++ show primOp
 
 orderOp :: OrdPrimOp -> PrimTy -> (Operation, PrimTy)
