@@ -104,7 +104,7 @@ import FIR.Builtin
   ( Stage, stageVal
   , stageBuiltins, stageCapabilities
   )
-import FIR.Instances.AST()
+import FIR.Instances.AST(lit)
 import FIR.Instances.Optics(SOptic(..), showSOptic)
 import FIR.Prim.Singletons
   ( PrimTy(primTySing)
@@ -440,15 +440,17 @@ codeGen (Locally :$ a)
   = do
         bindingsBefore <- use _knownBindings
         bindingsLBefore <- use _localBindings
-
         localBlock <- fresh
         branch localBlock
-        cg <- codeGen a
 
-        assign _knownBindings bindingsBefore
-        assign _localBindings bindingsLBefore
+        block localBlock
+        cg <- codeGen a
         outsideBlock <- fresh
         branch outsideBlock
+
+        block outsideBlock
+        assign _knownBindings bindingsBefore
+        assign _localBindings bindingsLBefore
         pure cg
 
 codeGen (If :$ c :$ t :$ f)
@@ -1237,10 +1239,18 @@ constID a =
                   ( Arg a EndArgs )
               )
 
-        SUnit -> throwError
-                    "constId: called on Unit type.\n\
-                    \Unit has a unique value, \
-                    \and as such does not need to be constructed."
+        SUnit
+          -> {-
+              create _knownAConstant
+                ( mkConstantInstruction
+                    SPIRV.Op.ConstantNull
+                    EndArgs
+                )
+             -}
+              throwError
+                "constId: called on Unit type.\n\
+                \Unit has a unique value, \
+                \and as such does not need to be constructed."
 
         SBool -> 
           create _knownAConstant
@@ -1339,8 +1349,8 @@ globalID globalName
 
 stringLit :: (MonadState CGState m, MonadFresh ID m)
           => Text -> m ID
-stringLit lit =
-  tryToUse ( _knownStringLit lit )
+stringLit literal =
+  tryToUse ( _knownStringLit literal )
     id
     pure
 
