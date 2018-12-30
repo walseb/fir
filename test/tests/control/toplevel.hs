@@ -17,14 +17,14 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms = '[ ]
+type InOut = '[ ]
 
 type TopLevel
   = '[ "notallowed" ':-> Var RW Float
      , "alsono"     ':-> Var R (V 3 Float)
      ]
 
-program :: Program Uniforms TopLevel ()
+program :: Program InOut TopLevel ()
 program = do
 
   no <- def @"notallowed"   17

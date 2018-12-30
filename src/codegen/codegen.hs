@@ -83,7 +83,7 @@ import CodeGen.State
   , _knownType
   , _knownConstant
   , _builtin
-  , _interface
+  , _interface, _interfaceBinding
   , _usedGlobal
   , _userGlobal
   , _debugMode
@@ -124,6 +124,8 @@ import qualified SPIRV.PrimTy     as SPIRV
 import qualified SPIRV.PrimOp     as SPIRV
 import qualified SPIRV.Storage    as Storage
 import qualified SPIRV.Storage    as SPIRV(StorageClass)
+
+import Debug.Trace(trace)
 
 ----------------------------------------------------------------------------
 -- existential data types to emulate untyped AST
@@ -262,7 +264,7 @@ codeGen (Applied (Use singOptic) is)
             bd@(bdID, bdTy) <- bindingID varName
             case bdTy of
               SPIRV.Pointer storage ty
-                -> loadInstruction ty storage bdID
+                -> load (varName, bdID) ty storage
               _ -> pure bd
 
       SComposeO _ (SBinding k) getter ->
@@ -296,7 +298,7 @@ codeGen (Applied (Assign singOptic) as)
 
                 case bdTy of
                   SPIRV.Pointer storage ty
-                    -> storeInstruction ty storage bdID a_ID
+                    -> store (varName, a_ID) bdID ty storage
                   _ -> assign ( _localBinding varName ) (Just bd)
 
                 pure (ID 0, SPIRV.Unit) -- ID should never be used
@@ -834,7 +836,7 @@ declareEntryPoint stage stageName body
       ( \(unitTyID,fnTyID) v -> do
         -- initialise entry point with empty interface
         -- loading/storing should add to the interface as needed
-        assign ( _interface stage stageName ) (Just Set.empty)
+        assign ( _interface stage stageName ) (Just Map.empty)
         -- add the required capabilities
         declareCapabilities ( stageCapabilities stage )
         liftPut $ putInstruction Map.empty
@@ -885,10 +887,21 @@ inEntryPointContext stage stageName action
        assign _functionContext TopLevel
        pure a
 
-
-
 ----------------------------------------------------------------------------
 -- load/store through pointers
+
+load :: (Text, ID) -> SPIRV.PrimTy -> SPIRV.StorageClass -> CGMonad (ID, SPIRV.PrimTy)
+load (loadeeName, loadeeID) ty storage
+  = do
+      context <- use _functionContext
+      case context of
+        TopLevel -> throwError "codeGen: load operation not allowed at top level"
+        EntryPoint stage entryPointName
+          | storage == Storage.Input
+          -- add this variable to the interface of the entry point
+          -> assign ( _interfaceBinding stage entryPointName loadeeName ) (Just loadeeID)
+        _ -> pure ()
+      loadInstruction ty storage loadeeID
 
 loadInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
 loadInstruction ty storage loadeeID
@@ -903,7 +916,20 @@ loadInstruction ty storage loadeeID
             , resID = Just v
             , args  = Arg loadeeID EndArgs
             }
-        pure (v, ty) 
+        pure (v, ty)
+
+store :: (Text, ID) -> ID -> SPIRV.PrimTy -> SPIRV.StorageClass -> CGMonad ()
+store (storeeName, storeeID) pointerID ty storage
+  = do
+      context <- use _functionContext
+      case context of
+        TopLevel -> throwError "codeGen: store operation not allowed at top level"
+        EntryPoint stage entryPointName
+          | storage == Storage.Output
+          -- add this variable to the interface of the entry point
+          -> assign ( _interfaceBinding stage entryPointName storeeName ) (Just pointerID)
+        _ -> pure ()
+      storeInstruction ty storage pointerID storeeID
 
 storeInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> ID -> CGMonad ()
 storeInstruction ty storage pointerID storeeID

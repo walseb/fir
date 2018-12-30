@@ -128,7 +128,7 @@ putMemoryModel
                     EndArgs
         }
 
-putEntryPoint :: Stage -> Text -> ID -> [ID] -> Binary.Put
+putEntryPoint :: Stage -> Text -> ID -> Map Text ID -> Binary.Put
 putEntryPoint stage stageName entryPointID interface
   = putInstruction Map.empty
       Instruction
@@ -138,26 +138,18 @@ putEntryPoint stage stageName entryPointID interface
         , resTy     = Just ( ID executionID )
         , resID     = Just entryPointID
         , args      = Arg stageName
-                    $ toArgs interface
+                    $ toArgs interface -- 'Map Text ID' has the right traversable instance
         }
     where SPIRV.ExecutionModel executionID = executionModel stage
 
-putEntryPoints :: Map Text ID -> Map Text (ID, p) -> Map (Stage, Text) (Set Text) -> ExceptT Text Binary.PutM ()
-putEntryPoints bindings globals
+putEntryPoints :: Map Text ID -> Map (Stage, Text) (Map Text ID) -> ExceptT Text Binary.PutM ()
+putEntryPoints bindings
   = traverseWithKey_
-      ( \(stage, stageName) builtins -> do
-        builtin_IDs <-
-          traverse
-            ( \builtin -> 
-              note
-                ( "putEntryPoints: builtin " <> builtin <> " not bound to any ID." )
-                ( fst <$> Map.lookup builtin globals)
-            )
-            (Set.toList builtins)
+      ( \(stage, stageName) interface -> do
         entryPointID <- note
                      ( "putEntryPoints: entry point " <> stageName <> "not bound to any ID." )
                      ( Map.lookup stageName bindings )
-        lift ( putEntryPoint stage stageName entryPointID builtin_IDs )
+        lift ( putEntryPoint stage stageName entryPointID interface )
       )
 
 putKnownStringLits :: Map Text ID -> Binary.Put

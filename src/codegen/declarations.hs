@@ -46,12 +46,12 @@ putDecs
               putCapabilities         neededCapabilities
               putExtendedInstructions knownExtInsts
               putMemoryModel
-    putEntryPoints (fmap fst knownBindings) usedGlobals interfaces    
+    putEntryPoints (fmap fst knownBindings) interfaces
     lift $ do --putExecutionModes knownBindings interfaces
               putKnownStringLits      knownStringLits
               putBindingAnnotations   (fmap fst knownBindings)
               putBindingAnnotations   (fmap fst usedGlobals)
-              putNames                names            
+              putNames                names
               --putDecorations
 
               -- Type and constant declarations need to be interleaved.

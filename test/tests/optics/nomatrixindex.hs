@@ -32,12 +32,12 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms
+type InOut
   = '[ "vertexData"':-> Var RW ( M 3 4 Float ) ]
 
 type Functions = '[]
 
-program :: Program Uniforms Functions ()
+program :: Program InOut Functions ()
 program = do
 
   entryPoint @"main" @Vertex do

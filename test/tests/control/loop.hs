@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments   #-}
 {-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE NamedWildCards   #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE PolyKinds        #-}
 {-# LANGUAGE RebindableSyntax #-}
@@ -19,16 +20,16 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms = '[ "position" ':-> Var W (V 4 Float) ]
+type InOut = '[ "position" ':-> Var W (V 4 Float) ]
 
 type Functions = '[ ]
 
-program :: Program Uniforms Functions ()
+program :: Program InOut Functions ()
 program = do
 
   entryPoint @"main" @Fragment do
 
-    let (#<) = (<) @(C _ _) -- disambiguate to help type inference
+    let (#<) = (<) @(Procedure _ _i _i) -- disambiguate to help type inference
 
     #t @Float #= 0
     #s @Float #= 1

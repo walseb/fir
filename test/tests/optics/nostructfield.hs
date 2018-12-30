@@ -32,7 +32,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms
+type InOut
   = '[ "vertexData"':-> Var RW ( Struct [ "position" ':-> V 3 Float
                                         , "colour"   ':-> V 4 Float
                                         , "size"     ':-> Float
@@ -43,7 +43,7 @@ type Uniforms
 
 type Functions = '[]
 
-program :: Program Uniforms Functions ()
+program :: Program InOut Functions ()
 program = do
 
   entryPoint @"main" @Vertex do

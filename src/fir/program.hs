@@ -7,7 +7,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 module FIR.Program
-  ( Procedure, Module, Program, CodensityProgram
+  ( Procedure, Program, CodensityProgram
   , programGlobals
   )
   where
@@ -29,9 +29,8 @@ import Control.Monad.Indexed((:=), Codensity)
 import Data.Type.Map (Union, InsertionSort)
 import FIR.AST(AST)
 import FIR.Binding(BindingsMap)
-import FIR.Prim.Singletons(KnownVars(knownVars))
-import qualified SPIRV.PrimTy  as SPIRV
-import qualified SPIRV.Storage as Storage
+import FIR.Prim.Singletons(KnownInterface(knownInterface))
+import qualified SPIRV.PrimTy as SPIRV
 
 --------------------------------------------------------------------------
 -- type (family) synonyms, all wrappers around main internal representation
@@ -39,11 +38,6 @@ import qualified SPIRV.Storage as Storage
 
 type Procedure (a :: Type) (i :: BindingsMap) (j :: BindingsMap)
   = Codensity AST (AST a := j) i
-
-type Module (a :: Type) (i :: BindingsMap)
-  = Procedure a i i
--- 'module' in the sense of Mathematica: a computation which runs
--- without creating any new variables
 
 type family Program 
     ( i :: BindingsMap ) -- available data at the start (e.g. uniforms)
@@ -67,8 +61,10 @@ type family CodensityProgram
   | r -> i j a where
   CodensityProgram i j a = Codensity AST ( AST a := j ) i
 
-programGlobals :: forall i j a. KnownVars i
+programGlobals :: forall i j a. KnownInterface i
                => CodensityProgram i j a -> Map Text SPIRV.PrimTy
 programGlobals _ = Map.fromList
-                 . map ( second ( \ (ty, _) -> SPIRV.Pointer Storage.Uniform ty ) )
-                 $ knownVars (Proxy @i)
+                 . map ( second
+                            ( \ (ty, storage) -> SPIRV.Pointer storage ty )
+                       )
+                 $ knownInterface (Proxy @i)

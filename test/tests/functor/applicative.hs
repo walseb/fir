@@ -29,10 +29,10 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms  = '[ "position" ':-> Var R ( V  3  Float ) ]
+type InOut     = '[ "position" ':-> Var R ( V  3  Float ) ]
 type Functions = '[ ]
 
-program :: Program Uniforms Functions ()
+program :: Program InOut Functions ()
 program = do
 
   entryPoint @"main" @Vertex do

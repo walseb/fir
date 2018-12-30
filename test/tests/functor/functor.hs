@@ -29,7 +29,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms
+type InOut
   = '[ "modelMatrix"      ':-> Var R ( M 4 4 Float )
      , "viewMatrix"       ':-> Var R ( M 4 4 Float )
      , "projectionMatrix" ':-> Var R ( M 4 4 Float )
@@ -40,7 +40,7 @@ type Functions
   = '[ "f" ':-> Fun '[ "u" ':-> Var R Float] Float
      ]
 
-program :: Program Uniforms Functions ()
+program :: Program InOut Functions ()
 program = do
 
   (f :: AST Float -> AST Float) <- fundef @"f" do

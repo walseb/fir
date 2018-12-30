@@ -29,11 +29,10 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms = '[]
-
+type InOut     = '[]
 type Functions = '[]
 
-program :: Program Uniforms Functions ()
+program :: Program InOut Functions ()
 program = do
 
   entryPoint @"main" @Vertex do

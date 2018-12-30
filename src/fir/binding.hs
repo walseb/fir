@@ -28,10 +28,12 @@ type RW = '[ 'Read, 'Write ]
 
 data Binding where
   Variable :: [Permission] -> Type -> Binding
+  Uniform  :: Type -> Binding
   Function :: [Symbol :-> Binding] -> Type -> Binding
 
 type Var ps a    = 'Variable ps a
 type Fun as b    = 'Function as b
+type Unif a      = 'Uniform a
 type BindingsMap = Map Symbol Binding
 
 type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
@@ -40,6 +42,7 @@ type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
 
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a
+  BindingType (Unif a  ) = a
   BindingType (Fun as b) = Variadic as b
 
 ------------------------------------------------------------------------------------------------

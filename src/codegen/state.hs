@@ -49,7 +49,7 @@ data CGState
       , knownExtInsts       :: Map SPIRV.ExtInst Instruction
       , knownStringLits     :: Map Text          ID
       , names               :: Set ( ID, Either Text (Word32, Text) )
-      , interfaces          :: Map (Stage, Text) (Set Text)
+      , interfaces          :: Map (Stage, Text) (Map Text ID)
       , annotations         :: Set               Instruction
       , knownTypes          :: Map SPIRV.PrimTy  Instruction
       , knownConstants      :: Map AConstant     Instruction
@@ -98,6 +98,14 @@ emptyContext
       }
 
 ----------------------------------------------------------------------------
+-- useful function to deal with nested data structures
+-- such as 'Map a (Map b c)'
+
+affineTraverse :: (Monoid a, Functor f) => (a -> f b) -> (Maybe a -> f (Maybe b))
+affineTraverse f Nothing  = fmap Just (f mempty)
+affineTraverse f (Just a) = fmap Just (f a)
+
+----------------------------------------------------------------------------
 -- lenses
 
 _currentID :: Lens' CGState ID
@@ -136,33 +144,30 @@ _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
 _usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _usedGlobal name = _usedGlobals . at name
 
-_interfaces :: Lens' CGState (Map (Stage, Text) (Set Text))
+_interfaces :: Lens' CGState (Map (Stage, Text) (Map Text ID))
 _interfaces = lens interfaces ( \s v -> s { interfaces = v } )
 
-_interface :: Stage -> Text -> Lens' CGState (Maybe (Set Text))
+_interface :: Stage -> Text -> Lens' CGState (Maybe (Map Text ID))
 _interface stage stageName = _interfaces . at (stage, stageName)
+
+_interfaceBinding :: Stage -> Text -> Text -> Lens' CGState (Maybe ID)
+_interfaceBinding stage stageName varName
+  = _interface stage stageName
+  . affineTraverse
+  . at varName
 
 _builtin :: Stage -> Text -> Text -> Lens' CGState (Maybe ID)
 _builtin stage stageName builtinName
   = lens
-      ( \s -> case view _interfaceBuiltin s of
-                Just () -> fst <$> view _usedBuiltin s
-                Nothing -> Nothing
-      )
+      ( view _interfaceBuiltin )
       ( \s mb_i -> case mb_i of
          Nothing -> s
-         Just i  -> set _interfaceBuiltin (Just ())
+         Just i  -> set _interfaceBuiltin (Just i)
                   . set _usedBuiltin      (Just (i,ty))
                   $ s
       )
-  where affineTraverse :: (Monoid a, Functor f) => (a -> f b) -> (Maybe a -> f (Maybe b))
-        affineTraverse f Nothing  = fmap Just (f mempty)
-        affineTraverse f (Just a) = fmap Just (f a)
-
-        _interfaceBuiltin :: Lens' CGState (Maybe ())
-        _interfaceBuiltin = _interface stage stageName
-                          . affineTraverse
-                          . at builtinName
+  where _interfaceBuiltin :: Lens' CGState (Maybe ID)
+        _interfaceBuiltin = _interfaceBinding stage stageName builtinName
 
         _usedBuiltin :: Lens' CGState (Maybe (ID, SPIRV.PrimTy))
         _usedBuiltin = _usedGlobal builtinName

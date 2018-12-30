@@ -27,7 +27,7 @@ import Data.Typeable(Typeable, eqT)
 import Data.Word(Word8, Word16, Word32, Word64)
 import GHC.TypeLits
   ( Symbol, KnownSymbol, symbolVal
-  , TypeError, ErrorMessage(Text)
+  , TypeError, ErrorMessage(Text, ShowType, (:$$:), (:<>:))
   )
 import GHC.TypeNats(KnownNat, natVal)
 
@@ -42,8 +42,8 @@ import Data.Binary.Class.Put(Put)
 import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map((:->)((:->)))
 import FIR.Binding
-  ( Binding, BindingsMap, Var
-  , Permission, KnownPermissions, permissions
+  ( Binding, BindingsMap, Var, Unif
+  , KnownPermissions(permissions), Permission(Read,Write)
   )
 import FIR.Prim.Array(Array,RuntimeArray)
 import FIR.Prim.Struct(Struct)
@@ -54,6 +54,8 @@ import SPIRV.PrimTy
   ( Signedness(Unsigned, Signed)
   , Width(W8,W16,W32,W64)
   )
+import qualified SPIRV.Storage as SPIRV(StorageClass)
+import qualified SPIRV.Storage as Storage
 
 ------------------------------------------------------------
 -- singletons for primitive types
@@ -285,6 +287,8 @@ sScalarTy SFloat  = SPIRV.Floating         W32
 sScalarTy SDouble = SPIRV.Floating         W64
 
 ------------------------------------------------------------
+-- statically known list of variables (for function definitions)
+
 class KnownVar (bd :: (Symbol :-> Binding)) where
   knownVar :: Proxy bd -> (Text.Text, (SPIRV.PrimTy, [Permission]))
 
@@ -296,7 +300,6 @@ instance (KnownSymbol k, KnownPermissions ps, PrimTy a)
                  )
                )
 
--- doing this by hand...
 class KnownVars (bds :: BindingsMap) where
   knownVars :: Proxy bds -> [(Text.Text, (SPIRV.PrimTy, [Permission]))]
 instance KnownVars '[] where
@@ -304,6 +307,57 @@ instance KnownVars '[] where
 instance (KnownVar bd, KnownVars bds)
       => KnownVars (bd ': bds) where
   knownVars _ = knownVar (Proxy @bd) : knownVars (Proxy @bds)
+
+------------------------------------------------------------
+-- statically known interfaces (for entry points)
+
+class KnownInterfaceBinding (bd :: (Symbol :-> Binding)) where
+  knownInterfaceBinding :: Proxy bd -> (Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))
+
+instance (KnownSymbol k, PrimTy a)
+       => KnownInterfaceBinding (k ':-> Var '[ 'Read ] a) where
+  knownInterfaceBinding _
+    = ( Text.pack . symbolVal $ Proxy @k
+      , ( primTy @a
+        , Storage.Input
+        )
+      )
+instance (KnownSymbol k, PrimTy a)
+       => KnownInterfaceBinding (k ':-> Var '[ 'Write ] a) where
+  knownInterfaceBinding _
+    = ( Text.pack . symbolVal $ Proxy @k
+      , ( primTy @a
+        , Storage.Output
+        )
+      )
+instance (KnownSymbol k, PrimTy a)
+       => KnownInterfaceBinding (k ':-> Unif a) where
+  knownInterfaceBinding _
+    = ( Text.pack . symbolVal $ Proxy @k
+      , ( primTy @a
+        , Storage.Uniform
+        )
+      )
+instance
+  TypeError
+    (    Text "Interface binding " :<>: ShowType k :<>: Text " is both readable and writable."
+    :$$: Text "Interface variables must be of either 'Input' or 'Output' type, not both." )
+  => KnownInterfaceBinding (k ':-> Var '[ 'Read, 'Write ] a) where
+  knownInterfaceBinding _ = error "unreachable"
+instance
+  TypeError
+    (    Text "Interface binding " :<>: ShowType k :<>: Text " is both readable and writable."
+    :$$: Text "Interface variables must be of either 'Input' or 'Output' type, not both." )
+  => KnownInterfaceBinding (k ':-> Var '[ 'Write, 'Read ] a) where
+  knownInterfaceBinding _ = error "unreachable"
+
+class KnownInterface (bds :: BindingsMap) where
+  knownInterface :: Proxy bds -> [(Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))]
+instance KnownInterface '[] where
+  knownInterface _ = []
+instance (KnownInterfaceBinding bd, KnownInterface bds)
+      => KnownInterface (bd ': bds) where
+  knownInterface _ = knownInterfaceBinding (Proxy @bd) : knownInterface (Proxy @bds)
 
 ------------------------------------------------------------
 -- functors

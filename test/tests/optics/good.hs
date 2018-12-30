@@ -33,7 +33,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Uniforms
+type InOut
   = '[ "modelMatrix"      ':-> Var RW ( M 4 4 Float )
      , "viewMatrix"       ':-> Var R  ( M 4 4 Float )
      , "projectionMatrix" ':-> Var R  ( M 4 4 Float )
@@ -54,7 +54,7 @@ type Uniforms
 
 type Functions = '[]
 
-program :: Program Uniforms Functions ()
+program :: Program InOut Functions ()
 program = do
 
   entryPoint @"main" @Vertex do

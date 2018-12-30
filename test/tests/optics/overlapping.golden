@@ -1,5 +1,5 @@
 
-test\tests\optics\overlapping.hs:44:5: error:
+test\tests\optics\overlapping.hs:43:5: error:
     • set: cannot create product setter.
       Setters 
         'fir-0.0.0:Control.Type.Optic.Name_ "n"
@@ -29,5 +29,5 @@ test\tests\optics\overlapping.hs:44:5: error:
              assign
                @(Name "struct" :.: (Name "n" :*: Index 0)) (lit (4 :& 5 :& End))
    |
-44 |     assign @(Name "struct" :.: (Name "n" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )
+43 |     assign @(Name "struct" :.: (Name "n" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

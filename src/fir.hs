@@ -32,7 +32,6 @@ module FIR
   , FIR.Prim.Array.mkArray
   , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
   , FIR.Prim.Struct.Struct(End,(:&))
-  , FIR.Program.Module
   , FIR.Program.Procedure
   , FIR.Program.Program
   , module Math.Algebra.Class
@@ -67,7 +66,7 @@ import FIR.Instances.Codensity
 import FIR.Instances.Optics
 import FIR.Prim.Array
 import FIR.Prim.Struct
-import FIR.Prim.Singletons(KnownVars)
+import FIR.Prim.Singletons(KnownInterface)
 import FIR.Program
 import Math.Algebra.Class
 import Math.Algebra.GradedSemigroup
@@ -83,7 +82,7 @@ data Arg
   | Debug
   deriving ( Prelude.Eq, Show )
 
-compile :: KnownVars i
+compile :: KnownInterface i
         => FilePath
         -> [Arg]
         -> CodensityProgram i j a
