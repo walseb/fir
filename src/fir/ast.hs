@@ -111,7 +111,7 @@ data AST :: Type -> Type where
   IfM   :: GHC.Stack.HasCallStack
         => AST ( Bool -> (a := j) i -> (a := k) i -> (a := i) i )
   While :: GHC.Stack.HasCallStack
-        => AST ( ( Bool := i ) i -> (a := j) i -> (a := i) i )
+        => AST ( ( Bool := i ) i -> (() := j) i -> (() := i) i )
 
   Locally :: AST ( (a := j) i -> (a := i) i )
 

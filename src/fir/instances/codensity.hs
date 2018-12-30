@@ -269,12 +269,13 @@ instance ( PrimTy a
 while :: ( GHC.Stack.HasCallStack
          , PrimTy a
          , i' ~ i, i'' ~ i
+         , l ~ (AST () := j)
          , b ~ (AST Bool := i)
-         , r ~ (AST a := i)
+         , r ~ (AST () := i)
          )
-      => Codensity AST b               (i :: BindingsMap)
-      -> Codensity AST ( AST a := j  ) i'
-      -> Codensity AST r               i''
+      => Codensity AST b (i :: BindingsMap)
+      -> Codensity AST l i'
+      -> Codensity AST r i''
 while = fromAST While
 
 instance ( PrimTy a, Eq a, Logic a ~ Bool
