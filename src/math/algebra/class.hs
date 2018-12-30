@@ -223,6 +223,15 @@ deriving via Prelude Half   instance Floating Half
 deriving via Prelude Float  instance Floating Float
 deriving via Prelude Double instance Floating Double
 
+class Floating a => RealFloat a where
+  atan2 :: a -> a -> a
+
+instance Prelude.RealFloat a => RealFloat (Prelude a) where
+  atan2 = coerce ( Prelude.atan2 :: a -> a -> a )
+
+deriving via Prelude Half   instance RealFloat Half
+deriving via Prelude Float  instance RealFloat Float
+deriving via Prelude Double instance RealFloat Double
 
 
 type family Arr (domCod :: (Type,Type)) = (arr :: Type) | arr -> domCod where

@@ -29,6 +29,7 @@ import Prelude hiding
   , Integral(..)
   , Fractional(..), fromRational
   , Floating(..)
+  , RealFloat(..)
   , Functor(..)
   , Applicative(..)
   )
@@ -55,7 +56,7 @@ import Math.Algebra.Class
   , Semiring(..), Ring(..)
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
-  , Floating(..)
+  , Floating(..), RealFloat(..)
   , Convert(..)
   )
 import Math.Linear
@@ -149,6 +150,9 @@ instance (ScalarTy a, Floating a) => Floating (AST a) where
   acosh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAcosh   (scalarTy @a)) acosh
   atanh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtanh   (scalarTy @a)) atanh
   (**)    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FPow     (scalarTy @a)) (**)
+
+instance (ScalarTy a, RealFloat a) => RealFloat (AST a) where
+  atan2 = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtan2 (scalarTy @a)) atan2
 
 -- numeric conversions
 instance (ScalarTy a, ScalarTy b, Convert '(a,b))

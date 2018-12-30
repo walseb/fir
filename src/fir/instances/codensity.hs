@@ -22,7 +22,7 @@ import Prelude hiding
   , Num(..), Floating(..)
   , Integral(..)
   , Fractional(..), fromRational
-  , Floating(..)
+  , Floating(..), RealFloat(..)
   , Functor(..)
   , Applicative(..)
   )
@@ -53,7 +53,7 @@ import Math.Algebra.Class
   , Semiring(..), Ring(..)
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
-  , Floating(..)
+  , Floating(..), RealFloat(..)
   , Convert(..)
   )
 import Math.Linear
@@ -343,6 +343,8 @@ instance (ScalarTy a, Floating a, j ~ i) => Floating (Codensity AST (AST a := j)
   atanh   = ixFmap atanh
   (**)    = ixLiftA2 (**)
 
+instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Codensity AST (AST a := j) i ) where
+  atan2 = ixLiftA2 atan2
 
 -- numeric conversions
 instance ( ScalarTy a, ScalarTy b, Convert '(a,b)
