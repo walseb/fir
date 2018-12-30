@@ -475,7 +475,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
 
         -- true block
         block trueBlock
-        _ <- codeGen bodyTrue
+        (trueID, trueTy) <- codeGen bodyTrue
         trueEndBlock <- note ( "codeGen: true branch in if statement escaped CFG" )
                             =<< use _currentBlock
         trueBindings <- use _knownBindings
@@ -484,7 +484,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
 
         -- false block
         block falseBlock
-        _ <- codeGen bodyFalse
+        (falseID, falseTy) <- codeGen bodyFalse
         falseEndBlock <- note ( "codeGen: false branch in if statement escaped CFG" )
                             =<< use _currentBlock
         falseBindings <- use _knownBindings
@@ -501,8 +501,16 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
           ( \ bd -> bd `Map.member` bindingsBefore )
           [ trueEndBlock , falseEndBlock  ]
           [ trueLBindings, falseLBindings ]
-        
-        pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+        -- get the value of the conditional
+        if trueTy == falseTy
+        then  if trueTy == SPIRV.Unit
+              then pure (ID 0, SPIRV.Unit) -- ID should never be used
+              else do
+                v <- fresh
+                phiInstruction (v,trueTy) $ Pairs [(trueID, trueEndBlock), (falseID, falseEndBlock)]
+                pure (v, trueTy)
+        else throwError "codeGen: true and false branches of conditional have different types"
 
 codeGen (While :$ cond :$ loopBody)
   = do  beforeBlock <- note ( "codeGen: while loop outside of a block" )
@@ -825,7 +833,7 @@ declareEntryPoint stage stageName body
       )
       ( \(unitTyID,fnTyID) v -> do
         -- initialise entry point with empty interface
-        -- uses of 'Get' on builtins will add to the interface as needed
+        -- loading/storing should add to the interface as needed
         assign ( _interface stage stageName ) (Just Set.empty)
         -- add the required capabilities
         declareCapabilities ( stageCapabilities stage )
@@ -931,27 +939,35 @@ conflicts keyIsOK
       )
   . map (fmap (:[]))
 
+-- 'Pairs ID' has the right traversable instance for the 'toArgs' function
+-- (recall that 'Pairs a' is a newtype wrapper around '[(a,a)]')
+phiInstruction :: (ID, SPIRV.PrimTy) -> Pairs ID -> CGMonad ()
+phiInstruction (v, ty) bdAndBlockIDs
+  = do
+      tyID <- typeID ty
+      liftPut $ putInstruction Map.empty
+        Instruction
+          { operation = SPIRV.Op.Phi
+          , resTy     = Just tyID
+          , resID     = Just v
+          , args      = toArgs bdAndBlockIDs
+          }
+
 phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text (ID, SPIRV.PrimTy) ] -> CGMonad ()
 phiInstructions isRelevant blocks bindings 
   = traverseWithKey_
       ( \ name idsAndTys ->
         case idsAndTys of
           (_,ty) : _
-            -> do tyID <- typeID ty
-                  v    <- fresh                  
-                  let bdAndBlockIDs :: Pairs ID -- has the right traversable instance
-                      bdAndBlockIDs 
-                        = Pairs $ zipWith 
-                                    (\(x_ID, _) blk -> (x_ID, blk))
-                                    idsAndTys
-                                    blocks
-                  liftPut $ putInstruction Map.empty
-                    Instruction
-                      { operation = SPIRV.Op.Phi
-                      , resTy = Just tyID
-                      , resID = Just v
-                      , args  = toArgs bdAndBlockIDs
-                      }
+            -> let  bdAndBlockIDs :: Pairs ID
+                    bdAndBlockIDs 
+                      = Pairs $ zipWith 
+                                  (\(x_ID, _) blk -> (x_ID, blk))
+                                  idsAndTys
+                                  blocks
+               in do
+                  v <- fresh
+                  phiInstruction (v,ty) bdAndBlockIDs
                   assign ( _localBinding name ) (Just (v, ty))
           _ -> pure ()
       )
@@ -1240,17 +1256,19 @@ constID a =
               )
 
         SUnit
-          -> {-
-              create _knownAConstant
+          -> pure (ID 0) -- should not be used 
+            {- create _knownAConstant
                 ( mkConstantInstruction
                     SPIRV.Op.ConstantNull
                     EndArgs
                 )
-             -}
+              -}
+              {-
               throwError
                 "constId: called on Unit type.\n\
                 \Unit has a unique value, \
                 \and as such does not need to be constructed."
+              -}
 
         SBool -> 
           create _knownAConstant
