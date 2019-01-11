@@ -25,6 +25,7 @@ import Data.Int(Int8, Int16, Int32, Int64)
 import Data.Kind(Type)
 import qualified Data.Fixed as Fixed
 import Data.Word(Word8, Word16, Word32, Word64)
+import Foreign.C.Types
 import qualified GHC.Float as Float
 
 -- half
@@ -63,6 +64,19 @@ deriving via Prelude Half   instance AdditiveGroup Half
 deriving via Prelude Float  instance AdditiveGroup Float
 deriving via Prelude Double instance AdditiveGroup Double
 
+deriving via Prelude CChar   instance AdditiveGroup CChar
+deriving via Prelude CSChar  instance AdditiveGroup CSChar
+deriving via Prelude CUChar  instance AdditiveGroup CUChar
+deriving via Prelude CShort  instance AdditiveGroup CShort
+deriving via Prelude CUShort instance AdditiveGroup CUShort
+deriving via Prelude CInt    instance AdditiveGroup CInt
+deriving via Prelude CUInt   instance AdditiveGroup CUInt
+deriving via Prelude CLong   instance AdditiveGroup CLong
+deriving via Prelude CULong  instance AdditiveGroup CULong
+deriving via Prelude CLLong  instance AdditiveGroup CLLong
+deriving via Prelude CULLong instance AdditiveGroup CULLong
+deriving via Prelude CFloat  instance AdditiveGroup CFloat
+deriving via Prelude CDouble instance AdditiveGroup CDouble
 
 
 class AdditiveGroup a => Semiring a where
@@ -85,6 +99,19 @@ deriving via Prelude Half   instance Semiring Half
 deriving via Prelude Float  instance Semiring Float
 deriving via Prelude Double instance Semiring Double
 
+deriving via Prelude CChar   instance Semiring CChar
+deriving via Prelude CSChar  instance Semiring CSChar
+deriving via Prelude CUChar  instance Semiring CUChar
+deriving via Prelude CShort  instance Semiring CShort
+deriving via Prelude CUShort instance Semiring CUShort
+deriving via Prelude CInt    instance Semiring CInt
+deriving via Prelude CUInt   instance Semiring CUInt
+deriving via Prelude CLong   instance Semiring CLong
+deriving via Prelude CULong  instance Semiring CULong
+deriving via Prelude CLLong  instance Semiring CLLong
+deriving via Prelude CULLong instance Semiring CULLong
+deriving via Prelude CFloat  instance Semiring CFloat
+deriving via Prelude CDouble instance Semiring CDouble
 
 
 class Semiring a => Ring a where
@@ -104,7 +131,14 @@ deriving via Prelude Half   instance Ring Half
 deriving via Prelude Float  instance Ring Float
 deriving via Prelude Double instance Ring Double
 
-
+deriving via Prelude CChar   instance Ring CChar
+deriving via Prelude CSChar  instance Ring CSChar
+deriving via Prelude CShort  instance Ring CShort
+deriving via Prelude CInt    instance Ring CInt
+deriving via Prelude CLong   instance Ring CLong
+deriving via Prelude CLLong  instance Ring CLLong
+deriving via Prelude CFloat  instance Ring CFloat
+deriving via Prelude CDouble instance Ring CDouble
 
 class Ring a => Signed a where
   abs    :: a -> a
@@ -123,6 +157,14 @@ deriving via Prelude Half   instance Signed Half
 deriving via Prelude Float  instance Signed Float
 deriving via Prelude Double instance Signed Double
 
+deriving via Prelude CChar   instance Signed CChar
+deriving via Prelude CSChar  instance Signed CSChar
+deriving via Prelude CShort  instance Signed CShort
+deriving via Prelude CInt    instance Signed CInt
+deriving via Prelude CLong   instance Signed CLong
+deriving via Prelude CLLong  instance Signed CLLong
+deriving via Prelude CFloat  instance Signed CFloat
+deriving via Prelude CDouble instance Signed CDouble
 
 
 class Ring a => DivisionRing a where
@@ -141,7 +183,8 @@ deriving via Prelude Half   instance DivisionRing Half
 deriving via Prelude Float  instance DivisionRing Float
 deriving via Prelude Double instance DivisionRing Double
 
-
+deriving via Prelude CFloat  instance DivisionRing CFloat
+deriving via Prelude CDouble instance DivisionRing CDouble
 
 
 -- totally ordered archimedean groups
@@ -163,6 +206,18 @@ deriving via Prelude Int16  instance Archimedean Int16
 deriving via Prelude Int32  instance Archimedean Int32
 deriving via Prelude Int64  instance Archimedean Int64
 deriving via Prelude Int    instance Archimedean Int
+
+deriving via Prelude CChar   instance Archimedean CChar
+deriving via Prelude CSChar  instance Archimedean CSChar
+deriving via Prelude CUChar  instance Archimedean CUChar
+deriving via Prelude CShort  instance Archimedean CShort
+deriving via Prelude CUShort instance Archimedean CUShort
+deriving via Prelude CInt    instance Archimedean CInt
+deriving via Prelude CUInt   instance Archimedean CUInt
+deriving via Prelude CLong   instance Archimedean CLong
+deriving via Prelude CULong  instance Archimedean CULong
+deriving via Prelude CLLong  instance Archimedean CLLong
+deriving via Prelude CULLong instance Archimedean CULLong
 
 newtype Fixed a = Fixed { runFixed :: a }
 deriving via a instance Eq            a => Eq            (Fixed a)
@@ -186,6 +241,8 @@ deriving via Fixed Half   instance Archimedean Half
 deriving via Fixed Float  instance Archimedean Float
 deriving via Fixed Double instance Archimedean Double
 
+deriving via Fixed CFloat  instance Archimedean CFloat
+deriving via Fixed CDouble instance Archimedean CDouble
 
 
 class DivisionRing a => Floating a where
@@ -223,6 +280,9 @@ deriving via Prelude Half   instance Floating Half
 deriving via Prelude Float  instance Floating Float
 deriving via Prelude Double instance Floating Double
 
+deriving via Prelude CFloat  instance Floating CFloat
+deriving via Prelude CDouble instance Floating CDouble
+
 class Floating a => RealFloat a where
   atan2 :: a -> a -> a
 
@@ -233,6 +293,8 @@ deriving via Prelude Half   instance RealFloat Half
 deriving via Prelude Float  instance RealFloat Float
 deriving via Prelude Double instance RealFloat Double
 
+deriving via Prelude CFloat  instance RealFloat CFloat
+deriving via Prelude CDouble instance RealFloat CDouble
 
 type family Arr (domCod :: (Type,Type)) = (arr :: Type) | arr -> domCod where
   Arr '(dom, cod) = dom -> cod

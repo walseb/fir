@@ -67,7 +67,7 @@ import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))
 import FIR.Prim.Singletons
   ( PrimTy, IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
-  , PrimTys(primTys)
+  , PrimTys(primTysSing)
   , SPrimTys
   , HasField
   )
@@ -157,7 +157,7 @@ instance ( KnownSymbol k
          , empty ~ '[]
          ) => KnownOptic (Name_ k :: Optic empty (Struct as) a)
          where
-  opticSing = SName (Proxy @k) (primTys @as)
+  opticSing = SName (Proxy @k) (primTysSing @as)
 instance ( KnownSymbol k
          , empty ~ '[]
          )

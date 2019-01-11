@@ -25,63 +25,18 @@ import Data.Type.Map
 import FIR.Binding
   ( BindingsMap, Var, R, W )
 import FIR.Prim.Array(RuntimeArray)
-import FIR.Prim.Singletons(knownInterface)
+import FIR.Prim.Singletons(KnownInterface(knownInterface))
 import FIR.Prim.Struct(Struct)
 import Math.Linear(V)
-import qualified SPIRV.Capability    as SPIRV(Capability)
-import qualified SPIRV.Capability    as Capability
-import qualified SPIRV.ExecutionMode as SPIRV(ExecutionModel(ExecutionModel))
 import qualified SPIRV.PrimTy        as SPIRV(PrimTy(Pointer))
 import qualified SPIRV.Storage       as SPIRV
+import SPIRV.Stage(Stage(..))
 
-
-data Stage
-  = Vertex
-  | TessellationControl
-  | TessellationEvaluation
-  | Geometry
-  | Fragment
-  | GLCompute
-  | Kernel
-  deriving ( Show, Eq, Ord, Enum, Bounded )
-
-stageCapabilities :: Stage -> [SPIRV.Capability]
-stageCapabilities Vertex                 = [ Capability.Shader ]
-stageCapabilities TessellationControl    = [ Capability.Tessellation ]
-stageCapabilities TessellationEvaluation = [ Capability.Tessellation ]
-stageCapabilities Geometry               = [ Capability.Geometry ]
-stageCapabilities Fragment               = [ Capability.Shader ]
-stageCapabilities GLCompute              = [ Capability.Shader ]
-stageCapabilities Kernel                 = [ Capability.Kernel ]
-
+--------------------------------------------------------------------------
 
 type family GetAllBuiltins (entryPoints :: [( Symbol, Stage )]) :: BindingsMap where
   GetAllBuiltins '[]                    = '[ ]
   GetAllBuiltins ( '( _, stage) ': ps ) = Union ( StageBuiltins stage ) ( GetAllBuiltins ps )
-
-class KnownStage (s :: Stage) where
-  stageVal :: Proxy s -> Stage
-
-instance KnownStage Vertex where
-  stageVal _ = Vertex
-instance KnownStage TessellationControl where
-  stageVal _ = TessellationControl
-instance KnownStage TessellationEvaluation where
-  stageVal _ = TessellationEvaluation
-instance KnownStage Geometry where
-  stageVal _ = Geometry
-instance KnownStage Fragment where
-  stageVal _ = Fragment
-instance KnownStage GLCompute where
-  stageVal _ = GLCompute
-instance KnownStage Kernel where
-  stageVal _ = Kernel
-
-executionModel :: Stage -> SPIRV.ExecutionModel
-executionModel = SPIRV.ExecutionModel . fromIntegral . fromEnum
-
-stage :: SPIRV.ExecutionModel -> Stage
-stage (SPIRV.ExecutionModel i) = toEnum ( fromIntegral i )
 
 type family StageBuiltins (stage :: Stage) :: BindingsMap where
   StageBuiltins stage = InsertionSort ( StageBuiltins' stage )

@@ -32,13 +32,14 @@ import Control.Monad.Indexed((:=))
 import Data.Function.Variadic(NatVariadic)
 import Data.Type.Map(Insert, Union)
 import FIR.Binding(BindingType, Var, Fun, KnownPermissions)
-import FIR.Builtin(KnownStage(stageVal), StageBuiltins)
+import FIR.Builtin(StageBuiltins)
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
 import FIR.Instances.Optics(User, Assigner, KnownOptic, SOptic, showSOptic)
 import FIR.Prim.Singletons(PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
+import SPIRV.Stage(KnownStage(stageVal))
 
 ------------------------------------------------------------
 -- main AST data type

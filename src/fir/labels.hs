@@ -29,6 +29,8 @@ import FIR.Instances.Bindings(ValidDef,Get, Put)
 import FIR.Instances.Codensity(def, use, assign, modifying)
 import FIR.Prim.Singletons(PrimTy)
 
+--------------------------------------------------------------------------
+
 data Label (k :: Symbol) (a :: Type) = Label
 
 data LabelUsage

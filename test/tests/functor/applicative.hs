@@ -19,7 +19,6 @@ import Prelude hiding ( Functor(..), (<$>)
                       , Eq(..), Ord(..)
                       , (&&)
                       )
-import qualified Prelude
 
 -- fir
 import FIR
@@ -29,11 +28,10 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type InOut     = '[ "position" ':-> Var R ( V  3  Float ) ]
-type Functions = '[ ]
+type Defs = '[ "position" ':-> Global Input (V 3 Float) ]
 
-program :: Program InOut Functions ()
-program = do
+program :: Program Defs ()
+program = Program do
 
   entryPoint @"main" @Vertex do
 

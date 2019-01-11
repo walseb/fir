@@ -26,7 +26,8 @@ import FIR.Binding
   , Permission(Read,Write)
   , Var, Fun
   )
-import FIR.Builtin(Stage, StageBuiltins)
+import FIR.Builtin(StageBuiltins)
+import SPIRV.Stage(Stage)
 
 
 ------------------------------------------------------------------------------------------------

@@ -1,74 +1,58 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingVia         #-}
+{-# LANGUAGE PolyKinds           #-}
 
 module SPIRV.Storage where
 
--- base
-import Data.Word(Word32)
-
 -- fir
-import Data.Binary.Class.Put(Put)
+import Data.Binary.Class.Put(Put, PutWord32Enum(..))
 
 --------------------------------------------------
 
-newtype StorageClass = StorageClass Word32
-  deriving ( Eq, Ord, Put )
+data StorageClass
+  = UniformConstant
+  | Input
+  | Uniform
+  | Output
+  | Workgroup
+  | CrossWorkgroup
+  | Private
+  | Function
+  | Generic
+  | PushConstant
+  | AtomicCounter
+  | Image
+  | StorageBuffer
+  deriving (Show, Eq, Ord, Enum, Bounded)
+  deriving Put via (PutWord32Enum StorageClass)
 
-instance Show StorageClass where
-  show storageClass = "StorageClass " ++ showStorageClass storageClass
+class KnownStorage (storage :: StorageClass) where
+  storage :: StorageClass
 
-pattern UniformConstant :: StorageClass
-pattern UniformConstant = StorageClass 0
-
-pattern Input :: StorageClass
-pattern Input = StorageClass 1
-
-pattern Uniform :: StorageClass
-pattern Uniform = StorageClass 2
-
-pattern Output :: StorageClass
-pattern Output = StorageClass 3
-
-pattern Workgroup :: StorageClass
-pattern Workgroup = StorageClass 4
-
-pattern CrossWorkgroup :: StorageClass
-pattern CrossWorkgroup = StorageClass 5
-
-pattern Private :: StorageClass
-pattern Private = StorageClass 6
-
-pattern Function :: StorageClass
-pattern Function = StorageClass 7
-
-pattern Generic :: StorageClass
-pattern Generic = StorageClass 8
-
-pattern PushConstant :: StorageClass
-pattern PushConstant = StorageClass 9
-
-pattern AtomicCounter :: StorageClass
-pattern AtomicCounter = StorageClass 10
-
-pattern Image :: StorageClass
-pattern Image = StorageClass 11
-
-pattern StorageBuffer :: StorageClass
-pattern StorageBuffer = StorageClass 12
-
-
-showStorageClass :: StorageClass -> String
-showStorageClass UniformConstant = "UniformConstant"
-showStorageClass Input = "Input"
-showStorageClass Uniform = "Uniform"
-showStorageClass Output = "Output"
-showStorageClass Workgroup = "Workgroup"
-showStorageClass CrossWorkgroup = "CrossWorkgroup"
-showStorageClass Private = "Private"
-showStorageClass Function = "Function"
-showStorageClass Generic = "Generic"
-showStorageClass PushConstant = "PushConstant"
-showStorageClass AtomicCounter = "AtomicCounter"
-showStorageClass Image = "Image"
-showStorageClass StorageBuffer = "StorageBuffer"
-showStorageClass (StorageClass i) = show i
+instance KnownStorage UniformConstant where
+  storage = UniformConstant
+instance KnownStorage Input where
+  storage = Input
+instance KnownStorage Uniform where
+  storage = Uniform
+instance KnownStorage Output where
+  storage = Output
+instance KnownStorage Workgroup where
+  storage = Workgroup
+instance KnownStorage CrossWorkgroup where
+  storage = CrossWorkgroup
+instance KnownStorage Private where
+  storage = Private
+instance KnownStorage Function where
+  storage = Function
+instance KnownStorage Generic where
+  storage = Generic
+instance KnownStorage PushConstant where
+  storage = PushConstant
+instance KnownStorage AtomicCounter where
+  storage = AtomicCounter
+instance KnownStorage Image where
+  storage = Image
+instance KnownStorage StorageBuffer where
+  storage = StorageBuffer

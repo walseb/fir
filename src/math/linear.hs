@@ -464,6 +464,7 @@ deriving instance Functor (M m n)
 deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
 deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
 deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
+deriving instance (KnownNat n, KnownNat m, Storable a) => Storable (M m n a)
 
 deriving via '(V m (V n x), V m (V n y), V m (V n z))
   instance (KnownNat m, KnownNat n, Choose b '(x,y,z)) => Choose b '(M m n x, M m n y, M m n z)
@@ -541,3 +542,29 @@ instance Ring a => Matrix (M 0 0 a) where
     where M nt = transpose n
   determinant = error "todo"
   inverse     = error "todo"
+
+------------------------------------------------------------------
+-- utility 4x4 matrices for camera viewpoints in 3D
+-- taken from Ed Kmett's 'Linear' library
+
+perspective
+  :: Floating a
+  => a -- ^ FOV
+  -> a -- ^ Aspect ratio
+  -> a -- ^ Near plane
+  -> a -- ^ Far plane
+  -> M 4 4 a
+perspective fovy aspect near far
+  = M $ V4 (V4 x 0 0    0)
+           (V4 0 y 0    0)
+           (V4 0 0 z    w)
+           (V4 0 0 (-1) 0)
+  where tanHalfFovy = tan $ fovy / 2
+        x = 1 / (aspect * tanHalfFovy)
+        y = 1 / tanHalfFovy
+        fpn = far + near
+        fmn = far - near
+        oon = 0.5/near
+        oof = 0.5/far
+        z = -fpn/fmn
+        w = 1/(oof-oon)

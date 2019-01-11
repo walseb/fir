@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeApplications #-}
+
 module Data.Binary.Class.Put where
 
 -- base
@@ -28,8 +30,9 @@ import qualified Data.Text.Encoding as Text
 
 class Put a where
   put    :: a -> Binary.PutM ()
-  sizeOf :: a -> Word32 -- size in bytes
+  sizeOf :: a -> Word32 -- size as multiple of 32 bits
 
+---------------------------------------------------------------------------
 -- little endian instances as suitable for SPIR-V
 
 instance Put Word8 where
@@ -95,3 +98,12 @@ instance Put Text where
   sizeOf lit
     = let n = fromIntegral $ ByteString.length ( Text.encodeUtf8 lit )
       in 1 + (n `div` 4)
+
+----------------------------------------------------------------------------
+-- newtype for 'Put' instances through Enum
+
+newtype PutWord32Enum a = PutWord32Enum { runPutWord32Enum :: a }
+
+instance Enum a => Put (PutWord32Enum a) where
+  put = put @Word32 . fromIntegral . fromEnum . runPutWord32Enum
+  sizeOf _ = 1

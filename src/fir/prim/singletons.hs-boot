@@ -40,7 +40,7 @@ data SPrimTys :: [Symbol :-> Type] -> Type where
 type role SPrimTys nominal
 
 class PrimTys as where
-  primTys :: SPrimTys as
+  primTysSing :: SPrimTys as
 
 instance PrimTys '[] where
 instance (KnownSymbol k, PrimTy a, PrimTys as)

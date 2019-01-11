@@ -42,7 +42,7 @@ import Data.Binary.Class.Put(Put)
 import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map((:->)((:->)))
 import FIR.Binding
-  ( Binding, BindingsMap, Var, Unif
+  ( Binding, BindingsMap, Var
   , KnownPermissions(permissions), Permission(Read,Write)
   )
 import FIR.Prim.Array(Array,RuntimeArray)
@@ -228,22 +228,22 @@ instance PrimTy a => PrimTy (RuntimeArray a) where
 
 
 class PrimTys as where
-  primTys :: SPrimTys as
+  primTysSing :: SPrimTys as
 
 instance PrimTys '[] where
-  primTys = SNil
+  primTysSing = SNil
 
 instance (KnownSymbol k, PrimTy a, PrimTys as)
        => PrimTys ((k ':-> a) ': as) where
-  primTys
+  primTysSing
     = SCons
-        ( Proxy @k )
-        ( primTySing @a )
-        ( primTys @as )
+        ( Proxy       @k )
+        ( primTySing  @a )
+        ( primTysSing @as )
 
 instance ( Typeable as, PrimTys as )
        => PrimTy (Struct as) where
-  primTySing = SStruct (primTys @as)
+  primTySing = SStruct (primTysSing @as)
 
 
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
@@ -328,14 +328,6 @@ instance (KnownSymbol k, PrimTy a)
     = ( Text.pack . symbolVal $ Proxy @k
       , ( primTy @a
         , Storage.Output
-        )
-      )
-instance (KnownSymbol k, PrimTy a)
-       => KnownInterfaceBinding (k ':-> Unif a) where
-  knownInterfaceBinding _
-    = ( Text.pack . symbolVal $ Proxy @k
-      , ( primTy @a
-        , Storage.Uniform
         )
       )
 instance

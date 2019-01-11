@@ -32,19 +32,18 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type InOut
-  = '[ "vertexData"':-> Var RW ( Struct [ "position" ':-> V 3 Float
-                                        , "colour"   ':-> V 4 Float
-                                        , "size"     ':-> Float
-                                        , "weight"   ':-> Float
-                                        ]
-                              )
+type Defs
+  = '[ "vertexData" ':-> Global Input
+           ( Struct [ "position" ':-> V 3 Float
+                     , "colour"   ':-> V 4 Float
+                     , "size"     ':-> Float
+                     , "weight"   ':-> Float
+                     ]
+           )
      ]
 
-type Functions = '[]
-
-program :: Program InOut Functions ()
-program = do
+program :: Program Defs ()
+program = Program do
 
   entryPoint @"main" @Vertex do
 

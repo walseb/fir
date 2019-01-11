@@ -60,13 +60,13 @@ data PrimTy where
 tyOp :: PrimTy -> Operation
 tyOp Unit                    = TypeVoid
 tyOp Boolean                 = TypeBool
-tyOp (Scalar (Integer  _ _)) = TypeInt
-tyOp (Scalar (Floating   _)) = TypeFloat
-tyOp (Vector         _   _ ) = TypeVector
-tyOp (Matrix         _ _ _ ) = TypeMatrix
-tyOp (Array          _   _ ) = TypeArray
-tyOp (RuntimeArray       _ ) = TypeRuntimeArray
-tyOp (Struct             _ ) = TypeStruct
-tyOp (Function         _ _ ) = TypeFunction
-tyOp (Pointer          _ _ ) = TypePointer
+tyOp (Scalar (Integer   {})) = TypeInt
+tyOp (Scalar (Floating  {})) = TypeFloat
+tyOp (Vector            {} ) = TypeVector
+tyOp (Matrix            {} ) = TypeMatrix
+tyOp (Array             {} ) = TypeArray
+tyOp (RuntimeArray      {} ) = TypeRuntimeArray
+tyOp (Struct            {} ) = TypeStruct
+tyOp (Function          {} ) = TypeFunction
+tyOp (Pointer           {} ) = TypePointer
 

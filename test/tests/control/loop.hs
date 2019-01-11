@@ -20,12 +20,10 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type InOut = '[ "position" ':-> Var W (V 4 Float) ]
+type Defs = '[ "position" ':-> Global Output (V 4 Float) ]
 
-type Functions = '[ ]
-
-program :: Program InOut Functions ()
-program = do
+program :: Program Defs ()
+program = Program do
 
   entryPoint @"main" @Fragment do
 
@@ -44,4 +42,8 @@ program = do
       while ( #r #< ( #t * ( #s + #t ) ) ) do
         #r %= (+1)
 
-    #position .= vec4 0 0 0 1
+    r <- #r
+    s <- #s
+    t <- #t
+
+    #position .= vec4 r s t 1

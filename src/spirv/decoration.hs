@@ -1,200 +1,235 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE PatternSynonyms            #-}
+
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingVia         #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 
 module SPIRV.Decoration where
 
 -- base
+import Data.Proxy(Proxy(Proxy))
 import Data.Word(Word32)
+import GHC.TypeLits(KnownNat, natVal)
 
 -- fir
-import Data.Binary.Class.Put(Put)
+import Data.Binary.Class.Put(Put(..))
+import qualified SPIRV.Builtin as Builtin
 
 --------------------------------------------------
 
-newtype Decoration = Decoration Word32
-  deriving ( Eq, Ord, Put )
+data Decoration a
+  = RelaxedPrecision
+  | SpecId a
+  | Block
+  | BufferBlock
+  | RowMajor
+  | ColMajor
+  | ArrayStride a
+  | MatrixStride a
+  | GLSLShared
+  | GLSLPacked
+  | CPacked
+  | Builtin Builtin.Builtin
+  -- no 12
+  | NoPerspective
+  | Flat
+  | Patch
+  | Centroid
+  | Sample
+  | Invariant
+  | Restrict
+  | Aliased
+  | Volatile
+  | Constant
+  | Coherent
+  | NonWritable
+  | NonReadable
+  | Uniform
+  -- no 27
+  | SaturatedConversion
+  | Stream a
+  | Location a
+  | Component a
+  | Index a
+  | Binding a
+  | DescriptorSet a
+  | Offset a
+  | XfbBuffer a
+  | XfbStride a
+  -- | FuncParamAttr Attribute
+  -- | FPRoundingMode RoundingMode
+  -- | FPFastMathMode FastMathMode
+  -- | LinkageAttributes Word32 LinkageType
+  | NoContraction
+  | InputAttachmentIndex a
+  | Alignment a
+  --
+  | Group [Decoration a]
+  deriving (Show, Eq)
 
-instance Show Decoration where
-  show decoration = "Decoration" ++ showDecoration decoration
+instance Put (Decoration Word32) where
+  put RelaxedPrecision         = put @Word32  0
+  put (SpecId i)               = put @Word32  1 *> put i
+  put Block                    = put @Word32  2
+  put BufferBlock              = put @Word32  3
+  put RowMajor                 = put @Word32  4
+  put ColMajor                 = put @Word32  5
+  put (ArrayStride i)          = put @Word32  6 *> put i
+  put (MatrixStride i)         = put @Word32  7 *> put i
+  put GLSLShared               = put @Word32  8
+  put GLSLPacked               = put @Word32  9
+  put CPacked                  = put @Word32 10
+  put (Builtin builtin)        = put @Word32 11 *> put builtin
+  --
+  put NoPerspective            = put @Word32 13
+  put Flat                     = put @Word32 14
+  put Patch                    = put @Word32 15
+  put Centroid                 = put @Word32 16
+  put Sample                   = put @Word32 17
+  put Invariant                = put @Word32 18
+  put Restrict                 = put @Word32 19
+  put Aliased                  = put @Word32 20
+  put Volatile                 = put @Word32 21
+  put Constant                 = put @Word32 22
+  put Coherent                 = put @Word32 23
+  put NonWritable              = put @Word32 24
+  put NonReadable              = put @Word32 25
+  put Uniform                  = put @Word32 26
+  --
+  put SaturatedConversion      = put @Word32 28
+  put (Stream               i) = put @Word32 29 *> put i
+  put (Location             i) = put @Word32 30 *> put i
+  put (Component            i) = put @Word32 31 *> put i
+  put (Index                i) = put @Word32 32 *> put i
+  put (Binding              i) = put @Word32 33 *> put i
+  put (DescriptorSet        i) = put @Word32 34 *> put i
+  put (Offset               i) = put @Word32 35 *> put i
+  put (XfbBuffer            i) = put @Word32 36 *> put i
+  put (XfbStride            i) = put @Word32 37 *> put i
+  --
+  --
+  --
+  --
+  put NoContraction            = put @Word32 42
+  put (InputAttachmentIndex i) = put @Word32 43 *> put i
+  put (Alignment            i) = put @Word32 44 *> put i
+  put (Group _) =  error "put: attempt to put a group of decorations by hand"
+
+  sizeOf (SpecId               _) = 2
+  sizeOf (ArrayStride          _) = 2
+  sizeOf (MatrixStride         _) = 2
+  sizeOf (Builtin              _) = 2
+  sizeOf (Stream               _) = 2
+  sizeOf (Location             _) = 2
+  sizeOf (Component            _) = 2
+  sizeOf (Index                _) = 2
+  sizeOf (Binding              _) = 2
+  sizeOf (DescriptorSet        _) = 2
+  sizeOf (Offset               _) = 2
+  sizeOf (XfbBuffer            _) = 2
+  sizeOf (XfbStride            _) = 2
+  sizeOf (InputAttachmentIndex _) = 2
+  sizeOf (Alignment            _) = 2
+  sizeOf (Group _) = error "put: attempt to put a group of decorations by hand"
+  sizeOf _ = 1
+
+class KnownDecoration (decoration :: Decoration a) where
+  decoration :: Decoration Word32
+
+instance KnownDecoration RelaxedPrecision where
+  decoration = RelaxedPrecision
+instance KnownNat i => KnownDecoration (SpecId i) where
+  decoration = SpecId ( fromIntegral . natVal $ Proxy @i )
+instance KnownDecoration Block where
+  decoration = Block
+instance KnownDecoration BufferBlock where
+  decoration = BufferBlock
+instance KnownDecoration RowMajor where
+  decoration = RowMajor
+instance KnownDecoration ColMajor where
+  decoration = ColMajor
+instance KnownNat i => KnownDecoration (ArrayStride i) where
+  decoration = ArrayStride ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (MatrixStride i) where
+  decoration = MatrixStride ( fromIntegral . natVal $ Proxy @i )
+instance KnownDecoration GLSLShared where
+  decoration = GLSLShared
+instance KnownDecoration GLSLPacked where
+  decoration = GLSLPacked
+instance KnownDecoration CPacked where
+  decoration = CPacked
+{-
+instance KnownBuiltin builtin => KnownDecoration (Builtin builtin) where
+  decoration = Builtin ( builtin @builtin )
+-}
+instance KnownDecoration NoPerspective where
+  decoration = NoPerspective
+instance KnownDecoration Flat where
+  decoration = Flat
+instance KnownDecoration Patch where
+  decoration = Patch
+instance KnownDecoration Centroid where
+  decoration = Centroid
+instance KnownDecoration Sample where
+  decoration = Sample
+instance KnownDecoration Invariant where
+  decoration = Invariant
+instance KnownDecoration Restrict where
+  decoration = Restrict
+instance KnownDecoration Aliased where
+  decoration = Aliased
+instance KnownDecoration Volatile where
+  decoration = Volatile
+instance KnownDecoration Constant where
+  decoration = Constant
+instance KnownDecoration Coherent where
+  decoration = Coherent
+instance KnownDecoration NonWritable where
+  decoration = NonWritable
+instance KnownDecoration NonReadable where
+  decoration = NonReadable
+instance KnownDecoration Uniform where
+  decoration = Uniform
+instance KnownDecoration SaturatedConversion where
+  decoration = SaturatedConversion
+instance KnownNat i => KnownDecoration (Stream i) where
+  decoration = Stream ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (Location i) where
+  decoration = Location ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (Component i) where
+  decoration = Component ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (Index i) where
+  decoration = Index ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (Binding i) where
+  decoration = Binding ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (DescriptorSet i) where
+  decoration = DescriptorSet ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (Offset i) where
+  decoration = Offset ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (XfbBuffer i) where
+  decoration = XfbBuffer ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (XfbStride i) where
+  decoration = XfbStride ( fromIntegral . natVal $ Proxy @i )
+instance KnownDecoration NoContraction where
+  decoration = NoContraction
+instance KnownNat i => KnownDecoration (InputAttachmentIndex i) where
+  decoration = InputAttachmentIndex ( fromIntegral . natVal $ Proxy @i )
+instance KnownNat i => KnownDecoration (Alignment i) where
+  decoration = Alignment ( fromIntegral . natVal $ Proxy @i )
+instance KnownDecorations decs => KnownDecoration (Group decs) where
+  decoration = Group ( decorations @_ @decs )
 
 
-pattern RelaxedPrecision :: Decoration
-pattern RelaxedPrecision = Decoration 0
+class KnownDecorations (modes :: [Decoration a]) where
+  decorations :: [Decoration Word32]
 
-pattern SpecId :: Decoration
-pattern SpecId = Decoration 1
+instance KnownDecorations '[] where
+  decorations = []
 
-pattern Block :: Decoration
-pattern Block = Decoration 2
-
-pattern BufferBlock :: Decoration
-pattern BufferBlock = Decoration 3
-
-pattern RowMajor :: Decoration
-pattern RowMajor = Decoration 4
-
-pattern ColMajor :: Decoration
-pattern ColMajor = Decoration 5
-
-pattern ArrayStride :: Decoration
-pattern ArrayStride = Decoration 6
-
-pattern MatrixStride :: Decoration
-pattern MatrixStride = Decoration 7
-
-pattern GLSLShared :: Decoration
-pattern GLSLShared = Decoration 8
-
-pattern GLSLPacked :: Decoration
-pattern GLSLPacked = Decoration 9
-
-pattern CPacked :: Decoration
-pattern CPacked = Decoration 10
-
-pattern Builtin :: Decoration
-pattern Builtin = Decoration 11
-
--- no 12
-
-pattern NoPerspective :: Decoration
-pattern NoPerspective = Decoration 13
-
-pattern Flat :: Decoration
-pattern Flat = Decoration 14
-
-pattern Patch :: Decoration
-pattern Patch = Decoration 15
-
-pattern Centroid :: Decoration
-pattern Centroid = Decoration 16
-
-pattern Sample :: Decoration
-pattern Sample = Decoration 17
-
-pattern Invariant :: Decoration
-pattern Invariant = Decoration 18
-
-pattern Restrict :: Decoration
-pattern Restrict = Decoration 19
-
-pattern Aliased :: Decoration
-pattern Aliased = Decoration 20
-
-pattern Volatile :: Decoration
-pattern Volatile = Decoration 21
-
-pattern Constant :: Decoration
-pattern Constant = Decoration 22
-
-pattern Coherent :: Decoration
-pattern Coherent = Decoration 23
-
-pattern NonWritable :: Decoration
-pattern NonWritable = Decoration 24
-
-pattern NonReadable :: Decoration
-pattern NonReadable = Decoration 25
-
-pattern Uniform :: Decoration
-pattern Uniform = Decoration 26
-
--- no 27
-
-pattern SaturatedConversion :: Decoration
-pattern SaturatedConversion = Decoration 28
-
-pattern Stream :: Decoration
-pattern Stream = Decoration 29
-
-pattern Location :: Decoration
-pattern Location = Decoration 30
-
-pattern Component :: Decoration
-pattern Component = Decoration 31
-
-pattern Index :: Decoration
-pattern Index = Decoration 32
-
-pattern Binding :: Decoration
-pattern Binding = Decoration 33
-
-pattern DescriptorSet :: Decoration
-pattern DescriptorSet = Decoration 34
-
-pattern Offset :: Decoration
-pattern Offset = Decoration 35
-
-pattern XfbBuffer :: Decoration
-pattern XfbBuffer = Decoration 36
-
-pattern XfbStride :: Decoration
-pattern XfbStride = Decoration 37
-
-pattern FuncParamAttr :: Decoration
-pattern FuncParamAttr = Decoration 38
-
-pattern FPRoundingMode :: Decoration
-pattern FPRoundingMode = Decoration 39
-
-pattern FPFastMathMode :: Decoration
-pattern FPFastMathMode = Decoration 40
-
-pattern LinkageAttributes :: Decoration
-pattern LinkageAttributes = Decoration 41
-
-pattern NoContraction :: Decoration
-pattern NoContraction = Decoration 42
-
-pattern InputAttachmentIndex :: Decoration
-pattern InputAttachmentIndex = Decoration 43
-
-pattern Alignment :: Decoration
-pattern Alignment = Decoration 44
-
-
-
-showDecoration :: Decoration -> String
-showDecoration RelaxedPrecision = "RelaxedPrecision"
-showDecoration SpecId = "SpecId"
-showDecoration Block = "Block"
-showDecoration BufferBlock = "BufferBlock"
-showDecoration RowMajor = "RowMajor"
-showDecoration ColMajor = "ColMajor"
-showDecoration ArrayStride = "ArrayStride"
-showDecoration MatrixStride = "MatrixStride"
-showDecoration GLSLShared = "GLSLShared"
-showDecoration GLSLPacked = "GLSLPacked"
-showDecoration CPacked = "CPacked"
-showDecoration Builtin = "Builtin"
-showDecoration NoPerspective = "NoPerspective"
-showDecoration Flat = "Flat"
-showDecoration Patch = "Patch"
-showDecoration Centroid = "Centroid"
-showDecoration Sample = "Sample"
-showDecoration Invariant = "Invariant"
-showDecoration Restrict = "Restrict"
-showDecoration Aliased = "Aliased"
-showDecoration Volatile = "Volatile"
-showDecoration Constant = "Constant"
-showDecoration Coherent = "Coherent"
-showDecoration NonWritable = "NonWritable"
-showDecoration NonReadable = "NonReadable"
-showDecoration Uniform = "Uniform"
-showDecoration SaturatedConversion = "SaturatedConversion"
-showDecoration Stream = "Stream"
-showDecoration Location = "Location"
-showDecoration Component = "Component"
-showDecoration Index = "Index"
-showDecoration Binding = "Binding"
-showDecoration DescriptorSet = "DescriptorSet"
-showDecoration Offset = "Offset"
-showDecoration XfbBuffer = "XfbBuffer"
-showDecoration XfbStride = "XfbStride"
-showDecoration FuncParamAttr = "FuncParamAttr"
-showDecoration FPRoundingMode = "FPRoundingMode"
-showDecoration FPFastMathMode = "FPFastMathMode"
-showDecoration LinkageAttributes = "LinkageAttributes"
-showDecoration NoContraction = "NoContraction"
-showDecoration InputAttachmentIndex = "InputAttachmentIndex"
-showDecoration Alignment = "Alignment"
-showDecoration (Decoration i) = show i
+instance (KnownDecoration a, KnownDecorations as)
+      => KnownDecorations (a ': as) where
+  decorations = decoration @_ @a : decorations @_ @as

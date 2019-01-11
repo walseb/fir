@@ -22,13 +22,14 @@ import GHC.TypeLits(Symbol)
 import Unsafe.Coerce(unsafeCoerce)
 
 -- fir
+import Data.ProxyProxy(asProxyProxyTypeOf)
 import Data.Type.Map((:->)((:->)), type (:++:), Key, Value)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GradedPresentedSemigroup(..)
   , GradedFreeSemigroup(..)
   )
-import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTys(SNil, SCons), PrimTys(primTys))
+import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTys(SNil, SCons), PrimTys(primTysSing))
 
 ------------------------------------------------------------
 -- structs
@@ -41,19 +42,19 @@ data Struct :: [Symbol :-> Type] -> Type where
 
 
 instance PrimTys as => Eq (Struct as) where
-  s1 == s2 = case primTys @as of
+  s1 == s2 = case primTysSing @as of
     SNil
       -> True
-    SCons _ _ _
+    SCons {}
       -> case (s1, s2) of
             (a :& as, b :& bs)
               -> a == b && as == bs
 
 instance PrimTys as => Ord (Struct as) where
-  compare s1 s2 = case primTys @as of
+  compare s1 s2 = case primTysSing @as of
     SNil
       -> EQ
-    SCons _ _ _
+    SCons {}
       -> case (s1, s2) of
             (a :& as, b :& bs)
               -> case compare a b of
@@ -63,10 +64,10 @@ instance PrimTys as => Ord (Struct as) where
 class Display as where
   display :: as -> String
 instance PrimTys as => Display (Struct as) where
-  display s = case primTys @as of
+  display s = case primTysSing @as of
     SNil
       -> ""
-    SCons _ _ _
+    SCons {}
       -> case s of
             (a :& as)
               -> case display as of
@@ -93,10 +94,6 @@ instance GradedPresentedSemigroup
   homogeneous :: forall (kv :: Symbol :-> Type). Value kv -> Struct '[ kv ]
   homogeneous a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv])
 
-
-asProxyProxyTypeOf :: proxy1 a -> proxy2 a -> proxy1 a
-asProxyProxyTypeOf s _ = s
-
 instance GradedFreeSemigroup
             Struct
             [Symbol :-> Type]
@@ -107,7 +104,7 @@ instance GradedFreeSemigroup
         => Struct (as :++: bs) -> ( Struct as, Struct bs )
   (>!<) End = unsafeCoerce ( End, End ) -- GHC cannot deduce (as ~ '[], bs ~ '[]) from (as :++: bs) ~ '[]
   (>!<) (s :& ss)
-    = case primTys @as of
+    = case primTysSing @as of
         SNil
           -> ( End, s :& ss )
         SCons _ _ nxt
@@ -128,10 +125,10 @@ class FoldrStruct x where
     -> b -> x -> b
 
 instance PrimTys as => FoldrStruct (Struct as) where
-  foldrStruct f b s = case primTys @as of
+  foldrStruct f b s = case primTysSing @as of
     SNil
       -> b
-    SCons _ _ _
+    SCons {}
       -> case s of
           (a :& as)
             -> f a (foldrStruct f b as)

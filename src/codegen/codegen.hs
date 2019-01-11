@@ -100,10 +100,7 @@ import FIR.Binding
   ( Permission(Write)
   , KnownPermissions(permissions)
   )
-import FIR.Builtin
-  ( Stage, stageVal
-  , stageBuiltins, stageCapabilities
-  )
+import FIR.Builtin(stageBuiltins)
 import FIR.Instances.AST(lit)
 import FIR.Instances.Optics(SOptic(..), showSOptic)
 import FIR.Prim.Singletons
@@ -123,9 +120,8 @@ import qualified SPIRV.Operation  as SPIRV.Op
 import qualified SPIRV.PrimTy     as SPIRV
 import qualified SPIRV.PrimOp     as SPIRV
 import qualified SPIRV.Storage    as Storage
+import qualified SPIRV.Stage      as SPIRV
 import qualified SPIRV.Storage    as SPIRV(StorageClass)
-
-import Debug.Trace(trace)
 
 ----------------------------------------------------------------------------
 -- existential data types to emulate untyped AST
@@ -225,9 +221,9 @@ codeGen (Def k perms :$ a)
         -- check if we should make this into a pointer or not
         let makeMutable
               = case (a_ty, writable) of
-                  (SPIRV.Array _ _     , True) -> True
-                  (SPIRV.RuntimeArray _, True) -> True
-                  (SPIRV.Struct _      , True) -> True
+                  (SPIRV.Array        {}, True) -> True
+                  (SPIRV.RuntimeArray {}, True) -> True
+                  (SPIRV.Struct       {}, True) -> True
                   _                            -> False
         a_ty2 <-
             if makeMutable
@@ -253,7 +249,7 @@ codeGen (Entry k s :$ body)
   = debug ( putSrcInfo GHC.Stack.callStack )
   >>( , SPIRV.Function [] SPIRV.Unit ) <$>
       declareEntryPoint
-        ( stageVal s )
+        ( SPIRV.stageVal s )
         ( Text.pack ( symbolVal k ) )
         ( codeGen body )
 codeGen (Applied (Use singOptic) is)
@@ -273,7 +269,7 @@ codeGen (Applied (Use singOptic) is)
             indices <- map fst <$> codeGenASTList is
 
             case bdTy of
-              SPIRV.Pointer _ _
+              SPIRV.Pointer {}
                 -> loadThroughAccessChain bdID indices getter
               _ -> extractUsingGetter     bdID indices getter
 
@@ -309,7 +305,7 @@ codeGen (Applied (Assign singOptic) as)
                 (bdID, bdTy) <- bindingID varName
 
                 case bdTy of
-                  SPIRV.Pointer _ _
+                  SPIRV.Pointer {}
                     -> storeThroughAccessChain bdID a_ID indices setter 
                   _ -> insertUsingSetter       bdID a_ID indices setter 
 
@@ -826,7 +822,7 @@ declareArgument argName argTy
         pure (v, argTy)
      )
 
-declareEntryPoint :: Stage -> Text -> CGMonad r -> CGMonad ID
+declareEntryPoint :: SPIRV.Stage -> Text -> CGMonad r -> CGMonad ID
 declareEntryPoint stage stageName body
   = createRec ( _knownBinding stageName )
       ( do unitTyID <- typeID SPIRV.Unit
@@ -838,7 +834,7 @@ declareEntryPoint stage stageName body
         -- loading/storing should add to the interface as needed
         assign ( _interface stage stageName ) (Just Map.empty)
         -- add the required capabilities
-        declareCapabilities ( stageCapabilities stage )
+        declareCapabilities ( SPIRV.stageCapabilities stage )
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Function
@@ -879,7 +875,7 @@ inFunctionContext as action
        assign _localBindings outsideBindings
        pure a
 
-inEntryPointContext :: Stage -> Text -> CGMonad a -> CGMonad a
+inEntryPointContext :: SPIRV.Stage -> Text -> CGMonad a -> CGMonad a
 inEntryPointContext stage stageName action
   = do assign _functionContext ( EntryPoint stage stageName )
        newBlock
@@ -1256,7 +1252,7 @@ constID a =
                    }
        case primTySing @a of
 
-        SMatrix _ _ _ ->
+        SMatrix {} ->
           createRec _knownAConstant
             ( traverse constID . unM . transpose $ a ) -- get the ID for each column
             ( \ cols -> 
@@ -1265,7 +1261,7 @@ constID a =
                     ( toArgs cols )
             )
 
-        SVector _ _ ->
+        SVector {} ->
           createRec _knownAConstant
             ( traverse constID a ) -- get the result ID for each component
             ( \ eltIDs -> 
@@ -1274,7 +1270,7 @@ constID a =
                     (toArgs eltIDs)
             )
 
-        SScalar _
+        SScalar {}
           -> create _knownAConstant
               ( mkConstantInstruction
                   SPIRV.Op.Constant
@@ -1306,12 +1302,12 @@ constID a =
                 EndArgs
             )
 
-        SRuntimeArray _ ->
+        SRuntimeArray {} ->
             throwError
               "constID: cannot construct runtime arrays.\n\
               \Runtime arrays are only available through uniforms."
         
-        SArray _ _ ->
+        SArray {} ->
           createRec _knownAConstant
             ( traverse constID a )
             ( \ eltIDs ->
@@ -1320,7 +1316,7 @@ constID a =
                     ( toArgs eltIDs )
             )
         
-        SStruct _ ->
+        SStruct {} ->
           createRec _knownAConstant
             ( traverseStruct constID a :: m [ID] )
             ( \ eltIDs ->
@@ -1333,7 +1329,7 @@ constID a =
         _knownAConstant = _knownConstant ( aConstant a )
 
 builtinID :: (MonadState CGState m, MonadFresh ID m)
-          => Stage -> Text -> Text -> m ID
+          => SPIRV.Stage -> Text -> Text -> m ID
 builtinID stage stageName builtinName =
   tryToUse ( _builtin stage stageName builtinName )
     id
@@ -1385,7 +1381,7 @@ globalID globalName
        case glob of
          Nothing
            -> pure Nothing
-         Just ptrTy
+         Just (ptrTy, _, _)
            -> do ident <- tryToUse ( _usedGlobal globalName )
                             fst
                             ( pure . ( , ptrTy ) )

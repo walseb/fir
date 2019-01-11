@@ -43,7 +43,7 @@ import Control.Type.Optic(Optic, Name, Gettable, Settable, Part, Whole, Indices)
 import Data.Type.Map(Insert, Union, Append)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
 import FIR.Binding(BindingsMap, BindingType, Var, Fun, KnownPermissions)
-import FIR.Builtin(StageBuiltins, KnownStage)
+import FIR.Builtin(StageBuiltins)
 import FIR.Instances.AST()
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
 import FIR.Instances.Optics(User, Assigner, KnownOptic, opticSing)
@@ -67,6 +67,7 @@ import Math.Logic.Class
   , Choose(..), ifThenElse
   , Ord(..)
   )
+import SPIRV.Stage(KnownStage)
 
 --------------------------------------------------------------------------
 -- utility functions
@@ -267,7 +268,6 @@ instance ( PrimTy a
   choose = fromAST IfM
 
 while :: ( GHC.Stack.HasCallStack
-         , PrimTy a
          , i' ~ i, i'' ~ i
          , l ~ (AST () := j)
          , b ~ (AST Bool := i)

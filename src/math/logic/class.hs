@@ -26,6 +26,7 @@ import Data.Coerce(Coercible, coerce)
 import Data.Int(Int8,Int16,Int32,Int64)
 import Data.Kind(Type)
 import Data.Word(Word8,Word16,Word32,Word64)
+import Foreign.C.Types
 import qualified GHC.Stack
 
 -- half
@@ -97,6 +98,20 @@ deriving via Prelude Int    instance Eq Int
 deriving via Prelude Half   instance Eq Half
 deriving via Prelude Float  instance Eq Float
 deriving via Prelude Double instance Eq Double
+
+deriving via Prelude CChar   instance Eq CChar
+deriving via Prelude CSChar  instance Eq CSChar
+deriving via Prelude CUChar  instance Eq CUChar
+deriving via Prelude CShort  instance Eq CShort
+deriving via Prelude CUShort instance Eq CUShort
+deriving via Prelude CInt    instance Eq CInt
+deriving via Prelude CUInt   instance Eq CUInt
+deriving via Prelude CLong   instance Eq CLong
+deriving via Prelude CULong  instance Eq CULong
+deriving via Prelude CLLong  instance Eq CLLong
+deriving via Prelude CULLong instance Eq CULLong
+deriving via Prelude CFloat  instance Eq CFloat
+deriving via Prelude CDouble instance Eq CDouble
 
 
 newtype All b = All { getAll :: b }
@@ -173,3 +188,17 @@ deriving via Prelude Int    instance Ord Int
 deriving via Prelude Half   instance Ord Half
 deriving via Prelude Float  instance Ord Float
 deriving via Prelude Double instance Ord Double
+
+deriving via Prelude CChar   instance Ord CChar
+deriving via Prelude CSChar  instance Ord CSChar
+deriving via Prelude CUChar  instance Ord CUChar
+deriving via Prelude CShort  instance Ord CShort
+deriving via Prelude CUShort instance Ord CUShort
+deriving via Prelude CInt    instance Ord CInt
+deriving via Prelude CUInt   instance Ord CUInt
+deriving via Prelude CLong   instance Ord CLong
+deriving via Prelude CULong  instance Ord CULong
+deriving via Prelude CLLong  instance Ord CLLong
+deriving via Prelude CULLong instance Ord CULLong
+deriving via Prelude CFloat  instance Ord CFloat
+deriving via Prelude CDouble instance Ord CDouble

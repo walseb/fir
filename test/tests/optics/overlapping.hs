@@ -29,15 +29,12 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type InOut     = '[]
-type Functions = '[]
-
-program :: Program InOut Functions ()
-program = do
+program :: Program '[] ()
+program = Program do
 
   entryPoint @"main" @Vertex do
 
-    def @"struct" @RW @(Struct '[ "n" ':-> Float, "b" ':-> Bool ])
+    def @"struct" @RW @(Struct '[ "field_0" ':-> Float, "field_1" ':-> Bool ])
       ( lit ( 3 :& True :& End ) )
 
-    assign @(Name "struct" :.: (Name "n" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )
+    assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )

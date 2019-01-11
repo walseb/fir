@@ -28,11 +28,16 @@ import CodeGen.Instruction
   ( ID(ID)
   , Instruction
   )
-import FIR.Builtin(Stage(..), stageBuiltins)
+import FIR.Builtin(stageBuiltins)
 import FIR.Prim.Singletons(AConstant)
-import qualified SPIRV.Capability as SPIRV
-import qualified SPIRV.Extension  as SPIRV
-import qualified SPIRV.PrimTy     as SPIRV
+import qualified SPIRV.Capability      as SPIRV
+import qualified SPIRV.Decoration      as SPIRV
+import qualified SPIRV.ExecutionMode   as SPIRV
+import qualified SPIRV.Extension       as SPIRV
+import qualified SPIRV.FunctionControl as SPIRV
+import qualified SPIRV.PrimTy          as SPIRV
+import qualified SPIRV.Stage           as SPIRV
+import qualified SPIRV.Storage         as SPIRV
 
 ----------------------------------------------------------------------------
 -- code generator monad
@@ -45,24 +50,24 @@ data CGState
       { currentID           :: ID
       , currentBlock        :: Maybe ID
       , functionContext     :: FunctionContext
-      , neededCapabilities  :: Set               SPIRV.Capability
-      , knownExtInsts       :: Map SPIRV.ExtInst Instruction
-      , knownStringLits     :: Map Text          ID
-      , names               :: Set ( ID, Either Text (Word32, Text) )
-      , interfaces          :: Map (Stage, Text) (Map Text ID)
-      , annotations         :: Set               Instruction
-      , knownTypes          :: Map SPIRV.PrimTy  Instruction
-      , knownConstants      :: Map AConstant     Instruction
-      , usedGlobals         :: Map Text          (ID, SPIRV.PrimTy)
-      , knownBindings       :: Map Text          (ID, SPIRV.PrimTy)
-      , localBindings       :: Map Text          (ID, SPIRV.PrimTy)
+      , neededCapabilities  :: Set                     SPIRV.Capability
+      , knownExtInsts       :: Map SPIRV.ExtInst       Instruction
+      , knownStringLits     :: Map Text                ID
+      , names               :: Set                     ( ID, Either Text (Word32, Text) )
+      , interfaces          :: Map (SPIRV.Stage, Text) (Map Text ID)
+      , annotations         :: Set                     Instruction
+      , knownTypes          :: Map SPIRV.PrimTy        Instruction
+      , knownConstants      :: Map AConstant           Instruction
+      , usedGlobals         :: Map Text                (ID, SPIRV.PrimTy)
+      , knownBindings       :: Map Text                (ID, SPIRV.PrimTy)
+      , localBindings       :: Map Text                (ID, SPIRV.PrimTy)
       }
   deriving Show
 
 data FunctionContext
   = TopLevel
   | Function [(Text, SPIRV.PrimTy)] -- argument names & types
-  | EntryPoint Stage Text -- stage, and stage name
+  | EntryPoint SPIRV.Stage Text -- stage, and stage name
   deriving ( Eq, Show )
 
 initialState :: CGState
@@ -86,15 +91,25 @@ initialState
 
 data CGContext
   = CGContext
-     { userGlobals :: Map Text SPIRV.PrimTy
-     , debugMode   :: Bool
+     { -- user defined inputs/outputs (not builtins)
+       userGlobals
+          :: Map Text (SPIRV.PrimTy, SPIRV.StorageClass, [ SPIRV.Decoration Word32 ])
+       -- user defined functions (not entry points)
+     , userFunctions
+          :: Map Text SPIRV.FunctionControl
+       -- entry points
+     , userEntryPoints
+          :: Map Text (SPIRV.Stage, [ SPIRV.ExecutionMode Word32 ])
+     , debugMode :: Bool
      }
 
 emptyContext :: CGContext
 emptyContext
   = CGContext
-      { userGlobals = Map.empty
-      , debugMode   = True
+      { userGlobals     = Map.empty
+      , userFunctions   = Map.empty
+      , userEntryPoints = Map.empty
+      , debugMode       = True
       }
 
 ----------------------------------------------------------------------------
@@ -144,19 +159,19 @@ _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
 _usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _usedGlobal name = _usedGlobals . at name
 
-_interfaces :: Lens' CGState (Map (Stage, Text) (Map Text ID))
+_interfaces :: Lens' CGState (Map (SPIRV.Stage, Text) (Map Text ID))
 _interfaces = lens interfaces ( \s v -> s { interfaces = v } )
 
-_interface :: Stage -> Text -> Lens' CGState (Maybe (Map Text ID))
+_interface :: SPIRV.Stage -> Text -> Lens' CGState (Maybe (Map Text ID))
 _interface stage stageName = _interfaces . at (stage, stageName)
 
-_interfaceBinding :: Stage -> Text -> Text -> Lens' CGState (Maybe ID)
+_interfaceBinding :: SPIRV.Stage -> Text -> Text -> Lens' CGState (Maybe ID)
 _interfaceBinding stage stageName varName
   = _interface stage stageName
   . affineTraverse
   . at varName
 
-_builtin :: Stage -> Text -> Text -> Lens' CGState (Maybe ID)
+_builtin :: SPIRV.Stage -> Text -> Text -> Lens' CGState (Maybe ID)
 _builtin stage stageName builtinName
   = lens
       ( view _interfaceBuiltin )
@@ -208,11 +223,38 @@ _localBinding binding = _localBindings . at binding
 
 
 
-_userGlobals :: Lens' CGContext (Map Text SPIRV.PrimTy)
+_userGlobals
+  :: Lens' CGContext
+        ( Map Text
+            ( SPIRV.PrimTy
+            , SPIRV.StorageClass
+            , [SPIRV.Decoration Word32]
+            )
+        )
 _userGlobals = lens userGlobals ( \c v -> c { userGlobals = v } )
 
-_userGlobal :: Text -> Lens' CGContext (Maybe SPIRV.PrimTy)
+_userGlobal
+  :: Text
+  -> Lens' CGContext
+        ( Maybe
+            ( SPIRV.PrimTy
+            , SPIRV.StorageClass
+            , [SPIRV.Decoration Word32]
+            )
+        )
 _userGlobal global = _userGlobals . at global
+
+_userFunctions :: Lens' CGContext ( Map Text SPIRV.FunctionControl )
+_userFunctions = lens userFunctions ( \c v -> c { userFunctions = v } )
+
+_userFunction :: Text -> Lens' CGContext (Maybe SPIRV.FunctionControl)
+_userFunction function = _userFunctions . at function
+
+_userEntryPoints :: Lens' CGContext ( Map Text (SPIRV.Stage, [ SPIRV.ExecutionMode Word32 ]) )
+_userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
+
+_userEntryPoint :: Text -> Lens' CGContext (Maybe (SPIRV.Stage, [SPIRV.ExecutionMode Word32]))
+_userEntryPoint entryPoint = _userEntryPoints . at entryPoint
 
 _debugMode :: Lens' CGContext Bool
 _debugMode = lens debugMode ( \c v -> c { debugMode = v } )

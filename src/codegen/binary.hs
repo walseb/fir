@@ -40,12 +40,11 @@ import CodeGen.Instruction
   )
 import CodeGen.Monad(note)
 import Data.Binary.Class.Put(Put(put))
-import FIR.Builtin(Stage, executionModel)
 import qualified SPIRV.Capability    as SPIRV
-import qualified SPIRV.ExecutionMode as SPIRV
 import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
+import qualified SPIRV.Stage         as SPIRV
 
 ----------------------------------------------------------------------------
 
@@ -128,21 +127,22 @@ putMemoryModel
                     EndArgs
         }
 
-putEntryPoint :: Stage -> Text -> ID -> Map Text ID -> Binary.Put
+putEntryPoint :: SPIRV.Stage -> Text -> ID -> Map Text ID -> Binary.Put
 putEntryPoint stage stageName entryPointID interface
   = putInstruction Map.empty
       Instruction
         { operation = SPIRV.Op.EntryPoint
         -- slight kludge to account for unusual parameters for OpEntryPoint
         -- instead of result type, resTy field holds the ExecutionModel value
-        , resTy     = Just ( ID executionID )
+        , resTy     = Just stageID
         , resID     = Just entryPointID
         , args      = Arg stageName
                     $ toArgs interface -- 'Map Text ID' has the right traversable instance
         }
-    where SPIRV.ExecutionModel executionID = executionModel stage
+    where stageID :: ID
+          stageID = ID . fromIntegral . fromEnum $ stage
 
-putEntryPoints :: Map Text ID -> Map (Stage, Text) (Map Text ID) -> ExceptT Text Binary.PutM ()
+putEntryPoints :: Map Text ID -> Map (SPIRV.Stage, Text) (Map Text ID) -> ExceptT Text Binary.PutM ()
 putEntryPoints bindings
   = traverseWithKey_
       ( \(stage, stageName) interface -> do

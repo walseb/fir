@@ -15,6 +15,7 @@ import GHC.TypeLits(Symbol)
 
 -- fir
 import Data.Type.Map((:->)((:->)), Map)
+import qualified SPIRV.Storage as SPIRV
 
 ------------------------------------------------------------------------------------------------
 -- bindings: variables, functions
@@ -28,12 +29,10 @@ type RW = '[ 'Read, 'Write ]
 
 data Binding where
   Variable :: [Permission] -> Type -> Binding
-  Uniform  :: Type -> Binding
   Function :: [Symbol :-> Binding] -> Type -> Binding
 
 type Var ps a    = 'Variable ps a
 type Fun as b    = 'Function as b
-type Unif a      = 'Uniform a
 type BindingsMap = Map Symbol Binding
 
 type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
@@ -42,7 +41,6 @@ type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
 
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a
-  BindingType (Unif a  ) = a
   BindingType (Fun as b) = Variadic as b
 
 ------------------------------------------------------------------------------------------------
@@ -64,3 +62,21 @@ instance KnownPermissions '[] where
 instance (KnownPermission p, KnownPermissions ps)
       => KnownPermissions ( p ': ps ) where
   permissions _ = permission (Proxy @p) : permissions (Proxy @ps)
+
+------------------------------------------------------------------------------------------------
+-- relation to SPIRV storage classes
+
+type family StoragePermissions (storage :: SPIRV.StorageClass) where
+  StoragePermissions SPIRV.UniformConstant = R
+  StoragePermissions SPIRV.Input           = R
+  StoragePermissions SPIRV.Uniform         = R
+  StoragePermissions SPIRV.Output          = W
+  StoragePermissions SPIRV.Workgroup       = RW
+  StoragePermissions SPIRV.CrossWorkgroup  = RW
+  StoragePermissions SPIRV.Private         = RW
+  StoragePermissions SPIRV.Function        = RW -- default value, specific functions can specialise this
+  StoragePermissions SPIRV.Generic         = RW
+  StoragePermissions SPIRV.PushConstant    = R
+  StoragePermissions SPIRV.AtomicCounter   = RW
+  StoragePermissions SPIRV.Image           = R
+  StoragePermissions SPIRV.StorageBuffer   = RW

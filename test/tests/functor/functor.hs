@@ -19,7 +19,6 @@ import Prelude hiding ( Functor(..), (<$>)
                       , Eq(..), Ord(..)
                       , (&&)
                       )
-import qualified Prelude
 
 -- fir
 import FIR
@@ -29,19 +28,17 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type InOut
-  = '[ "modelMatrix"      ':-> Var R ( M 4 4 Float )
-     , "viewMatrix"       ':-> Var R ( M 4 4 Float )
-     , "projectionMatrix" ':-> Var R ( M 4 4 Float )
-     , "position"         ':-> Var R ( V 4 Float )  
+type Defs
+  = '[ "modelMatrix"      ':-> Global Uniform ( M 4 4 Float )
+     , "viewMatrix"       ':-> Global Uniform ( M 4 4 Float )
+     , "projectionMatrix" ':-> Global Uniform ( M 4 4 Float )
+     , "position"         ':-> Global Input   ( V   4 Float )
+     , "f"                ':-> Function '[ "u" ':-> Var R Float] Float
      ]
 
-type Functions
-  = '[ "f" ':-> Fun '[ "u" ':-> Var R Float] Float
-     ]
 
-program :: Program InOut Functions ()
-program = do
+program :: Program Defs ()
+program = Program do
 
   (f :: AST Float -> AST Float) <- fundef @"f" do
     u <- use @(Name "u")

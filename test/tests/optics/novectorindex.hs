@@ -32,13 +32,11 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type InOut
-  = '[ "vertexData"':-> Var RW ( V 4 Float ) ]
+type Defs
+  = '[ "vertexData" ':-> Global Input ( V 4 Float ) ]
 
-type Functions = '[]
-
-program :: Program InOut Functions ()
-program = do
+program :: Program Defs ()
+program = Program do
 
   entryPoint @"main" @Vertex do
 

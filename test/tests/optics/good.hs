@@ -33,29 +33,33 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type InOut
-  = '[ "modelMatrix"      ':-> Var RW ( M 4 4 Float )
-     , "viewMatrix"       ':-> Var R  ( M 4 4 Float )
-     , "projectionMatrix" ':-> Var R  ( M 4 4 Float )
-     , "vertexData"       ':-> Var RW ( Struct [ "position" ':-> V 3 Float
-                                               , "colour"   ':-> V 4 Float
-                                               , "size"     ':-> Float
-                                               , "weight"   ':-> Float
-                                               ]
-                                     )
-     , "arr1" ':-> Var R ( RuntimeArray (RuntimeArray ( Struct [ "label1" ':-> V 3 Float
-                                                               , "label2" ':-> RuntimeArray Float
-                                                               ]
-                                                      )
-                                        )
-                         )
-     , "arr2" ':-> Var RW ( Array 17 Float )     
+type Defs
+  = '[ "modelMatrix"      ':-> Global Uniform ( M 4 4 Float )
+     , "viewMatrix"       ':-> Global Uniform ( M 4 4 Float )
+     , "projectionMatrix" ':-> Global Uniform ( M 4 4 Float )
+     , "vertexData"       ':-> Global Input
+                                  ( Struct [ "position" ':-> V 3 Float
+                                           , "colour"   ':-> V 4 Float
+                                           , "size"     ':-> Float
+                                           , "weight"   ':-> Float
+                                           ]
+                                  )
+     , "arr1" ':-> Global Input
+                      ( RuntimeArray
+                        ( RuntimeArray
+                            ( Struct
+                                [ "label1" ':-> V 3 Float
+                                , "label2" ':-> RuntimeArray Float
+                                ]
+                            )
+                        )
+                      )
+     , "arr2" ':-> Global Input
+                      ( Array 17 Float )
      ]
 
-type Functions = '[]
-
-program :: Program InOut Functions ()
-program = do
+program :: Program Defs ()
+program = Program do
 
   entryPoint @"main" @Vertex do
 
