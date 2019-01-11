@@ -1381,7 +1381,7 @@ globalID globalName
        case glob of
          Nothing
            -> pure Nothing
-         Just (ptrTy, _, _)
+         Just (ptrTy, _)
            -> do ident <- tryToUse ( _usedGlobal globalName )
                             fst
                             ( pure . ( , ptrTy ) )

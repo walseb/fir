@@ -28,7 +28,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Global Input (V 3 Float) ]
+type Defs = '[ "position" ':-> Global_ Input (V 3 Float) ]
 
 program :: Program Defs ()
 program = Program do

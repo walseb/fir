@@ -29,11 +29,11 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "modelMatrix"      ':-> Global Uniform ( M 4 4 Float )
-     , "viewMatrix"       ':-> Global Uniform ( M 4 4 Float )
-     , "projectionMatrix" ':-> Global Uniform ( M 4 4 Float )
-     , "position"         ':-> Global Input   ( V   4 Float )
-     , "f"                ':-> Function '[ "u" ':-> Var R Float] Float
+  = '[ "modelMatrix"      ':-> Global_ Uniform ( M 4 4 Float )
+     , "viewMatrix"       ':-> Global_ Uniform ( M 4 4 Float )
+     , "projectionMatrix" ':-> Global_ Uniform ( M 4 4 Float )
+     , "position"         ':-> Global_ Input   ( V   4 Float )
+     , "f"                ':-> Function_ '[ "u" ':-> Var R Float] Float
      ]
 
 

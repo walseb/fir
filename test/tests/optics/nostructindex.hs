@@ -33,7 +33,7 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "vertexData"':-> Global Input
+  = '[ "vertexData"':-> Global_ Input
           ( Struct [ "position" ':-> V 3 Float
                    , "colour"   ':-> V 4 Float
                    , "size"     ':-> Float

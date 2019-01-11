@@ -1,22 +1,24 @@
 
-test\tests\optics\overlapping.hs:43:5: error:
+test\tests\optics\overlapping.hs:40:5: error:
     • set: cannot create product setter.
       Setters 
-        'fir-0.0.0:Control.Type.Optic.Name_ "n"
+        'fir-0.0.0:Control.Type.Optic.Name_ "field_0"
       and 
         'fir-0.0.0:Control.Type.Optic.Index_ 0
       are not disjoint.
     • In a stmt of a 'do' block:
         assign
-          @(Name "struct" :.: (Name "n" :*: Index 0)) (lit (4 :& 5 :& End))
+          @(Name "struct" :.: (Name "field_0" :*: Index 0))
+          (lit (4 :& 5 :& End))
       In the third argument of ‘entryPoint’, namely
         ‘do def
               @"struct"
               @RW
-              @(Struct '["n" :-> Float, "b" :-> Bool])
+              @(Struct '["field_0" :-> Float, "field_1" :-> Bool])
               (lit (3 :& True :& End))
             assign
-              @(Name "struct" :.: (Name "n" :*: Index 0)) (lit (4 :& 5 :& End))’
+              @(Name "struct" :.: (Name "field_0" :*: Index 0))
+              (lit (4 :& 5 :& End))’
       In a stmt of a 'do' block:
         entryPoint
           @"main"
@@ -24,10 +26,11 @@ test\tests\optics\overlapping.hs:43:5: error:
           do def
                @"struct"
                @RW
-               @(Struct '["n" :-> Float, "b" :-> Bool])
+               @(Struct '["field_0" :-> Float, "field_1" :-> Bool])
                (lit (3 :& True :& End))
              assign
-               @(Name "struct" :.: (Name "n" :*: Index 0)) (lit (4 :& 5 :& End))
+               @(Name "struct" :.: (Name "field_0" :*: Index 0))
+               (lit (4 :& 5 :& End))
    |
-43 |     assign @(Name "struct" :.: (Name "n" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+40 |     assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

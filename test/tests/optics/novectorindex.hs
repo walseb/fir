@@ -33,7 +33,7 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "vertexData" ':-> Global Input ( V 4 Float ) ]
+  = '[ "vertexData" ':-> Global_ Input ( V 4 Float ) ]
 
 program :: Program Defs ()
 program = Program do

@@ -37,7 +37,6 @@ import qualified SPIRV.Extension       as SPIRV
 import qualified SPIRV.FunctionControl as SPIRV
 import qualified SPIRV.PrimTy          as SPIRV
 import qualified SPIRV.Stage           as SPIRV
-import qualified SPIRV.Storage         as SPIRV
 
 ----------------------------------------------------------------------------
 -- code generator monad
@@ -93,7 +92,7 @@ data CGContext
   = CGContext
      { -- user defined inputs/outputs (not builtins)
        userGlobals
-          :: Map Text (SPIRV.PrimTy, SPIRV.StorageClass, [ SPIRV.Decoration Word32 ])
+          :: Map Text (SPIRV.PrimTy, [ SPIRV.Decoration Word32 ])
        -- user defined functions (not entry points)
      , userFunctions
           :: Map Text SPIRV.FunctionControl
@@ -227,7 +226,6 @@ _userGlobals
   :: Lens' CGContext
         ( Map Text
             ( SPIRV.PrimTy
-            , SPIRV.StorageClass
             , [SPIRV.Decoration Word32]
             )
         )
@@ -238,7 +236,6 @@ _userGlobal
   -> Lens' CGContext
         ( Maybe
             ( SPIRV.PrimTy
-            , SPIRV.StorageClass
             , [SPIRV.Decoration Word32]
             )
         )

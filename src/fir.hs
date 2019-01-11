@@ -24,20 +24,19 @@ module FIR
   , (Data.Type.Map.:->)((:->))
   , FIR.AST.AST((:$))
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
-  , FIR.Binding.Binding(Variable,Function)
   , FIR.Binding.BindingsMap
   , FIR.Binding.Var, FIR.Binding.Fun
   , FIR.Binding.R
   , FIR.Binding.W
   , FIR.Binding.RW
   , FIR.Definition.Definition
-      ( GlobalWithDecoration
-      , FunctionWithControl
-      , EntryPointWithModes
+      ( Global
+      , Function
+      , EntryPoint
       )
-  , FIR.Definition.Global
-  , FIR.Definition.Function
-  , FIR.Definition.EntryPoint
+  , FIR.Definition.Global_
+  , FIR.Definition.Function_
+  , FIR.Definition.EntryPoint_
   , module FIR.Instances.AST
   , module FIR.Instances.Codensity
   , module FIR.Instances.Optics

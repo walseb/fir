@@ -38,41 +38,21 @@ import qualified SPIRV.PrimTy          as SPIRV
 import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Storage         as SPIRV
 
-{-
--- for testing
-import FIR.Binding(Var,R)
-import Math.Linear(V)
-import SPIRV.Decoration(Decoration(Location, Component))
-import SPIRV.ExecutionMode(ExecutionMode(VertexOrderCcw, OutputVertices))
-import SPIRV.FunctionControl(Inlineability(..), SideEffects(..))
-import SPIRV.Stage(Stage(TessellationControl))
-import SPIRV.Storage(StorageClass(Input,Output))
-
-
-type ExampleDefinitions --( ExampleDefinitions :: [ Symbol :-> Definition ] )
-  = '[ "color"  ':-> Global Input  (V 3 Float) '[ Location 0 ]
-     , "size"   ':-> Global Input  Float       '[ Location 0, Component 3 ]
-     , "out"    ':-> Global Output (V 4 Float) '[ Location 0 ]
-     , "main"   ':-> EntryPoint TessellationControl '[ VertexOrderCcw, OutputVertices 128 ]
-     , "choose" ':-> FunctionWithControl '( Just DontInline, Nothing ) '[ "n" ':-> Var R Int, "m" ':-> Var R Int ] Int 
-     ]
--}
-
 --------------------------------------------------------------------------
 -- annotating top-level definitions with necessary information
 -- for instance, annotating layout information
 
 data Definition where
-  GlobalWithDecoration :: SPIRV.StorageClass -> Type -> [ SPIRV.Decoration number ] -> Definition
-  FunctionWithControl  :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
-  EntryPointWithModes  :: SPIRV.Stage -> [ SPIRV.ExecutionMode number ] -> Definition
+  Global :: SPIRV.StorageClass -> Type -> [ SPIRV.Decoration number ] -> Definition
+  Function  :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
+  EntryPoint  :: SPIRV.Stage -> [ SPIRV.ExecutionMode number ] -> Definition
 
-type Global s ty   = GlobalWithDecoration s ty '[]
-type Function as b = FunctionWithControl '(Nothing, Nothing) as b
-type EntryPoint s  = EntryPointWithModes s '[]
+type Global_ s ty   = Global s ty '[]
+type Function_ as b = Function '(Nothing, Nothing) as b
+type EntryPoint_ s  = EntryPoint s '[]
 
 data Annotate
-  = AnnotateGlobal     (SPIRV.PrimTy, SPIRV.StorageClass, [SPIRV.Decoration Word32])
+  = AnnotateGlobal     (SPIRV.PrimTy, [SPIRV.Decoration Word32])
   | AnnotateFunction   SPIRV.FunctionControl
   | AnnotateEntryPoint (SPIRV.Stage, [SPIRV.ExecutionMode Word32])
 
@@ -80,17 +60,20 @@ class KnownDefinition (def :: Definition) where
   annotation :: Annotate
 
 instance ( PrimTy ty, SPIRV.KnownStorage storage, SPIRV.KnownDecorations decs )
-      => KnownDefinition (GlobalWithDecoration storage ty decs)
+      => KnownDefinition (Global storage ty decs)
       where
-  annotation = AnnotateGlobal ( primTy @ty, SPIRV.storage @storage, SPIRV.decorations @_ @decs)
+  annotation = AnnotateGlobal
+    ( SPIRV.Pointer (SPIRV.storage @storage) (primTy @ty)
+    , SPIRV.decorations @_ @decs
+    )
 
 instance SPIRV.KnownFunctionControl control
-      => KnownDefinition (FunctionWithControl control args res)
+      => KnownDefinition (Function control args res)
       where
   annotation = AnnotateFunction (SPIRV.functionControl @control)
 
 instance ( SPIRV.KnownStage stage, SPIRV.KnownExecutionModes modes )
-      => KnownDefinition (EntryPointWithModes stage modes)
+      => KnownDefinition (EntryPoint stage modes)
       where
   annotation = AnnotateEntryPoint
                   ( SPIRV.stageVal   (Proxy @stage)
@@ -98,7 +81,7 @@ instance ( SPIRV.KnownStage stage, SPIRV.KnownExecutionModes modes )
                   )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
-  annotations :: ( Map Text (SPIRV.PrimTy, SPIRV.StorageClass, [ SPIRV.Decoration Word32 ])
+  annotations :: ( Map Text (SPIRV.PrimTy, [ SPIRV.Decoration Word32 ])
                  , Map Text SPIRV.FunctionControl
                  , Map Text (SPIRV.Stage, [ SPIRV.ExecutionMode Word32 ])
                  )
@@ -121,7 +104,7 @@ instance (KnownSymbol k, KnownDefinition def, KnownDefinitions defs)
 type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   StartBindings '[]
     = '[]
-  StartBindings ((k ':-> GlobalWithDecoration storage ty _) ': defs)
+  StartBindings ((k ':-> Global storage ty _) ': defs)
     = (k ':-> Variable (StoragePermissions storage) ty) ': StartBindings defs
   StartBindings ((k ':-> _) ': defs)
     = StartBindings defs
@@ -129,12 +112,12 @@ type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bi
 type family EndBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   EndBindings '[]
     = '[]
-  EndBindings ((k ':-> GlobalWithDecoration storage ty _) ': defs)
+  EndBindings ((k ':-> Global storage ty _) ': defs)
     = (k ':-> Variable (StoragePermissions storage) ty) ': EndBindings defs
-  EndBindings ((k ':-> FunctionWithControl _ as b) ': defs)
+  EndBindings ((k ':-> Function _ as b) ': defs)
     = (k ':-> Binding.Function as b) ': EndBindings defs
   -- (currently not keeping track of entry points in the indexed AST monad)
-  EndBindings ((_ ':-> EntryPointWithModes _ _) ': defs)
+  EndBindings ((_ ':-> EntryPoint _ _) ': defs)
     = EndBindings defs
 
 --------------------------------------------------------------------------

@@ -20,7 +20,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Global Output (V 4 Float) ]
+type Defs = '[ "position" ':-> Global_ Output (V 4 Float) ]
 
 program :: Program Defs ()
 program = Program do

@@ -34,17 +34,17 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "modelMatrix"      ':-> Global Uniform ( M 4 4 Float )
-     , "viewMatrix"       ':-> Global Uniform ( M 4 4 Float )
-     , "projectionMatrix" ':-> Global Uniform ( M 4 4 Float )
-     , "vertexData"       ':-> Global Input
+  = '[ "modelMatrix"      ':-> Global_ Uniform ( M 4 4 Float )
+     , "viewMatrix"       ':-> Global_ Uniform ( M 4 4 Float )
+     , "projectionMatrix" ':-> Global_ Uniform ( M 4 4 Float )
+     , "vertexData"       ':-> Global_ Input
                                   ( Struct [ "position" ':-> V 3 Float
                                            , "colour"   ':-> V 4 Float
                                            , "size"     ':-> Float
                                            , "weight"   ':-> Float
                                            ]
                                   )
-     , "arr1" ':-> Global Input
+     , "arr1" ':-> Global_ Input
                       ( RuntimeArray
                         ( RuntimeArray
                             ( Struct
@@ -54,7 +54,7 @@ type Defs
                             )
                         )
                       )
-     , "arr2" ':-> Global Input
+     , "arr2" ':-> Global_ Input
                       ( Array 17 Float )
      ]
 
