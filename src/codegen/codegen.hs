@@ -3,6 +3,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -19,12 +20,12 @@ module CodeGen.CodeGen
 
 -- base
 import Control.Arrow(first, second)
-import Control.Monad((>>=),(>>), when, void)
+import Control.Monad((>>=), when, void)
 import Data.Coerce(coerce)
 import Data.Foldable(traverse_, toList)
 import Data.List(foldl1')
 import Data.Kind(Type)
-import Data.Maybe(fromJust)
+import Data.Maybe(maybe, fromJust, fromMaybe)
 import Data.Semigroup(First(First))
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
@@ -43,6 +44,7 @@ import Data.ByteString.Lazy(ByteString)
 import Data.Map(Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.Map.Merge.Strict as Map
+import Data.Set(Set)
 import qualified Data.Set as Set
 
 -- mtl
@@ -84,8 +86,13 @@ import CodeGen.State
   , _knownConstant
   , _builtin
   , _interface, _interfaceBinding
+  , _entryPointExecutionModes
+  , _decorate
+  , _memberDecorate
   , _usedGlobal
   , _userGlobal
+  , _userFunction
+  , _userEntryPoint
   , _debugMode
   )
 import CodeGen.Instruction
@@ -114,14 +121,18 @@ import FIR.Prim.Singletons
   )
 import FIR.Prim.Struct(traverseStruct)
 import Math.Linear(V((:.)), M(unM), Matrix(transpose))
-import qualified SPIRV.Capability as SPIRV(Capability, primTyCapabilities)
-import qualified SPIRV.Extension  as SPIRV
-import qualified SPIRV.Operation  as SPIRV.Op
-import qualified SPIRV.PrimTy     as SPIRV
-import qualified SPIRV.PrimOp     as SPIRV
-import qualified SPIRV.Storage    as Storage
-import qualified SPIRV.Stage      as SPIRV
-import qualified SPIRV.Storage    as SPIRV(StorageClass)
+import qualified SPIRV.Builtin         as SPIRV(Builtin(Position,PointSize))
+import qualified SPIRV.Capability      as SPIRV(Capability, primTyCapabilities)
+import qualified SPIRV.Decoration      as SPIRV
+import qualified SPIRV.ExecutionMode   as SPIRV
+import qualified SPIRV.Extension       as SPIRV
+import qualified SPIRV.FunctionControl as SPIRV
+import qualified SPIRV.Operation       as SPIRV.Op
+import qualified SPIRV.PrimTy          as SPIRV
+import qualified SPIRV.PrimOp          as SPIRV
+import qualified SPIRV.Storage         as Storage
+import qualified SPIRV.Stage           as SPIRV
+import qualified SPIRV.Storage         as SPIRV(StorageClass)
 
 ----------------------------------------------------------------------------
 -- existential data types to emulate untyped AST
@@ -216,42 +227,46 @@ codeGen (Def k perms :$ a)
   = do  let name     = Text.pack ( symbolVal k )
             writable = Write `elem` permissions perms
         debug ( putSrcInfo GHC.Stack.callStack ) 
-        (a_ID, a_ty) <- codeGen a
+        cgRes@(a_ID, a_ty) <- codeGen a
         
         -- check if we should make this into a pointer or not
         let makeMutable
-              = case (a_ty, writable) of
-                  (SPIRV.Array        {}, True) -> True
-                  (SPIRV.RuntimeArray {}, True) -> True
-                  (SPIRV.Struct       {}, True) -> True
-                  _                            -> False
-        a_ty2 <-
+              = case a_ty of
+                  SPIRV.Array        {} -> writable
+                  SPIRV.RuntimeArray {} -> writable
+                  SPIRV.Struct       {} -> writable
+                  _                     -> False
+
+        defRes <-
             if makeMutable
             then do let ptrTy = SPIRV.Pointer Storage.Function a_ty
-                    _ <- typeID ptrTy -- ensures pointer type is declared
-                    pure ptrTy
-            else pure a_ty
-        let cgRes = (a_ID, a_ty2)
+                    ptrID <- newPointer ptrTy
+                    store (name, a_ID) ptrID a_ty
+                    pure (ptrID, ptrTy)
+            else pure cgRes
         
-        assign ( _localBinding name ) ( Just cgRes )
+        assign ( _localBinding name ) ( Just defRes )
         pure cgRes
+
 codeGen (FunDef k as b :$ body)
   = let argTys = map (second fst) (knownVars as)
         retTy  = primTyVal b
-    in debug ( putSrcInfo GHC.Stack.callStack )
-    >> ( , SPIRV.Function (map snd argTys) retTy) <$>
-          declareFunction
-            ( Text.pack ( symbolVal k ) )
-            argTys
-            retTy
-            ( codeGen body )
+        name   = Text.pack ( symbolVal k )
+    in do
+      debug ( putSrcInfo GHC.Stack.callStack )
+      control <- fromMaybe SPIRV.noFunctionControl <$> view ( _userFunction name )
+      funID   <- declareFunction name control argTys retTy (codeGen body)
+      pure ( funID , SPIRV.Function (map snd argTys) retTy )
+
 codeGen (Entry k s :$ body)
-  = debug ( putSrcInfo GHC.Stack.callStack )
-  >>( , SPIRV.Function [] SPIRV.Unit ) <$>
-      declareEntryPoint
-        ( SPIRV.stageVal s )
-        ( Text.pack ( symbolVal k ) )
-        ( codeGen body )
+  = let name  = Text.pack ( symbolVal k )
+        stage = SPIRV.stageVal s
+    in do
+      debug ( putSrcInfo GHC.Stack.callStack )
+      modes        <- maybe Set.empty snd <$> view ( _userEntryPoint name )
+      entryPointID <- declareEntryPoint name stage modes (codeGen body)
+      pure ( entryPointID, SPIRV.Function [] SPIRV.Unit )
+
 codeGen (Applied (Use singOptic) is)
   = case singOptic of
 
@@ -259,8 +274,8 @@ codeGen (Applied (Use singOptic) is)
         do  let varName = Text.pack ( symbolVal k )
             bd@(bdID, bdTy) <- bindingID varName
             case bdTy of
-              SPIRV.Pointer storage ty
-                -> load (varName, bdID) ty storage
+              SPIRV.Pointer {}
+                -> load (varName, bdID) bdTy
               _ -> pure bd
 
       SComposeO _ (SBinding k) getter ->
@@ -293,8 +308,8 @@ codeGen (Applied (Assign singOptic) as)
                 bd@(bdID, bdTy) <- bindingID varName
 
                 case bdTy of
-                  SPIRV.Pointer storage ty
-                    -> store (varName, a_ID) bdID ty storage
+                  SPIRV.Pointer {}
+                    -> store (varName, a_ID) bdID bdTy
                   _ -> assign ( _localBinding varName ) (Just bd)
 
                 pure (ID 0, SPIRV.Unit) -- ID should never be used
@@ -682,7 +697,7 @@ runCodeGen :: CGContext -> AST a -> Either Text ByteString
 runCodeGen context = putASM context . codeGen
 
 ----------------------------------------------------------------------------
--- debugging
+-- debugging annotations
 
 debug :: MonadReader CGContext m => m () -> m ()
 debug action = (`when` action) =<< view _debugMode
@@ -761,11 +776,12 @@ branchConditional b t f
 -- function declarations
 
 declareFunction :: Text
+                -> SPIRV.FunctionControl
                 -> [(Text, SPIRV.PrimTy)]
                 -> SPIRV.PrimTy
                 -> CGMonad (ID, SPIRV.PrimTy)
                 -> CGMonad ID
-declareFunction funName as b body
+declareFunction funName control as b body
   = createRec ( _knownBinding funName )
       ( do resTyID <- typeID b
            fnTyID  <- typeID ( SPIRV.Function (map snd as) b )
@@ -777,7 +793,7 @@ declareFunction funName as b body
             { operation = SPIRV.Op.Function
             , resTy     = Just resTyID
             , resID     = Just v
-            , args      = Arg (0 :: Word32) -- no function control information
+            , args      = Arg control
                         $ Arg fnTyID EndArgs
             }
         (retValID, _) <- inFunctionContext as body
@@ -822,8 +838,13 @@ declareArgument argName argTy
         pure (v, argTy)
      )
 
-declareEntryPoint :: SPIRV.Stage -> Text -> CGMonad r -> CGMonad ID
-declareEntryPoint stage stageName body
+declareEntryPoint
+  :: Text
+  -> SPIRV.Stage
+  -> Set (SPIRV.ExecutionMode Word32)
+  -> CGMonad r
+  -> CGMonad ID
+declareEntryPoint stageName stage modes body
   = createRec ( _knownBinding stageName )
       ( do unitTyID <- typeID SPIRV.Unit
            fnTyID  <- typeID ( SPIRV.Function [] SPIRV.Unit )
@@ -835,12 +856,15 @@ declareEntryPoint stage stageName body
         assign ( _interface stage stageName ) (Just Map.empty)
         -- add the required capabilities
         declareCapabilities ( SPIRV.stageCapabilities stage )
+        -- annotate the execution modes
+        assign ( _entryPointExecutionModes stage stageName ) (Just modes)
+
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Function
             , resTy     = Just unitTyID
             , resID     = Just v
-            , args      = Arg (0 :: Word32) -- no function control information
+            , args      = Arg SPIRV.noFunctionControl
                         $ Arg fnTyID EndArgs
             }
         _ <- inEntryPointContext stage stageName body
@@ -886,9 +910,28 @@ inEntryPointContext stage stageName action
 ----------------------------------------------------------------------------
 -- load/store through pointers
 
-load :: (Text, ID) -> SPIRV.PrimTy -> SPIRV.StorageClass -> CGMonad (ID, SPIRV.PrimTy)
-load (loadeeName, loadeeID) ty storage
+newPointer :: SPIRV.PrimTy -> CGMonad ID
+newPointer ptrTy@(SPIRV.Pointer storage _)
+  = do  ptrTyID <- typeID ptrTy -- ensure the pointer type is declared
+        v <- fresh
+        liftPut $ putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.Variable
+            , resTy     = Just ptrTyID
+            , resID     = Just v
+            , args      = Arg storage EndArgs
+            }
+        pure v
+newPointer nonPtrTy
+  = throwError
+  $  "codeGen: non-pointer-type "
+  <> Text.pack ( show nonPtrTy )
+  <> " provided for variable creation"
+
+load :: (Text, ID) -> SPIRV.PrimTy -> CGMonad (ID, SPIRV.PrimTy)
+load (loadeeName, loadeeID) ptrTy@(SPIRV.Pointer storage ty)
   = do
+      _ <- typeID ptrTy -- ensure the pointer type is declared
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: load operation not allowed at top level"
@@ -897,13 +940,15 @@ load (loadeeName, loadeeID) ty storage
           -- add this variable to the interface of the entry point
           -> assign ( _interfaceBinding stage entryPointName loadeeName ) (Just loadeeID)
         _ -> pure ()
-      loadInstruction ty storage loadeeID
+      loadInstruction ty loadeeID
+load _ nonPtrTy
+  = throwError
+  $  "codeGen: trying to load through non-pointer of type "
+  <> Text.pack ( show nonPtrTy )
 
-loadInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> CGMonad (ID, SPIRV.PrimTy)
-loadInstruction ty storage loadeeID
+loadInstruction :: SPIRV.PrimTy -> ID -> CGMonad (ID, SPIRV.PrimTy)
+loadInstruction ty loadeeID
   = do  tyID <- typeID ty
-        -- inelegantly ensure the TypePointer declaration exists
-        _ <- typeID (SPIRV.Pointer storage ty)
         v <- fresh
         liftPut $ putInstruction Map.empty
           Instruction
@@ -914,9 +959,10 @@ loadInstruction ty storage loadeeID
             }
         pure (v, ty)
 
-store :: (Text, ID) -> ID -> SPIRV.PrimTy -> SPIRV.StorageClass -> CGMonad ()
-store (storeeName, storeeID) pointerID ty storage
+store :: (Text, ID) -> ID -> SPIRV.PrimTy -> CGMonad ()
+store (storeeName, storeeID) pointerID ptrTy@(SPIRV.Pointer storage ty)
   = do
+      _ <- typeID ptrTy -- ensure the pointer type is declared
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: store operation not allowed at top level"
@@ -925,13 +971,15 @@ store (storeeName, storeeID) pointerID ty storage
           -- add this variable to the interface of the entry point
           -> assign ( _interfaceBinding stage entryPointName storeeName ) (Just pointerID)
         _ -> pure ()
-      storeInstruction ty storage pointerID storeeID
+      storeInstruction pointerID storeeID
+store _ _ nonPtrTy
+  = throwError
+  $  "codeGen: trying to store through non-pointer of type "
+  <> Text.pack ( show nonPtrTy )
 
-storeInstruction :: SPIRV.PrimTy -> SPIRV.StorageClass -> ID -> ID -> CGMonad ()
-storeInstruction ty storage pointerID storeeID
-        -- ditto: ensure the TypePointer declaration exists
-  = do  _ <- typeID (SPIRV.Pointer storage ty)
-        liftPut $ putInstruction Map.empty
+storeInstruction :: ID -> ID -> CGMonad ()
+storeInstruction pointerID storeeID
+  = do  liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Store
             , resTy = Nothing
@@ -1195,14 +1243,46 @@ typeID ty =
           -> createRec _knownPrimTy
                 ( traverse (typeID . snd) as ) -- return IDs of struct member types
                 ( \eltIDs structTyID 
-                    -> do -- add annotations: name of each struct field
+                    -> do let labelledElts :: [ (Word32, Text) ]
+                              labelledElts
+                                = ( zipWith
+                                    ( \i (k,_) -> (i,k) )
+                                    [0..]
+                                    as
+                                  )
+
+                          -- add annotations: name of each struct field
                           traverse_
                             ( uncurry (addMemberName structTyID) )
-                            ( zipWith 
-                                ( \i (k,_) -> (i,k) ) 
-                                [0..]
-                                as
-                            )
+                            labelledElts
+
+                          -- workaround for builtin decoration complexities:
+                          -- add "builtin" decorations when relevant
+                          --   (for gl_in, gl_out, gl_perVertex)
+                          ctxt <- use _functionContext
+                          case ctxt of
+                            EntryPoint stage _
+                              | stage `elem` [ SPIRV.TessellationControl
+                                             , SPIRV.TessellationEvaluation
+                                             , SPIRV.Geometry
+                                             ]
+                              -> traverse_
+                                  ( \case { (i, "gl_Position"  )
+                                              -> addMemberDecoration
+                                                    structTyID
+                                                    i
+                                                    ( SPIRV.Builtin SPIRV.Position  )
+                                          ; (i, "gl_PointSize" )
+                                              -> addMemberDecoration
+                                                    structTyID
+                                                    i
+                                                    ( SPIRV.Builtin SPIRV.PointSize )
+                                          ; _ -> pure ()
+                                          }
+                                  )
+                                  labelledElts
+                            _ -> pure ()
+
                           -- declare the type
                           mkTyConInstruction (toArgs eltIDs) structTyID
                 )
@@ -1351,18 +1431,27 @@ bindingID varName
           EntryPoint stage stageName
             | Just ptrTy <- lookup varName (stageBuiltins stage)
             -> do builtin <- builtinID stage stageName varName
+                  -- note that 'builtinID' sets the necessary decorations for the builtin
                   pure (builtin, ptrTy)
                 
-          _ -> do loc   <- use ( _localBinding varName )
-                  known <- use ( _knownBinding varName )
-                  glob  <- globalID varName
-                  case loc <<?> known <<?> glob of
-                    Nothing
-                      -> throwError ( "codeGen: no binding with name "
-                                      <> varName
-                                    )
-        
-                    Just idTy -> pure idTy
+          _ -> do -- obtain the binding ID
+                  loc     <- use ( _localBinding varName )
+                  known   <- use ( _knownBinding varName )
+                  glob    <- globalID varName
+
+                  bd@(bdID,_)
+                      <- note
+                          ( "codeGen: no binding with name " <> varName )
+                          ( loc <<?> known <<?> glob )
+
+                  -- add the user decorations for this binding if necessary
+                  decorations <- fmap snd <$> view ( _userGlobal varName )
+                  case decorations of
+                    Nothing   -> pure ()
+                    Just decs -> addDecorations bdID decs
+
+                  -- return the binding ID
+                  pure bd
 
 addMemberName :: MonadState CGState m 
               => ID -> Word32 -> Text -> m ()
@@ -1370,6 +1459,17 @@ addMemberName structTyID index name
   = modifying _names
       ( Set.insert (structTyID, Right (index,name)) )
 
+addDecorations :: MonadState CGState m
+               => ID -> Set (SPIRV.Decoration Word32) -> m ()
+addDecorations bdID decs
+  = modifying ( _decorate bdID)
+      ( Just . maybe decs (Set.union decs) )
+
+addMemberDecoration :: MonadState CGState m
+                    => ID -> Word32 -> SPIRV.Decoration Word32 -> m ()
+addMemberDecoration structID index dec
+  = modifying ( _memberDecorate structID index )
+      ( Just . maybe (Set.singleton dec) (Set.insert dec) )
 
 globalID :: ( MonadState CGState m
             , MonadReader CGContext m

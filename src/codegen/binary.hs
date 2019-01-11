@@ -41,6 +41,8 @@ import CodeGen.Instruction
 import CodeGen.Monad(note)
 import Data.Binary.Class.Put(Put(put))
 import qualified SPIRV.Capability    as SPIRV
+import qualified SPIRV.Decoration    as SPIRV
+import qualified SPIRV.ExecutionMode as SPIRV
 import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
@@ -142,14 +144,45 @@ putEntryPoint stage stageName entryPointID interface
     where stageID :: ID
           stageID = ID . fromIntegral . fromEnum $ stage
 
-putEntryPoints :: Map Text ID -> Map (SPIRV.Stage, Text) (Map Text ID) -> ExceptT Text Binary.PutM ()
+putEntryPoints
+  :: Map Text ID
+  -> Map (SPIRV.Stage, Text) (Map Text ID)
+  -> ExceptT Text Binary.PutM ()
 putEntryPoints bindings
   = traverseWithKey_
       ( \(stage, stageName) interface -> do
-        entryPointID <- note
-                     ( "putEntryPoints: entry point " <> stageName <> "not bound to any ID." )
-                     ( Map.lookup stageName bindings )
+        entryPointID
+          <- note
+              ( "putEntryPoints: entry point " <> stageName <> "not bound to any ID." )
+              ( Map.lookup stageName bindings )
         lift ( putEntryPoint stage stageName entryPointID interface )
+      )
+
+putStageExecutionModes :: ID -> Set (SPIRV.ExecutionMode Word32) -> Binary.Put
+putStageExecutionModes stageID
+  = traverse_
+      ( \mode -> putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.ExecutionMode
+            , resTy     = Nothing
+            , resID     = Nothing
+            , args      = Arg stageID
+                        $ Arg mode EndArgs
+            }
+      )
+
+putExecutionModes
+  :: Map Text ID
+  -> Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32))
+  -> ExceptT Text Binary.PutM ()
+putExecutionModes bindings
+  = traverseWithKey_
+      ( \(_, stageName) executionModes -> do
+        entryPointID
+          <- note
+              ( "putExecutionModes: entry point " <> stageName <> "not bound to any ID." )
+              ( Map.lookup stageName bindings )
+        lift ( putStageExecutionModes entryPointID executionModes )
       )
 
 putKnownStringLits :: Map Text ID -> Binary.Put
@@ -203,8 +236,40 @@ putNames = traverse_
                }
   )
 
-putDecorations :: todo -> Binary.Put
-putDecorations = error "todo"
+putDecorations :: Map ID (Set (SPIRV.Decoration Word32)) -> Binary.Put
+putDecorations
+  = traverseWithKey_
+      ( \ decoratee ->
+          traverse_
+            ( \ dec ->
+                putInstruction Map.empty
+                  Instruction
+                    { operation = SPIRV.Op.Decorate
+                    , resTy     = Nothing
+                    , resID     = Nothing
+                    , args      = Arg decoratee
+                                $ Arg dec EndArgs
+                    }
+            )
+      )
+
+putMemberDecorations :: Map (ID,Word32) (Set (SPIRV.Decoration Word32)) -> Binary.Put
+putMemberDecorations
+  = traverseWithKey_
+      ( \ (structID, index) ->
+           traverse_
+             ( \dec ->
+                 putInstruction Map.empty
+                   Instruction
+                     { operation = SPIRV.Op.MemberDecorate
+                     , resTy     = Nothing
+                     , resID     = Nothing
+                     , args      = Arg structID
+                                 $ Arg index
+                                 $ Arg dec EndArgs
+                     }
+             )
+      )
 
 putInstructionsInOrder :: Map a Instruction -> Binary.Put
 putInstructionsInOrder

@@ -49,18 +49,7 @@ module FIR
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Class
-  , SPIRV.Decoration.Decoration
-    -- explicit export list to avoid conflicting exports of 'Uniform'
-    -- (conflicts with SPIRV.Storage.StorageClass(Uniform))
-      ( SpecId, RowMajor, ColMajor
-      , ArrayStride, MatrixStride
-      , Builtin
-      , NoPerspective, Flat
-      , Patch
-      , Stream, Location, Component
-      , Index, Binding, DescriptorSet
-      , Offset, Alignment
-      )
+  , SPIRV.Decoration.Decoration(..)
   , SPIRV.ExecutionMode.ExecutionMode(..)
   , SPIRV.FunctionControl.Inlineability(..)
   , SPIRV.FunctionControl.SideEffects(..)

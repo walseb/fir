@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
@@ -10,9 +11,14 @@ module FIR.Builtin where
 -- base
 import Control.Arrow(second)
 import Data.Int(Int32)
+import Data.Maybe(maybe)
 import Data.Proxy(Proxy(Proxy))
 import Data.Word(Word32)
 import GHC.TypeLits(Symbol)
+
+-- containers
+import Data.Set(Set)
+import qualified Data.Set as Set
 
 -- text-utf8
 import Data.Text(Text)
@@ -28,8 +34,13 @@ import FIR.Prim.Array(RuntimeArray)
 import FIR.Prim.Singletons(KnownInterface(knownInterface))
 import FIR.Prim.Struct(Struct)
 import Math.Linear(V)
+import qualified SPIRV.Builtin       as SPIRV
+  ( Builtin(TessLevelInner, TessLevelOuter)
+  , readBuiltin
+  )
+import qualified SPIRV.Decoration    as SPIRV(Decoration(Builtin, Patch))
 import qualified SPIRV.PrimTy        as SPIRV(PrimTy(Pointer))
-import qualified SPIRV.Storage       as SPIRV
+import qualified SPIRV.Storage       as SPIRV(StorageClass)
 import SPIRV.Stage(Stage(..))
 
 --------------------------------------------------------------------------
@@ -53,7 +64,7 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_PatchVertices"  ':-> Var R Int32
        , "gl_PrimitiveId"    ':-> Var R Int32
        , "gl_in"
-           ':-> Var R
+            ':-> Var R
                   ( RuntimeArray 
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
                               , "gl_PointSize" ':-> Float
@@ -61,7 +72,7 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
                     )
                   )
        , "gl_out"
-           ':-> Var W
+            ':-> Var W
                   ( RuntimeArray 
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
                               , "gl_PointSize" ':-> Float
@@ -157,3 +168,22 @@ builtinPointer
       ( second
           ( \ (ty, storage) -> SPIRV.Pointer storage ty )
       )
+
+--------------------------------------------------------------------------
+-- decoration of builtins
+-- slight indirection to account for complexities with 'gl_in', 'gl_out', 'gl_perVertex'
+-- (that is, inputs/outputs that are given as arrays of structs)
+
+builtinDecorations :: Text -> Set (SPIRV.Decoration Word32)
+builtinDecorations "gl_TessLevelInner"
+  = Set.fromAscList [ SPIRV.Builtin SPIRV.TessLevelInner, SPIRV.Patch ]
+builtinDecorations "gl_TessLevelOuter"
+  = Set.fromAscList [ SPIRV.Builtin SPIRV.TessLevelOuter, SPIRV.Patch ]
+builtinDecorations perVertex
+  | perVertex `elem` [ "gl_in", "gl_out", "gl_perVertex" ]
+  = Set.empty -- workaround: we decorate in this case when we create the relevant struct
+builtinDecorations builtin
+  = maybe
+      Set.empty
+      ( Set.singleton . SPIRV.Builtin )
+      ( SPIRV.readBuiltin builtin )

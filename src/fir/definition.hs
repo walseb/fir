@@ -20,6 +20,8 @@ import GHC.TypeLits(Symbol, KnownSymbol, symbolVal)
 -- containers
 import Data.Map(Map)
 import qualified Data.Map.Strict as Map
+import Data.Set(Set)
+import qualified Data.Set as Set
 
 -- text-utf8
 import Data.Text(Text)
@@ -52,9 +54,9 @@ type Function_ as b = Function '(Nothing, Nothing) as b
 type EntryPoint_ s  = EntryPoint s '[]
 
 data Annotate
-  = AnnotateGlobal     (SPIRV.PrimTy, [SPIRV.Decoration Word32])
+  = AnnotateGlobal     ( SPIRV.PrimTy, Set (SPIRV.Decoration Word32) )
   | AnnotateFunction   SPIRV.FunctionControl
-  | AnnotateEntryPoint (SPIRV.Stage, [SPIRV.ExecutionMode Word32])
+  | AnnotateEntryPoint ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
 
 class KnownDefinition (def :: Definition) where
   annotation :: Annotate
@@ -64,7 +66,7 @@ instance ( PrimTy ty, SPIRV.KnownStorage storage, SPIRV.KnownDecorations decs )
       where
   annotation = AnnotateGlobal
     ( SPIRV.Pointer (SPIRV.storage @storage) (primTy @ty)
-    , SPIRV.decorations @_ @decs
+    , Set.fromList ( SPIRV.decorations @_ @decs )
     )
 
 instance SPIRV.KnownFunctionControl control
@@ -76,14 +78,14 @@ instance ( SPIRV.KnownStage stage, SPIRV.KnownExecutionModes modes )
       => KnownDefinition (EntryPoint stage modes)
       where
   annotation = AnnotateEntryPoint
-                  ( SPIRV.stageVal   (Proxy @stage)
-                  , SPIRV.executionModes @_ @modes
+                  ( SPIRV.stageVal (Proxy @stage)
+                  , Set.fromList ( SPIRV.executionModes @_ @modes )
                   )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
-  annotations :: ( Map Text (SPIRV.PrimTy, [ SPIRV.Decoration Word32 ])
+  annotations :: ( Map Text (SPIRV.PrimTy, Set (SPIRV.Decoration Word32) )
                  , Map Text SPIRV.FunctionControl
-                 , Map Text (SPIRV.Stage, [ SPIRV.ExecutionMode Word32 ])
+                 , Map Text (SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
                  )
 
 instance KnownDefinitions '[] where

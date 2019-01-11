@@ -1,12 +1,18 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 module SPIRV.Builtin where
 
 -- base
 import Data.Word(Word32)
+
+-- text-utf8
+import Data.Text(Text)
 
 -- fir
 import Data.Binary.Class.Put(Put(..))
@@ -60,7 +66,51 @@ data Builtin
   | SubgroupLocalInvocationId
   | VertexIndex
   | InstanceIndex
-  deriving ( Show, Eq )
+  deriving ( Show, Eq, Ord )
+
+readBuiltin :: Text -> Maybe Builtin
+readBuiltin "gl_Position" = Just Position
+readBuiltin "gl_PointSize" = Just PointSize
+readBuiltin "gl_ClipDistance" = Just ClipDistance
+readBuiltin "gl_CullDistance" = Just CullDistance
+readBuiltin "gl_VertexId" = Just VertexId
+readBuiltin "gl_InstanceId" = Just InstanceId
+readBuiltin "gl_PrimitiveId" = Just PrimitiveId
+readBuiltin "gl_InvocationId" = Just InvocationId
+readBuiltin "gl_Layer" = Just Layer
+readBuiltin "gl_ViewportIndex" = Just ViewportIndex
+readBuiltin "gl_TessLevelOuter" = Just TessLevelOuter
+readBuiltin "gl_TessLevelInner" = Just TessLevelInner
+readBuiltin "gl_TessCoord" = Just TessCoord
+readBuiltin "gl_PatchVertices" = Just PatchVertices
+readBuiltin "gl_FragCoord" = Just FragCoord
+readBuiltin "gl_PointCoord" = Just PointCoord
+readBuiltin "gl_FrontFacing" = Just FrontFacing
+readBuiltin "gl_SampleId" = Just SampleId
+readBuiltin "gl_SamplePosition" = Just SamplePosition
+readBuiltin "gl_SampleMask" = Just SampleMask
+readBuiltin "gl_FragDepth" = Just FragDepth
+readBuiltin "gl_HelperInvocation" = Just HelperInvocation
+readBuiltin "gl_NumWorkgroups" = Just NumWorkgroups
+readBuiltin "gl_WorkgroupSize" = Just WorkgroupSize
+readBuiltin "gl_WorkgroupId" = Just WorkgroupId
+readBuiltin "gl_LocalInvocationId" = Just LocalInvocationId
+readBuiltin "gl_GlobalInvocationId" = Just GlobalInvocationId
+readBuiltin "gl_LocalInvocationIndex" = Just LocalInvocationIndex
+readBuiltin "gl_WorkDim" = Just WorkDim
+readBuiltin "gl_GlobalSize" = Just GlobalSize
+readBuiltin "gl_EnqueuedWorkgroupSize" = Just EnqueuedWorkgroupSize
+readBuiltin "gl_GlobalOffset" = Just GlobalOffset
+readBuiltin "gl_GlobalLinearId" = Just GlobalLinearId
+readBuiltin "gl_SubgroupSize" = Just SubgroupSize
+readBuiltin "gl_SubgroupMaxSize" = Just SubgroupMaxSize
+readBuiltin "gl_NumSubgroups" = Just NumSubgroups
+readBuiltin "gl_NumEnqueuedSubgroups" = Just NumEnqueuedSubgroups
+readBuiltin "gl_SubgroupId" = Just SubgroupId
+readBuiltin "gl_SubgroupLocalInvocationId" = Just SubgroupLocalInvocationId
+readBuiltin "gl_VertexIndex" = Just VertexIndex
+readBuiltin "gl_InstanceIndex" = Just InstanceIndex
+readBuiltin _ = Nothing
 
 instance Put Builtin where
   sizeOf _ = 1

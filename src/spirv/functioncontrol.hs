@@ -20,6 +20,9 @@ data SideEffects = OnlyReads| NoSideEffects
 
 type FunctionControl = ( Maybe Inlineability, Maybe SideEffects )
 
+noFunctionControl :: FunctionControl
+noFunctionControl = ( Nothing, Nothing )
+
 instance Put FunctionControl where
   sizeOf _ = 1
   put ( i, s ) = put w

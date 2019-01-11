@@ -52,7 +52,7 @@ data ExecutionMode a
   | OutputTriangleStrip
   | VecTypeHint a
   | ContractionOff
-  deriving (Show, Eq)
+  deriving ( Show, Eq, Ord )
 
 instance Put (ExecutionMode Word32) where
   put (Invocations i)         = put @Word32 0 *> put i

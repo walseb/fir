@@ -28,7 +28,7 @@ import CodeGen.Instruction
   ( ID(ID)
   , Instruction
   )
-import FIR.Builtin(stageBuiltins)
+import FIR.Builtin(stageBuiltins, builtinDecorations)
 import FIR.Prim.Singletons(AConstant)
 import qualified SPIRV.Capability      as SPIRV
 import qualified SPIRV.Decoration      as SPIRV
@@ -54,7 +54,9 @@ data CGState
       , knownStringLits     :: Map Text                ID
       , names               :: Set                     ( ID, Either Text (Word32, Text) )
       , interfaces          :: Map (SPIRV.Stage, Text) (Map Text ID)
-      , annotations         :: Set                     Instruction
+      , executionModes      :: Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32))
+      , decorations         :: Map ID                  (Set (SPIRV.Decoration    Word32))
+      , memberDecorations   :: Map (ID, Word32)        (Set (SPIRV.Decoration    Word32))
       , knownTypes          :: Map SPIRV.PrimTy        Instruction
       , knownConstants      :: Map AConstant           Instruction
       , usedGlobals         :: Map Text                (ID, SPIRV.PrimTy)
@@ -80,7 +82,9 @@ initialState
       , knownStringLits     = Map.empty
       , names               = Set.empty
       , interfaces          = Map.empty
-      , annotations         = Set.empty
+      , executionModes      = Map.empty
+      , decorations         = Map.empty
+      , memberDecorations   = Map.empty
       , knownTypes          = Map.empty
       , knownConstants      = Map.empty
       , usedGlobals         = Map.empty
@@ -92,13 +96,13 @@ data CGContext
   = CGContext
      { -- user defined inputs/outputs (not builtins)
        userGlobals
-          :: Map Text (SPIRV.PrimTy, [ SPIRV.Decoration Word32 ])
+          :: Map Text (SPIRV.PrimTy, Set (SPIRV.Decoration Word32) )
        -- user defined functions (not entry points)
      , userFunctions
           :: Map Text SPIRV.FunctionControl
        -- entry points
      , userEntryPoints
-          :: Map Text (SPIRV.Stage, [ SPIRV.ExecutionMode Word32 ])
+          :: Map Text (SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
      , debugMode :: Bool
      }
 
@@ -176,25 +180,56 @@ _builtin stage stageName builtinName
       ( view _interfaceBuiltin )
       ( \s mb_i -> case mb_i of
          Nothing -> s
-         Just i  -> set _interfaceBuiltin (Just i)
-                  . set _usedBuiltin      (Just (i,ty))
+         Just i  -> set _interfaceBuiltin           (Just i)
+                  . set ( _usedGlobal builtinName ) (Just (i,ty))
+                  . set ( _decorate i ) (Just $ builtinDecorations builtinName)
                   $ s
       )
   where _interfaceBuiltin :: Lens' CGState (Maybe ID)
         _interfaceBuiltin = _interfaceBinding stage stageName builtinName
 
-        _usedBuiltin :: Lens' CGState (Maybe (ID, SPIRV.PrimTy))
-        _usedBuiltin = _usedGlobal builtinName
-
         ty :: SPIRV.PrimTy
         ty =
           fromMaybe
-            ( error ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
-                        \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
-                    )
+            ( error
+              ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
+                  \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
+              )
             )
             ( lookup builtinName (stageBuiltins stage) )
 
+_executionModes :: Lens' CGState (Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32)))
+_executionModes = lens executionModes ( \s v -> s { executionModes = v } )
+
+_entryPointExecutionModes
+  :: SPIRV.Stage
+  -> Text
+  -> Lens'
+        CGState
+        ( Maybe ( Set (SPIRV.ExecutionMode Word32) ) )
+_entryPointExecutionModes stage stageName = _executionModes . at (stage, stageName)
+
+_decorations :: Lens' CGState (Map ID (Set (SPIRV.Decoration Word32)))
+_decorations = lens decorations ( \s v -> s { decorations = v } )
+
+_decorate :: ID -> Lens' CGState (Maybe (Set (SPIRV.Decoration Word32)))
+_decorate bindingID = _decorations . at bindingID
+
+_memberDecorations
+  :: Lens'
+        CGState
+        ( Map (ID, Word32) ( Set ( SPIRV.Decoration Word32 ) ) )
+_memberDecorations = lens memberDecorations ( \s v -> s { memberDecorations = v } )
+
+_memberDecorate
+  :: ID
+  -> Word32
+  -> Lens'
+        CGState
+        ( Maybe ( Set ( SPIRV.Decoration Word32 ) ) )
+_memberDecorate bindingID index
+  = _memberDecorations
+  . at (bindingID, index)
 
 _knownTypes :: Lens' CGState (Map SPIRV.PrimTy Instruction)
 _knownTypes = lens knownTypes ( \s v -> s { knownTypes = v } )
@@ -226,7 +261,7 @@ _userGlobals
   :: Lens' CGContext
         ( Map Text
             ( SPIRV.PrimTy
-            , [SPIRV.Decoration Word32]
+            , Set ( SPIRV.Decoration Word32 )
             )
         )
 _userGlobals = lens userGlobals ( \c v -> c { userGlobals = v } )
@@ -236,7 +271,7 @@ _userGlobal
   -> Lens' CGContext
         ( Maybe
             ( SPIRV.PrimTy
-            , [SPIRV.Decoration Word32]
+            , Set ( SPIRV.Decoration Word32 )
             )
         )
 _userGlobal global = _userGlobals . at global
@@ -247,10 +282,10 @@ _userFunctions = lens userFunctions ( \c v -> c { userFunctions = v } )
 _userFunction :: Text -> Lens' CGContext (Maybe SPIRV.FunctionControl)
 _userFunction function = _userFunctions . at function
 
-_userEntryPoints :: Lens' CGContext ( Map Text (SPIRV.Stage, [ SPIRV.ExecutionMode Word32 ]) )
+_userEntryPoints :: Lens' CGContext ( Map Text ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) ) )
 _userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
 
-_userEntryPoint :: Text -> Lens' CGContext (Maybe (SPIRV.Stage, [SPIRV.ExecutionMode Word32]))
+_userEntryPoint :: Text -> Lens' CGContext ( Maybe ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) ) )
 _userEntryPoint entryPoint = _userEntryPoints . at entryPoint
 
 _debugMode :: Lens' CGContext Bool

@@ -22,11 +22,12 @@ import CodeGen.Binary
   , putExtendedInstructions
   , putMemoryModel
   , putEntryPoints
+  , putExecutionModes
   , putKnownStringLits
-  , putBindingAnnotations                      
+  , putBindingAnnotations
   , putNames
---, putDecorations
---, putExecutionModes
+  , putDecorations
+  , putMemberDecorations
   , putTypesAndConstants
   , putGlobals
   )
@@ -46,13 +47,17 @@ putDecs
               putCapabilities         neededCapabilities
               putExtendedInstructions knownExtInsts
               putMemoryModel
-    putEntryPoints (fmap fst knownBindings) interfaces
-    lift $ do --putExecutionModes knownBindings interfaces
+    let knownBindingIDs = fmap fst knownBindings
+        usedGlobalIDs   = fmap fst usedGlobals
+    putEntryPoints    knownBindingIDs interfaces
+    putExecutionModes knownBindingIDs executionModes
+    lift $ do
               putKnownStringLits      knownStringLits
-              putBindingAnnotations   (fmap fst knownBindings)
-              putBindingAnnotations   (fmap fst usedGlobals)
+              putBindingAnnotations   knownBindingIDs
+              putBindingAnnotations   usedGlobalIDs
               putNames                names
-              --putDecorations
+              putDecorations          decorations
+              putMemberDecorations    memberDecorations
 
               -- Type and constant declarations need to be interleaved.
               -- For instance, an array type needs to have

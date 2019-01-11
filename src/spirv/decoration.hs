@@ -48,7 +48,7 @@ data Decoration a
   | Coherent
   | NonWritable
   | NonReadable
-  | Uniform
+  | DynamicallyUniform -- simply called 'Uniform' in the SPIR-V spec
   -- no 27
   | SaturatedConversion
   | Stream a
@@ -67,9 +67,7 @@ data Decoration a
   | NoContraction
   | InputAttachmentIndex a
   | Alignment a
-  --
-  | Group [Decoration a]
-  deriving (Show, Eq)
+  deriving ( Show, Eq, Ord )
 
 instance Put (Decoration Word32) where
   put RelaxedPrecision         = put @Word32  0
@@ -98,7 +96,7 @@ instance Put (Decoration Word32) where
   put Coherent                 = put @Word32 23
   put NonWritable              = put @Word32 24
   put NonReadable              = put @Word32 25
-  put Uniform                  = put @Word32 26
+  put DynamicallyUniform       = put @Word32 26
   --
   put SaturatedConversion      = put @Word32 28
   put (Stream               i) = put @Word32 29 *> put i
@@ -117,7 +115,6 @@ instance Put (Decoration Word32) where
   put NoContraction            = put @Word32 42
   put (InputAttachmentIndex i) = put @Word32 43 *> put i
   put (Alignment            i) = put @Word32 44 *> put i
-  put (Group _) =  error "put: attempt to put a group of decorations by hand"
 
   sizeOf (SpecId               _) = 2
   sizeOf (ArrayStride          _) = 2
@@ -134,7 +131,6 @@ instance Put (Decoration Word32) where
   sizeOf (XfbStride            _) = 2
   sizeOf (InputAttachmentIndex _) = 2
   sizeOf (Alignment            _) = 2
-  sizeOf (Group _) = error "put: attempt to put a group of decorations by hand"
   sizeOf _ = 1
 
 class KnownDecoration (decoration :: Decoration a) where
@@ -162,10 +158,8 @@ instance KnownDecoration GLSLPacked where
   decoration = GLSLPacked
 instance KnownDecoration CPacked where
   decoration = CPacked
-{-
-instance KnownBuiltin builtin => KnownDecoration (Builtin builtin) where
-  decoration = Builtin ( builtin @builtin )
--}
+instance Builtin.KnownBuiltin builtin => KnownDecoration (Builtin builtin) where
+  decoration = Builtin ( Builtin.builtin @builtin )
 instance KnownDecoration NoPerspective where
   decoration = NoPerspective
 instance KnownDecoration Flat where
@@ -192,8 +186,8 @@ instance KnownDecoration NonWritable where
   decoration = NonWritable
 instance KnownDecoration NonReadable where
   decoration = NonReadable
-instance KnownDecoration Uniform where
-  decoration = Uniform
+instance KnownDecoration DynamicallyUniform where
+  decoration = DynamicallyUniform
 instance KnownDecoration SaturatedConversion where
   decoration = SaturatedConversion
 instance KnownNat i => KnownDecoration (Stream i) where
@@ -220,8 +214,6 @@ instance KnownNat i => KnownDecoration (InputAttachmentIndex i) where
   decoration = InputAttachmentIndex ( fromIntegral . natVal $ Proxy @i )
 instance KnownNat i => KnownDecoration (Alignment i) where
   decoration = Alignment ( fromIntegral . natVal $ Proxy @i )
-instance KnownDecorations decs => KnownDecoration (Group decs) where
-  decoration = Group ( decorations @_ @decs )
 
 
 class KnownDecorations (modes :: [Decoration a]) where
