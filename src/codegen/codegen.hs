@@ -46,12 +46,6 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 
 -- fir
-import CodeGen.AST
-  ( AnyAST(AnyAST)
-  , ASTList(NilAST, SnocAST)
-  , astListLength, astListHeadTail
-  , pattern Applied
-  )
 import CodeGen.Binary
   ( putInstruction )
 import CodeGen.CFG
@@ -94,7 +88,13 @@ import CodeGen.State
   , _userEntryPoint
   , _debugMode
   )
-import FIR.AST(AST(..), Syntactic(fromAST), toTree)
+import CodeGen.Untyped
+  ( UASTs(NilUAST)
+  , uastsLength, uastsHeadTail
+  , pattern Applied
+  , codeGenUAST, codeGenUASTs
+  )
+import FIR.AST(AST(..), Syntactic(fromAST))
 import FIR.Binding
   ( Permission(Write)
   , KnownPermissions(permissions)
@@ -115,18 +115,6 @@ import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Storage         as Storage
 
 ----------------------------------------------------------------------------
--- code generation for the existential AST data types
-
-codeGenASTList :: ASTList -> CGMonad [ (ID, SPIRV.PrimTy)  ]
-codeGenASTList = sequence . reverse . go
-    where go :: ASTList -> [ CGMonad (ID, SPIRV.PrimTy) ]
-          go NilAST           = []
-          go (as `SnocAST` a) = codeGen a : go as
-
-codeGenAny :: AnyAST -> CGMonad (ID, SPIRV.PrimTy)
-codeGenAny (AnyAST a) = codeGen a
-
-----------------------------------------------------------------------------
 -- main code generator
 
 runCodeGen :: CGContext -> AST a -> Either Text ByteString
@@ -136,15 +124,15 @@ codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
 codeGen (Applied (MkID ident@(_,ty)) as)
   = case as of
-      NilAST -> pure ident
-      _      ->
+      NilUAST -> pure ident
+      _       ->
         case ty of
           SPIRV.Function xs y
             -> let totalArgs = length xs
-                   givenArgs = astListLength as
+                   givenArgs = uastsLength as
                in case compare totalArgs givenArgs of
                     EQ -> do retTyID <- typeID y
-                             declareFunctionCall (retTyID, y) ident =<< codeGenASTList as
+                             declareFunctionCall (retTyID, y) ident =<< codeGenUASTs as
                     GT -> throwError "codeGen: partial application not yet supported"
                     LT -> throwError 
                         $ "codeGen: function of " <> Text.pack (show totalArgs)
@@ -221,7 +209,7 @@ codeGen (Applied (Use singOptic) is)
       SComposeO _ (SBinding k) getter ->
         do  let varName = Text.pack ( symbolVal k )
             (bdID, bdTy) <- bindingID varName
-            indices <- map fst <$> codeGenASTList is
+            indices <- map fst <$> codeGenUASTs is
 
             case bdTy of
               SPIRV.Pointer {}
@@ -236,15 +224,15 @@ codeGen (Applied (Use singOptic) is)
 codeGen (Applied (Assign singOptic) as)
   = do  (a, is) <- note
                       "codeGen: 'assign' not provided any arguments"
-                      ( astListHeadTail as )
+                      ( uastsHeadTail as )
 
-        indices <- map fst <$> codeGenASTList is
+        indices <- map fst <$> codeGenUASTs is
 
         case singOptic of
 
           SBinding k ->
             do  let varName = Text.pack ( symbolVal k )
-                (a_ID, _)       <- codeGenAny a
+                (a_ID, _)       <- codeGenUAST a
                 bd@(bdID, bdTy) <- bindingID varName
 
                 case bdTy of
@@ -256,7 +244,7 @@ codeGen (Applied (Assign singOptic) as)
 
           SComposeO _ (SBinding k) setter  ->
             do  let varName = Text.pack ( symbolVal k )
-                (a_ID, _) <- codeGenAny a
+                (a_ID, _) <- codeGenUAST a
                 (bdID, bdTy) <- bindingID varName
 
                 case bdTy of
@@ -272,7 +260,7 @@ codeGen (Applied (Assign singOptic) as)
                           )
 
 codeGen (Applied (PrimOp primOp _) as)
-  = codeGenPrimOp primOp =<< codeGenASTList as
+  = codeGenPrimOp primOp =<< codeGenUASTs as
 codeGen (Applied (MkVector n_px ty_px) as)
   = do  let n = fromIntegral (natVal n_px)
         compositeTy
@@ -284,7 +272,7 @@ codeGen (Applied (MkVector n_px ty_px) as)
                x -> throwError ( "codeGen: unexpected vector constituent "
                                <> Text.pack ( show x )
                                )
-        (codeGenCompositeConstruct compositeTy . map fst) =<< codeGenASTList as
+        (codeGenCompositeConstruct compositeTy . map fst) =<< codeGenUASTs as
 codeGen (VectorAt ty_px i_px :$ v)
  = codeGenCompositeExtract
       (primTyVal ty_px)
@@ -555,8 +543,8 @@ codeGen (Lam f)
                )
 codeGen (f :$ a)
   = throwError ( "codeGen: unsupported function application:\n"
-                 <> Text.pack ( show (toTree (f :$ a)) )
-                )
+                 <> Text.pack ( show (f :$ a) )
+               )
 codeGen other
   = throwError ( "codeGen: non-exhaustive pattern match:\n"
                  <> Text.pack ( show other )

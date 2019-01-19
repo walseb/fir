@@ -156,6 +156,14 @@ class Syntactic a where
   fromAST :: AST (Internal a) -> a
 
 ------------------------------------------------
+-- internal data type, mostly used to deal with run-time indices
+-- the user-facing interface is through variadic functions
+
+data ASTs (is :: [Type]) :: Type where
+  NilAST  :: ASTs '[]
+  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
+
+------------------------------------------------
 -- display AST for viewing
 
 toTreeArgs :: forall m a. MonadFresh ID m => AST a -> [Tree String] -> m (Tree String)

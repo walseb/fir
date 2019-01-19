@@ -19,8 +19,7 @@ library
       , Math.Linear
 
     other-modules:
-        CodeGen.AST
-      , CodeGen.Binary
+      CodeGen.Binary
       , CodeGen.CFG
       , CodeGen.CodeGen
       , CodeGen.Functions
@@ -31,6 +30,7 @@ library
       , CodeGen.Phi
       , CodeGen.Put
       , CodeGen.State
+      , CodeGen.Untyped
       , Control.Arrow.Strength
       , Control.Monad.Indexed
       , Control.Type.Optic

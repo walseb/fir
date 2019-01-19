@@ -28,14 +28,13 @@ import Data.Text(Text)
 import Control.Monad.Except(MonadError, throwError)
 
 -- fir
-import CodeGen.AST(ASTIndexList(INil, ICons))
 import {-# SOURCE #-} CodeGen.CodeGen(codeGen)
 import CodeGen.IDs(constID)
 import CodeGen.Instruction(ID)
 import CodeGen.Monad(CGMonad)
 import Control.Type.Optic(Optic, ProductIndices)
 import Data.Type.Map(type (:++:), SLength(SZero, SSucc))
-import FIR.AST(AST((:$), Fst, Snd))
+import FIR.AST(AST((:$), Fst, Snd), ASTs(NilAST,ConsAST))
 import FIR.Instances.Optics(SOptic(..))
 import FIR.Prim.Singletons(HasField(fieldIndex))
 import qualified SPIRV.PrimTy as SPIRV
@@ -61,29 +60,29 @@ instance Semigroup IndexSafeness where
 
 composedIndices
   :: SLength is
-  -> ASTIndexList (is :++: js)
-  -> (ASTIndexList is, ASTIndexList js)
-composedIndices SZero js = ( INil, js )
-composedIndices (SSucc tail_is) (k `ICons` ks)
-  = first ( k `ICons` ) (composedIndices tail_is ks)
+  -> ASTs (is :++: js)
+  -> (ASTs is, ASTs js)
+composedIndices SZero js = ( NilAST, js )
+composedIndices (SSucc tail_is) (k `ConsAST` ks)
+  = first ( k `ConsAST` ) (composedIndices tail_is ks)
 
 combinedIndices
   :: SLength is
   -> SLength js
-  -> ASTIndexList (ProductIndices is js)
-  -> (ASTIndexList is, ASTIndexList js)
-combinedIndices SZero SZero _ = ( INil, INil )
-combinedIndices SZero (SSucc _) ks = ( INil, ks )
-combinedIndices (SSucc _) SZero ks = ( ks, INil )
-combinedIndices (SSucc is) (SSucc js) (k1k2 `ICons` ks)
+  -> ASTs(ProductIndices is js)
+  -> (ASTs is, ASTs js)
+combinedIndices SZero SZero _ = ( NilAST, NilAST )
+combinedIndices SZero (SSucc _) ks = ( NilAST, ks )
+combinedIndices (SSucc _) SZero ks = ( ks, NilAST )
+combinedIndices (SSucc is) (SSucc js) (k1k2 `ConsAST` ks)
   = case combinedIndices is js ks of
-         ( is', js' ) -> ( (Fst :$ k1k2) `ICons` is', (Snd :$ k1k2) `ICons` js' )
+         ( is', js' ) -> ( (Fst :$ k1k2) `ConsAST` is', (Snd :$ k1k2) `ConsAST` js' )
 
 opticalTree :: forall k is (s :: k) a (optic :: Optic is s a).
-               ASTIndexList is -> SOptic optic -> CGMonad OpticalTree
-opticalTree (i `ICons` _) (SAnIndexV   _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree (i `ICons` _) (SAnIndexRTA _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree (i `ICons` _) (SAnIndexA   _) = Node Unsafe . Leaf . fst <$> codeGen i
+               ASTs is -> SOptic optic -> CGMonad OpticalTree
+opticalTree (i `ConsAST` _) (SAnIndexV   _) = Node Unsafe . Leaf . fst <$> codeGen i
+opticalTree (i `ConsAST` _) (SAnIndexRTA _) = Node Unsafe . Leaf . fst <$> codeGen i
+opticalTree (i `ConsAST` _) (SAnIndexA   _) = Node Unsafe . Leaf . fst <$> codeGen i
 opticalTree _ (SIndex n_px)
   = let n :: Word32
         n = fromIntegral ( natVal n_px )
