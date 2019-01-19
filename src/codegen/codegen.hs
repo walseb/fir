@@ -1,32 +1,20 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE BlockArguments    #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms   #-}
+{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module CodeGen.CodeGen
   ( codeGen, runCodeGen )
   where
 
 -- base
-import Control.Arrow(first, second)
-import Control.Monad((>>=), when, void)
-import Data.Coerce(coerce)
-import Data.Foldable(traverse_, toList)
-import Data.List(foldl1')
-import Data.Kind(Type)
-import Data.Maybe(maybe, fromJust, fromMaybe)
-import Data.Semigroup(First(First))
+import Control.Arrow(second)
+import Control.Monad(when, void)
+import Data.Foldable(toList)
+import Data.Maybe(maybe, fromMaybe)
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
 import GHC.TypeNats(natVal)
@@ -43,139 +31,88 @@ import Data.ByteString.Lazy(ByteString)
 -- containers
 import Data.Map(Map)
 import qualified Data.Map.Strict as Map
-import qualified Data.Map.Merge.Strict as Map
-import Data.Set(Set)
 import qualified Data.Set as Set
 
 -- mtl
-import Control.Monad.Except(MonadError, throwError)
+import Control.Monad.Except(throwError)
 import Control.Monad.Reader(MonadReader, ask)
-import Control.Monad.State(MonadState, get, put)
+import Control.Monad.State(get, put)
 
 -- lens
-import Control.Lens(Lens', view, use, assign, modifying)
+import Control.Lens(view, use, assign)
 
 -- text-utf8
 import Data.Text(Text)
 import qualified Data.Text as Text
 
 -- fir
-import CodeGen.Binary(putInstruction, traverseWithKey_)
-import CodeGen.Declarations(putASM)
-import CodeGen.Monad
-  ( CGMonad, runCGMonad
-  , MonadFresh(fresh)
-  , liftPut
-  , create, createRec
-  , tryToUse, tryToUseWith
-  , note
+import CodeGen.AST
+  ( AnyAST(AnyAST)
+  , ASTList(NilAST, SnocAST)
+  , astListLength, astListHeadTail
+  , pattern Applied
   )
-import CodeGen.State
-  ( CGState(currentBlock, knownBindings, localBindings)
-  , CGContext
-  , FunctionContext(TopLevel, Function, EntryPoint)
-  , _currentBlock
-  , _functionContext
-  , _neededCapability
-  , _knownExtInsts, _knownExtInst
-  , _knownStringLit
-  , _names
-  , _knownBindings, _knownBinding
-  , _localBindings, _localBinding
-  , _knownType
-  , _knownConstant
-  , _builtin
-  , _interface, _interfaceBinding
-  , _entryPointExecutionModes
-  , _decorate
-  , _memberDecorate
-  , _usedGlobal
-  , _userGlobal
-  , _userFunction
-  , _userEntryPoint
-  , _debugMode
-  )
+import CodeGen.Binary
+  ( putInstruction )
+import CodeGen.CFG
+  ( block, branch, branchConditional )
+import CodeGen.Functions
+  ( declareFunction, declareFunctionCall, declareEntryPoint )
+import CodeGen.IDs
+  ( typeID, constID, bindingID, extInstID, stringLitID )
 import CodeGen.Instruction
   ( Args(..), toArgs
   , ID(ID), Instruction(..)
   , Pairs(Pairs)
   )
-import Control.Type.Optic(Optic, ProductIndices)
-import Data.Type.Map(SLength(SZero,SSucc), type (:++:))
+import CodeGen.Phi
+  ( phiInstruction, phiInstructions )
+import CodeGen.Monad
+  ( CGMonad, runCGMonad
+  , MonadFresh(fresh)
+  , liftPut
+  , note
+  )
+import CodeGen.Optics
+  ( loadThroughAccessChain
+  , storeThroughAccessChain
+  , extractUsingGetter
+  , insertUsingSetter
+  )
+import CodeGen.Put(putASM)
+import CodeGen.State
+  ( CGState(currentBlock, knownBindings, localBindings)
+  , CGContext
+  , FunctionContext(TopLevel, EntryPoint)
+  , _currentBlock
+  , _functionContext
+  , _knownExtInsts
+  , _knownBindings
+  , _localBindings, _localBinding
+  , _interfaceBinding
+  , _userFunction
+  , _userEntryPoint
+  , _debugMode
+  )
 import FIR.AST(AST(..), Syntactic(fromAST), toTree)
 import FIR.Binding
   ( Permission(Write)
   , KnownPermissions(permissions)
   )
-import FIR.Builtin(stageBuiltins)
-import FIR.Instances.AST(lit)
+import FIR.Instances.AST()
 import FIR.Instances.Optics(SOptic(..), showSOptic)
 import FIR.Prim.Singletons
-  ( PrimTy(primTySing)
-  , primTy, primTyVal
-  , SPrimTy(..)
-  , HasField(fieldIndex)
+  (  primTyVal
   , SPrimFunc(..)
-  , aConstant
   , KnownVars(knownVars)
   )
-import FIR.Prim.Struct(traverseStruct)
-import Math.Linear(V((:.)), M(unM), Matrix(transpose))
-import qualified SPIRV.Builtin         as SPIRV(Builtin(Position,PointSize))
-import qualified SPIRV.Capability      as SPIRV(Capability, primTyCapabilities)
-import qualified SPIRV.Decoration      as SPIRV
-import qualified SPIRV.ExecutionMode   as SPIRV
-import qualified SPIRV.Extension       as SPIRV
+import Math.Linear(V((:.)))
 import qualified SPIRV.FunctionControl as SPIRV
 import qualified SPIRV.Operation       as SPIRV.Op
 import qualified SPIRV.PrimTy          as SPIRV
 import qualified SPIRV.PrimOp          as SPIRV
-import qualified SPIRV.Storage         as Storage
 import qualified SPIRV.Stage           as SPIRV
-import qualified SPIRV.Storage         as SPIRV(StorageClass)
-
-----------------------------------------------------------------------------
--- existential data types to emulate untyped AST
-
-data AnyAST where
-  AnyAST :: AST a -> AnyAST
-
-deriving instance Show AnyAST
-
-data ASTList where
-  NilAST  :: ASTList
-  SnocAST :: ASTList -> AST a -> ASTList
-
-deriving instance Show ASTList
-
-astListLength :: ASTList -> Int
-astListLength NilAST            = 0
-astListLength (as `SnocAST` _ ) = 1 + astListLength as
-
-astListHeadTail :: ASTList -> Maybe (AnyAST, ASTList)
-astListHeadTail NilAST           = Nothing
-astListHeadTail (as `SnocAST` a) = Just (go a as)
-    where go :: AST a -> ASTList -> (AnyAST, ASTList)
-          go b NilAST           = (AnyAST b, NilAST)
-          go b (cs `SnocAST` c) = second (`SnocAST` b) (go c cs)
-
--- internal data type to deal with run-time indices
--- the user-facing interface is through variadic functions
-data ASTIndexList (is :: [Type]) :: Type where
-  INil  :: ASTIndexList '[]
-  ICons :: AST i -> ASTIndexList is -> ASTIndexList (i ': is)
-
-----------------------------------------------------------------------------
--- pattern for applied function with any number of arguments
-
-pattern Applied :: AST a -> ASTList -> AST b
-pattern Applied f as <- (unapply . AnyAST -> (AnyAST f,as))
-
-unapply :: AnyAST -> (AnyAST, ASTList)
-unapply (AnyAST (f :$ a))
-  = case unapply (AnyAST f) of
-        (AnyAST g, as) -> (AnyAST g, as `SnocAST` a)
-unapply (AnyAST f) = (AnyAST f, NilAST)
+import qualified SPIRV.Storage         as Storage
 
 ----------------------------------------------------------------------------
 -- code generation for the existential AST data types
@@ -192,6 +129,9 @@ codeGenAny (AnyAST a) = codeGen a
 ----------------------------------------------------------------------------
 -- main code generator
 
+runCodeGen :: CGContext -> AST a -> Either Text ByteString
+runCodeGen context = putASM context . codeGen
+
 codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
 codeGen (Applied (MkID ident@(_,ty)) as)
@@ -204,7 +144,7 @@ codeGen (Applied (MkID ident@(_,ty)) as)
                    givenArgs = astListLength as
                in case compare totalArgs givenArgs of
                     EQ -> do retTyID <- typeID y
-                             codeGenFunctionCall (retTyID, y) ident =<< codeGenASTList as
+                             declareFunctionCall (retTyID, y) ident =<< codeGenASTList as
                     GT -> throwError "codeGen: partial application not yet supported"
                     LT -> throwError 
                         $ "codeGen: function of " <> Text.pack (show totalArgs)
@@ -622,6 +562,9 @@ codeGen other
                  <> Text.pack ( show other )
                )
 
+----------------------------------------------------------------------------
+-- primops
+
 codeGenPrimOp :: SPIRV.PrimOp -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
 codeGenPrimOp primOp as
   = do  let (op,retTy) = SPIRV.opAndReturnType primOp
@@ -644,6 +587,9 @@ codeGenPrimOp primOp as
             , args = toArgs (map fst as)
             }
         pure (v, retTy)
+
+----------------------------------------------------------------------------
+-- composite structures
 
 codeGenCompositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad (ID, SPIRV.PrimTy)
 codeGenCompositeConstruct compositeType constituents
@@ -675,27 +621,6 @@ codeGenCompositeExtract constituentTy indices (compositeID, _)
            }
        pure (v, constituentTy)
 
-codeGenFunctionCall :: (ID, SPIRV.PrimTy)
-                    -> (ID, SPIRV.PrimTy)
-                    -> [ (ID, SPIRV.PrimTy) ]
-                    -> CGMonad (ID, SPIRV.PrimTy)
-codeGenFunctionCall res func argIDs
-  = do v <- fresh
-       liftPut $ putInstruction Map.empty
-         Instruction
-           { operation = SPIRV.Op.FunctionCall
-           , resTy = Just (fst res)
-           , resID = Just v
-           , args  = Arg (fst func)
-                   $ toArgs (map fst argIDs)
-           }
-       pure (v, snd res)
-
-----------------------------------------------------------------------------
-
-runCodeGen :: CGContext -> AST a -> Either Text ByteString
-runCodeGen context = putASM context . codeGen
-
 ----------------------------------------------------------------------------
 -- debugging annotations
 
@@ -722,7 +647,7 @@ putSrcInfo callstack
                     \needed for debug statement"
                   )
                   ( sourceInfo callstack )
-        fileID <- stringLit fileName
+        fileID <- stringLitID fileName
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Line
@@ -732,180 +657,6 @@ putSrcInfo callstack
                     $ Arg lineNo
                     $ Arg colNo EndArgs
             }
-
-----------------------------------------------------------------------------
--- blocks and branching
-
-block :: ID -> CGMonad ()
-block blockID = do
-  liftPut $ putInstruction Map.empty
-    Instruction
-      { operation = SPIRV.Op.Label
-      , resTy = Nothing
-      , resID = Just blockID
-      , args  = EndArgs
-      }
-  assign _currentBlock (Just blockID)
-
-newBlock :: CGMonad ()
-newBlock = fresh >>= block
-
-branch :: ID -> CGMonad ()
-branch branchID
-  = liftPut $ putInstruction Map.empty
-      Instruction
-       { operation = SPIRV.Op.Branch
-       , resID = Nothing
-       , resTy = Nothing
-       , args  = Arg branchID EndArgs
-       }
-
-branchConditional :: ID -> ID -> ID -> CGMonad ()
-branchConditional b t f
-  = liftPut $ putInstruction Map.empty
-      Instruction
-        { operation = SPIRV.Op.BranchConditional
-        , resTy = Nothing
-        , resID = Nothing
-        , args  = Arg b
-                $ Arg t
-                $ Arg f EndArgs
-        }
-
-----------------------------------------------------------------------------
--- function declarations
-
-declareFunction :: Text
-                -> SPIRV.FunctionControl
-                -> [(Text, SPIRV.PrimTy)]
-                -> SPIRV.PrimTy
-                -> CGMonad (ID, SPIRV.PrimTy)
-                -> CGMonad ID
-declareFunction funName control as b body
-  = createRec ( _knownBinding funName )
-      ( do resTyID <- typeID b
-           fnTyID  <- typeID ( SPIRV.Function (map snd as) b )
-           pure (resTyID, fnTyID)
-      )
-      ( \(resTyID,fnTyID) v -> do
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Function
-            , resTy     = Just resTyID
-            , resID     = Just v
-            , args      = Arg control
-                        $ Arg fnTyID EndArgs
-            }
-        (retValID, _) <- inFunctionContext as body
-        case b of
-          SPIRV.Unit
-            -> liftPut $ putInstruction Map.empty
-                 Instruction
-                   { operation = SPIRV.Op.Return
-                   , resTy = Nothing
-                   , resID = Nothing
-                   , args  = EndArgs
-                   }
-          _ -> liftPut $ putInstruction Map.empty
-                 Instruction
-                   { operation = SPIRV.Op.ReturnValue
-                   , resTy = Nothing
-                   , resID = Just retValID
-                   , args  = EndArgs
-                   }
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.FunctionEnd
-            , resTy     = Nothing
-            , resID     = Nothing
-            , args      = EndArgs
-            }
-        pure (v, SPIRV.Function (map snd as) b)
-      )
-
-
-declareArgument :: Text -> SPIRV.PrimTy -> CGMonad ID
-declareArgument argName argTy
-  = createRec ( _localBinding argName )
-     ( ( , argTy) <$> typeID argTy )
-     ( \(argTyID,_) v -> do
-        liftPut $ putInstruction Map.empty Instruction
-          { operation = SPIRV.Op.FunctionParameter
-          , resTy = Just argTyID
-          , resID = Just v
-          , args = EndArgs
-          }
-        pure (v, argTy)
-     )
-
-declareEntryPoint
-  :: Text
-  -> SPIRV.Stage
-  -> Set (SPIRV.ExecutionMode Word32)
-  -> CGMonad r
-  -> CGMonad ID
-declareEntryPoint stageName stage modes body
-  = createRec ( _knownBinding stageName )
-      ( do unitTyID <- typeID SPIRV.Unit
-           fnTyID  <- typeID ( SPIRV.Function [] SPIRV.Unit )
-           pure (unitTyID, fnTyID)
-      )
-      ( \(unitTyID,fnTyID) v -> do
-        -- initialise entry point with empty interface
-        -- loading/storing should add to the interface as needed
-        assign ( _interface stage stageName ) (Just Map.empty)
-        -- add the required capabilities
-        declareCapabilities ( SPIRV.stageCapabilities stage )
-        -- annotate the execution modes
-        assign ( _entryPointExecutionModes stage stageName ) (Just modes)
-
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Function
-            , resTy     = Just unitTyID
-            , resID     = Just v
-            , args      = Arg SPIRV.noFunctionControl
-                        $ Arg fnTyID EndArgs
-            }
-        _ <- inEntryPointContext stage stageName body
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Return
-            , resTy = Nothing
-            , resID = Nothing
-            , args  = EndArgs
-            }
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.FunctionEnd
-            , resTy     = Nothing
-            , resID     = Nothing
-            , args      = EndArgs
-            }
-        pure (v, SPIRV.Function [] SPIRV.Unit)
-      )
-
-----------------------------------
--- dealing with function context
-
-inFunctionContext :: [(Text, SPIRV.PrimTy)] -> CGMonad a -> CGMonad a
-inFunctionContext as action
-  = do outsideBindings <- use _localBindings
-       traverse_ (uncurry declareArgument) as
-       assign _functionContext ( Function as )
-       newBlock
-       a <- action
-       assign _functionContext TopLevel -- functions can't be nested
-       assign _localBindings outsideBindings
-       pure a
-
-inEntryPointContext :: SPIRV.Stage -> Text -> CGMonad a -> CGMonad a
-inEntryPointContext stage stageName action
-  = do assign _functionContext ( EntryPoint stage stageName )
-       newBlock
-       a <- action
-       assign _functionContext TopLevel
-       pure a
 
 ----------------------------------------------------------------------------
 -- load/store through pointers
@@ -960,7 +711,7 @@ loadInstruction ty loadeeID
         pure (v, ty)
 
 store :: (Text, ID) -> ID -> SPIRV.PrimTy -> CGMonad ()
-store (storeeName, storeeID) pointerID ptrTy@(SPIRV.Pointer storage ty)
+store (storeeName, storeeID) pointerID ptrTy@(SPIRV.Pointer storage _)
   = do
       _ <- typeID ptrTy -- ensure the pointer type is declared
       context <- use _functionContext
@@ -987,514 +738,3 @@ storeInstruction pointerID storeeID
             , args = Arg pointerID
                    $ Arg storeeID EndArgs
             }
-
-----------------------------------------------------------------------------
--- phi instructions
-
-conflicts :: forall k a. (Ord k, Eq a)
-          => ( k -> Bool )
-          -> [ Map k a ]
-          -> Map k [a]
-conflicts keyIsOK
-  = Map.mapMaybeWithKey
-      ( \k as -> if keyIsOK k && any (/= head as) as
-                 then Just as
-                 else Nothing
-      )
-  . foldl1'
-      ( Map.merge
-          Map.dropMissing
-          Map.dropMissing
-          ( Map.zipWithMatched (const (++)) )
-      )
-  . map (fmap (:[]))
-
--- 'Pairs ID' has the right traversable instance for the 'toArgs' function
--- (recall that 'Pairs a' is a newtype wrapper around '[(a,a)]')
-phiInstruction :: (ID, SPIRV.PrimTy) -> Pairs ID -> CGMonad ()
-phiInstruction (v, ty) bdAndBlockIDs
-  = do
-      tyID <- typeID ty
-      liftPut $ putInstruction Map.empty
-        Instruction
-          { operation = SPIRV.Op.Phi
-          , resTy     = Just tyID
-          , resID     = Just v
-          , args      = toArgs bdAndBlockIDs
-          }
-
-phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text (ID, SPIRV.PrimTy) ] -> CGMonad ()
-phiInstructions isRelevant blocks bindings 
-  = traverseWithKey_
-      ( \ name idsAndTys ->
-        case idsAndTys of
-          (_,ty) : _
-            -> let  bdAndBlockIDs :: Pairs ID
-                    bdAndBlockIDs 
-                      = Pairs $ zipWith 
-                                  (\(x_ID, _) blk -> (x_ID, blk))
-                                  idsAndTys
-                                  blocks
-               in do
-                  v <- fresh
-                  phiInstruction (v,ty) bdAndBlockIDs
-                  assign ( _localBinding name ) (Just (v, ty))
-          _ -> pure ()
-      )
-      ( conflicts isRelevant bindings )
-
-----------------------------------------------------------------------------
--- optics
-
-data OpticalNode
-  = Leaf     ID
-  | Continue ID OpticalTree
-  | Combine  [OpticalTree]
-
-data OpticalTree = Node IndexSafeness OpticalNode
-
-data IndexSafeness
-  = Unsafe
-  | Safe
-  deriving ( Eq, Show )
-
-instance Semigroup IndexSafeness where
-  Safe <> x = x
-  _    <> _ = Unsafe
-
-composedIndices
-  :: SLength is
-  -> ASTIndexList (is :++: js)
-  -> (ASTIndexList is, ASTIndexList js)
-composedIndices SZero js = ( INil, js )
-composedIndices (SSucc tail_is) (k `ICons` ks)
-  = first ( k `ICons` ) (composedIndices tail_is ks)
-
-combinedIndices
-  :: SLength is
-  -> SLength js
-  -> ASTIndexList (ProductIndices is js)
-  -> (ASTIndexList is, ASTIndexList js)
-combinedIndices SZero SZero _ = ( INil, INil )
-combinedIndices SZero (SSucc _) ks = ( INil, ks )
-combinedIndices (SSucc _) SZero ks = ( ks, INil )
-combinedIndices (SSucc is) (SSucc js) (k1k2 `ICons` ks)
-  = case combinedIndices is js ks of
-         ( is', js' ) -> ( (Fst :$ k1k2) `ICons` is', (Snd :$ k1k2) `ICons` js' )
-
-opticalTree :: forall k is (s :: k) a (optic :: Optic is s a).
-               ASTIndexList is -> SOptic optic -> CGMonad OpticalTree
-opticalTree (i `ICons` _) (SAnIndexV   _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree (i `ICons` _) (SAnIndexRTA _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree (i `ICons` _) (SAnIndexA   _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree _ (SIndex n_px)
-  = let n :: Word32
-        n = fromIntegral ( natVal n_px )
-    in Node Safe . Leaf <$> constID n
-opticalTree _ (SName k bds)
-  = let n :: Word32
-        n = fieldIndex k bds
-    in Node Safe . Leaf <$> constID n
-opticalTree is (SComposeO lg1 opt1 opt2)
-  = do  let (is1, is2) = composedIndices lg1 is
-        res1 <- opticalTree is1 opt1
-        res2 <- opticalTree is2 opt2
-        pure ( res1 `continue` res2 )
-    where continue :: OpticalTree -> OpticalTree -> OpticalTree
-          continue (Node safe1 (Leaf i) ) next@(Node safe2 _)
-            = Node (safe1 <> safe2) ( Continue  i next )
-          continue (Node safe1 (Continue i t) ) next@(Node safe2 _)
-            = Node (safe1 <> safe2) ( Continue i (t `continue` next) )
-          continue (Node safe1 (Combine ts)) next@(Node safe2 _)
-            = Node (safe1 <> safe2)
-            . Combine
-            $ map (`continue` next) ts
-opticalTree is (SProductO lg1 lg2 o1 o2)
-  = do  let (is1, is2) = combinedIndices lg1 lg2 is
-        t1 <- opticalTree is1 o1
-        t2 <- opticalTree is2 o2
-        let combined = case ( t1, t2 ) of
-              ( Node safe1 n1, Node safe2 n2 )
-                -> let children = case ( n1, n2 ) of
-                          (Combine ts1, Combine ts2) -> ts1 ++ ts2
-                          (Combine ts1, _          ) -> ts1 ++ [t2]
-                          (_          , Combine ts2) -> t1 : ts2
-                          (_          , _          ) -> [t1, t2]
-                   in Node (safe1 <> safe2) (Combine children)
-        pure combined
-opticalTree _ (SBinding _)
-  = throwError "opticalTree: trying to access a binding within a binding"
-opticalTree is (SJoint opt) = error "todo"
-
-
-
-loadThroughAccessChain
-  :: MonadError Text m
-  => ID -> [ID] -> SOptic optic -> m (ID, SPIRV.PrimTy)
-loadThroughAccessChain basePtrID indices soptic
-  = throwError "loadThroughAccessChain: todo"
-
-extractUsingGetter
-  :: MonadError Text m
-  => ID -> [ID] -> SOptic optic -> m (ID, SPIRV.PrimTy)
-extractUsingGetter baseID indices soptic
-  = throwError "extractUsingGetter: todo"
-
-storeThroughAccessChain
-  :: MonadError Text m
-  => ID -> ID -> [ID] -> SOptic optic -> m ()
-storeThroughAccessChain ptrID valID indices soptic
-  = throwError "storeThroughAccessChain: todo"
-
-insertUsingSetter
-  :: MonadError Text m
-  => ID -> ID -> [ID] -> SOptic optic -> m ()
-insertUsingSetter baseID valID indices soptic
-  = throwError "insertUsingSetter: todo"
-
-----------------------------------------------------------------------------
--- instructions generated along the way that need to be floated to the top
-
--- get extended instruction set ID (or create one if none exist)
-extInstID :: (MonadState CGState m, MonadFresh ID m)
-          => SPIRV.ExtInst -> m ID
-extInstID extInst = 
-  tryToUse ( _knownExtInst extInst )
-    ( fromJust . resID ) -- ExtInstImport instruction always has a result ID
-    ( \ v -> pure
-      Instruction
-        { operation = SPIRV.Op.ExtInstImport
-        , resTy     = Nothing
-        , resID     = Just v
-        , args      = Arg ( SPIRV.extInstName extInst )
-                      EndArgs
-        }
-    )
-
--- get an ID for a given type ( result ID of corresponding type constructor instruction )
--- ( if one is known use it, otherwise recursively create fresh IDs for necessary types )
-typeID :: forall m.
-          ( MonadState CGState m
-          , MonadFresh ID m
-          , MonadError Text m -- only needed for the constant instruction call for array length
-          )
-       => SPIRV.PrimTy -> m ID
-typeID ty =
-  tryToUseWith _knownPrimTy
-    ( fromJust . resID ) -- type constructor instructions always have a result ID
-    do declareCapabilities ( SPIRV.primTyCapabilities ty )
-       case ty of
-
-        SPIRV.Matrix m n a -> 
-          createRec _knownPrimTy
-            ( typeID (SPIRV.Vector m (SPIRV.Scalar a)) ) -- column type
-            ( \ colID 
-                  -> mkTyConInstruction ( Arg colID $ Arg n EndArgs )
-            )
-
-        SPIRV.Vector n a ->
-          createRec _knownPrimTy
-            ( typeID a ) -- element type
-            ( \ eltID 
-                  -> mkTyConInstruction ( Arg eltID $ Arg n EndArgs )
-            )
-
-        SPIRV.Function as b ->
-          createRec _knownPrimTy
-            ( do asIDs <- traverse typeID as -- types of function arguments
-                 bID   <- typeID b           -- return type of function
-                 pure (asIDs, bID)
-            )
-            ( \ (asIDs, bID) 
-                  -> mkTyConInstruction ( Arg bID $ toArgs asIDs )
-            )
-
-        SPIRV.Array l a ->
-          createRec _knownPrimTy
-            ( do lgID  <- constID l -- array size is the result of a constant instruction
-                 eltID <- typeID  a --     as opposed to being a literal number
-                 pure (eltID, lgID) -- (I suppose this is to do with specialisation constants)
-            )
-            ( \(eltID, lgId)
-                -> mkTyConInstruction ( Arg eltID $ Arg lgId EndArgs ) 
-            )
-
-        SPIRV.RuntimeArray a ->
-          createRec _knownPrimTy
-            ( typeID a )
-            ( \eltID -> mkTyConInstruction ( Arg eltID EndArgs ) )
-
-        SPIRV.Unit    -> create _knownPrimTy ( mkTyConInstruction EndArgs )
-        SPIRV.Boolean -> create _knownPrimTy ( mkTyConInstruction EndArgs )
-
-        SPIRV.Scalar (SPIRV.Integer s w)
-          -> create _knownPrimTy 
-                ( mkTyConInstruction 
-                  ( Arg (SPIRV.width w)
-                  $ Arg (SPIRV.signedness s) EndArgs
-                  )
-                )
-
-        SPIRV.Scalar (SPIRV.Floating w)
-          -> create _knownPrimTy 
-                ( mkTyConInstruction ( Arg (SPIRV.width w) EndArgs ) )
-
-        SPIRV.Struct as
-          -> createRec _knownPrimTy
-                ( traverse (typeID . snd) as ) -- return IDs of struct member types
-                ( \eltIDs structTyID 
-                    -> do let labelledElts :: [ (Word32, Text) ]
-                              labelledElts
-                                = ( zipWith
-                                    ( \i (k,_) -> (i,k) )
-                                    [0..]
-                                    as
-                                  )
-
-                          -- add annotations: name of each struct field
-                          traverse_
-                            ( uncurry (addMemberName structTyID) )
-                            labelledElts
-
-                          -- workaround for builtin decoration complexities:
-                          -- add "builtin" decorations when relevant
-                          --   (for gl_in, gl_out, gl_perVertex)
-                          ctxt <- use _functionContext
-                          case ctxt of
-                            EntryPoint stage _
-                              | stage `elem` [ SPIRV.TessellationControl
-                                             , SPIRV.TessellationEvaluation
-                                             , SPIRV.Geometry
-                                             ]
-                              -> traverse_
-                                  ( \case { (i, "gl_Position"  )
-                                              -> addMemberDecoration
-                                                    structTyID
-                                                    i
-                                                    ( SPIRV.Builtin SPIRV.Position  )
-                                          ; (i, "gl_PointSize" )
-                                              -> addMemberDecoration
-                                                    structTyID
-                                                    i
-                                                    ( SPIRV.Builtin SPIRV.PointSize )
-                                          ; _ -> pure ()
-                                          }
-                                  )
-                                  labelledElts
-                            _ -> pure ()
-
-                          -- declare the type
-                          mkTyConInstruction (toArgs eltIDs) structTyID
-                )
-
-        SPIRV.Pointer storage a ->
-          createRec _knownPrimTy
-            ( typeID a )
-            ( \ tyID -> mkTyConInstruction
-                          ( Arg storage $ Arg tyID EndArgs )
-            )
-
-  where _knownPrimTy :: Lens' CGState (Maybe Instruction)
-        _knownPrimTy = _knownType ty
-
-        mkTyConInstruction :: Args -> ID -> m Instruction
-        mkTyConInstruction flds v
-          = pure 
-              Instruction
-                { operation = SPIRV.tyOp ty
-                , resTy     = Nothing
-                , resID     = Just v
-                , args      = flds
-                }
-
--- get the ID for a given constant, or create one if none exist
--- this is the crucial location where we make use of singletons to perform type-case
-constID :: forall m a.
-           ( MonadState CGState m
-           , MonadFresh ID m
-           , MonadError Text m
-           , PrimTy a
-           )
-        => a -> m ID
-constID a =
-  tryToUseWith _knownAConstant
-    ( fromJust . resID ) -- constant definition instructions always have a result ID
-    do resTyID <- typeID (primTy @a) -- start off by getting an ID for the type!
-       let mkConstantInstruction 
-             :: SPIRV.Op.Operation -> Args -> ID -> m Instruction
-           mkConstantInstruction op flds v
-             = pure 
-                 Instruction
-                   { operation = op
-                   , resTy     = Just resTyID
-                   , resID     = Just v
-                   , args      = flds
-                   }
-       case primTySing @a of
-
-        SMatrix {} ->
-          createRec _knownAConstant
-            ( traverse constID . unM . transpose $ a ) -- get the ID for each column
-            ( \ cols -> 
-                  mkConstantInstruction 
-                    SPIRV.Op.ConstantComposite 
-                    ( toArgs cols )
-            )
-
-        SVector {} ->
-          createRec _knownAConstant
-            ( traverse constID a ) -- get the result ID for each component
-            ( \ eltIDs -> 
-                  mkConstantInstruction 
-                    SPIRV.Op.ConstantComposite
-                    (toArgs eltIDs)
-            )
-
-        SScalar {}
-          -> create _knownAConstant
-              ( mkConstantInstruction
-                  SPIRV.Op.Constant
-                  ( Arg a EndArgs )
-              )
-
-        SUnit
-          -> pure (ID 0) -- should not be used 
-            {- create _knownAConstant
-                ( mkConstantInstruction
-                    SPIRV.Op.ConstantNull
-                    EndArgs
-                )
-              -}
-              {-
-              throwError
-                "constId: called on Unit type.\n\
-                \Unit has a unique value, \
-                \and as such does not need to be constructed."
-              -}
-
-        SBool -> 
-          create _knownAConstant
-            ( mkConstantInstruction
-                ( if a
-                  then SPIRV.Op.ConstantTrue
-                  else SPIRV.Op.ConstantFalse
-                )
-                EndArgs
-            )
-
-        SRuntimeArray {} ->
-            throwError
-              "constID: cannot construct runtime arrays.\n\
-              \Runtime arrays are only available through uniforms."
-        
-        SArray {} ->
-          createRec _knownAConstant
-            ( traverse constID a )
-            ( \ eltIDs ->
-                  mkConstantInstruction
-                    SPIRV.Op.ConstantComposite
-                    ( toArgs eltIDs )
-            )
-        
-        SStruct {} ->
-          createRec _knownAConstant
-            ( traverseStruct constID a :: m [ID] )
-            ( \ eltIDs ->
-                  mkConstantInstruction
-                    SPIRV.Op.ConstantComposite
-                    ( toArgs eltIDs )
-            )
-
-  where _knownAConstant :: Lens' CGState (Maybe Instruction)
-        _knownAConstant = _knownConstant ( aConstant a )
-
-builtinID :: (MonadState CGState m, MonadFresh ID m)
-          => SPIRV.Stage -> Text -> Text -> m ID
-builtinID stage stageName builtinName =
-  tryToUse ( _builtin stage stageName builtinName )
-    id
-    pure
-
--- left-biased semigroup operation
-infixl 6 <<?>
-(<<?>) :: forall x. Maybe x -> Maybe x -> Maybe x
-(<<?>) = coerce ( (<>) @(Maybe (First x)) )
-
-bindingID :: ( MonadState CGState m
-             , MonadReader CGContext m
-             , MonadError Text m
-             , MonadFresh ID m
-             ) => Text -> m (ID, SPIRV.PrimTy)
-bindingID varName
-  = do  ctxt <- use _functionContext
-        case ctxt of
-          EntryPoint stage stageName
-            | Just ptrTy <- lookup varName (stageBuiltins stage)
-            -> do builtin <- builtinID stage stageName varName
-                  -- note that 'builtinID' sets the necessary decorations for the builtin
-                  pure (builtin, ptrTy)
-                
-          _ -> do -- obtain the binding ID
-                  loc     <- use ( _localBinding varName )
-                  known   <- use ( _knownBinding varName )
-                  glob    <- globalID varName
-
-                  bd@(bdID,_)
-                      <- note
-                          ( "codeGen: no binding with name " <> varName )
-                          ( loc <<?> known <<?> glob )
-
-                  -- add the user decorations for this binding if necessary
-                  decorations <- fmap snd <$> view ( _userGlobal varName )
-                  case decorations of
-                    Nothing   -> pure ()
-                    Just decs -> addDecorations bdID decs
-
-                  -- return the binding ID
-                  pure bd
-
-addMemberName :: MonadState CGState m 
-              => ID -> Word32 -> Text -> m ()
-addMemberName structTyID index name
-  = modifying _names
-      ( Set.insert (structTyID, Right (index,name)) )
-
-addDecorations :: MonadState CGState m
-               => ID -> Set (SPIRV.Decoration Word32) -> m ()
-addDecorations bdID decs
-  = modifying ( _decorate bdID)
-      ( Just . maybe decs (Set.union decs) )
-
-addMemberDecoration :: MonadState CGState m
-                    => ID -> Word32 -> SPIRV.Decoration Word32 -> m ()
-addMemberDecoration structID index dec
-  = modifying ( _memberDecorate structID index )
-      ( Just . maybe (Set.singleton dec) (Set.insert dec) )
-
-globalID :: ( MonadState CGState m
-            , MonadReader CGContext m
-            , MonadFresh ID m
-            )
-         => Text -> m ( Maybe (ID, SPIRV.PrimTy) )
-globalID globalName
-  = do glob <- view ( _userGlobal globalName )
-       case glob of
-         Nothing
-           -> pure Nothing
-         Just (ptrTy, _)
-           -> do ident <- tryToUse ( _usedGlobal globalName )
-                            fst
-                            ( pure . ( , ptrTy ) )
-                 pure ( Just (ident, ptrTy) )
-
-stringLit :: (MonadState CGState m, MonadFresh ID m)
-          => Text -> m ID
-stringLit literal =
-  tryToUse ( _knownStringLit literal )
-    id
-    pure
-
-declareCapabilities :: ( MonadState CGState m, Traversable t)
-                    => t SPIRV.Capability -> m ()
-declareCapabilities
-  = traverse_ ( \cap -> assign ( _neededCapability cap ) (Just ()) )

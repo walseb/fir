@@ -40,6 +40,7 @@ import CodeGen.Instruction
   )
 import CodeGen.Monad(note)
 import Data.Binary.Class.Put(Put(put))
+import Data.Map.Traverse(traverseWithKey_)
 import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.Decoration    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV
@@ -47,11 +48,6 @@ import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Stage         as SPIRV
-
-----------------------------------------------------------------------------
-
-traverseWithKey_ :: Applicative t => (k -> v -> t a) -> Map k v -> t ()
-traverseWithKey_ f = Map.foldrWithKey (\k a b -> f k a *> b) (pure ())
 
 ----------------------------------------------------------------------------
 
@@ -282,10 +278,6 @@ putTypesAndConstants as bs
   = traverse_ ( putInstruction Map.empty )
       ( sortBy (comparing resID) $ Map.elems as ++ Map.elems bs )
 
-
--- TODO: debug instructions
--- annotations (decorations)
-
 putGlobals :: Map SPIRV.PrimTy Instruction
            -> Map Text (ID, SPIRV.PrimTy)          
            -> ExceptT Text Binary.PutM ()
@@ -310,4 +302,3 @@ putGlobals typeIDs
                     , args  = Arg storage EndArgs
                     }
       )
-                

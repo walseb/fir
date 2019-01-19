@@ -1,8 +1,10 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes       #-}
 
 module CodeGen.State where
 
 -- base
+import Data.Foldable(traverse_)
 import Data.Maybe(fromMaybe)
 import Data.Word(Word32)
 
@@ -17,7 +19,11 @@ import Control.Lens
   ( Lens', lens
   , at
   , view, set
+  , assign, modifying
   )
+
+-- mtl
+import Control.Monad.State(MonadState)
 
 -- text-utf8
 import Data.Text(Text)
@@ -290,3 +296,30 @@ _userEntryPoint entryPoint = _userEntryPoints . at entryPoint
 
 _debugMode :: Lens' CGContext Bool
 _debugMode = lens debugMode ( \c v -> c { debugMode = v } )
+
+
+-----------------------------------------------------------------------------
+-- various utility functions to update state
+
+addCapabilities :: ( MonadState CGState m, Traversable t)
+                    => t SPIRV.Capability -> m ()
+addCapabilities
+  = traverse_ ( \cap -> assign ( _neededCapability cap ) (Just ()) )
+
+addMemberName :: MonadState CGState m 
+              => ID -> Word32 -> Text -> m ()
+addMemberName structTyID index name
+  = modifying _names
+      ( Set.insert (structTyID, Right (index,name)) )
+
+addDecorations :: MonadState CGState m
+               => ID -> Set (SPIRV.Decoration Word32) -> m ()
+addDecorations bdID decs
+  = modifying ( _decorate bdID)
+      ( Just . maybe decs (Set.union decs) )
+
+addMemberDecoration :: MonadState CGState m
+                    => ID -> Word32 -> SPIRV.Decoration Word32 -> m ()
+addMemberDecoration structID index dec
+  = modifying ( _memberDecorate structID index )
+      ( Just . maybe (Set.singleton dec) (Set.insert dec) )

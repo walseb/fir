@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module CodeGen.Declarations where
+module CodeGen.Put where
 
 -- binary
 import qualified Data.Binary.Put as Binary
@@ -36,7 +36,21 @@ import CodeGen.Monad(CGMonad, runCGMonad, runExceptTPutM)
 import CodeGen.State(CGState(..), CGContext(..), initialState)
 
 ----------------------------------------------------------------------------
--- writing the declarations at the top, after codegen is finished
+-- emit SPIR-V assembly (after code generation)
+     
+putASM :: CGContext -> CGMonad r -> Either Text ByteString
+putASM context mr
+  = case runCGMonad context initialState mr of
+
+      Right (_, cgState, body)
+        -> case runExceptTPutM $ putDecs context cgState of
+              Right ((), decs) -> Right ( decs <> body )
+              Left err         -> Left err
+
+      Left err -> Left err
+
+----------------------------------------------------------------------------
+-- floating various declarations to the top
 
 putDecs :: CGContext -> CGState -> ExceptT Text Binary.PutM ()
 putDecs 
@@ -65,14 +79,3 @@ putDecs
               putTypesAndConstants    knownTypes knownConstants
 
     putGlobals knownTypes usedGlobals
-     
-putASM :: CGContext -> CGMonad r -> Either Text ByteString
-putASM context mr
-  = case runCGMonad context initialState mr of
-
-      Right (_, cgState, body)
-        -> case runExceptTPutM $ putDecs context cgState of
-              Right ((), decs) -> Right ( decs <> body )
-              Left err         -> Left err
-
-      Left err -> Left err

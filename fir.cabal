@@ -19,17 +19,24 @@ library
       , Math.Linear
 
     other-modules:
-        CodeGen.Binary
+        CodeGen.AST
+      , CodeGen.Binary
+      , CodeGen.CFG
       , CodeGen.CodeGen
-      , CodeGen.Declarations
+      , CodeGen.Functions
+      , CodeGen.IDs
       , CodeGen.Instruction
       , CodeGen.Monad
+      , CodeGen.Optics
+      , CodeGen.Phi
+      , CodeGen.Put
       , CodeGen.State
       , Control.Arrow.Strength
       , Control.Monad.Indexed
       , Control.Type.Optic
       , Data.Binary.Class.Put
       , Data.Function.Variadic
+      , Data.Map.Traverse
       , Data.ProxyProxy
       , Data.Type.Map
       , Deriving.Prelude

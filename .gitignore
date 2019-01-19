@@ -8,5 +8,6 @@ dist-newstyle/
 *.fail
 
 shaders/
+fir-examples/
 
 TODO.txt
