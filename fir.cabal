@@ -1,12 +1,63 @@
 name:           fir
 version:        0.0.0
-synopsis:       FIR
-category:       graphics
+synopsis:       An EDSL that compiles to SPIR-V for graphics programming on the GPU in Haskell.
+category:       Graphics
 author:         Sam Derbyshire
 maintainer:     Sam Derbyshire
 license:        MIT
 build-type:     Simple
 cabal-version:  >= 1.10
+description:
+  __FIR__ is an EDSL for writing GPU shader code in Haskell, compiled to __@SPIR-V@__.
+  Requires GHC >= 8.6.
+  .
+  With this library, shader programs can be written using @do@ notation.
+  Such programs are then transformed into abstract syntax trees (ASTs),
+  before being compiled to @SPIR-V@ assembly.
+  .
+  In effect, this replaces @GLSL@ as a shader language.
+  This means the Haskell type-system and type-checker are put to use
+  in verifying programs at compile time.
+  .
+  In addition, programs can be manipulated as Haskell objects,
+  which allows them to be combined in various ways.
+  .
+  An overview of the library is include in the __readme__ file.
+  .
+  See the @fir-examples@ project subdirectory for fleshed out examples,
+  which include using the @vulkan-api@ package for rendering.
+  .
+  The exposed modules are:
+  .
+  * __"FIR"__: the main functionality of the library (creating and compiling programs),
+  .
+  * __"FIR.Labels"__: optional imperative-like syntax using /OverloadedLabels/,
+  .
+  * __"Math.Linear"__: vectors, matrices and operations on them, as used by this library.
+  .
+  .
+  Important types used by this library:
+  .
+  * __@AST a@__: main AST datatype, see "FIR.AST". A value of type @AST a@ can be thought of as (pure) GPU code
+  returning a value of type @a@.
+  * __@Codensity AST (AST a := j) i@__: type of a monadic expression,
+  starting in state @i@ and ending in state @j@.
+  This state is used to keep track of which objects are in scope
+  (such as variables, constants, functions, etc).
+  A value of this type can be thought of as stateful GPU code.
+  Uses McBride-style indexed monads, see "Control.Monad.Indexed".
+  * __@Program defs a@__: a shader program that can be compiled to @SPIR-V@, and returns a value of type @a@.
+  @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc), and top-level functions.
+  See "FIR.Program".
+  .
+  .
+  It is recommended to install the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/),
+  as it provides useful executables to manipulate @SPIR-V@ assembly, such as
+  @spirv-dis@ for viewing, @spirv-opt@ for optimising,
+  and @spirv-cfg@ for generating control flow graphs.
+  It is also possible to use @spirv-cross@ to automatically generate @GLSL@ code
+  from @SPIR-V@.
+
 
 library
 
@@ -19,7 +70,7 @@ library
       , Math.Linear
 
     other-modules:
-      CodeGen.Binary
+        CodeGen.Binary
       , CodeGen.CFG
       , CodeGen.CodeGen
       , CodeGen.Functions

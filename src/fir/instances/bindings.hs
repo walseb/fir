@@ -1,10 +1,31 @@
+{-# OPTIONS_HADDOCK ignore-exports #-}
+
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module FIR.Instances.Bindings where
+{-|
+Module: FIR.Instances.Bindings
+
+Auxiliary helper module providing checks for stateful operations,
+(such as 'FIR.Instances.Codensity.get', 'FIR.Instances.Codensity.put'),
+using type families with custom type errors.
+
+These are used, for instance, to prevent any name from being bound twice,
+or accessing a binding that does not exist.
+
+-}
+
+module FIR.Instances.Bindings
+  ( Get
+  , Put
+  , ValidDef
+  , ValidFunDef
+  , ValidEntryPoint
+  )
+  where
 
 -- base
 import Data.Kind(Type)
@@ -29,14 +50,13 @@ import FIR.Binding
 import FIR.Builtin(StageBuiltins)
 import SPIRV.Stage(Stage)
 
-
-------------------------------------------------------------------------------------------------
--- type families to check whether put/get/... operations are valid
--- example: prevent any name being bound twice
-
 -------------------------------------------------
--- constraints for 'get'
+-- * Constraints for 'FIR.Instances.Codensity.get'
 
+-- | Compute the type of a binding with a given name.
+--
+-- Returns a type error if no binding by that name exists,
+-- or if the binding is not readable.
 type family Get (k :: Symbol) (i :: BindingsMap) :: Type where
   Get k i = GetBinding k i (Lookup k i)
 
@@ -57,8 +77,12 @@ type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :
   GetBinding  _ _ ('Just bd) = BindingType bd -- functions
 
 -------------------------------------------------
--- constraints for 'put'
+-- * Constraints for 'FIR.Instances.Codensity.put'
 
+-- | Compute the type of a binding with a given name.
+--
+-- Returns a type error if no binding by that name exists,
+-- or if the binding is not readable.
 type family Put (k :: Symbol) (i :: BindingsMap) :: Type where
   Put k i = PutBinding k i (Lookup k i)
 
@@ -84,8 +108,11 @@ type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding
         )
 
 -------------------------------------------------
--- constraints for 'def'
+-- * Constraints for 'FIR.Instances.Codensity.def'
 
+-- | Check that it is valid to define a new binding with given name.
+--
+-- Returns a type error if a binding by this name already exists.
 type family ValidDef (k :: Symbol) (i :: BindingsMap) :: Bool where
   ValidDef k i = NotAlreadyDefined k i (Lookup k i)
 
@@ -98,13 +125,20 @@ type family NotAlreadyDefined (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe 
     )
 
 -------------------------------------------------
--- constraints for 'fundef'
+-- * Constraints for 'FIR.Instances.Codensity.fundef'
 
+-- | Check that a function definition is valid.
+--
+-- Returns a type error if:
+-- 
+--   * function name is already in use,
+--   * one of the function's argument is a function (higher order functions are not allowed natively)
+--   * another function is defined inside the function (nested functions are not allowed natively)
 type family ValidFunDef 
       ( k  :: Symbol      )  -- name of function to be defined
       ( as :: BindingsMap )  -- function arguments
       ( i  :: BindingsMap )  -- variables in scope
-      ( l  :: BindingsMap )  -- l contains the above three sets, together with the function's local variables
+      ( l  :: BindingsMap )  -- @l@ contains the above three sets, together with the function's local variables
       :: Bool where          -- ( it is the total state at the end of the function definition )  
   ValidFunDef k as i l
       = NoFunctionNameConflict k as i
@@ -115,7 +149,6 @@ type family ValidFunDef
   --        │     local variables ├━━━━━┘
   --        │
   --        └━━┤ check that none of the function arguments or local variables are themselves functions
-
 
 
 type family NotHigherOrder (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap) :: Bool where
@@ -157,8 +190,14 @@ type family NoFunctionNameConflict
   NoFunctionNameConflict _ _ _ 'Nothing 'True = 'True
 
 -------------------------------------------------
--- constraints for 'entryPoint'
+-- * Constraints for 'FIR.Instances.Codensity.entryPoint'
 
+-- | Check that an entry-point definition is valid.
+--
+-- Returns a type error if:
+--
+--   * a function is defined within the entry-point
+--   * the name of a builtin for this entry-point is already in use
 type family ValidEntryPoint
               ( s :: Stage       )
               ( i :: BindingsMap )

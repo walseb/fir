@@ -92,7 +92,7 @@ type family Zip (msg :: ErrorMessage) (as :: [Type]) (bs :: [Type]) = (r :: [Typ
   Zip msg (a ': as) (b ': bs) = (a,b) ': Zip msg as bs
   Zip msg _ _ = TypeError msg
 
-type family Append (as :: [k]) (b :: k) = (r :: [k]) {-| r -> as b-} where
+type family Append (as :: [k]) (b :: k) = (r :: [k]) {- -- | r -> as b -} where
   Append '[]       b = '[b]
   Append (a ': as) b = a ': Append as b
 

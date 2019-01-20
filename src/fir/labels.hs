@@ -11,7 +11,48 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module FIR.Labels where
+{-|
+Module: FIR.Labels
+Description: @---@ __Optional__ /imperative-style/ syntax using overloaded labels.
+
+Imperative-like syntax for variable assignment using overloaded labels. /Completely optional./
+
+To use this functionality, import this module, activating /OverloadedLabels/ and /RebindableSyntax/.
+You'll most likely want to use /TypeApplications/ too.
+
+Usages of label syntax, such as @#foo@, will be desugared
+using the 'fromLabel' method of the 'IsLabel' class in this module.
+
+This allows for notation such as:
+
+> do
+>   #x #= (1 :: Float)  -- defines a new variable named 'x', initialised with value (1 :: Float)
+> 
+>   #x .= 2             -- sets the value of variable 'x' to 2
+> 
+>   #x %= (*3)          -- modifies the value of variable 'x' by multiplying it by 3
+> 
+>   #y @Float #=! 7     -- defines a new constant named 'y', initialised with value (7 :: Float)
+> 
+>   z <- #x + #y
+>   -- 'z' then has value 6+7 = 13
+
+In the first four examples, the overloaded labels are desugared into standalone labels,
+which are then consumed by the infix operators @#=@, @.=@, @%=@ and @#=!@.
+
+In the last example, the labels are desugared directly into values,
+within the context of the indexed monad of the @do@ block.
+
+-}
+
+
+module FIR.Labels
+ ( -- * Overloaded labels
+   IsLabel(fromLabel)
+   -- * Infix operators
+ , (#=), (#=!), (.=), (%=)
+ )
+ where
 
 -- base
 import Data.Kind(Type)
@@ -30,6 +71,7 @@ import FIR.Instances.Codensity(def, use, assign, modifying)
 import FIR.Prim.Singletons(PrimTy)
 
 --------------------------------------------------------------------------
+-- overloaded labels
 
 data Label (k :: Symbol) (a :: Type) = Label
 
@@ -42,6 +84,9 @@ class IsLabel k a (usage :: LabelUsage) v
     where
   fromLabel :: GHC.Stack.HasCallStack => v
 
+-- | Use a label symbolically.
+--
+-- That is, @#foo@ stands for a standalone label.
 instance ( KnownSymbol k
          , PrimTy a
          , usage ~ Symbolic
@@ -49,6 +94,10 @@ instance ( KnownSymbol k
        => IsLabel k a usage (Label k a) where
   fromLabel = Label @k @a
 
+-- | Use a label as a monadic value.
+--
+-- That is, @#foo@ stands for the value bound at @"foo"@
+-- in the context of an indexed state monad.
 instance ( KnownSymbol k, PrimTy a
          , a ~ Get k i
          , r ~ (AST a := i)
@@ -57,11 +106,14 @@ instance ( KnownSymbol k, PrimTy a
       => IsLabel k a usage (Codensity AST r i) where
   fromLabel = use @(Name k :: Optic '[] i a)
 
+--------------------------------------------------------------------------
+-- infix operators
 
 infixr 4 #=
 infixr 4 #=!
 infixr 4 .=
 
+-- | Define a new variable using a label.
 (#=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
@@ -73,6 +125,7 @@ infixr 4 .=
      -> Codensity AST (AST a := Insert k (Var RW a) i) i
 _ #= a = def @k @RW a
 
+-- | Define a new constant using a label.
 (#=!) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
@@ -84,7 +137,7 @@ _ #= a = def @k @RW a
      -> Codensity AST (AST a := Insert k (Var R a) i) i
 _ #=! a = def @k @R a
 
-
+-- | Set the value of a variable with given label.
 (.=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
@@ -96,6 +149,7 @@ _ #=! a = def @k @R a
      -> Codensity AST (AST () := i) i
 _ .= a = assign @(Name k :: Optic '[] i a) a
 
+-- | Modify a variable with given label using a function.
 (%=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k

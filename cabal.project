@@ -1,6 +1,0 @@
-packages: .
-        , tree-view
-
---with-compiler: C:\Users\Sam\AppData\Local\Programs\stack\x86_64-windows\ghc-8.4.3\bin\ghc.exe
---with-compiler: C:\ghc-build\inplace\bin\ghc-stage2.exe
-with-compiler: C:\ghc\ghc-8.6.2\bin\ghc.exe

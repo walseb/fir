@@ -1,3 +1,5 @@
+{-# OPTIONS_HADDOCK ignore-exports #-}
+
 {-# LANGUAGE AllowAmbiguousTypes  #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -8,9 +10,56 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-|
+Module: FIR
+Description: @---@ __Main module, re-exports what's needed to write programs and compile to SPIR-V.__
+
+This module re-exports the main functionality needed to use the library.
+
+For an overview of the library, refer to the project __readme__.
+
+To illustrate the syntax of this library, the example of a trivial fragment shader follows.
+
+@
+\{\-\# LANGUAGE BlockArguments   \#\-\} -- cleaner syntax for 'do' blocks (optional)
+\{\-\# LANGUAGE DataKinds        \#\-\} -- for datatype promotion and type-level literals
+\{\-\# LANGUAGE RebindableSyntax \#\-\} -- 'do' notation to create ASTs with indexed monads
+\{\-\# LANGUAGE TypeApplications \#\-\} -- to specify type-level arguments
+\{\-\# LANGUAGE TypeOperators    \#\-\} -- for type operators such as ':->, which stands for key/value assignment
+
+import FIR
+import Math.Linear -- for vectors
+
+-- Specify the input/output of the shader, with memory locations (and other interface parameters).
+-- This consists of a type level map of top-level definitions.
+type FragmentDefs = 
+  '[ "in_colour"  ':-> Global Input  (V 4 Float) '[ Location 0 ] -- input  (varying) of type V 4 Float and memory location 0
+   , "out_colour" ':-> Global Output (V 4 Float) '[ Location 0 ] -- output (varying) of type V 4 Float and memory location 0
+   ]
+-- Other definitions can be declared: global constants (uniforms, push constants), and (top-level) functions.
+
+-- Simple fragment shader.
+fragment :: Program FragmentDefs ()
+fragment = Program do
+  entryPoint \@"main" \@Fragment do
+    col <- get \@"in_colour"
+    put \@"out_colour" col
+@
+
+This fragment shader can then be compiled using:
+
+> compile filePath flags fragment
+
+Where @filePath@ is the desired output filepath, and @flags@ is a list of 'CompilerFlag's.
+
+
+More meaningful examples can be found in the @fir-examples@ subdirectory of the project's repository.
+
+-}
+
 module FIR 
-  ( draw, compile
-  , Arg(Debug, NoCode)
+  ( DrawableProgram(draw), compile
+  , CompilerFlag(Debug, NoCode)
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
   , (Control.Type.Optic.:*:)
@@ -55,15 +104,53 @@ module FIR
   , SPIRV.FunctionControl.SideEffects(..)
   , SPIRV.FunctionControl.FunctionControl
   , SPIRV.Stage.Stage(..)
-  , SPIRV.Storage.StorageClass(Input, Output, Uniform, UniformConstant, PushConstant)
+  , SPIRV.Storage.StorageClass
+      ( Input, Output -- not exporting 'Function' storage class
+      , Uniform, UniformConstant, PushConstant
+      )
+
+  -- re-exporting parts of base
+  , Prelude.Bool(..), Prelude.otherwise
+  , Prelude.Maybe(..), Prelude.maybe
+  , Prelude.Either(..), Prelude.either
+  , Prelude.fst, Prelude.snd
+  , Prelude.curry, Prelude.uncurry
+  , Prelude.Float, Prelude.Double
+  , Prelude.subtract
+  , Prelude.Semigroup(..), Prelude.Monoid(..)
+  , Prelude.id, Prelude.const, (Prelude..)
+  , Prelude.flip, (Prelude.$)
+  , Prelude.until, Prelude.asTypeOf
+  , Prelude.error, Prelude.errorWithoutStackTrace
+  , Prelude.undefined
+  , Prelude.seq, (Prelude.$!)
+  , Prelude.IO
+  , Prelude.FilePath
+
+  -- numeric datatypes
+  , Data.Word.Word8
+  , Data.Word.Word16
+  , Data.Word.Word32
+  , Data.Word.Word64
+  , Data.Int.Int8
+  , Data.Int.Int16
+  , Data.Int.Int32
+  , Data.Int.Int64
+  , Numeric.Half.Half
+
   ) where
 
 -- base
 import qualified Control.Monad as Monad (unless)
 import Prelude
+import Data.Word(Word8, Word16, Word32, Word64)
+import Data.Int(Int8, Int16, Int32, Int64)
 
 -- bytestring
 import qualified Data.ByteString.Lazy as ByteString
+
+-- half
+import Numeric.Half(Half)
 
 -- tree-view
 import Data.Tree.View(drawTree)
@@ -97,6 +184,9 @@ import SPIRV.Storage
 
 ------------------------------------------------
 
+-- | Functionality for drawing a program AST as a tree.
+--
+-- Can be used on whole programs, or on snippets of code in the AST indexed monad.
 class DrawableProgram prog where
   draw :: prog -> IO ()
 
@@ -109,22 +199,23 @@ instance ( DrawableProgram
       where
   draw (Program prog) = draw prog
 
-
-data Arg
-  = NoCode
-  | Debug
+-- | Compiler flags.
+data CompilerFlag
+  = NoCode -- ^ Don't emit any SPIR-V code.
+  | Debug  -- ^ Include additional debug instructions, such as source-code line-number annotations.
   deriving ( Prelude.Eq, Show )
 
+-- | Compiles a program, saving the SPIR-V assembly at the given filepath.
 compile :: forall defs a. KnownDefinitions defs
         => FilePath
-        -> [Arg]
-        -> Program defs a
+        -> [CompilerFlag]
+        -> Program defs a 
         -> IO ( Either Text Text )
-compile filePath args (Program program) = case runCodeGen cgContext (toAST program) of
+compile filePath flags (Program program) = case runCodeGen cgContext (toAST program) of
     Left  err -> Prelude.pure ( Left err )
     Right bin
-      ->  do  Monad.unless ( NoCode `elem` args )
+      ->  do  Monad.unless ( NoCode `elem` flags )
                 ( ByteString.writeFile filePath bin )
               Prelude.pure ( Right "OK" )
   where cgContext :: CGContext
-        cgContext = (context @defs) { debugMode = Debug `elem` args }
+        cgContext = (context @defs) { debugMode = Debug `elem` flags }

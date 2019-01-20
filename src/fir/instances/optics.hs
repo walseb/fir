@@ -77,8 +77,6 @@ import Math.Linear(V((:.)), M(M), (^!), at)
 ----------------------------------------------------------------------
 -- singletons
 
-
-
 data SOptic (optic :: Optic i s a) :: Type where
   -- split up run-time indexing: SPIR-V supports two different cases
   --  - vectors with VectorExtractDynamic / VectorInsertDynamic
@@ -1046,11 +1044,6 @@ type family Swizzle (swizzle :: [Symbol]) :: Optic '[] (V n a) (SwizzleReturn a 
          :$$: Text "Supported swizzle characters: \"xyzw\", \"rgba\", \"stpq\"."
          :$$: Text "Note: swizzle must be a type-level list of single character symbols."
         )
-  Swizzle '[k1,k2]
-    = ( ProductO
-          ( Swizzle '[k1] )
-          ( Swizzle '[k2] )
-      )
   Swizzle (k1 ': k2 ': ks)
     = ( ProductO
           ( Swizzle '[k1]        )
@@ -1058,10 +1051,14 @@ type family Swizzle (swizzle :: [Symbol]) :: Optic '[] (V n a) (SwizzleReturn a 
       )
 
 {-
+-- comment these out for namespace reasons
+
 type X = Swizzle '["x"]
 type Y = Swizzle '["y"]
 type Z = Swizzle '["z"]
 type W = Swizzle '["w"]
+
+-}
 
 type XX = Swizzle '["x","x"]
 type XY = Swizzle '["x","y"]
@@ -1401,4 +1398,3 @@ type WWWX = Swizzle '["w","w","w","x"]
 type WWWY = Swizzle '["w","w","w","y"]
 type WWWZ = Swizzle '["w","w","w","z"]
 type WWWW = Swizzle '["w","w","w","w"]
--}

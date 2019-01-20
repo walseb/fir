@@ -46,6 +46,7 @@ data OpticalNode
   = Leaf     ID
   | Continue ID OpticalTree
   | Combine  [OpticalTree]
+  | Join     OpticalTree
 
 data OpticalTree = Node IndexSafeness OpticalNode
 
@@ -58,19 +59,12 @@ instance Semigroup IndexSafeness where
   Safe <> x = x
   _    <> _ = Unsafe
 
-composedIndices
-  :: SLength is
-  -> ASTs (is :++: js)
-  -> (ASTs is, ASTs js)
+composedIndices :: SLength is -> ASTs (is :++: js) -> (ASTs is, ASTs js)
 composedIndices SZero js = ( NilAST, js )
 composedIndices (SSucc tail_is) (k `ConsAST` ks)
   = first ( k `ConsAST` ) (composedIndices tail_is ks)
 
-combinedIndices
-  :: SLength is
-  -> SLength js
-  -> ASTs(ProductIndices is js)
-  -> (ASTs is, ASTs js)
+combinedIndices :: SLength is -> SLength js -> ASTs (ProductIndices is js) -> (ASTs is, ASTs js)
 combinedIndices SZero SZero _ = ( NilAST, NilAST )
 combinedIndices SZero (SSucc _) ks = ( NilAST, ks )
 combinedIndices (SSucc _) SZero ks = ( ks, NilAST )
@@ -105,6 +99,8 @@ opticalTree is (SComposeO lg1 opt1 opt2)
             = Node (safe1 <> safe2)
             . Combine
             $ map (`continue` next) ts
+          continue (Node safe1 (Join o)) next@(Node safe2 _)
+            = error "opticalTree: continue todo"
 opticalTree is (SProductO lg1 lg2 o1 o2)
   = do  let (is1, is2) = combinedIndices lg1 lg2 is
         t1 <- opticalTree is1 o1

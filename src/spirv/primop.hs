@@ -113,10 +113,10 @@ data MatPrimOp
 
 data ConvPrimOp
   = Convert
-  -- | CTruncate
-  -- | CRound
-  -- | CCeiling
-  -- | CFloor
+  -- -- | CTruncate
+  -- -- | CRound
+  -- -- | CCeiling
+  -- -- | CFloor
   deriving Show
 
 opAndReturnType :: PrimOp -> (Operation, PrimTy)

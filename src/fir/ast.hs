@@ -6,7 +6,28 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module FIR.AST where
+{-|
+Module: FIR.AST
+
+Representation of programs using abstract syntax trees.
+
+The user interface to the AST is through typeclass overloading,
+see "FIR.Instances.AST" and "FIR.Instances.Codensity".
+
+This AST uses a higher-order abstract syntax representation (HOAS),
+as seen in the paper /Combining Deep and Shallow Embeddings of Domain-Specific Languages/
+by Josef Svenningsson and Emil Axelsson.
+-}
+
+module FIR.AST
+  ( -- * Main AST data type
+    AST(..), ASTs(NilAST, ConsAST)
+    -- * Syntactic typeclass
+  , Syntactic(Internal, toAST, fromAST)
+    -- * Displaying ASTs graphically
+  , toTree
+  )
+  where
 
 -- base
 import Data.Kind(Type)
@@ -44,17 +65,27 @@ import SPIRV.Stage(KnownStage(stageVal))
 ------------------------------------------------------------
 -- main AST data type
 
+-- | AST representation of the EDSL.
 data AST :: Type -> Type where
+
+  -- | Lambda abstraction
   Lam :: {-PrimTy a =>-} (AST a -> AST b) -> AST (a -> b)
+
+  -- | Function application
   (:$) :: AST (a -> b) -> AST a -> AST b
 
+  -- | Haskell-level constants can be embedded into the AST.
   Lit :: PrimTy a => Proxy a -> a -> AST a
+  -- | @SPIR-V@ primitive operations
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
-  -- indexed monadic operations (for the AST itself)
+  -- = Indexed monadic operations (for the AST itself)
+  -- | Indexed /return/
   Return :: AST (a -> (a := i) i)
-  Bind :: AST ( (a := j) i -> (a -> q j) -> q i ) -- angelic bind
+  -- | Indexed /angelic bind/
+  Bind :: AST ( (a := j) i -> (a -> q j) -> q i )
 
+  -- | Defining a new constant/variable.
   Def :: forall k ps a i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
@@ -62,11 +93,12 @@ data AST :: Type -> Type where
         , PrimTy a
         , ValidDef k i ~ 'True
         )
-      => Proxy k
-      -> Proxy ps
+      => Proxy k  -- ^ Name.
+      -> Proxy ps -- ^ Permissions (read,write,...).
       -> AST (    a
                -> (a := Insert k (Var ps a) i) i
              )
+  -- | Defining a new function.
   FunDef :: forall k as b l i.
             ( GHC.Stack.HasCallStack
             , KnownSymbol k
@@ -74,37 +106,42 @@ data AST :: Type -> Type where
             , PrimTy b
             , ValidFunDef k as i l ~ 'True
             )
-         => Proxy k
-         -> Proxy as -- function arguments
-         -> Proxy b
+         => Proxy k  -- ^ Funtion name.
+         -> Proxy as -- ^ Function argument types.
+         -> Proxy b  -- ^ Function return type.
          -> AST (    (b := l) (Union i as)
                   -> (BindingType (Fun as b) := Insert k (Fun as b) i) i
                 )
-  -- entry point: a function definition, with no arguments and Unit return type
-  -- it is given access to addtional builtins
-  -- this function definition is not added to the index of items in scope
-  -- ( it is not allowed to be called )
-  -- TODO: add a special "entry point" binding instead of nothing
+  -- | Defining a new entry point.
+  --
+  -- An entry point is like a function definition with no arguments and Unit return type.
+  -- Code within an entry point is given access to additional builtins.
   Entry :: forall k s l i.
            ( GHC.Stack.HasCallStack
            , KnownSymbol k
            , KnownStage s
            , ValidEntryPoint s i l ~ 'True
            )
-         => Proxy k
-         -> Proxy s
+         => Proxy k -- ^ Entry point name.
+         -> Proxy s -- ^ Entry point stage.
          -> AST (    (() := l) (Union i (StageBuiltins s))
                   -> (() := i) i
                 )
-
+  -- | /Use/ an optic, returning a monadic value read from the (indexed) state.
+  --
+  -- Like @use@ from the lens library.
   Use :: forall optic.
         ( GHC.Stack.HasCallStack, KnownOptic optic, Gettable optic )
-      => SOptic optic -> AST ( User optic )
+      => SOptic optic -- ^ Singleton for the optic.
+      -> AST ( User optic )
+  -- | Assign a new value with an optic.
+  --
+  -- Like @assign@ from the lens library.
   Assign :: forall optic.
         ( GHC.Stack.HasCallStack, KnownOptic optic, Settable optic )
-      => SOptic optic -> AST ( Assigner optic )
+      => SOptic optic -- ^ Singleton for the optic.
+      -> AST ( Assigner optic )
 
-  -- control flow
   If    :: ( GHC.Stack.HasCallStack
            , PrimTy a
            )
@@ -114,10 +151,11 @@ data AST :: Type -> Type where
   While :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (() := j) i -> (() := i) i )
 
+  -- Encapsulate local state.
   Locally :: AST ( (a := j) i -> (a := i) i )
 
-  -- functor, applicative
-  -- passing a singleton representing the functor
+
+  -- (passing a singleton representing the functor)
   Fmap :: PrimTy a
        => SPrimFunc f -> AST ( (a -> b) -> f a -> f b )
   Pure :: SPrimFunc f -> AST ( a -> f a )
@@ -126,7 +164,6 @@ data AST :: Type -> Type where
        -> Proxy a
        -> AST ( f (a -> b) -> f a -> f b )
 
-  -- vectors (and matrices)
   MkVector :: (KnownNat n, PrimTy a)
            => Proxy n
            -> Proxy a
@@ -139,29 +176,30 @@ data AST :: Type -> Type where
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
 
-  -- pairs (for internal use at the moment)
   Pair :: AST ( a -> b -> (a,b) )
   Fst  :: AST ( (a,b) -> a )
   Snd  :: AST ( (a,b) -> b )
 
-  -- used to bypass the type-system by injecting IDs at any type
+  -- | As @SPIR-V@ is based around identifiers,
+  -- this function can be used to create values of any type using their IDs
   MkID :: (ID, SPIRV.PrimTy) -> AST a
 
 ------------------------------------------------
--- syntactic type class (Axelsson, Svenningsson)
 
+-- | Internal data type, mostly used to deal with run-time indices.
+--
+-- The user-facing interface is through variadic functions.
+data ASTs (is :: [Type]) :: Type where
+  NilAST  :: ASTs '[]
+  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
+
+------------------------------------------------
+
+-- | Syntactic type class (Axelsson, Svenningsson).
 class Syntactic a where
   type Internal a
   toAST :: a -> AST (Internal a)
   fromAST :: AST (Internal a) -> a
-
-------------------------------------------------
--- internal data type, mostly used to deal with run-time indices
--- the user-facing interface is through variadic functions
-
-data ASTs (is :: [Type]) :: Type where
-  NilAST  :: ASTs '[]
-  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
 
 ------------------------------------------------
 -- display AST for viewing
@@ -209,4 +247,3 @@ toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )
 
 instance Show (AST a) where
   show = showTree . toTree
-

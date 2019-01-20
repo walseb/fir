@@ -37,13 +37,12 @@ import qualified Data.Text    as Text ( pack, lines
 import qualified Data.Text.IO as Text ( readFile, hPutStrLn )
 
 -- fir
-import FIR ( Arg(NoCode, Debug) )
+import FIR ( CompilerFlag(NoCode, Debug) )
 
 --------------------------------------------------
 
 tests :: [ (FilePath, Test) ]
-tests = [ ( "control" </> "toplevel"     , TypeCheck )
-        , ( "control" </> "loop"         , Validate  )
+tests = [ ( "control" </> "loop"         , Validate  )
         , ( "functor" </> "applicative"  , Validate  )
         , ( "functor" </> "functor"      , Validate  )
         , ( "optics"  </> "good"         , Validate  )
@@ -103,8 +102,8 @@ codeGen, validate :: FilePath -> IO TestOutput
 codeGen  testName = compileTest testName [Debug, NoCode]
 validate testName = compileTest testName [Debug]
 
-compileTest :: FilePath -> [Arg] -> IO TestOutput
-compileTest testName args = do
+compileTest :: FilePath -> [CompilerFlag] -> IO TestOutput
+compileTest testName flags = do
   srcExists <- doesFileExist src
   case srcExists of
     False -> pure ( Failure MissingSource )
@@ -149,10 +148,10 @@ compileTest testName args = do
             -> do removeFile out
                   removeFile err
                   failExists <- doesFileExist test
-                  when ( NoCode `elem` args && failExists ) ( removeFile test )
+                  when ( NoCode `elem` flags && failExists ) ( removeFile test )
           _ -> do removeFile out
                   removeFile err
-        if res /= Success || NoCode `elem` args
+        if res /= Success || NoCode `elem` flags
         then pure res
         else
           do  (val, valHandle) <-
@@ -186,7 +185,7 @@ compileTest testName args = do
         compile =  "compile "
                 <> Text.pack (show spv)
                 <> " "
-                <> Text.pack (show args)
+                <> Text.pack (show flags)
                 <> " program"
 
 typeCheck :: FilePath -> IO TestOutput

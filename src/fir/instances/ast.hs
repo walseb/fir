@@ -1,3 +1,5 @@
+{-# OPTIONS_HADDOCK ignore-exports #-}
+
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise       #-}
 
@@ -19,7 +21,41 @@
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
 
-module FIR.Instances.AST where
+{-|
+Module: FIR.Instances.AST
+
+This module, together with "FIR.Instances.Codensity",
+provides most of the user-facing syntax for constructing
+and manipulating values in the EDSL.
+
+This is done through typeclass overloading, here in the form of
+orphan instances for types of the form @AST a@
+(representing pure values in the EDSL).
+
+-}
+
+module FIR.Instances.AST
+  ( -- literals
+    lit
+
+    -- functor/applicative for AST values
+  , ASTFunctor(fmapAST)
+  , ASTApplicative(pureAST, (<**>)), (<$$>)
+
+    -- patterns for vectors
+  , pattern Vec2, pattern Vec3, pattern Vec4
+  , vec2, vec3, vec4
+
+    -- patterns for matrices
+  , pattern Mat22, pattern Mat23, pattern Mat24
+  , pattern Mat32, pattern Mat33, pattern Mat34
+  , pattern Mat42, pattern Mat43, pattern Mat44
+  , mat22, mat23, mat24
+  , mat32, mat33, mat34
+  , mat42, mat43, mat44
+    -- + orphan instances
+  )
+  where
 
 -- base
 import Prelude hiding
@@ -61,7 +97,7 @@ import Math.Algebra.Class
   )
 import Math.Linear
   ( Semimodule(..), Module(..)
-  , Inner(..)
+  , Inner(..), Cross(..)
   , Matrix(..)
   , V, M(..)
   , dfoldrV, buildV
@@ -75,12 +111,21 @@ import Math.Logic.Class
 import qualified SPIRV.PrimOp as SPIRV
 
 --------------------------------------------------------------------------------------
--- instances for AST
+-- Instances for AST type
 
+-- | Embed a Haskell constant value into the AST.
 lit :: forall a. PrimTy a => a -> AST a
 lit = Lit (Proxy @a)
 
--- logical operations
+-- * Logical operations
+--
+-- $logical
+-- Instances for:
+--
+-- 'Boolean', 'Choose',
+--
+-- 'Eq', 'Ord' (note: not the "Prelude" type classes).
+
 instance Boolean (AST Bool) where
   true  = lit True
   false = lit False
@@ -108,7 +153,17 @@ instance ( PrimTy a, Ord a, Logic a ~ Bool )
   min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (primTy @a)) min
   max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (primTy @a)) max
 
--- numeric operations
+-- * Numeric operations
+-- 
+-- $numeric
+-- Instances for:
+--
+-- 'AdditiveGroup', 'Semiring', 'Ring', 'Signed',
+--
+-- 'DivisionRing', 'Archimedean' (Archimedean ordered group),
+--
+-- 'Floating', 'RealFloat' (note: not the "Prelude" type classes).
+
 instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
   (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalarTy @a)) (+)
   zero   = lit (zero :: a)
@@ -154,105 +209,32 @@ instance (ScalarTy a, Floating a) => Floating (AST a) where
 instance (ScalarTy a, RealFloat a) => RealFloat (AST a) where
   atan2 = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtan2 (scalarTy @a)) atan2
 
--- numeric conversions
+-- * Numeric conversions
+--
+-- $conversions
+-- Instance for 'Convert'.
+
 instance (ScalarTy a, ScalarTy b, Convert '(a,b))
          => Convert '(AST a, AST b) where
   convert = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> id
     _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)) convert
 
-
-
-val :: forall n. KnownNat n => Word32
-val = fromIntegral ( natVal (Proxy @n))
-
--- vectors
-instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
-  type Scalar (AST (V 0 a))   = AST      a
-  type OfDim  (AST (V 0 a)) n = AST (V n a)
-
-  (^+^) :: forall n. KnownNat n
-        => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (val @n) (scalarTy @a)) (^+^)
-
-  (^*) :: forall n. KnownNat n
-        => AST (V n a) -> AST a -> AST (V n a)
-  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (val @n) (scalarTy @a)) (^*)
-
-instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
-  (^-^) :: forall n. KnownNat n
-        => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (val @n) (scalarTy @a)) (^-^)
-
-instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
-  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (val @0) (scalarTy @a)) (^.^)
-
-
--- matrices
-
-instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
-  type Vector (AST (M 0 0 a))     = AST (V 0   a)
-  type OfDims (AST (M 0 0 a)) m n = AST (M m n a)
-
-  diag    = error "todo"
-  konst a = Mat :$ pureAST (pureAST a)
-
-  transpose :: forall n m. (KnownNat n, KnownNat m)
-            => AST (M n m a) -> AST (M m n a)
-  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (val @m) (val @n) (scalarTy @a)) transpose
-
-  inverse :: forall n. KnownNat n
-            => AST (M n n a) -> AST (M n n a)
-  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (val @n) (val @n) (scalarTy @a)) inverse
-  
-  determinant :: forall n. KnownNat n
-              => AST (M n n a) -> AST a
-  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (val @0) (val @0) (scalarTy @a)) determinant
-
-  -- no built-in matrix addition and subtraction, so we use the vector operations
-  (!+!) :: forall i j. (KnownNat i, KnownNat j)
-        => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
-  x !+! y = Mat :$ ( vecAdd <$$> (UnMat :$ x) <**> (UnMat :$ y) )
-    where vecAdd :: AST (V j a) -> AST(V j a -> V j a)
-          vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (val @i) (scalarTy @a)) (^+^)
-
-  (!-!) :: forall i j. (KnownNat i, KnownNat j)
-        => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
-  x !-! y = Mat :$ ( vecSub <$$> (UnMat :$ x) <**> (UnMat :$ y) )
-    where vecSub :: AST (V j a) -> AST(V j a -> V j a)
-          vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (val @i) (scalarTy @a)) (^-^)
-
-  (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
-        => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
-  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (val @i) (val @k) (scalarTy @a)) (!*!)
-
-  (^*!) :: forall i j. (KnownNat i, KnownNat j)
-        => AST (V i a) -> AST (M i j a) -> AST (V j a)
-  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (val @j) (val @0) (scalarTy @a)) (^*!)
-
-  (!*^) :: forall i j. (KnownNat i, KnownNat j)
-        => AST (M i j a) -> AST (V j a) -> AST (V i a)
-  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (val @i) (val @0) (scalarTy @a)) (!*^)
-
-  (!*) :: forall i j. (KnownNat i, KnownNat j)
-       => AST (M i j a) -> AST a -> AST (M i j a)
-  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (val @i) (val @j) (scalarTy @a)) (!*)
-
+-----------------------------------------------
+-- * Functor functionality
 
 infixl 4 <$$>
 infixl 4 <**>
 
--- functor functionality
 class ASTFunctor f where
-  fmapAST :: PrimTy a => (AST a -> AST b) -> AST (f a) -> AST (f b) --  AST (a -> b) -> AST (f a) -> AST (f b)
+  fmapAST :: PrimTy a => (AST a -> AST b) -> AST (f a) -> AST (f b)
 
 class ASTApplicative f where
   pureAST :: AST a -> AST (f a)
   (<**>)  :: PrimTy a => AST ( f (a -> b) ) -> AST ( f a ) -> AST ( f b )
 
-(<$$>) :: (ASTFunctor f, PrimTy a) => (AST a -> AST b) -> AST (f a) -> AST (f b) -- AST (a -> b) -> AST (f a) -> AST (f b)
+(<$$>) :: (ASTFunctor f, PrimTy a) => (AST a -> AST b) -> AST (f a) -> AST (f b)
 (<$$>) = fmapAST
-
 
 instance KnownNat n => ASTFunctor (V n) where
   fmapAST = fromAST $ Fmap (SFuncVector (Proxy @n))
@@ -268,7 +250,6 @@ instance (KnownNat m, KnownNat n) => ASTApplicative (M m n) where
   pureAST = fromAST $ Pure (SFuncMatrix (Proxy @m) (Proxy @n))
   (<**>)  = fromAST $ Ap   (SFuncMatrix (Proxy @m) (Proxy @n)) Proxy
 
-
 instance 
   TypeError (     Text "The AST datatype does not have a Functor instance:"
              :$$: Text "    cannot map Haskell functions over internal types."
@@ -277,7 +258,10 @@ instance
   fmap = error "unreachable"
 
 -----------------------------------------------
--- syntactic instances
+-- * Syntactic instances
+--
+-- $syntactic
+-- Instances for 'Syntactic'.
 
 instance Syntactic (AST a) where
   type Internal (AST a) = a
@@ -329,6 +313,43 @@ instance (KnownNat n, Syntactic a, PrimTy (Internal a)) => Syntactic (V n a) whe
 deriving instance (KnownNat m, KnownNat n, Syntactic a, ScalarTy (Internal a))
   => Syntactic (M m n a)
 
+-----------------------------------------------
+-- * Vectors and matrices
+
+val :: forall n. KnownNat n => Word32
+val = fromIntegral ( natVal (Proxy @n))
+
+-- ** Vectors
+--
+-- $vectors
+-- Instances for:
+--
+-- 'Semimodule', 'Module', 'Inner', 'Cross'.
+instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
+  type Scalar (AST (V 0 a))   = AST      a
+  type OfDim  (AST (V 0 a)) n = AST (V n a)
+
+  (^+^) :: forall n. KnownNat n
+        => AST (V n a) -> AST (V n a) -> AST (V n a)
+  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (val @n)  (scalarTy @a)) (^+^)
+
+  (^*) :: forall n. KnownNat n
+        => AST (V n a) -> AST a -> AST (V n a)
+  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (val @n)  (scalarTy @a)) (^*)
+
+instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
+  (^-^) :: forall n. KnownNat n
+        => AST (V n a) -> AST (V n a) -> AST (V n a)
+  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (val @n)  (scalarTy @a)) (^-^)
+
+instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
+  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (val @0)  (scalarTy @a)) (^.^)
+
+instance (ScalarTy a, Floating a) => Cross (AST (V 0 a)) where
+  cross = fromAST $ PrimOp (SPIRV.VecOp SPIRV.CrossV (val @3) (scalarTy @a)) cross
+
+-- *** Unidirectional pattern synonyms
+
 -- these patterns and constructors could be generalised to have types such as:
 -- Vec2 :: (Syntactic a, PrimTy (Internal a)) => a -> a -> AST ( V 2 (Internal a) )
 -- but this leads to poor type-inference
@@ -345,6 +366,8 @@ pattern Vec3 x y z <- (fromAST -> V3 x y z)
 pattern Vec4 :: PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 
+-- *** Smart constructors
+
 vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
 vec2 = fromAST $ MkVector @2 @a Proxy Proxy
 
@@ -354,6 +377,61 @@ vec3 = fromAST $ MkVector @3 @a Proxy Proxy
 vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 vec4 = fromAST $ MkVector @4 @a Proxy Proxy
 
+
+-- ** Matrices
+--
+-- $matrices
+-- Instance for 'Matrix'.
+
+instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
+  type Vector (AST (M 0 0 a))     = AST (V 0   a)
+  type OfDims (AST (M 0 0 a)) m n = AST (M m n a)
+
+  diag    = error "todo"
+  konst a = Mat :$ pureAST (pureAST a)
+
+  transpose :: forall n m. (KnownNat n, KnownNat m)
+            => AST (M n m a) -> AST (M m n a)
+  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (val @m) (val @n) (scalarTy @a)) transpose
+
+  inverse :: forall n. KnownNat n
+            => AST (M n n a) -> AST (M n n a)
+  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (val @n) (val @n) (scalarTy @a)) inverse
+  
+  determinant :: forall n. KnownNat n
+              => AST (M n n a) -> AST a
+  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (val @0) (val @0) (scalarTy @a)) determinant
+
+  -- no built-in matrix addition and subtraction, so we use the vector operations
+  (!+!) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
+  x !+! y = Mat :$ ( vecAdd <$$> (UnMat :$ x) <**> (UnMat :$ y) )
+    where vecAdd :: AST (V j a) -> AST(V j a -> V j a)
+          vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (val @i) (scalarTy @a)) (^+^)
+
+  (!-!) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
+  x !-! y = Mat :$ ( vecSub <$$> (UnMat :$ x) <**> (UnMat :$ y) )
+    where vecSub :: AST (V j a) -> AST(V j a -> V j a)
+          vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (val @i) (scalarTy @a)) (^-^)
+
+  (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
+        => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
+  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (val @i) (val @k) (scalarTy @a)) (!*!)
+
+  (^*!) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (V i a) -> AST (M i j a) -> AST (V j a)
+  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (val @j) (val @0) (scalarTy @a)) (^*!)
+
+  (!*^) :: forall i j. (KnownNat i, KnownNat j)
+        => AST (M i j a) -> AST (V j a) -> AST (V i a)
+  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (val @i) (val @0) (scalarTy @a)) (!*^)
+
+  (!*) :: forall i j. (KnownNat i, KnownNat j)
+       => AST (M i j a) -> AST a -> AST (M i j a)
+  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (val @i) (val @j) (scalarTy @a)) (!*)
+
+-- *** Unidirectional pattern synonyms
 
 {-# COMPLETE Mat22 #-}
 pattern Mat22
@@ -498,6 +576,8 @@ pattern Mat44 a11 a12 a13 a14
               ( V4 a31 a32 a33 a34 )
               ( V4 a41 a42 a43 a44 )
       )
+
+-- *** Smart constructors
 
 mat22
   :: ScalarTy a

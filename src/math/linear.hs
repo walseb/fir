@@ -25,7 +25,54 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
-module Math.Linear where
+{-|
+Module: Math.Linear
+Description: @---@ Vectors & matrices, as used by this library. __Import required to use vectors & matrices.__
+
+Vectors and matrices, indexed by dimension.
+
+Vectors are represented as linked lists, whereas matrices are represented as a vector of their rows.
+-}
+
+module Math.Linear
+  (
+  -- * Vector and matrix types
+  V(..), M(..)
+
+  -- * Typeclasses
+  -- ** Vectors
+  , Semimodule(..), Module(..), Inner(..), Cross(..)
+  -- ** Matrices
+  , Matrix(..)
+
+  -- * General vector operations
+  , angle, norm, squaredNorm
+  , quadrance, distance
+  , along
+  , normalise
+  , reflect, reflect'
+  , proj, projC
+  , isOrthogonal, gramSchmidt
+  , rotateAroundAxis
+
+  -- * Operations involving the vector data type
+  , headV, tailV, headTailV
+  , (^!), at
+  , sum
+  , buildV
+  , dfoldrV
+  , unfold
+  , pattern V0, pattern V1, pattern V2, pattern V3, pattern V4
+
+  -- * Operations involving vectors of vectors
+  , addCol, addCols
+  , rowMatrix, columnMatrix, fromColumns
+  , blockSum
+
+  -- * Operations involving the matrix newtype
+  , perspective
+  )
+where
 
 -- base
 import Prelude hiding
@@ -73,10 +120,19 @@ import Math.Logic.Class
   , (#.)
   , Ord(..)
   )
-import Math.Algebra.Class(AdditiveGroup(..), Semiring(..), Ring(..), DivisionRing(..), Floating(..))
+import Math.Algebra.Class
+  ( AdditiveGroup(..), Semiring(..), Ring(..)
+  , DivisionRing(..), Floating(..)
+  )
+
+-------------------------------------------------------------------------------
 
 infixr 3 :.
 
+-- | Vector data type.
+--
+-- @V m a@ denotes a vector of @m@ inhabitants of @a@.
+-- Represented as a linked list.
 data V :: Nat -> Type -> Type where
   Nil  :: V 0 a
   (:.) :: a -> V n a -> V (1+n) a
@@ -177,19 +233,23 @@ instance (KnownNat n, Storable a) => Storable (V n a) where
 
 infixl 9 ^!
 
--- unsafe indexing
+-- | Unsafe indexing.
 (^!) :: V n a -> Int -> a
 (^!) (a :. _)  0 = a
 (^!) Nil       _ = error "empty vector"
 (^!) (_ :. as) n = as ^! (n-1)
 
--- safe indexing
+-- | Safe indexing.
+--
+-- Use with /TypeApplications/,
+-- e.g. to access index @3@ of vector @v@: @at \@3 v@.
 at :: forall i n a. (KnownNat i, KnownNat n, CmpNat i n ~ Prelude.LT)
    => V n a -> a
 at v = v ^! (fromIntegral (dim @i))
 
 -----------------------------------------------------------
 -- todo: temporary workaround
+
 newtype Sum a = Sum { getSum :: a }
 instance AdditiveGroup a => Semigroup (Sum a) where
   (Sum a) <> (Sum b) = Sum (a + b)
@@ -198,14 +258,24 @@ instance AdditiveGroup a => Monoid (Sum a) where
 
 sum :: (AdditiveGroup a, Traversable t) => t a -> a
 sum = getSum #. foldMap Sum
+
+-----------------------------------------------------------
+-- bypass limitations with inequalities
+-- proper solution would be to use a type-checking plugin for inequalities
+
+deduceZero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
+deduceZero = unsafeCoerce
+
+deduceOK :: (KnownNat j, KnownNat n) => (j <=? n) :~: 'True -> ((j-1) <=? n) :~: 'True
+deduceOK = unsafeCoerce
+
 -----------------------------------------------------------
 
-
-
 -- TODO: indexing is slightly off, I'm doing {0, ..., n} instead of {1, ..., n}
+-- | Build a vector using an indexing function.
 buildV :: forall n a v. KnownNat n
-       => ( forall i. (KnownNat i, i <= n) => Proxy i -> v -> a)
-       -> v
+       => ( forall i. (KnownNat i, i <= n) => Proxy i -> v -> a) -- ^ Indexing function.
+       -> v -- ^ Object to index into.
        -> V n a
 buildV f u = go @n f u Nil where
   go :: forall j. (KnownNat j, j <= n)
@@ -222,21 +292,24 @@ buildV f u = go @n f u Nil where
           case deduceZero nle of
                Refl -> w
 
-deduceZero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
-deduceZero = unsafeCoerce
-
-deduceOK :: (KnownNat j, KnownNat n) => (j <=? n) :~: 'True -> ((j-1) <=? n) :~: 'True
-deduceOK = unsafeCoerce
-
+-- | Dependent fold of a vector.
+-- Folds a vector with a function whose type depends on the index.
 dfoldrV :: forall n a b. KnownNat n 
-        => (forall k. (KnownNat k, k+1 <= n) => a -> b k -> b (k+1))
-        -> b 0 -> V n a -> b n
+        => (forall k. (KnownNat k, k+1 <= n) => a -> b k -> b (k+1)) -- ^ Function used to fold.
+        -> b 0   -- ^ Starting value.
+        -> V n a -- ^ Vector to fold.
+        -> b n
 dfoldrV f d = go
   where go :: (KnownNat m, m <= n) => V m a -> b m
         go Nil    = d
         go (a:.as) = f a (go as)
 
-unfold :: forall n a. KnownNat n => (a -> a) -> a -> V n a
+-- | Unfold: create a vector of specified length,
+-- by repeatedly applying a function to a starting value.
+unfold :: forall n a. KnownNat n
+       => (a -> a) -- ^ Function to iterate.
+       -> a        -- ^ Starting value.
+       -> V n a
 unfold f a 
     = case Proxy @1 %<=? Proxy @n of
            LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
@@ -304,9 +377,19 @@ dim = natVal ( Proxy @n )
 -- type classes for vector operations
 
 infixl 6 ^+^, ^-^
-infixl 7 ^.^, ^×^
+infixl 7 ^.^, `dot`, ^×^, `cross`
 infix  8 ^*, *^
 
+-- | A semimodule is to a semiring as a module is to a ring.
+--
+-- That is, a semimodule M over a semiring R consists of
+--
+--    * a commutative monoid M,
+--    * an action of R on M.
+--
+-- The associated type family 'OfDim' is used to allow class methods
+-- which involve elements in different dimensions.
+-- This is crucial for the class methods for matrices (see the 'Matrix' typeclass)
 class Semiring (Scalar v) => Semimodule v where
   type Scalar v :: Type
   type OfDim v (n :: Nat) = r | r -> v n
@@ -315,14 +398,30 @@ class Semiring (Scalar v) => Semimodule v where
   (^*)  :: KnownNat n => OfDim v n -> Scalar v  -> OfDim v n
   (*^) = flip (^*) -- SPIRV defines VectorTimesScalar not ScalarTimesVector...
 
+-- | A module M over a ring R consists of:
+--
+--     * an abelian group M,
+--     * an action of R on M.
+--
+-- That is, we simply add additive inverses to the previous definition.
 class (Ring (Scalar v), Semimodule v) => Module v where
   (^-^) :: KnownNat n => OfDim v n -> OfDim v n -> OfDim v n
   (^-^) x y = x ^+^ ((-1) *^ y)
 
+-- | Semimodule with an inner product.
+--
+-- This usually consists of a non-degenerate symmetric bilinear form on the underlying semimodule.
+--
+-- Other axioms might be more relevant depending on the underlying ring.
+-- For instance, one instead insists on sesquilinearity over the field of complex numbers.
 class Semimodule v => Inner v where
   (^.^), dot :: KnownNat n => OfDim v n -> OfDim v n -> Scalar v
   dot = (^.^)
 
+-- | Module with a cross product.
+--
+-- This usually consists of a non-degenerate skew-symmetric bilinear multiplication satisfying the Jacobi identity.
+-- Over the real numbers, this implies the dimension is 3.
 class Module v => Cross v where
   (^×^), cross :: OfDim v 3 -> OfDim v 3 -> OfDim v 3
   (^×^) = cross
@@ -362,58 +461,98 @@ instance Ring a => Cross (V 0 a) where
 ------------------------------------------------------------------
 -- derived operations
 
-angle :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> Scalar v
-angle x y = asin $ dot (normalise x) (normalise y)
+-- | Angle between two vectors, computed using the inner product structure.
+angle :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n)
+      => OfDim v n -> OfDim v n -> Scalar v
+angle x y = acos $ dot (normalise x) (normalise y)
 
-norm :: (Floating (Scalar v), KnownNat n, Inner v) => OfDim v n -> Scalar v
+-- | Norm of a vector, computed using the inner product.
+norm :: (Floating (Scalar v), KnownNat n, Inner v)
+     => OfDim v n -> Scalar v
 norm v = sqrt $ squaredNorm v
 
-squaredNorm :: (KnownNat n, Inner v) => OfDim v n -> Scalar v
+-- | Squared norm of a vector, computed using the inner product.
+squaredNorm :: (KnownNat n, Inner v)
+            => OfDim v n -> Scalar v
 squaredNorm v = dot v v
 
-sqdist :: (KnownNat n, Module v, Inner v) => OfDim v n -> OfDim v n -> Scalar v
-sqdist x y = squaredNorm (x ^-^ y)
+-- | Quadrance between two points.
+quadrance :: (KnownNat n, Module v, Inner v)
+       => OfDim v n -> OfDim v n -> Scalar v
+quadrance x y = squaredNorm (x ^-^ y)
 
-distance :: (Floating (Scalar v), KnownNat n, Module v, Inner v) => OfDim v n -> OfDim v n -> Scalar v
+-- | Distance between two points.
+distance :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
+         => OfDim v n -> OfDim v n -> Scalar v
 distance x y = norm (x ^-^ y)
 
-along :: (KnownNat n, Module v) => Scalar v -> OfDim v n -> OfDim v n -> OfDim v n
+-- | Linear interpolation between two points.
+along :: (KnownNat n, Module v)
+      => Scalar v  -- ^ Interpolation factor. 0 = start, 1 = end.
+      -> OfDim v n -- ^ Start.
+      -> OfDim v n -- ^ End.
+      -> OfDim v n
 along t x y = (1-t) *^ x ^+^ t *^ y
 
-normalise :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n
+-- | Normalises a vector to have unit norm.
+normalise :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n)
+          => OfDim v n -> OfDim v n
 normalise v =
   let nm = norm v in
   if nm == 0
      then 0 *^ v
      else (1 / nm ) *^ v
 
-reflect :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> OfDim v n
+-- | Reflects a vector along a hyperplane, specified by a normal vector.
+-- /Computes the normalisation of the normal vector in the process./
+reflect :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n)
+        => OfDim v n -- ^ Vector to be reflected.
+        -> OfDim v n -- ^ A normal vector of the reflecting hyperplane.
+        -> OfDim v n
 reflect v n = reflect' v (normalise n)
 
-reflect' :: (KnownNat n, Module v, Inner v) => OfDim v n -> OfDim v n -> OfDim v n
-reflect' v n = v ^-^ (2 * dot v n) *^ n -- assumes n is normalised
+-- | Same as 'reflect': reflects a vector along a hyperplane, specified by a normal vector.
+-- However, /__this function assumes the given normal vector is already normalised__/.
+reflect' :: (KnownNat n, Module v, Inner v)
+         => OfDim v n -- ^ Vector to be reflected.
+         -> OfDim v n -- ^ /__Normalised__/ normal vector of the reflecting hyperplane.
+         -> OfDim v n
+reflect' v n = v ^-^ (2 * dot v n) *^ n
 
--- |Projects the first argument onto the second.
-proj :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> OfDim v n
+-- | Projects the first argument onto the second.
+proj :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n)
+     => OfDim v n -> OfDim v n -> OfDim v n
 proj x y = projC x y *^ y
 
-projC :: forall n v. (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n) => OfDim v n -> OfDim v n -> Scalar v
+-- | Projection constant: how far along the projection of the first vector lands along the second vector.
+projC :: forall n v. (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n)
+      => OfDim v n -> OfDim v n -> Scalar v
 projC x y =
   let sqNm = dot y y
   in if sqNm == 0
      then 0 :: Scalar v
      else dot x y / sqNm
 
-isOrthogonal :: (KnownNat n, Module v, Inner v, Eq (Scalar v)) => OfDim v n -> OfDim v n -> Logic (Scalar v)
+-- | Orthogonality test.
+--
+-- /__Uses a precise equality test, so use at your own risk with floating point numbers.__/
+isOrthogonal :: (KnownNat n, Module v, Inner v, Eq (Scalar v))
+             => OfDim v n -> OfDim v n -> Logic (Scalar v)
 isOrthogonal v w = dot v w == 0
 
--- |Gram-Schmidt algorithm.
-gramSchmidt :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n) => [OfDim v n] -> [OfDim v n]
+-- | Gram-Schmidt algorithm.
+gramSchmidt :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n)
+            => [OfDim v n] -> [OfDim v n]
 gramSchmidt []     = []
 gramSchmidt (x:xs) = x' : gramSchmidt (map (\v -> v ^-^ proj v x') xs)
   where x' = normalise x
 
-rotateAroundAxis :: (Cross v, Floating (Scalar v)) => OfDim v 3 -> Scalar v -> OfDim v 3 -> OfDim v 3
+-- | Rotate a vector around an axis (in dimension 3), using the cross product.
+rotateAroundAxis :: (Cross v, Floating (Scalar v))
+                 => OfDim v 3 -- ^ Axis of rotation.
+                 -> Scalar v  -- ^ Angle of rotation, according to the right hand rule.
+                 -> OfDim v 3 -- ^ Vector to be rotated.
+                 -> OfDim v 3
 rotateAroundAxis n theta v = cos theta *^ v ^+^ sin theta *^ (n ^×^ v)
 
 ------------------------------------------------------------------
@@ -454,7 +593,15 @@ fromColumns = addCols ( pure Nil :: V m (V 0 a))
 ------------------------------------------------------------------
 -- matrix newtype
 
+-- | Matrix newtype.
+--
+-- @M m n a@ denotes a matrix with @m@ rows and @n@ columns.
+--
+-- This is represented as a vector of rows. That is, the representation is row major.
+-- Note that this contrasts with the OpenGL/Vulkan default,
+-- as both these frameworks represent matrices in column major order.
 newtype M m n a = M { unM :: V m (V n a) }
+
 deriving instance Prelude.Eq a => Prelude.Eq (M m n a)
 deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
 deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
@@ -503,6 +650,9 @@ infixl 7 !*!
 infix  8 !*^, ^*!
 infix  9 *!, !*
 
+-- | Typeclass for matrix operations.
+--
+-- The 'OfDims' associated type family allows the typeclass methods to involve various dimension indices.
 class Module (Vector m) => Matrix m where
   type Vector m
   type OfDims m (i :: Nat) (j :: Nat) = r | r -> m i j
@@ -522,7 +672,7 @@ class Module (Vector m) => Matrix m where
   (!*!)       :: (KnownNat i, KnownNat j, KnownNat k) => OfDims m i j -> OfDims m j k -> OfDims m i k
 
   identity = diag 1
-  (*!) = flip (!*) -- SPIRV defines MatrixTimesScalar
+  (*!) = flip (!*) -- SPIR-V defines MatrixTimesScalar
 
 instance Ring a => Matrix (M 0 0 a) where
   type Vector (M 0 0 a) = V 0 a
@@ -540,19 +690,20 @@ instance Ring a => Matrix (M 0 0 a) where
     where M mt = transpose m
   (M m) !*! n = M $ fmap (\row -> fmap (sum . liftA2 (*) row) nt) m
     where M nt = transpose n
-  determinant = error "todo"
-  inverse     = error "todo"
+  determinant = error "determinant: not implemented"
+  inverse     = error "inverse matrix: not implemented"
 
 ------------------------------------------------------------------
 -- utility 4x4 matrices for camera viewpoints in 3D
--- taken from Ed Kmett's 'Linear' library
 
+-- | Affine 3D transformation matrix for a perspective view.
+-- (Taken from Edward Kmett's __Linear__ library.)
 perspective
   :: Floating a
-  => a -- ^ FOV
-  -> a -- ^ Aspect ratio
-  -> a -- ^ Near plane
-  -> a -- ^ Far plane
+  => a -- ^ FOV.
+  -> a -- ^ Aspect ratio.
+  -> a -- ^ Near plane.
+  -> a -- ^ Far plane.
   -> M 4 4 a
 perspective fovy aspect near far
   = M $ V4 (V4 x 0 0    0)
