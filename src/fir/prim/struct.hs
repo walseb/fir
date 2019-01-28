@@ -26,8 +26,8 @@ import Data.ProxyProxy(asProxyProxyTypeOf)
 import Data.Type.Map((:->)((:->)), type (:++:), Key, Value)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
-  , GradedPresentedSemigroup(..)
-  , GradedFreeSemigroup(..)
+  , GeneratedGradedSemigroup(..)
+  , InjectiveGradedSemigroup(..)
   )
 import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTys(SNil, SCons), PrimTys(primTysSing))
 
@@ -84,17 +84,18 @@ instance GradedSemigroup Struct [Symbol :-> Type] where
   End <!> t = t
   (a :& s) <!> t = a :& ( s <!> t )
 
-instance GradedPresentedSemigroup
+instance GeneratedGradedSemigroup
             Struct
             [Symbol :-> Type]
             (Symbol :-> Type)
             where
-  type Element                  Struct (Symbol :-> Type) kv = Value kv
-  type Degree [Symbol :-> Type] Struct (Symbol :-> Type) kv = '[ kv ]
-  homogeneous :: forall (kv :: Symbol :-> Type). Value kv -> Struct '[ kv ]
-  homogeneous a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv])
+  type GenType                  Struct (Symbol :-> Type) kv = Value kv
+  type GenDeg [Symbol :-> Type] Struct (Symbol :-> Type) kv = '[ kv ]
+  generator :: forall (kv :: Symbol :-> Type). Value kv -> Struct '[ kv ]
+  generator a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv] )
+                --   ^^^^   GHC cannot deduce that kv ~ Key kv ':-> Value kv
 
-instance GradedFreeSemigroup
+instance InjectiveGradedSemigroup
             Struct
             [Symbol :-> Type]
             (Symbol :-> Type)
@@ -102,7 +103,8 @@ instance GradedFreeSemigroup
   type ValidDegree Struct as = PrimTys as
   (>!<) :: forall as bs. (PrimTys as, PrimTys bs)
         => Struct (as :++: bs) -> ( Struct as, Struct bs )
-  (>!<) End = unsafeCoerce ( End, End ) -- GHC cannot deduce (as ~ '[], bs ~ '[]) from (as :++: bs) ~ '[]
+  (>!<) End = unsafeCoerce ( End, End )
+          --    ^^^^^^   GHC cannot deduce (as ~ '[], bs ~ '[]) from (as :++: bs) ~ '[]
   (>!<) (s :& ss)
     = case primTysSing @as of
         SNil
@@ -114,8 +116,8 @@ instance GradedFreeSemigroup
                 (l,r) = first (`asProxyProxyTypeOf` nxt)
                           ( (>!<) @_ @_ @_ @_ @bs ss)
               in ( s :& l, r )
-  generator :: Struct '[ kv ] -> Value kv
-  generator (a :& End) = a
+  generated :: Struct '[ kv ] -> Value kv
+  generated (a :& End) = a
 
 
 class FoldrStruct x where

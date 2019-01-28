@@ -11,7 +11,7 @@ Module: FIR.AST
 
 Representation of programs using abstract syntax trees.
 
-The user interface to the AST is through typeclass overloading,
+The user interface to the AST is through type class overloading,
 see "FIR.Instances.AST" and "FIR.Instances.Codensity".
 
 This AST uses a higher-order abstract syntax representation (HOAS),
@@ -22,7 +22,7 @@ by Josef Svenningsson and Emil Axelsson.
 module FIR.AST
   ( -- * Main AST data type
     AST(..), ASTs(NilAST, ConsAST)
-    -- * Syntactic typeclass
+    -- * Syntactic type class
   , Syntactic(Internal, toAST, fromAST)
     -- * Displaying ASTs graphically
   , toTree

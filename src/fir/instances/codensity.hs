@@ -22,7 +22,7 @@ This module, together with "FIR.Instances.AST",
 provides most of the user-facing syntax for constructing
 and manipulating values in the EDSL.
 
-This is done through typeclass overloading, here in the form of
+This is done through type class overloading, here in the form of
 orphan instances for types of the form @Codensity AST (AST a := j) i@
 (representing stateful values in the EDSL).
 
@@ -336,7 +336,7 @@ instance Modifier is s b => Modifier (i ': is) s b where
 --
 -- 'Boolean', 'Choose',
 --
--- 'Eq', 'Ord' (note: note the "Prelude" typeclasses).
+-- 'Eq', 'Ord' (note: note the "Prelude" type classes).
 instance Boolean (Codensity AST (AST Bool := i) i) where
   true  = ixPure true
   false = ixPure false

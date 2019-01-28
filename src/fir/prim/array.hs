@@ -8,7 +8,6 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
-{-# LANGUAGE KindSignatures         #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -32,8 +31,8 @@ import qualified Data.Vector as Array
 -- fir
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
-  , GradedPresentedSemigroup(..)
-  , GradedFreeSemigroup(..)
+  , GeneratedGradedSemigroup(..)
+  , InjectiveGradedSemigroup(..)
   )
 
 ------------------------------------------------------------
@@ -61,21 +60,21 @@ instance GradedSemigroup (Array 0 a) Nat where
   (<!>) :: forall l1 l2. Array l1 a -> Array l2 a -> Array (l1+l2) a
   MkArray v1 <!> MkArray v2 = MkArray @(l1+l2) (v1 Array.++ v2)
 
-instance GradedPresentedSemigroup (Array 0 a) Nat () where
-  type Element    (Array 0 a) ()  _  = a
-  type Degree Nat (Array 0 a) () '() = 1
-  homogeneous :: a -> Array (Degree Nat (Array 0 a) () unit) a
-  homogeneous a = unsafeCoerce (MkArray @1 (Array.singleton a))
+instance GeneratedGradedSemigroup (Array 0 a) Nat () where
+  type GenType    (Array 0 a) ()  _  = a
+  type GenDeg Nat (Array 0 a) () '() = 1
+  generator :: a -> Array (GenDeg Nat (Array 0 a) () unit) a
+  generator a = unsafeCoerce (MkArray @1 (Array.singleton a))
 
-instance GradedFreeSemigroup (Array 0 a) Nat () where
+instance InjectiveGradedSemigroup (Array 0 a) Nat () where
   type ValidDegree (Array 0 a) n = KnownNat n
   (>!<) :: forall n m. (KnownNat n, KnownNat m) => Array (n+m) a -> (Array n a, Array m a)
   (>!<) (MkArray arr)
     = let tk, dp :: Array.Vector a
           (tk, dp) = Array.splitAt (fromIntegral (natVal (Proxy @n))) arr
       in (MkArray @n @a tk, MkArray @m @a dp)
-  generator :: (Array (Degree Nat (Array 0 a) () unit) a) -> a
-  generator (MkArray arr) = Array.head arr
+  generated :: (Array (GenDeg Nat (Array 0 a) () unit) a) -> a
+  generated (MkArray arr) = Array.head arr
 
 newtype RuntimeArray a = MkRuntimeArray (Array.Vector a)
 
@@ -97,14 +96,14 @@ instance GradedSemigroup (RuntimeArray a) () where
           MkRuntimeArray v1 = unsafeCoerce arr1
           MkRuntimeArray v2 = unsafeCoerce arr2
           
-instance GradedPresentedSemigroup (RuntimeArray a) () () where
-  type Element   (RuntimeArray a) () _ = a
-  type Degree () (RuntimeArray a) () '() = '()
-  homogeneous :: a -> Apply () (RuntimeArray a) (Degree () (RuntimeArray a) () unit)
-  homogeneous a = unsafeCoerce ( MkRuntimeArray (Array.singleton a) )
+instance GeneratedGradedSemigroup (RuntimeArray a) () () where
+  type GenType   (RuntimeArray a) () _ = a
+  type GenDeg () (RuntimeArray a) () '() = '()
+  generator :: a -> Apply () (RuntimeArray a) (GenDeg () (RuntimeArray a) () unit)
+  generator a = unsafeCoerce ( MkRuntimeArray (Array.singleton a) )
 
 
--- no graded free semigroup instance for runtime arrays,
+-- no injective graded semigroup instance for runtime arrays,
 -- because knowing rtarr = rtarr1 ++ rtarr2
 -- does not allow us to recover arr1 or arr2 from arr
 -- (as we do not know the relevant slice index)

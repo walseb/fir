@@ -28,7 +28,7 @@ This module, together with "FIR.Instances.Codensity",
 provides most of the user-facing syntax for constructing
 and manipulating values in the EDSL.
 
-This is done through typeclass overloading, here in the form of
+This is done through type class overloading, here in the form of
 orphan instances for types of the form @AST a@
 (representing pure values in the EDSL).
 

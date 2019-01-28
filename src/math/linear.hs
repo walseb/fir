@@ -111,8 +111,8 @@ import Data.Distributive(Distributive(..))
 import Control.Arrow.Strength(strong)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
-  , GradedPresentedSemigroup(..)
-  , GradedFreeSemigroup(..)
+  , GeneratedGradedSemigroup(..)
+  , InjectiveGradedSemigroup(..)
   )
 import Math.Logic.Class
   ( Boolean(..), Eq(Logic,(==))
@@ -347,13 +347,13 @@ instance GradedSemigroup (V 0 a) Nat where
   (<!>) Nil      v = v
   (<!>) (a:.as)  v = a :. (as <!> v)
 
-instance GradedPresentedSemigroup (V 0 a) Nat () where
-  type Element    (V 0 a) ()  _  = a
-  type Degree Nat (V 0 a) () '() = 1
-  homogeneous :: a -> V (Degree Nat (V 0 a) () unit) a
-  homogeneous a = unsafeCoerce (a :. Nil)
+instance GeneratedGradedSemigroup (V 0 a) Nat () where
+  type GenType    (V 0 a) ()  _  = a
+  type GenDeg Nat (V 0 a) () '() = 1
+  generator :: a -> V (GenDeg Nat (V 0 a) () unit) a
+  generator a = unsafeCoerce (a :. Nil)
 
-instance GradedFreeSemigroup (V 0 a) Nat () where
+instance InjectiveGradedSemigroup (V 0 a) Nat () where
   type ValidDegree (V 0 a) n = KnownNat n
   (>!<) :: forall i j. (KnownNat i, KnownNat j) => V (i+j) a -> ( V i a, V j a )
   (>!<) Nil = unsafeCoerce ( Nil, Nil )
@@ -365,8 +365,8 @@ instance GradedFreeSemigroup (V 0 a) Nat () where
                 (u, v) = (>!<) (as :: V ((i+j)-1) a)
             in (a :. u, v)
          NLE _ _ -> unsafeCoerce ( Nil, a :. as )
-  generator :: (V (Degree Nat (V 0 a) () unit) a) -> a
-  generator = unsafeCoerce (headV :: V 1 a -> a)
+  generated :: (V (GenDeg Nat (V 0 a) () unit) a) -> a
+  generated = unsafeCoerce (headV :: V 1 a -> a)
 
 ------------------------------------------------------------------
 
@@ -389,7 +389,7 @@ infix  8 ^*, *^
 --
 -- The associated type family 'OfDim' is used to allow class methods
 -- which involve elements in different dimensions.
--- This is crucial for the class methods for matrices (see the 'Matrix' typeclass)
+-- This is crucial for the class methods for matrices (see the 'Matrix' type class)
 class Semiring (Scalar v) => Semimodule v where
   type Scalar v :: Type
   type OfDim v (n :: Nat) = r | r -> v n
@@ -625,13 +625,13 @@ instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
   (<!>) :: M m i a -> M m j a -> M m (i+j) a
   (M m1) <!> (M m2) = M (liftA2 (<!>) m1 m2)
 
-instance KnownNat m => GradedPresentedSemigroup (M m 0 a) Nat () where
-  type Element    (M m 0 a) ()  _  = V m a
-  type Degree Nat (M m 0 a) () '() = 1
-  homogeneous :: V m a -> M m (Degree Nat (M m 0 a) () unit) a
-  homogeneous = ( unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a ) )
+instance KnownNat m => GeneratedGradedSemigroup (M m 0 a) Nat () where
+  type GenType    (M m 0 a) ()  _  = V m a
+  type GenDeg Nat (M m 0 a) () '() = 1
+  generator :: V m a -> M m (GenDeg Nat (M m 0 a) () unit) a
+  generator = ( unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a ) )
 
-instance KnownNat m => GradedFreeSemigroup (M m 0 a) Nat () where
+instance KnownNat m => InjectiveGradedSemigroup (M m 0 a) Nat () where
   type ValidDegree (M m 0 a) i = KnownNat i
   (>!<) :: forall i j. (KnownNat i, KnownNat j) => M m (i+j) a -> ( M m i a, M m j a )
   (>!<) (M m)
@@ -639,8 +639,8 @@ instance KnownNat m => GradedFreeSemigroup (M m 0 a) Nat () where
           v :: V j (V m a)
           (u, v) = (>!<) (distribute m)
       in (M (distribute u), M (distribute v))
-  generator :: M m (Degree Nat (M m 0 a) () unit) a -> V m a
-  generator = ( unsafeCoerce ( (\(M m) -> (headV (distribute m) )) :: M m 1 a -> V m a ) )
+  generated :: M m (GenDeg Nat (M m 0 a) () unit) a -> V m a
+  generated = ( unsafeCoerce ( ( \(M m) -> headV (distribute m) ) :: M m 1 a -> V m a ) )
 
 ------------------------------------------------------------------
 -- type classes for matrix operations
@@ -652,7 +652,7 @@ infix  9 *!, !*
 
 -- | Typeclass for matrix operations.
 --
--- The 'OfDims' associated type family allows the typeclass methods to involve various dimension indices.
+-- The 'OfDims' associated type family allows the type class methods to involve various dimension indices.
 class Module (Vector m) => Matrix m where
   type Vector m
   type OfDims m (i :: Nat) (j :: Nat) = r | r -> m i j

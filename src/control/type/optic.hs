@@ -29,9 +29,9 @@ import Data.Type.Map(type (:++:))
 import Data.Function.Variadic(ListVariadic)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
-  , GradedPresentedSemigroup(..)
-  , GradedFreeSemigroup(..)
-  , DegreeAt
+  , GeneratedGradedSemigroup(..)
+  , InjectiveGradedSemigroup(..)
+  , GenDegAt
   )
 
 ----------------------------------------------------------------------
@@ -55,11 +55,6 @@ type Name (k :: Symbol) = (Name_ k :: Optic '[] s a)
 type Index (i :: Nat) = (Index_ i :: Optic '[] s a)
 type AnIndex (ix :: Type) = (AnIndex_ :: Optic '[ix] s a)
 
-
-data Foo (is :: [Type]) where
-  AnyFoo :: Foo is
-
-type NilFoo = ( AnyFoo :: Foo '[] )
 
 type family ProductIndices (is :: [Type]) (js :: [Type]) :: [Type] where
   ProductIndices '[] js = js
@@ -328,9 +323,9 @@ type family ProductDegree
   ProductDegree (o1 :: Optic is s a) (o2 :: Optic js t b) b1 b2
     = WhichDegree b1 b2
         (DegreeKind s) (DegreeKind a) (DegreeKind t) (DegreeKind b)
-        ( DegreeAt (DegreeKind s) (Container s) (LabelOf s o1) )
+        ( GenDegAt (DegreeKind s) (Container s) (LabelOf s o1) )
         ( DegreeOf a )
-        ( DegreeAt (DegreeKind t) (Container t) (LabelOf t o2) )
+        ( GenDegAt (DegreeKind t) (Container t) (LabelOf t o2) )
         ( DegreeOf b )
 
 type family Combine
@@ -410,15 +405,15 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
         (view1 s)
         (view2 s)
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ ListVariadic '[] a
          , a ~ Apply
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf a `WithKind` DegreeKind c)
          , b ~ ListVariadic '[] b
-         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
-         , hdb ~ Degree
+         , b ~ GenType (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hdb ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
@@ -433,7 +428,7 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb
         ( view1 s )
-        ( homogeneous
+        ( generator
             @(Container c)
             @(DegreeKind c)
             @(LabelKind c)
@@ -441,15 +436,15 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
             ( view2 s )
         )
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ ListVariadic '[] a
-         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
          , b ~ ListVariadic '[] b
          , b ~ Apply
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf b `WithKind` DegreeKind c)
-         , hda ~ Degree
+         , hda ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
@@ -463,7 +458,7 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplyGetters '[] '[] s a b c ('Just la) 'Nothing where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @hda @(DegreeOf b `WithKind` DegreeKind c)
-        ( homogeneous
+        ( generator
             @(Container c)
             @(DegreeKind c)
             @(LabelKind c)
@@ -472,17 +467,17 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
         )
         ( view2 s )
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ ListVariadic '[] a
-         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
          , b ~ ListVariadic '[] b
-         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
-         , hda ~ Degree
+         , b ~ GenType (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hda ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
                     (la `WithKind` LabelKind c)
-         , hdb ~ Degree
+         , hdb ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
@@ -496,14 +491,14 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplyGetters '[] '[] s a b c ('Just la) ('Just lb) where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @hda @hdb
-        ( homogeneous
+        ( generator
             @(Container c)
             @(DegreeKind c)
             @(LabelKind c)
             @(la `WithKind` LabelKind c)
             ( view1 s )
         )
-        ( homogeneous
+        ( generator
             @(Container c)
             @(DegreeKind c)
             @(LabelKind c)
@@ -551,7 +546,7 @@ class MultiplySetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
                   -> ListVariadic (ProductIndices is js :++: '[c,s]) s
 
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ Apply
                   (DegreeKind c)
                   (Container c)
@@ -576,14 +571,14 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
     = let (a,b) = (>!<) c
       in  set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ Apply
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf a `WithKind` DegreeKind c)
-         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
-         , hdb ~ Degree
+         , b ~ GenType (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hdb ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
@@ -600,13 +595,13 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplySetters '[] '[] s a b c 'Nothing ('Just lb) where
   multiplySetters set1 set2 c
     = let (a,hb) = (>!<) @(Container c) @_ @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb c
-          b = generator @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
+          b = generated @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
       in set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
-         , hda ~ Degree
+         , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , hda ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
@@ -627,19 +622,19 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
        => MultiplySetters '[] '[] s a b c ('Just la) 'Nothing where
   multiplySetters set1 set2 c
     = let (ha,b) = (>!<) @(Container c) @_ @_ @hda @(DegreeOf b `WithKind` DegreeKind c) c
-          a = generator @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
+          a = generated @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
       in set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , GradedPresentedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , GradedFreeSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , a ~ Element (Container c) (LabelKind c) (la `WithKind` LabelKind c)
-         , hda ~ Degree
+         , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
+         , hda ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
                     (la `WithKind` LabelKind c)
-         , b ~ Element (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
-         , hdb ~ Degree
+         , b ~ GenType (Container c) (LabelKind c) (lb `WithKind` LabelKind c)
+         , hdb ~ GenDeg
                     (DegreeKind c)
                     (Container c)
                     (LabelKind c)
@@ -656,8 +651,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       => MultiplySetters '[] '[] s a b c ('Just la) ('Just lb) where
   multiplySetters set1 set2 c
     = let (ha,hb) = (>!<) @(Container c) @_ @_ @hda @hdb c
-          a = generator @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
-          b = generator @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
+          a = generated @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
+          b = generated @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
       in set2 b . set1 a
 
 instance MultiplySetters is        js        s a b c mla mlb

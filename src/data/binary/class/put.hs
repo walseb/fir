@@ -26,7 +26,7 @@ import Data.Text(Text)
 import qualified Data.Text.Encoding as Text
 
 ----------------------------------------------------------------------------
--- Put typeclass
+-- Put type class
 
 class Put a where
   put    :: a -> Binary.PutM ()

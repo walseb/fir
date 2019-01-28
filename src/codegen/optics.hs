@@ -92,7 +92,7 @@ opticalTree is (SComposeO lg1 opt1 opt2)
         pure ( res1 `continue` res2 )
     where continue :: OpticalTree -> OpticalTree -> OpticalTree
           continue (Node safe1 (Leaf i) ) next@(Node safe2 _)
-            = Node (safe1 <> safe2) ( Continue  i next )
+            = Node (safe1 <> safe2) ( Continue i next )
           continue (Node safe1 (Continue i t) ) next@(Node safe2 _)
             = Node (safe1 <> safe2) ( Continue i (t `continue` next) )
           continue (Node safe1 (Combine ts)) next@(Node safe2 _)
@@ -100,7 +100,9 @@ opticalTree is (SComposeO lg1 opt1 opt2)
             . Combine
             $ map (`continue` next) ts
           continue (Node safe1 (Join o)) next@(Node safe2 _)
-            = error "opticalTree: continue todo"
+            = Node (safe1 <> safe2)
+            . Join
+            $ continue o next
 opticalTree is (SProductO lg1 lg2 o1 o2)
   = do  let (is1, is2) = combinedIndices lg1 lg2 is
         t1 <- opticalTree is1 o1
