@@ -87,10 +87,15 @@ type family (:++:) (as :: [k]) (bs :: [k]) where
   '[]       :++: bs = bs
   (a ': as) :++: bs = a ': ( as :++: bs )
 
-type family Zip (msg :: ErrorMessage) (as :: [Type]) (bs :: [Type]) = (r :: [Type]) where
-  Zip _  '[]        '[]       = '[]
-  Zip msg (a ': as) (b ': bs) = (a,b) ': Zip msg as bs
-  Zip msg _ _ = TypeError msg
+type family ExactZip (msg :: ErrorMessage) (as :: [Type]) (bs :: [Type]) :: [Type] where
+  ExactZip _  '[]        '[]       = '[]
+  ExactZip msg (a ': as) (b ': bs) = (a,b) ': ExactZip msg as bs
+  ExactZip msg _ _ = TypeError msg
+
+type family Zip (is :: [Type]) (js :: [Type]) :: [Type] where
+  Zip '[] js = js
+  Zip is '[] = is
+  Zip (i ': is) (j ': js) = (i,j) ': Zip is js
 
 type family Append (as :: [k]) (b :: k) = (r :: [k]) {- -- | r -> as b -} where
   Append '[]       b = '[b]

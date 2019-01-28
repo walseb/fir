@@ -1,9 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -13,7 +13,169 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Control.Type.Optic where
+{-|
+Module: Control.Type.Optic
+
+This module provides __type-level optics__, in the form of /getters/ and /setters/.
+
+@Optic is s a@ describes the kind of an optic:
+
+  * @is@ is a list of the types of the indices which have to be provided at run-time.
+  When all accessor information is known at compile-time, this is the empty list @'[]@.
+  * @s@ is the type of the container,
+  * @a@ is the type of the component which is being focused on inside the container.
+
+For instance, an optic which focuses on a single component of a vector of size 4 with a compile-time index
+has kind @Optic '[] (V 4 a) a@.
+
+
+The basic optics provided, to focus into an object of type @s@ onto a subobject of type @a@, are:
+
+  * @AnIndex ix :: Optic '[ix] s a@: focus via a run-time index of type @ix@,
+  * @Index   i  :: Optic '[]   s a@: focus via the compile-time index @i :: Nat@,
+  * @Name    k  :: Optic '[]   s a@: focus via the compile-time literal @k :: Symbol@.
+
+The compile-time nature of 'Index' and 'Name' means that we can type-check their usage
+to prevent focusing on a non-existent field (such as an out-of-bounds index).
+
+These optics can then be combined with the following combinators:
+
+  * @(:.:) :: Optic is s a -> Optic js a b -> Optic (is :++: js) s b@ composes two optics,
+  allowing for focusing into nested structures.
+  \[ s \to a \to b \]
+  * @(:*:) :: (o1 :: Optic is s a) -> (o2 :: Optic js s b) -> Optic (Zip is js) s (Product o1 o2)@
+  takes the product of two optics, to focus onto multiple components simultaneously.
+  \[ \begin{array}{ccc}
+  s & \to & a \\
+  \downarrow & & \\
+  b & &
+  \end{array} \]
+  * @Joint :: Optic is s a -> Optic is s (MonoType a)@ takes the equaliser of an optic,
+  to allow setting multiple components of the same type simultaneously.
+
+Again, these are type-checked for validity. For instance, one cannot create a product setter
+unless the two argument setters are disjoint.
+(Note that this disallows product setters involving runtime indices,
+as the required disjointness property can't be checked at compile-time.)
+
+
+Getters\/setters are optics which support accessing\/setting components.
+Type-level optics which can be reified to provide value-level getters and setters are defined
+through the 'ReifiedGetter' and 'ReifiedSetter' type classes, instances of which are provided
+for types used in this library in the "FIR.Instances.Optics" module, or in this module
+as far as combinators are concerned (e.g. the getter instance for a product of two getters).
+
+The usage of these optics mimics the [Lens](http://hackage.haskell.org/package/lens/docs/Control-Lens.html)
+library, but type-level arguments are provided with type applications. For instance:
+
+@
+> view @(Index 2) (V4 00 11 22 33)
+22
+@
+
+Note that numeric indexing starts at 0.
+
+@
+> view @AnIndex 2 (V4 00 11 22 33)
+22
+@
+
+Here the index is provided at the value-level instead of at the type-level.
+Multiple indices can be provided in this manner:
+
+  * as separate arguments for a composition,
+  * as pairs for a product optic.
+
+@
+> view @(Index 1 :.: Index 0)
+    $ M22
+        0 1
+        2 3
+2
+@
+
+Here we first access the outer layer (the row with index 1, i.e. second of two rows),
+then access the first component of that row.
+
+Note that, in a composition, the outermost optic is on the left, and the nesting increases
+as one reads from left to right.
+
+@
+> struct :: Struct '[ "a" ':-> V 4 Float, "b" ':-> V 2 Float ]
+> struct = V4 0 1 2 3 :& V2 4 5 :& End
+
+> set @( (Name "a" :.: Index 2) :*: (Name "b" :.: Index 0) ) (V2 6 7) struct
+{ "a" ':-> V4 0 1 6 3, "b" ':-> V2 7 5 }
+@
+
+Setting multiple values at one: focusing on the component at index 2 of the field @"a"@,
+and the component at index 0 of the field @"b"@.
+
+Because the last type accessed by each optic in the product is a vector type,
+the type-system combines these two setters using vectors.
+This explains why the value-level argument to @set@ is a 2-vector.
+
+@
+> mat :: M 3 3 Double
+> mat = M33
+          0 1 2
+          3 4 5
+          6 7 8
+
+> set @( Joint ( (Index 0 :.: Index 0) :*: (Index 1 :.: Index 1) :*: (Index 2 :.: Index 2) ) ) 9 mat
+M33
+  9 1 2
+  3 9 5
+  6 7 9
+@
+
+Note that the 'FIR.Instances.Optics.Diag' synonym exists for accessing the diagonal of a matrix,
+with the 'FIR.Instances.Optics.Center' synonym for the center of a matrix,
+which allows setting all diagonal entries of a square matrix to a single value as in the above example:
+
+@
+> set @Center 9 mat
+M33
+  9 1 2
+  3 9 5
+  6 7 9
+@
+-}
+
+module Control.Type.Optic
+  ( -- * Type-level optics
+    Optic(..)
+    -- $kind_coercion
+  , AnIndex, Index, Name
+
+    -- ** Getters and setters
+  , Gettable, Getter, ReifiedGetter(view)
+  , Settable, Setter, ReifiedSetter(set)
+    -- $kind_synonyms
+  , Whole, Part, Indices
+
+    -- ** Containers
+    -- $containers
+  , ContainerKind, DegreeKind, LabelKind
+  , Contained(..), MonoContained(..)
+
+    -- * Getter & setter instances
+    -- $instances
+
+    -- ** Composition of optics
+  , (:.:)
+    -- $composition_instances
+
+    -- ** Product of optics
+  , (:*:)
+  , Product, Zip
+    -- $product_instances
+
+    -- ** Equaliser optics
+  , Joint
+    -- $equaliser_instances
+  ) where
+
 
 -- base
 import Data.Kind(Type)
@@ -25,7 +187,7 @@ import GHC.TypeLits
 import GHC.TypeNats(Nat)
 
 -- fir
-import Data.Type.Map(type (:++:))
+import Data.Type.Map(type (:++:), Zip)
 import Data.Function.Variadic(ListVariadic)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
@@ -37,71 +199,106 @@ import Math.Algebra.GradedSemigroup
 ----------------------------------------------------------------------
 
 infixr 9 :.:
+infixr 9 `ComposeO`
 infixr 3 :*:
+infixr 3 `ProductO`
 
--- optic data (kind)
+
+
+-- | Optic data (kind).
 data Optic (is :: [Type]) (s :: k) (a :: Type) where
-  -- built-in lenses (unsafe)
+  -- | Run-time index.
   AnIndex_ :: Optic is s a
+  -- | Compile-time index.
   Index_   :: Nat    -> Optic is s a
+  -- | Compile-time field name.
   Name_    :: Symbol -> Optic is s a
-  -- optic combinators (unsafe)
+  -- | Equaliser optic.
   Joint_   :: Optic is s a -> Optic is s b
+  -- | Composition of optics.
   ComposeO :: Optic is s a -> Optic js a b -> Optic ks s b
+  -- | Product of optics.
   ProductO :: Optic is s a -> Optic ix s b -> Optic js s c 
 
--- safe synonyms (with correct kinds)
-type Name (k :: Symbol) = (Name_ k :: Optic '[] s a)
-type Index (i :: Nat) = (Index_ i :: Optic '[] s a)
-type AnIndex (ix :: Type) = (AnIndex_ :: Optic '[ix] s a)
+-- $kind_coercion
+--
+-- /__Warning__/: the data constructors of the 'Optic' data type are not kind-correct.
+-- This is to bypass difficulties with kind coercions:
+-- at the time of writing, GHC does not full support kind coercions, in that
+-- given the context @a ~ b@, GHC is unable to unify a type
+-- of kind @a@ with a type of kind @b@.
+-- (See [GHC trac #15710](https://ghc.haskell.org/trac/ghc/ticket/15710).)
+--
+-- As a result, the constructors for the 'Optic' data type have overly general kinds.
+-- Kind-safe type-level smart constructors are instead provided:
+--
+--   * 'AnIndex', 'Index', 'Name' to create specific optics (see below),
+--   * ':.:' for composition,
+--   * ':*:' for products,
+--   * 'Joint' for equalisers.
 
-
-type family ProductIndices (is :: [Type]) (js :: [Type]) :: [Type] where
-  ProductIndices '[] js = js
-  ProductIndices is '[] = is
-  ProductIndices (i ': is) (j ': js) = (i,j) ': ProductIndices is js
-
+-- | Run-time index (kind-safe).
+type AnIndex (ix :: Type  ) = (AnIndex_   :: Optic '[ix] s a)
+-- | Compile-time index (kind-safe).
+type Index   (i  :: Nat   ) = (Index_   i :: Optic '[]   s a)
+-- | Compile-time field name (kind-safe).
+type Name    (k  :: Symbol) = (Name_    k :: Optic '[]   s a)
+-- | Equaliser optic (kind-safe).
+type Joint (o :: Optic is s a) = (Joint_ o :: Optic is s (MonoType a))
+-- | Composition of optics (kind-safe).
+type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
+  = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
+-- | Product of optics (kind-safe).
 type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
   = ( (o1 `ProductO` o2)
         :: Optic
-              ( ProductIndices is js )
+              ( Zip is js )
               s
               ( Product o1 o2 )
     )
-type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
-  = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
-type Joint (o :: Optic is s a) = (Joint_ o :: Optic is s (MonoType a))
-
 ----------------------------------------------------------------------
--- type classes and synonyms
+-- Type classes and synonyms.
 
--- synonyms that allow kind variables to remain invisible
--- https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0026-explicit-specificity.rst
+-- | Type-level getter.
+class Gettable (optic :: Optic is (s :: k) a) | optic -> is k s a where
+
+type  Getter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[s]) a
+
+-- | Type-level getter which can be turned into a value-level getter.
+class Gettable optic => ReifiedGetter optic where
+  view :: Getter optic
+
+-- | Type-level setter.
+class Settable (optic :: Optic is (s :: k) a) | optic -> is k s a where
+
+type  Setter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[a,s]) s
+
+-- | Type-level setter which can be turned into a value-level setter.
+class Settable optic => ReifiedSetter optic where
+  set :: Setter optic
+
+-- $kind_synonyms
+--
+-- Synonyms that allow kind variables to remain invisible.
+--
+-- See [explicit specificity (GHC proposal #26)](https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0026-explicit-specificity.rst).
+
 type Whole   (optic :: Optic is s a) = s
 type Part    (optic :: Optic is s a) = a
 type Indices (optic :: Optic is s a) = is
 
--- type level getter
-class Gettable (optic :: Optic is (s :: k) a) | optic -> is k s a where
-type  Getter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[s]) a
-
--- type level getter which can be turned into a value-level getter
-class Gettable optic => ReifiedGetter optic where
-  view :: Getter optic
-
--- type level setter
-class Settable (optic :: Optic is (s :: k) a) | optic -> is k s a where
-type  Setter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[a,s]) s
-
--- type level setter which can be turned into a value-level setter
-class Settable optic => ReifiedSetter optic where
-  set :: Setter optic
-
 -------------------------------
+-- $containers
+--
+-- Auxiliary type class describing types that provide the functionality necessary
+-- to be able to create product optics.
+--
+-- For instance, we require the ability to check that setters do not overlap,
+-- to ensure that the resulting product setter is lawful.
 
-type family ContainerKind (s :: Type) :: k
-type family DegreeKind    (s :: Type) :: d
-type family LabelKind     (s :: Type) :: l
+type family ContainerKind (s :: Type) :: Type
+type family DegreeKind    (s :: Type) :: Type
+type family LabelKind     (s :: Type) :: Type
 
 class Contained (s :: Type) where
   type Container  s :: ContainerKind s
@@ -113,7 +310,29 @@ class Contained s => MonoContained s where
   type MonoType s
 
 ----------------------------------------------------------------------
--- composition
+-- $instances
+--
+-- This module defines getter and setter instances that are applicable in general situations:
+--
+--   * composition of optics,
+--   * product of optics,
+--   * equaliser optics.
+--
+-- In other words, this module provides the general framework for /combining/ optics.
+-- To manipulate specific types (e.g. the ability to access a component of a vector by its index),
+-- corresponding specific instances are required.
+--
+-- The specific instances, as they pertain to datatypes used by this library,
+-- are found in the "FIR.Instances.Optics" module.
+-- This includes instances for vectors, matrices and structs.
+
+--------------------------
+-- $composition_instances
+--
+-- Included are the following instances for composed optics:
+--
+--   * the composite of two getters is a getter,
+--   * the composite of a lens (outside) with a setter (inside) is a setter.
 
 instance forall k (s :: k) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( Gettable o1
@@ -173,14 +392,19 @@ instance ComposeSetters '[] js s a b => ComposeSetters '[] (j ': js) s a b where
   composeSetters view1 set1 set2 j
     = composeSetters @'[] @js @s @a @b view1 set1 (set2 j)
 
-----------------------------------------------------------------------
--- products
+--------------------------
+-- $product_instances
+--
+-- Included are the following instances for product optics:
+--
+--   * the product of two setters is a setter,
+--   * the product of two getters is a getter.
 
 -- getter products
 instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
          ( Gettable o1
          , Gettable o2
-         , ks ~ ProductIndices is js
+         , ks ~ Zip is js
          , c ~ Product o1 o2
          ) => Gettable ((o1 `ProductO` o2) :: Optic ks s c) where
 
@@ -188,7 +412,7 @@ instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
 instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b) .
          ( Settable o1
          , Settable o2
-         , ks ~ ProductIndices is js
+         , ks ~ Zip is js
          , c ~ ProductIfDisjoint o1 o2
          ) => Settable ((o1 `ProductO` o2) :: Optic ks s c) where
 
@@ -205,6 +429,7 @@ type family WithKind (a :: l) k :: k where
                  :$$: Text "Actual kind: " :<>: ShowType l
                 )
 
+-- | Return type of a product optic.
 type family Product
               ( o1 :: Optic is s a )
               ( o2 :: Optic js t b )
@@ -378,7 +603,7 @@ type family Disjoint
 class MultiplyGetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
   multiplyGetters :: ListVariadic (is :++: '[s]) a
                   -> ListVariadic (js :++: '[s]) b
-                  -> ListVariadic (ProductIndices is js :++: '[s]) c
+                  -> ListVariadic (Zip is js :++: '[s]) c
 
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , a ~ ListVariadic '[] a
@@ -511,17 +736,17 @@ instance MultiplyGetters is        js        s a b c mla mlb
       => MultiplyGetters (i ': is) (j ': js) s a b c mla mlb where
   multiplyGetters view1 view2 (i,j)
     = multiplyGetters @is @js @s @a @b @c @mla @mlb (view1 i) (view2 j)
-      :: ListVariadic (ProductIndices is js :++: '[s]) c
+      :: ListVariadic (Zip is js :++: '[s]) c
 instance MultiplyGetters '[] js        s a b c mla mlb
       => MultiplyGetters '[] (j ': js) s a b c mla mlb where
   multiplyGetters view1 view2 j
     = multiplyGetters @'[] @js @s @a @b @c @mla @mlb view1 (view2 j)
-      :: ListVariadic (ProductIndices '[] js :++: '[s]) c
+      :: ListVariadic (Zip '[] js :++: '[s]) c
 instance MultiplyGetters is        '[] s a b c mla mlb
       => MultiplyGetters (i ': is) '[] s a b c mla mlb where
   multiplyGetters view1 view2 i
     = multiplyGetters @is @'[] @s @a @b @c @mla @mlb (view1 i) view2
-      :: ListVariadic (ProductIndices is '[] :++: '[s]) c
+      :: ListVariadic (Zip is '[] :++: '[s]) c
 
 instance forall is js ks (s :: Type) a b c
                (o1 :: Optic is s a) (o2 :: Optic js s b)
@@ -529,7 +754,7 @@ instance forall is js ks (s :: Type) a b c
                (mlb :: Maybe (LabelKind (LastAccessee o2)))
        . ( ReifiedGetter o1
          , ReifiedGetter o2
-         , ks ~ ProductIndices is js
+         , ks ~ Zip is js
          , c ~ Product o1 o2
          , mla ~ ( If (IsProduct o1) 'Nothing ('Just (LabelOf (LastAccessee o1) (LastOptic o1))) )
          , mlb ~ ( If (IsProduct o2) 'Nothing ('Just (LabelOf (LastAccessee o2) (LastOptic o2))) )
@@ -543,7 +768,7 @@ instance forall is js ks (s :: Type) a b c
 class MultiplySetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
   multiplySetters :: ListVariadic (is :++: '[a,s]) s
                   -> ListVariadic (js :++: '[b,s]) s
-                  -> ListVariadic (ProductIndices is js :++: '[c,s]) s
+                  -> ListVariadic (Zip is js :++: '[c,s]) s
 
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
@@ -659,17 +884,17 @@ instance MultiplySetters is        js        s a b c mla mlb
       => MultiplySetters (i ': is) (j ': js) s a b c mla mlb where
   multiplySetters set1 set2 (i,j)
     = multiplySetters @is @js @s @a @b @c @mla @mlb (set1 i) (set2 j)
-      :: ListVariadic (ProductIndices is js :++: '[c,s]) s
+      :: ListVariadic (Zip is js :++: '[c,s]) s
 instance MultiplySetters '[] js        s a b c mla mlb
       => MultiplySetters '[] (j ': js) s a b c mla mlb where
   multiplySetters set1 set2 j
     = multiplySetters @'[] @js @s @a @b @c @mla @mlb set1 (set2 j)
-      :: ListVariadic (ProductIndices '[] js :++: '[c,s]) s
+      :: ListVariadic (Zip '[] js :++: '[c,s]) s
 instance MultiplySetters is        '[] s a b c mla mlb
       => MultiplySetters (i ': is) '[] s a b c mla mlb where
   multiplySetters set1 set2 i
     = multiplySetters @is @'[] @s @a @b @c @mla @mlb (set1 i) set2
-      :: ListVariadic (ProductIndices is '[] :++: '[c,s]) s
+      :: ListVariadic (Zip is '[] :++: '[c,s]) s
 
 instance forall is js ks (s :: Type) a b c
                (o1 :: Optic is s a) (o2 :: Optic js s b)
@@ -677,7 +902,7 @@ instance forall is js ks (s :: Type) a b c
                (mlb :: Maybe (LabelKind (LastAccessee o2)))
        . ( ReifiedSetter o1
          , ReifiedSetter o2
-         , ks ~ ProductIndices is js
+         , ks ~ Zip is js
          , c ~ ProductIfDisjoint o1 o2
          , mla ~ ( If (IsProduct o1) 'Nothing ('Just (LabelOf (LastAccessee o1) (LastOptic o1))) )
          , mlb ~ ( If (IsProduct o2) 'Nothing ('Just (LabelOf (LastAccessee o2) (LastOptic o2))) )
@@ -687,8 +912,13 @@ instance forall is js ks (s :: Type) a b c
       => ReifiedSetter ((o1 `ProductO` o2) :: Optic ks s c) where
   set = multiplySetters @is @js @s @a @b @c @mla @mlb (set @o1) (set @o2)
 
-----------------------------------------------------------------------
--- equalisers
+--------------------------
+-- $equaliser_instances
+--
+-- Settable instance for the equaliser of a setter.
+--
+-- This functionality allows for the simultaneous
+-- setting of multiple values of the same type.
 
 instance
   ( TypeError ( Text "get: cannot use equaliser as a getter." ) )

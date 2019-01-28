@@ -3,8 +3,8 @@
 
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -52,13 +52,13 @@ import Control.Type.Optic
   , ContainerKind, DegreeKind, LabelKind
   , MonoContained(..)
   , (:.:), (:*:), AnIndex, Index, Name, Joint
-  , Product, ProductIndices
+  , Product
   )
 import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map
   ( (:->)((:->)), Key, Value
   , Lookup, Append, Length
-  , type (:++:)
+  , type (:++:), Zip
   , SLength, KnownLength(sLength)
   )
 import FIR.Binding( BindingsMap )
@@ -180,7 +180,7 @@ instance forall is js ks s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
 instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
          ( KnownOptic o1
          , KnownOptic o2
-         , ks ~ ProductIndices is js
+         , ks ~ Zip is js
          , c ~ Product o1 o2
          , KnownLength is
          , KnownLength js

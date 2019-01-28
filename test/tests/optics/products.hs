@@ -113,5 +113,3 @@ nested5 :: Struct '[ "a" ':-> Float
                                       ]
                    ]
 nested5 = set @(Index 0 :*: (Name "b" :.: Name "s")) (0 :& identity :& End) nested1
-
--- TODO: product setters for vectors and matrices (ReifiedSetter instances not yet written)
