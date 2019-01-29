@@ -104,7 +104,7 @@ instance MonadIx (Codensity f) where
 ------------------------------------------------
 -- Atkey indexing
 
--- | The /AtKey/ datatype allows us to express AtKey-style indexed monads
+-- | The /At Key/ datatype allows us to express Atkey-style indexed monads
 -- in terms of McBride-style indexed monads.
 data (:=) :: Type -> i -> (i -> Type) where
   AtKey :: a -> (a := i) i

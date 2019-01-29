@@ -185,20 +185,36 @@ instance PrimTy Double where
   primTySing = SScalar SDouble
 
 
-instance TypeError
-  ( Text "Use a specific width unsigned integer type instead of 'Word' (recommended: 'Word32')." )
+instance ( TypeError
+             ( Text "Use a specific width unsigned integer type \
+                    \instead of 'Word' (recommended: 'Word32')."
+              )
+         , Put Word
+         )
     => PrimTy Word where
   primTySing = error "unreachable" 
-instance TypeError
-  ( Text "Use a specific width signed integer type instead of 'Int' (recommended: 'Int32')." )
+instance ( TypeError
+             ( Text "Use a specific width signed integer type \
+                    \instead of 'Int' (recommended: 'Int32')."
+              )
+         , Put Int
+         )
     => PrimTy Int where
   primTySing = error "unreachable"
-instance TypeError
-  ( Text "Use a specific width unsigned integer type instead of 'Word' (recommended: 'Word32')." )
+instance ( TypeError
+             ( Text "Use a specific width unsigned integer type \
+                    \instead of 'Word' (recommended: 'Word32')."
+              )
+         , Put Word
+         )
     => ScalarTy Word where
   scalarTySing = error "unreachable" 
-instance TypeError
-  ( Text "Use a specific width signed integer type instead of 'Int' (recommended: 'Int32')." )
+instance ( TypeError
+             ( Text "Use a specific width signed integer type \
+                    \instead of 'Int' (recommended: 'Int32')."
+              )
+         , Put Int
+         )
     => ScalarTy Int where
   scalarTySing = error "unreachable"
 

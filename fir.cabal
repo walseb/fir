@@ -33,13 +33,13 @@ description:
   .
   * __"FIR.Labels"__: optional imperative-like syntax using /OverloadedLabels/,
   .
-  * __"Math.Linear"__: vectors, matrices and operations on them, as used by this library.
+  * __"Math.Linear"__: vectors, matrices, and operations on them, as used by this library.
   .
   .
   Important types used by this library:
   .
   * __@AST a@__: main AST datatype, see "FIR.AST". A value of type @AST a@ can be thought of as (pure) GPU code
-  returning a value of type @a@.
+  computing a value of type @a@.
   * __@Codensity AST (AST a := j) i@__: type of a monadic expression,
   starting in state @i@ and ending in state @j@.
   This state is used to keep track of which objects are in scope

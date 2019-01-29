@@ -1,7 +1,6 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DerivingVia         #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
