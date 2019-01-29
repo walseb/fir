@@ -18,8 +18,6 @@ module CodeGen.Optics
 
 -- base
 import Control.Arrow(first)
-import Data.Word(Word32)
-import GHC.TypeNats(natVal)
 
 -- text-utf8
 import Data.Text(Text)
@@ -36,27 +34,30 @@ import Control.Type.Optic(Optic)
 import Data.Type.Map(type (:++:), Zip, SLength(SZero, SSucc))
 import FIR.AST(AST((:$), Fst, Snd), ASTs(NilAST,ConsAST))
 import FIR.Instances.Optics(SOptic(..))
-import FIR.Prim.Singletons(HasField(fieldIndex))
+import FIR.Prim.Singletons(SPrimTy)
 import qualified SPIRV.PrimTy as SPIRV
 
 ----------------------------------------------------------------------------
 -- optics
 
+data OpticalLeaf where
+  Identity :: OpticalLeaf
+  Join     :: OpticalLeaf
+  Index    :: SPrimTy ty -> ID -> OpticalLeaf
+
 data OpticalNode
-  = Identity
-  | Leaf     ID
-  | Continue ID OpticalTree
+  = Edge     OpticalLeaf
+  | Continue OpticalLeaf OpticalTree
   | Combine  [OpticalTree]
-  | Join     OpticalTree
 
-data OpticalTree = Node IndexSafeness OpticalNode
+data OpticalTree = Node Safeness OpticalNode
 
-data IndexSafeness
+data Safeness
   = Unsafe
   | Safe
   deriving ( Eq, Show )
 
-instance Semigroup IndexSafeness where
+instance Semigroup Safeness where
   Safe <> x = x
   _    <> _ = Unsafe
 
@@ -75,37 +76,24 @@ combinedIndices (SSucc is) (SSucc js) (k1k2 `ConsAST` ks)
 
 opticalTree :: forall k is (s :: k) a (optic :: Optic is s a).
                ASTs is -> SOptic optic -> CGMonad OpticalTree
-opticalTree _ SId = pure $ Node Safe Identity
-opticalTree (i `ConsAST` _) (SAnIndexV   _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree (i `ConsAST` _) (SAnIndexRTA _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree (i `ConsAST` _) (SAnIndexA   _) = Node Unsafe . Leaf . fst <$> codeGen i
-opticalTree _ (SIndex n_px)
-  = let n :: Word32
-        n = fromIntegral ( natVal n_px )
-    in Node Safe . Leaf <$> constID n
-opticalTree _ (SName k bds)
-  = let n :: Word32
-        n = fieldIndex k bds
-    in Node Safe . Leaf <$> constID n
+opticalTree _ SId    = pure . Node Safe . Edge $ Identity
+opticalTree _ SJoint = pure . Node Safe . Edge $ Join
+opticalTree (i `ConsAST` _) (SAnIndex sing _) = Node Unsafe . Edge . Index sing . fst <$> codeGen i
+opticalTree _ (SIndex sing n) = Node Safe . Edge . Index sing <$> constID n
 opticalTree is (SComposeO lg1 opt1 opt2)
   = do  let (is1, is2) = composedIndices lg1 is
         res1 <- opticalTree is1 opt1
         res2 <- opticalTree is2 opt2
         pure ( res1 `continue` res2 )
     where continue :: OpticalTree -> OpticalTree -> OpticalTree
-          continue (Node _ Identity ) next = next
-          continue (Node safe1 (Leaf i) ) next@(Node safe2 _)
-            = Node (safe1 <> safe2) ( Continue i next )
+          continue (Node safe1 (Edge e)) next@(Node safe2 _)
+            = Node (safe1 <> safe2) ( Continue e next )
           continue (Node safe1 (Continue i t) ) next@(Node safe2 _)
             = Node (safe1 <> safe2) ( Continue i (t `continue` next) )
           continue (Node safe1 (Combine ts)) next@(Node safe2 _)
             = Node (safe1 <> safe2)
             . Combine
             $ map (`continue` next) ts
-          continue (Node safe1 (Join o)) next@(Node safe2 _)
-            = Node (safe1 <> safe2)
-            . Join
-            $ continue o next
 opticalTree is (SProductO lg1 lg2 o1 o2)
   = do  let (is1, is2) = combinedIndices lg1 lg2 is
         t1 <- opticalTree is1 o1
@@ -121,7 +109,6 @@ opticalTree is (SProductO lg1 lg2 o1 o2)
         pure combined
 opticalTree _ (SBinding _)
   = throwError "opticalTree: trying to access a binding within a binding"
-opticalTree is (SJoint opt) = error "todo"
 
 
 

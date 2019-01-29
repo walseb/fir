@@ -65,7 +65,7 @@ Getters\/setters are optics which support accessing\/setting components.
 Type-level optics which can be reified to provide value-level getters and setters are defined
 through the 'ReifiedGetter' and 'ReifiedSetter' type classes, instances of which are provided
 for types used in this library in the "FIR.Instances.Optics" module, or in this module
-as far as combinators are concerned (e.g. the getter instance for a product of two getters).
+as far as combinators are concerned (e.g. the getter instance for the composite of two getters).
 
 The usage of these optics mimics the [Lens](http://hackage.haskell.org/package/lens/docs/Control-Lens.html)
 library, but type-level arguments are provided with type applications. For instance:
@@ -148,7 +148,7 @@ module Control.Type.Optic
   ( -- * Type-level optics
     Optic(..)
     -- $kind_coercion
-  , Id, AnIndex, Index, Name
+  , AnIndex, Index, Name
 
     -- ** Getters and setters
   , Gettable, Getter, ReifiedGetter(view)
@@ -165,7 +165,12 @@ module Control.Type.Optic
     -- $instances
 
     -- ** Identity
+  , Id
     -- $identity_instances
+
+    -- ** Equaliser optics
+  , Joint
+    -- $equaliser_instances
 
     -- ** Composition of optics
   , (:.:)
@@ -176,9 +181,6 @@ module Control.Type.Optic
   , Product, Zip
     -- $product_instances
 
-    -- ** Equaliser optics
-  , Joint
-    -- $equaliser_instances
   ) where
 
 
@@ -214,14 +216,14 @@ infixr 3 `ProductO`
 data Optic (is :: [Type]) (s :: k) (a :: Type) where
   -- | Identity.
   Id_      :: Optic is a a
+  -- | Equaliser optic.
+  Joint_   :: Optic is s a
   -- | Run-time index.
   AnIndex_ :: Optic is s a
   -- | Compile-time index.
   Index_   :: Nat    -> Optic is s a
   -- | Compile-time field name.
   Name_    :: Symbol -> Optic is s a
-  -- | Equaliser optic.
-  Joint_   :: Optic is s a -> Optic is s b
   -- | Composition of optics.
   ComposeO :: Optic is s a -> Optic js a b -> Optic ks s b
   -- | Product of optics.
@@ -239,21 +241,21 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 -- As a result, the constructors for the 'Optic' data type have overly general kinds.
 -- Kind-safe type-level smart constructors are instead provided:
 --
---   * 'Id', 'AnIndex', 'Index', 'Name' to create specific optics (see below),
---   * ':.:' for composition,
---   * ':*:' for products,
---   * 'Joint' for equalisers.
+--   * 'Id', 'Joint', 'AnIndex', 'Index', 'Name' to create specific optics (see below),
+--   * ':.:' for composition of optics,
+--   * ':*:' for products of optics,
 
--- | Identity (kind-safe).
-type Id = (Id_ :: Optic '[] a a)
 -- | Run-time index (kind-safe).
 type AnIndex (ix :: Type  ) = (AnIndex_   :: Optic '[ix] s a)
 -- | Compile-time index (kind-safe).
 type Index   (i  :: Nat   ) = (Index_   i :: Optic '[]   s a)
 -- | Compile-time field name (kind-safe).
 type Name    (k  :: Symbol) = (Name_    k :: Optic '[]   s a)
+
+-- | Identity (kind-safe).
+type Id = (Id_ :: Optic '[] a a)
 -- | Equaliser optic (kind-safe).
-type Joint (o :: Optic is s a) = (Joint_ o :: Optic is s (MonoType a))
+type Joint = (Joint_ :: Optic is a (MonoType a))
 -- | Composition of optics (kind-safe).
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
   = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
@@ -317,6 +319,7 @@ class Contained (s :: Type) where
 
 class Contained s => MonoContained s where
   type MonoType s
+  setAll :: MonoType s -> s -> s
 
 ----------------------------------------------------------------------
 -- $instances
@@ -326,7 +329,6 @@ class Contained s => MonoContained s where
 --   * identity optic,
 --   * composition of optics,
 --   * product of optics,
---   * equaliser optics.
 --
 -- In other words, this module provides the general framework for /combining/ optics.
 -- To manipulate specific types (e.g. the ability to access a component of a vector by its index),
@@ -489,17 +491,16 @@ type family ProductIfDisjoint
 
 type family LastAccessee ( o :: Optic is (s :: Type) a ) :: Type where
   LastAccessee (o1 `ComposeO` o2 ) = LastAccessee o2
-  LastAccessee (Joint_ o         ) = LastAccessee o
   LastAccessee (o :: Optic is s a) = s
 
 type family LastIndices ( o :: Optic is s a ) :: [Type] where
   LastIndices (o1 `ComposeO` o2 ) = LastIndices o2
-  LastIndices (Joint_ o         ) = LastIndices o
   LastIndices (o :: Optic is s a) = s
 
 type family LastOptic ( o :: Optic is s a) :: Optic (LastIndices o) (LastAccessee o) a where
   LastOptic (o1 `ComposeO` o2) = LastOptic o2
-  LastOptic (Joint_ o        ) = LastOptic o
+  LastOptic Joint_             = Joint_
+  LastOptic Id_                = Id_
   LastOptic AnIndex_           = AnIndex_
   LastOptic (Index_ i        ) = Index_ i
   LastOptic (Name_  k        ) = Name_  k
@@ -938,23 +939,3 @@ instance forall is js ks (s :: Type) a b c
          )
       => ReifiedSetter ((o1 `ProductO` o2) :: Optic ks s c) where
   set = multiplySetters @is @js @s @a @b @c @mla @mlb (set @o1) (set @o2)
-
---------------------------
--- $equaliser_instances
---
--- Settable instance for the equaliser of a setter.
---
--- This functionality allows for the simultaneous
--- setting of multiple values of the same type.
-
-instance
-  ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
-  => Gettable (Joint_ o :: Optic i s r) where
-
-
-instance forall i s a r (o :: Optic i s a).
-         ( Settable o
-         , MonoContained a
-         , r ~ MonoType a
-         ) => Settable (Joint_ o :: Optic i s r)
-        where

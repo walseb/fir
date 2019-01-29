@@ -25,6 +25,7 @@ import Data.Kind(Type)
 import Data.Type.Bool(If)
 import Data.Type.Equality(type (==))
 import Data.Proxy(Proxy(Proxy))
+import Data.Word(Word32)
 import GHC.TypeLits
   ( Symbol, KnownSymbol, symbolVal
   , TypeError
@@ -65,42 +66,39 @@ import FIR.Binding( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
 import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))
 import FIR.Prim.Singletons
-  ( PrimTy, IntegralTy
+  ( PrimTy(primTySing), IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
   , PrimTys(primTysSing)
-  , SPrimTys
-  , HasField
+  , SPrimTy(SStruct), SPrimTys
+  , HasField(fieldIndex)
   )
-import FIR.Prim.Struct(Struct((:&)))
+import FIR.Prim.Struct(Struct((:&), End))
 import Math.Linear(V((:.)), M(M), (^!), at)
 
 ----------------------------------------------------------------------
 -- singletons
 
 data SOptic (optic :: Optic i s a) :: Type where
-  SId :: SOptic Id
-  -- split up run-time indexing: SPIR-V supports two different cases
+  SId    :: SOptic Id
+  SJoint :: SOptic Joint
+  -- for indices, we additional specify the accessee, to distinguish
+  -- the different methods SPIR-V supports for access:
   --  - vectors with VectorExtractDynamic / VectorInsertDynamic
   --  - arrays with OpAccessChain
-  SAnIndexV   :: SScalarTy ix -> SOptic (AnIndex ix)
-  SAnIndexRTA :: SScalarTy ix -> SOptic (AnIndex ix)
-  SAnIndexA   :: SScalarTy ix -> SOptic (AnIndex ix)
-  SIndex    :: KnownNat    n => Proxy n -> SOptic (Index n)
-  SName     :: (KnownSymbol k, HasField k as)
-            => Proxy k
-            -> SPrimTys as
-            -> SOptic (Name k :: Optic '[] (Struct as) b)
+  SAnIndex :: SPrimTy s -> SScalarTy ix -> SOptic (AnIndex ix :: Optic '[ix] s a)
+  SIndex   :: SPrimTy s -> Word32 -> SOptic (o :: Optic '[] s a)
+  -- we allow an overly-general return type for the above,
+  -- as we convert 'Name' optics to 'Index' optics behind the scenes
   SBinding  :: KnownSymbol k
             => Proxy k
             -> SOptic (Name k :: Optic '[] (as :: BindingsMap) b)
-  SJoint    :: SOptic o  -> SOptic (Joint o)
   SComposeO :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
                SLength is -> SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
      --        ^^^^^^^^^^
      -- we need to know the length of the first list to generate code for composite optics
      -- see the function 'opticalTree' in the code generator
-     --
-     -- same for products
+
+     -- similar remark applies to products
   SProductO  :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js s b).
                 SLength is -> SLength js -> SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
 
@@ -118,15 +116,12 @@ o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
 o1 %:*: o2 = SProductO (sLength @_ @is) (sLength @_ @js) o1 o2
 
 showSOptic :: SOptic (o :: Optic i s a) -> String
-showSOptic SId = "Id"
-showSOptic (SAnIndexV   _) = "AnIndexV"
-showSOptic (SAnIndexRTA _) = "AnIndexRTA"
-showSOptic (SAnIndexA   _) = "AnIndexA"
-showSOptic (SIndex n  ) = "Index "   ++ show (natVal    n)
-showSOptic (SName  k _) = "Name "    ++ show (symbolVal k)
-showSOptic (SBinding k) = "Binding " ++ show (symbolVal k)
-showSOptic (SJoint   o) = "Joint ( " ++ showSOptic o ++ " )"
-showSOptic (SComposeO _ o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
+showSOptic SId    = "Id"
+showSOptic SJoint = "Joint"
+showSOptic (SAnIndex _ _) = "AnIndex"
+showSOptic (SIndex   _ n) = "Index "   ++ show n
+showSOptic (SBinding k  ) = "Binding " ++ show (symbolVal k)
+showSOptic (SComposeO _   o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
 showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
 
 
@@ -135,44 +130,39 @@ class KnownOptic optic where
 
 instance ( empty ~ '[] ) => KnownOptic (Id_ :: Optic empty a a) where
   opticSing = SId
-instance ( is ~ '[ix], IntegralTy ix )
-        => KnownOptic (AnIndex_ :: Optic is (V n a) a)
+instance ( empty ~ '[]
+         , MonoContained a
+         , mono ~ MonoType a
+         )
+       => KnownOptic (Joint_ :: Optic empty a mono) where
+  opticSing = SJoint
+instance ( is ~ '[ix], IntegralTy ix, PrimTy s )
+        => KnownOptic (AnIndex_ :: Optic is s a)
         where
-  opticSing = SAnIndexV (scalarTySing @ix)
-instance ( is ~ '[ix], IntegralTy ix )
-        => KnownOptic (AnIndex_ :: Optic is (RuntimeArray a) a)
-        where
-  opticSing = SAnIndexRTA (scalarTySing @ix)
-instance ( is ~ '[ix], IntegralTy ix )
-        => KnownOptic (AnIndex_ :: Optic is (Array n a) a)
-        where
-  opticSing = SAnIndexA (scalarTySing @ix)
+  opticSing = SAnIndex (primTySing @s) (scalarTySing @ix)
 instance ( KnownNat n
          , empty ~ '[]
+         , PrimTy s
          )
        => KnownOptic (Index_ n :: Optic empty s a)
        where
-  opticSing = SIndex (Proxy @n)
+  opticSing = SIndex (primTySing @s) (fromIntegral . natVal $ Proxy @n)
 instance ( KnownSymbol k
          , PrimTys as
          , HasField k as
          , empty ~ '[]
          ) => KnownOptic (Name_ k :: Optic empty (Struct as) a)
          where
-  opticSing = SName (Proxy @k) (primTysSing @as)
+  opticSing =
+    let sing :: SPrimTys as
+        sing = primTysSing
+    in SIndex (SStruct sing) (fieldIndex (Proxy @k) sing)
 instance ( KnownSymbol k
          , empty ~ '[]
          )
       => KnownOptic (Name_ k :: Optic empty (bds :: BindingsMap) a)
       where
   opticSing = SBinding (Proxy @k)
-instance forall is s a mono (o :: Optic is s a).
-         ( KnownOptic o
-         , mono ~ MonoType a
-         )
-       => KnownOptic (Joint_ o :: Optic is s mono )
-       where
-  opticSing = SJoint (opticSing @o)
 instance forall is js ks s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( KnownOptic o1
          , KnownOptic o2
@@ -832,24 +822,39 @@ instance
 ----------------------------------------------------------------------
 -- type class instances for equalisers
 
-instance MonoContained (Array n a) where
+instance KnownNat n => MonoContained (Array n a) where
   type MonoType (Array n a) = a
+  setAll a _ = MkArray @n $ Array.replicate (fromIntegral . natVal $ Proxy @n) a
 
 instance MonoContained (RuntimeArray a) where
   type MonoType (RuntimeArray a) = a
+  setAll a (MkRuntimeArray arr)
+    = MkRuntimeArray $ Array.replicate n a
+        where n = Array.length arr
 
 instance (KnownNat n, 1 <= n)
       => MonoContained (V n a) where
   type MonoType (V n a) = a
+  setAll = const . pure
 
-instance (KnownNat m, 1 <= m)
+instance (KnownNat m, KnownNat n, 1 <= m)
       => MonoContained (M m n a) where
   type MonoType (M m n a) = V m a
+  setAll = const . M . distribute . pure
 
-instance (AllValuesEqual v as ~ 'True)
-      => MonoContained (Struct ((k ':-> v) ': as))
+instance MonoContained (Struct ((k ':-> v) ': '[]))
       where
+  type MonoType (Struct ((k ':-> v) ': '[])) = v
+  setAll = const . (:& End)
+
+instance {-# OVERLAPPABLE #-}
+         ( AllValuesEqual v as ~ 'True
+         , MonoContained (Struct as)
+         , MonoType (Struct as) ~ v
+         )
+       => MonoContained (Struct ((k ':-> v) ': as)) where
   type MonoType (Struct ((k ':-> v) ': as)) = v
+  setAll a (_ :& as) = a :& setAll a as
 
 type family AllValuesEqual (a :: v) (as :: [k :-> v]) :: Bool where
   AllValuesEqual _ '[]                 = True
@@ -1022,7 +1027,7 @@ type family Diag :: Optic '[] (M n n a) (V n a) where
            ) :: Optic '[] (M 4 4 a) (V 4 a)
          )
 
-type Center = Joint Diag
+type Center = ( (Diag :.: Joint) :: Optic '[] (M n n a) a )
 
 type family SwizzleReturn (a :: Type) (ks :: [Symbol]) :: Type where
   SwizzleReturn a '[_] = a

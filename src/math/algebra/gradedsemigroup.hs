@@ -100,19 +100,19 @@ class GradedSemigroup g k => GeneratedGradedSemigroup g k d | g -> k d where
 type GenDegAt k g (l :: d) = (GenDeg k g d (l :: d) :: k)
 
 -- $generated
--- We illustrate this type class with some examples.
+-- We illustrate this type class with some examples:
 --
--- Consider length-indexed vectors.
--- Every length-indexed vector can be (uniquely) expressed as a concatenation
--- of its components, which are length 1 vectors.
--- To define a type class instance for length-indexed vectors with components of type @a@,
--- we then specify that the element type is always @a@,
--- and the degree of a homogeneous generator is always 1.
+--   * Length-indexed vectors.
+--   Every length-indexed vector can be (uniquely) expressed as a concatenation
+--   of its components, which are length 1 vectors.
+--   To define a type class instance for length-indexed vectors with components of type @a@,
+--   we then specify that the element type is always @a@,
+--   and the degree of a homogeneous generator is always 1.
 --
--- A variation consists of heterogeneous lists.
--- In this case, an index is specified by a list of types,
--- elements can be of any type (making use of the type parameter @l@ now),
--- and the degree of a generator is the singleton list of the corresponding type.
+--   * Heterogeneous lists.
+--   In this case, an index is specified by a list of types,
+--   elements can be of any type (making use of the type parameter @l@ now),
+--   and the degree of a generator is the singleton list of the corresponding type.
 
 -- ** Freenees of graded semigroup operation
 

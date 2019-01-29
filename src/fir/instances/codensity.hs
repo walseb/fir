@@ -336,7 +336,7 @@ instance Modifier is s b => Modifier (i ': is) s b where
 --
 -- 'Boolean', 'Choose',
 --
--- 'Eq', 'Ord' (note: note the "Prelude" type classes).
+-- 'Eq', 'Ord' (note: not the "Prelude" type classes).
 instance Boolean (Codensity AST (AST Bool := i) i) where
   true  = ixPure true
   false = ixPure false
