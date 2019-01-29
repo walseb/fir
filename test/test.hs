@@ -162,7 +162,7 @@ compileTest testName flags = do
                       )
               let validateProcess
                     = ( proc validator [ spv ] )
-                        { std_out = UseHandle valHandle }
+                        { std_err = UseHandle valHandle }
               (_, _, _, valProcessHandle)
                 <- createProcess validateProcess
               _ <- waitForProcess valProcessHandle
