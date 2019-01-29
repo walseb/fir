@@ -34,12 +34,11 @@ The basic optics provided, to focus into an object of type @s@ onto a subobject 
   * @AnIndex ix :: Optic '[ix] s a@: focus via a run-time index of type @ix@,
   * @Index   i  :: Optic '[]   s a@: focus via the compile-time index @i :: Nat@,
   * @Name    k  :: Optic '[]   s a@: focus via the compile-time literal @k :: Symbol@.
-  * @Id         :: Optic '[]   a a@: identity lens.
 
 The compile-time nature of 'Index' and 'Name' means that we can type-check their usage
 to prevent focusing on a non-existent field (such as an out-of-bounds index).
 
-These optics can then be combined with the following combinators:
+These optics can then be combined with the following functionality:
 
   * @(:.:) :: Optic is s a -> Optic js a b -> Optic (is :++: js) s b@ composes two optics,
   allowing for focusing into nested structures.
@@ -51,8 +50,9 @@ These optics can then be combined with the following combinators:
   \downarrow & & \\
   b & &
   \end{array} \]
-  * @Joint :: Optic is s a -> Optic is s (MonoType a)@ takes the equaliser of an optic,
-  to allow setting multiple components of the same type simultaneously.
+  * @Joint :: Optic is a (MonoType a)@ is an equaliser optic,
+  which allows setting to a given value multiple components of the same type
+  by post-composing with 'Joint' (see example below).
   \[ s \to a \rightrightarrows \textrm{MonoType}(a) \]
 
 Again, these are type-checked for validity. For instance, one cannot create a product setter
@@ -98,6 +98,7 @@ Multiple indices can be provided in this manner:
 
 Here we first access the outer layer (the row with index 1, i.e. second of two rows),
 then access the first component of that row.
+The type synonym 'Entry' exists for this purpose: @Entry i j@ denotes the optic @Index i :.: Index j@.
 
 Note that, in a composition, the outermost optic is on the left, and the nesting increases
 as one reads from left to right.
@@ -110,7 +111,7 @@ as one reads from left to right.
 { "a" ':-> V4 0 1 6 3, "b" ':-> V2 7 5 }
 @
 
-Setting multiple values at one: focusing on the component at index 2 of the field @"a"@,
+Setting multiple values at once: focusing on the component at index 2 of the field @"a"@,
 and the component at index 0 of the field @"b"@.
 
 Because the last type accessed by each optic in the product is a vector type,
@@ -124,16 +125,25 @@ This explains why the value-level argument to @set@ is a 2-vector.
           3 4 5
           6 7 8
 
-> set @( Joint ( (Index 0 :.: Index 0) :*: (Index 1 :.: Index 1) :*: (Index 2 :.: Index 2) ) ) 9 mat
+> set @( ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 0 :*: Entry 2 2 ) :.: Joint ) 9 mat
 M33
-  9 1 2
-  3 9 5
-  6 7 9
+  9 1 9
+  3 4 5
+  9 7 9
 @
 
-Note that the 'FIR.Instances.Optics.Diag' synonym exists for accessing the diagonal of a matrix,
-with the 'FIR.Instances.Optics.Center' synonym for the center of a matrix,
-which allows setting all diagonal entries of a square matrix to a single value as in the above example:
+'Joint' allows us to simultaneously set several entries (of the same type) to the same value.
+__Warning:__ 'Joint' is only a /setter/, not a /getter/.
+
+Note that the 'FIR.Instances.Optics.Diag' synonym exists for focusing on the diagonal of a matrix:
+
+@
+> view @Diag mat
+V3 0 4 8
+@
+
+There is also the 'FIR.Instances.Optics.Center' synonym for the center of a matrix,
+which allows setting all diagonal entries of a square matrix to a single value:
 
 @
 > set @Center 9 mat
@@ -142,6 +152,8 @@ M33
   3 9 5
   6 7 9
 @
+
+In fact 'FIR.Instances.Optics.Center' can be simply defined as @Diag :.: Joint@.
 -}
 
 module Control.Type.Optic
@@ -178,7 +190,7 @@ module Control.Type.Optic
 
     -- ** Product of optics
   , (:*:)
-  , Product, Zip
+  , Product
     -- $product_instances
 
   ) where
@@ -239,11 +251,12 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 -- (See [GHC trac #15710](https://ghc.haskell.org/trac/ghc/ticket/15710).)
 --
 -- As a result, the constructors for the 'Optic' data type have overly general kinds.
--- Kind-safe type-level smart constructors are instead provided:
+-- Kind-safe type-level smart constructors are instead provided (and their use recommended):
 --
 --   * 'Id', 'Joint', 'AnIndex', 'Index', 'Name' to create specific optics (see below),
 --   * ':.:' for composition of optics,
---   * ':*:' for products of optics,
+--   * ':*:' for products of optics.
+
 
 -- | Run-time index (kind-safe).
 type AnIndex (ix :: Type  ) = (AnIndex_   :: Optic '[ix] s a)
@@ -255,7 +268,7 @@ type Name    (k  :: Symbol) = (Name_    k :: Optic '[]   s a)
 -- | Identity (kind-safe).
 type Id = (Id_ :: Optic '[] a a)
 -- | Equaliser optic (kind-safe).
-type Joint = (Joint_ :: Optic is a (MonoType a))
+type Joint = (Joint_ :: Optic '[] a (MonoType a))
 -- | Composition of optics (kind-safe).
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
   = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
@@ -327,6 +340,7 @@ class Contained s => MonoContained s where
 -- This module defines getter and setter instances that are applicable in general situations:
 --
 --   * identity optic,
+--   * equaliser optic,
 --   * composition of optics,
 --   * product of optics,
 --
@@ -354,6 +368,36 @@ instance (empty ~ '[], a ~ ListVariadic '[] a)
 instance (empty ~ '[], a ~ ListVariadic '[] a)
        => ReifiedSetter (Id_ :: Optic empty a a) where
   set = const
+
+--------------------------
+-- $equaliser_instances
+--
+-- The equaliser optic is a setter.
+--
+-- The instances for equalisers depend on instances for 'MonoContained',
+-- which are provided separately for individual types
+-- (see "FIR.Instances.Optics").
+
+instance
+  ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
+  => Gettable (Joint_ :: Optic i s a) where
+instance
+  ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
+  => ReifiedGetter (Joint_ :: Optic i s a) where
+  view = error "unreachable"
+
+instance ( empty ~ '[]
+         , MonoContained a
+         , mono ~ MonoType a
+         )
+      => Settable (Joint_ :: Optic empty a mono) where
+instance ( empty ~ '[]
+         , MonoContained a
+         , mono ~ MonoType a
+         , a ~ ListVariadic '[] a
+         )
+      => ReifiedSetter (Joint_ :: Optic empty a mono) where
+  set = setAll
 
 --------------------------
 -- $composition_instances

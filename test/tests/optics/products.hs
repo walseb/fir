@@ -113,3 +113,19 @@ nested5 :: Struct '[ "a" ':-> Float
                                       ]
                    ]
 nested5 = set @(Index 0 :*: (Name "b" :.: Name "s")) (0 :& identity :& End) nested1
+
+m6 :: M 3 3 Double
+m6 = M ( V3
+          (V3 0 1 2)
+          (V3 3 4 5)
+          (V3 6 7 8)
+       )
+
+m7 :: M 3 3 Double
+m7 = set @( ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 0 :*: Entry 2 2 ) :.: Joint ) 9 m6
+
+m8 :: M 3 3 Double
+m8 = set @Center 9 m6
+
+m9 :: V 2 Double
+m9 = view @(Entry 0 0 :*: Entry 2 1) m8
