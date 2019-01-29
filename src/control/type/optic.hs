@@ -34,6 +34,7 @@ The basic optics provided, to focus into an object of type @s@ onto a subobject 
   * @AnIndex ix :: Optic '[ix] s a@: focus via a run-time index of type @ix@,
   * @Index   i  :: Optic '[]   s a@: focus via the compile-time index @i :: Nat@,
   * @Name    k  :: Optic '[]   s a@: focus via the compile-time literal @k :: Symbol@.
+  * @Id         :: Optic '[]   a a@: identity lens.
 
 The compile-time nature of 'Index' and 'Name' means that we can type-check their usage
 to prevent focusing on a non-existent field (such as an out-of-bounds index).
@@ -52,6 +53,7 @@ These optics can then be combined with the following combinators:
   \end{array} \]
   * @Joint :: Optic is s a -> Optic is s (MonoType a)@ takes the equaliser of an optic,
   to allow setting multiple components of the same type simultaneously.
+  \[ s \to a \rightrightarrows \textrm{MonoType}(a) \]
 
 Again, these are type-checked for validity. For instance, one cannot create a product setter
 unless the two argument setters are disjoint.
@@ -146,7 +148,7 @@ module Control.Type.Optic
   ( -- * Type-level optics
     Optic(..)
     -- $kind_coercion
-  , AnIndex, Index, Name
+  , Id, AnIndex, Index, Name
 
     -- ** Getters and setters
   , Gettable, Getter, ReifiedGetter(view)
@@ -161,6 +163,9 @@ module Control.Type.Optic
 
     -- * Getter & setter instances
     -- $instances
+
+    -- ** Identity
+    -- $identity_instances
 
     -- ** Composition of optics
   , (:.:)
@@ -192,7 +197,7 @@ import Data.Function.Variadic(ListVariadic)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
-  , InjectiveGradedSemigroup(..)
+  , FreeGradedSemigroup(..)
   , GenDegAt
   )
 
@@ -207,6 +212,8 @@ infixr 3 `ProductO`
 
 -- | Optic data (kind).
 data Optic (is :: [Type]) (s :: k) (a :: Type) where
+  -- | Identity.
+  Id_      :: Optic is a a
   -- | Run-time index.
   AnIndex_ :: Optic is s a
   -- | Compile-time index.
@@ -232,11 +239,13 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 -- As a result, the constructors for the 'Optic' data type have overly general kinds.
 -- Kind-safe type-level smart constructors are instead provided:
 --
---   * 'AnIndex', 'Index', 'Name' to create specific optics (see below),
+--   * 'Id', 'AnIndex', 'Index', 'Name' to create specific optics (see below),
 --   * ':.:' for composition,
 --   * ':*:' for products,
 --   * 'Joint' for equalisers.
 
+-- | Identity (kind-safe).
+type Id = (Id_ :: Optic '[] a a)
 -- | Run-time index (kind-safe).
 type AnIndex (ix :: Type  ) = (AnIndex_   :: Optic '[ix] s a)
 -- | Compile-time index (kind-safe).
@@ -314,6 +323,7 @@ class Contained s => MonoContained s where
 --
 -- This module defines getter and setter instances that are applicable in general situations:
 --
+--   * identity optic,
 --   * composition of optics,
 --   * product of optics,
 --   * equaliser optics.
@@ -325,6 +335,23 @@ class Contained s => MonoContained s where
 -- The specific instances, as they pertain to datatypes used by this library,
 -- are found in the "FIR.Instances.Optics" module.
 -- This includes instances for vectors, matrices and structs.
+
+--------------------------
+-- $identity_instances
+--
+-- The identity optic is a lens.
+
+instance (empty ~ '[])
+       => Gettable (Id_ :: Optic empty a a) where
+instance (empty ~ '[])
+       => Settable (Id_ :: Optic empty a a) where
+
+instance (empty ~ '[], a ~ ListVariadic '[] a)
+       => ReifiedGetter (Id_ :: Optic empty a a) where
+  view = id
+instance (empty ~ '[], a ~ ListVariadic '[] a)
+       => ReifiedSetter (Id_ :: Optic empty a a) where
+  set = const
 
 --------------------------
 -- $composition_instances
@@ -771,7 +798,7 @@ class MultiplySetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
                   -> ListVariadic (Zip is js :++: '[c,s]) s
 
 instance ( GradedSemigroup (Container c) (DegreeKind c)
-         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ Apply
                   (DegreeKind c)
                   (Container c)
@@ -797,7 +824,7 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       in  set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ Apply
                   (DegreeKind c)
                   (Container c)
@@ -824,7 +851,7 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       in set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
          , hda ~ GenDeg
                     (DegreeKind c)
@@ -851,7 +878,7 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
       in set2 b . set1 a
 instance ( GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , InjectiveGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
+         , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
          , hda ~ GenDeg
                     (DegreeKind c)

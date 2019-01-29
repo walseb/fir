@@ -27,7 +27,7 @@ import Data.Type.Map((:->)((:->)), type (:++:), Key, Value)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
-  , InjectiveGradedSemigroup(..)
+  , FreeGradedSemigroup(..)
   )
 import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTys(SNil, SCons), PrimTys(primTysSing))
 
@@ -95,7 +95,7 @@ instance GeneratedGradedSemigroup
   generator a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv] )
                 --   ^^^^   GHC cannot deduce that kv ~ Key kv ':-> Value kv
 
-instance InjectiveGradedSemigroup
+instance FreeGradedSemigroup
             Struct
             [Symbol :-> Type]
             (Symbol :-> Type)

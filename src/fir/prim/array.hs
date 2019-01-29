@@ -32,7 +32,7 @@ import qualified Data.Vector as Array
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
-  , InjectiveGradedSemigroup(..)
+  , FreeGradedSemigroup(..)
   )
 
 ------------------------------------------------------------
@@ -66,7 +66,7 @@ instance GeneratedGradedSemigroup (Array 0 a) Nat () where
   generator :: a -> Array (GenDeg Nat (Array 0 a) () unit) a
   generator a = unsafeCoerce (MkArray @1 (Array.singleton a))
 
-instance InjectiveGradedSemigroup (Array 0 a) Nat () where
+instance FreeGradedSemigroup (Array 0 a) Nat () where
   type ValidDegree (Array 0 a) n = KnownNat n
   (>!<) :: forall n m. (KnownNat n, KnownNat m) => Array (n+m) a -> (Array n a, Array m a)
   (>!<) (MkArray arr)

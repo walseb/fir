@@ -51,7 +51,7 @@ import Control.Type.Optic
   , Contained(..)
   , ContainerKind, DegreeKind, LabelKind
   , MonoContained(..)
-  , (:.:), (:*:), AnIndex, Index, Name, Joint
+  , (:.:), (:*:), Id, AnIndex, Index, Name, Joint
   , Product
   )
 import Data.Function.Variadic(ListVariadic)
@@ -78,6 +78,7 @@ import Math.Linear(V((:.)), M(M), (^!), at)
 -- singletons
 
 data SOptic (optic :: Optic i s a) :: Type where
+  SId :: SOptic Id
   -- split up run-time indexing: SPIR-V supports two different cases
   --  - vectors with VectorExtractDynamic / VectorInsertDynamic
   --  - arrays with OpAccessChain
@@ -117,6 +118,7 @@ o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
 o1 %:*: o2 = SProductO (sLength @_ @is) (sLength @_ @js) o1 o2
 
 showSOptic :: SOptic (o :: Optic i s a) -> String
+showSOptic SId = "Id"
 showSOptic (SAnIndexV   _) = "AnIndexV"
 showSOptic (SAnIndexRTA _) = "AnIndexRTA"
 showSOptic (SAnIndexA   _) = "AnIndexA"
@@ -131,6 +133,8 @@ showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
 class KnownOptic optic where
   opticSing :: SOptic optic
 
+instance ( empty ~ '[] ) => KnownOptic (Id_ :: Optic empty a a) where
+  opticSing = SId
 instance ( is ~ '[ix], IntegralTy ix )
         => KnownOptic (AnIndex_ :: Optic is (V n a) a)
         where

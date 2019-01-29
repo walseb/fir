@@ -112,7 +112,7 @@ import Control.Arrow.Strength(strong)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
-  , InjectiveGradedSemigroup(..)
+  , FreeGradedSemigroup(..)
   )
 import Math.Logic.Class
   ( Boolean(..), Eq(Logic,(==))
@@ -353,7 +353,7 @@ instance GeneratedGradedSemigroup (V 0 a) Nat () where
   generator :: a -> V (GenDeg Nat (V 0 a) () unit) a
   generator a = unsafeCoerce (a :. Nil)
 
-instance InjectiveGradedSemigroup (V 0 a) Nat () where
+instance FreeGradedSemigroup (V 0 a) Nat () where
   type ValidDegree (V 0 a) n = KnownNat n
   (>!<) :: forall i j. (KnownNat i, KnownNat j) => V (i+j) a -> ( V i a, V j a )
   (>!<) Nil = unsafeCoerce ( Nil, Nil )
@@ -631,7 +631,7 @@ instance KnownNat m => GeneratedGradedSemigroup (M m 0 a) Nat () where
   generator :: V m a -> M m (GenDeg Nat (M m 0 a) () unit) a
   generator = ( unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a ) )
 
-instance KnownNat m => InjectiveGradedSemigroup (M m 0 a) Nat () where
+instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
   type ValidDegree (M m 0 a) i = KnownNat i
   (>!<) :: forall i j. (KnownNat i, KnownNat j) => M m (i+j) a -> ( M m i a, M m j a )
   (>!<) (M m)

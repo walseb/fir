@@ -114,12 +114,12 @@ type GenDegAt k g (l :: d) = (GenDeg k g d (l :: d) :: k)
 -- elements can be of any type (making use of the type parameter @l@ now),
 -- and the degree of a generator is the singleton list of the corresponding type.
 
--- ** Degree-injectivity of graded semigroup operation
+-- ** Freenees of graded semigroup operation
 
--- $injective
+-- $bijective
 --
--- A __degree-injective__ graded semigroup is one in which semigroup multiplication
--- is injective in individual degrees.
+-- A __degree-bijective__ graded semigroup is one in which semigroup multiplication
+-- is bijective in individual degrees.
 --
 -- Specifically, we require that for any indices \( i, j \in I \),
 -- and for any \( g \in G_{i+j} \), there are unique
@@ -129,8 +129,8 @@ type GenDegAt k g (l :: d) = (GenDeg k g d (l :: d) :: k)
 -- Moreover, we require that all values of the semigroup whose degrees
 -- are degrees of generators are in fact themselves generators.
 
--- | Graded semigroup with degree-injective operation.
-class GeneratedGradedSemigroup g k d => InjectiveGradedSemigroup g k d | g -> k d where
+-- | Graded semigroup with degree-bijective operation.
+class GeneratedGradedSemigroup g k d => FreeGradedSemigroup g k d | g -> k d where
   -- | Additional constraint on indices, necessary to make the index /relevant/
   -- (e.g. for length indexed vectors, we need a 'GHC.TypeNats.KnownNat' constraint to be able to
   -- meaningfully use the length).

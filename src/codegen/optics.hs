@@ -43,7 +43,8 @@ import qualified SPIRV.PrimTy as SPIRV
 -- optics
 
 data OpticalNode
-  = Leaf     ID
+  = Identity
+  | Leaf     ID
   | Continue ID OpticalTree
   | Combine  [OpticalTree]
   | Join     OpticalTree
@@ -74,6 +75,7 @@ combinedIndices (SSucc is) (SSucc js) (k1k2 `ConsAST` ks)
 
 opticalTree :: forall k is (s :: k) a (optic :: Optic is s a).
                ASTs is -> SOptic optic -> CGMonad OpticalTree
+opticalTree _ SId = pure $ Node Safe Identity
 opticalTree (i `ConsAST` _) (SAnIndexV   _) = Node Unsafe . Leaf . fst <$> codeGen i
 opticalTree (i `ConsAST` _) (SAnIndexRTA _) = Node Unsafe . Leaf . fst <$> codeGen i
 opticalTree (i `ConsAST` _) (SAnIndexA   _) = Node Unsafe . Leaf . fst <$> codeGen i
@@ -91,6 +93,7 @@ opticalTree is (SComposeO lg1 opt1 opt2)
         res2 <- opticalTree is2 opt2
         pure ( res1 `continue` res2 )
     where continue :: OpticalTree -> OpticalTree -> OpticalTree
+          continue (Node _ Identity ) next = next
           continue (Node safe1 (Leaf i) ) next@(Node safe2 _)
             = Node (safe1 <> safe2) ( Continue i next )
           continue (Node safe1 (Continue i t) ) next@(Node safe2 _)
