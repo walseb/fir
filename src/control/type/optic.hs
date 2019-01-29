@@ -38,7 +38,7 @@ The basic optics provided, to focus into an object of type @s@ onto a subobject 
 The compile-time nature of 'Index' and 'Name' means that we can type-check their usage
 to prevent focusing on a non-existent field (such as an out-of-bounds index).
 
-These optics can then be combined with the following functionality:
+These optics can be combined in the following ways:
 
   * @(:.:) :: Optic is s a -> Optic js a b -> Optic (is :++: js) s b@ composes two optics,
   allowing for focusing into nested structures.
@@ -50,7 +50,7 @@ These optics can then be combined with the following functionality:
   \downarrow & & \\
   b & &
   \end{array} \]
-  * @Joint :: Optic is a (MonoType a)@ is an equaliser optic,
+  * @Joint :: Optic '[] a (MonoType a)@ is an equaliser optic,
   which allows setting to a given value multiple components of the same type
   by post-composing with 'Joint' (see example below).
   \[ s \to a \rightrightarrows \textrm{MonoType}(a) \]
@@ -222,8 +222,6 @@ infixr 9 `ComposeO`
 infixr 3 :*:
 infixr 3 `ProductO`
 
-
-
 -- | Optic data (kind).
 data Optic (is :: [Type]) (s :: k) (a :: Type) where
   -- | Identity.
@@ -251,28 +249,28 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 -- (See [GHC trac #15710](https://ghc.haskell.org/trac/ghc/ticket/15710).)
 --
 -- As a result, the constructors for the 'Optic' data type have overly general kinds.
--- Kind-safe type-level smart constructors are instead provided (and their use recommended):
+-- Kind-correct type-level smart constructors are instead provided (and their use recommended):
 --
---   * 'Id', 'Joint', 'AnIndex', 'Index', 'Name' to create specific optics (see below),
---   * ':.:' for composition of optics,
---   * ':*:' for products of optics.
+--   * 'AnIndex', 'Index', 'Name', 'Id' and 'Joint' create specific optics,
+--   * ':.:' composes two optics (leftmost argument = outermost optic),
+--   * ':*:' takes the product of two optics.
 
 
--- | Run-time index (kind-safe).
+-- | Run-time index (kind-correct).
 type AnIndex (ix :: Type  ) = (AnIndex_   :: Optic '[ix] s a)
--- | Compile-time index (kind-safe).
+-- | Compile-time index (kind-correct).
 type Index   (i  :: Nat   ) = (Index_   i :: Optic '[]   s a)
--- | Compile-time field name (kind-safe).
+-- | Compile-time field name (kind-correct).
 type Name    (k  :: Symbol) = (Name_    k :: Optic '[]   s a)
 
--- | Identity (kind-safe).
+-- | Identity (kind-correct).
 type Id = (Id_ :: Optic '[] a a)
--- | Equaliser optic (kind-safe).
+-- | Equaliser optic (kind-correct).
 type Joint = (Joint_ :: Optic '[] a (MonoType a))
--- | Composition of optics (kind-safe).
+-- | Composition of optics (kind-correct).
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
   = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
--- | Product of optics (kind-safe).
+-- | Product of optics (kind-correct).
 type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
   = ( (o1 `ProductO` o2)
         :: Optic
@@ -314,20 +312,54 @@ type Indices (optic :: Optic is s a) = is
 -------------------------------
 -- $containers
 --
--- Auxiliary type class describing types that provide the functionality necessary
+-- Auxiliary internal type class describing types that provide the functionality necessary
 -- to be able to create product optics.
 --
--- For instance, we require the ability to check that setters do not overlap,
--- to ensure that the resulting product setter is lawful.
+-- In particular, given a particular \"contained\" type such as @Vec a n@,
+-- this typeclass returns the overall container type (in this case @Vec a :: Nat -> Type@)
+-- which is supposed to be an instance of the 'Math.Algebra.GradedSemigroup.GradedSemigroup' type class,
+-- meaning that some form of concatenation/product is possible,
+-- compatibly with type-level indexing information (if any; in this case @Nat@).
+--
+-- Intuitively, it is best to think of this type class as dispatching on a type,
+-- returning a corresponding graded semigroup.
+--
+-- However, certain additional capabilities are also required,
+-- such as (for structs) the ability to check that a numeric index
+-- and a symbolic field name do not refer to the same component,
+-- as needed for overlap checking.
+--
+-- A minor technicality: the following three open type families,
+-- 'ContainerKind', 'DegreeKind' and 'LabelKind',
+-- should ideally be associated to the 'Contained' type class,
+-- but GHC doesn't currently allow this,
+-- complaining about type constructors being \"defined and used in the same recursive group\".
+-- See [GHC Trac #11962](https://ghc.haskell.org/trac/ghc/ticket/11962).
 
 type family ContainerKind (s :: Type) :: Type
 type family DegreeKind    (s :: Type) :: Type
 type family LabelKind     (s :: Type) :: Type
 
+-- | Recovers the types necessary for a 'Math.Algebra.GradedSemigroup.GradedSemigroup'.
+--
+-- For instance, we usually expect the following instances:
+--
+--  * @GradedSemigroup (Container s) (DegreeKind s)@,
+--  * @GeneratedGradedSemigroup (Container s) (DegreeKind s) (LabelKind s)@,
+--  * @FreeGradedSemigroup (Container s) (DegreeKind s) (LabelKind s)@.
+--
+-- For additional flexibility, these are not currently enforced as superclass constraints.
+-- For instance, with run-time arrays we do not have a
+-- 'Math.Algebra.GradedSemigroup.FreeGradedSemigroup' structure,
+-- as the lack of compile-time indexing information in this situation
+-- prevents us from being able to unambiguously recover the factors of a product.
 class Contained (s :: Type) where
   type Container  s :: ContainerKind s
   type DegreeOf   s :: DegreeKind s
   type LabelOf    s (o :: Optic i s a) :: LabelKind s
+  -- | Additional utility type family, chiefly needed for overlap checking for 'FIR.Prim.Struct.Struct's.
+  -- This associated type family has a trivial definition in cases where it is not possible
+  -- to access components using /both/ type-level literals and type-level natural numbers.
   type Overlapping s (k :: Symbol) (n :: Nat) :: Bool
 
 class Contained s => MonoContained s where
@@ -677,7 +709,8 @@ class MultiplyGetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
                   -> ListVariadic (js :++: '[s]) b
                   -> ListVariadic (Zip is js :++: '[s]) c
 
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , a ~ ListVariadic '[] a
          , a ~ Apply
                   (DegreeKind c)
@@ -701,7 +734,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
     = (<!>) @(Container c) @_ @(DegreeOf a `WithKind` DegreeKind c) @(DegreeOf b `WithKind` DegreeKind c)
         (view1 s)
         (view2 s)
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ ListVariadic '[] a
          , a ~ Apply
@@ -732,7 +766,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
             @(lb `WithKind` LabelKind c)
             ( view2 s )
         )
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ ListVariadic '[] a
          , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
@@ -763,7 +798,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
             ( view1 s )
         )
         ( view2 s )
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ ListVariadic '[] a
          , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
@@ -842,7 +878,8 @@ class MultiplySetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
                   -> ListVariadic (js :++: '[b,s]) s
                   -> ListVariadic (Zip is js :++: '[c,s]) s
 
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ Apply
                   (DegreeKind c)
@@ -867,7 +904,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
   multiplySetters set1 set2 c
     = let (a,b) = (>!<) c
       in  set2 b . set1 a
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ Apply
@@ -894,7 +932,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
     = let (a,hb) = (>!<) @(Container c) @_ @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb c
           b = generated @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
       in set2 b . set1 a
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
@@ -921,7 +960,8 @@ instance ( GradedSemigroup (Container c) (DegreeKind c)
     = let (ha,b) = (>!<) @(Container c) @_ @_ @hda @(DegreeOf b `WithKind` DegreeKind c) c
           a = generated @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
       in set2 b . set1 a
-instance ( GradedSemigroup (Container c) (DegreeKind c)
+instance ( Contained c
+         , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)

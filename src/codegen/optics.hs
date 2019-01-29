@@ -40,14 +40,14 @@ import qualified SPIRV.PrimTy as SPIRV
 ----------------------------------------------------------------------------
 -- optics
 
-data OpticalLeaf where
-  Identity :: OpticalLeaf
-  Join     :: OpticalLeaf
-  Index    :: SPrimTy ty -> ID -> OpticalLeaf
+data OpticalEdge where
+  Identity :: OpticalEdge
+  Join     :: OpticalEdge
+  Index    :: SPrimTy ty -> ID -> OpticalEdge
 
 data OpticalNode
-  = Edge     OpticalLeaf
-  | Continue OpticalLeaf OpticalTree
+  = Edge     OpticalEdge
+  | Continue OpticalEdge OpticalTree
   | Combine  [OpticalTree]
 
 data OpticalTree = Node Safeness OpticalNode

@@ -939,7 +939,7 @@ instance Contained (V n a) where
                 :$$: Text "Maybe you intended to use a swizzle?"
                 )
 
-instance Contained (M m n a) where
+instance KnownNat m => Contained (M m n a) where
   type Container (M m n a)   = M m 0 a
   type DegreeOf  (M m n a)   = n
   type LabelOf   (M m n a) _ = '()

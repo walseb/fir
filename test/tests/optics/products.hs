@@ -39,7 +39,6 @@ struct2 = view @(Name "x" :*: Name "z") struct1
 struct3 :: Struct '[ "x" ':-> Float, "z" ':-> Float, "x" ':-> Float ]
 struct3 = view @(Name "x" :*: Name "z" :*: Name "x") struct1
 
-
 nested1 :: Struct '[ "a" ':-> Float
                    , "b" ':-> Struct '[ "r" ':-> V 3 Float
                                       , "s" ':-> M 4 4 Double
@@ -103,7 +102,6 @@ m5 = view @(Entry 1 1 :*: Entry 3 3 :*: Entry 2 0) m1
 struct5 :: Struct '[ "x" ':-> Float, "y" ':-> Float, "z" ':-> Float ]
 struct5 = set @(Name "y" :*: Name "z") (8.8 :& 11.0 :& End) struct1
 
-
 nested5 :: Struct '[ "a" ':-> Float
                    , "b" ':-> Struct '[ "r" ':-> V 3 Float
                                       , "s" ':-> M 4 4 Double
@@ -127,5 +125,3 @@ m7 = set @( ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 0 :*: Entry 2 2 ) :.: Joint ) 
 m8 :: M 3 3 Double
 m8 = set @Center 9 m6
 
-m9 :: V 2 Double
-m9 = view @(Entry 0 0 :*: Entry 2 1) m8
