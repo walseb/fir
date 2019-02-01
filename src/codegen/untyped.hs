@@ -27,6 +27,8 @@ data UAST where
 
 deriving instance Show UAST
 
+infixl 5 `SnocUAST`
+
 -- snoc list of untyped ASTs
 -- this representation matches up with the 'function application' pattern synonym
 data UASTs where
@@ -61,7 +63,7 @@ unapply (UAST f) = (UAST f, NilUAST)
 ----------------------------------------------------------------------------
 -- code generation for the existential AST data types
 
-codeGenUASTs :: UASTs-> CGMonad [ (ID, SPIRV.PrimTy)  ]
+codeGenUASTs :: UASTs -> CGMonad [ (ID, SPIRV.PrimTy) ]
 codeGenUASTs = sequence . reverse . go
     where go :: UASTs -> [ CGMonad (ID, SPIRV.PrimTy) ]
           go NilUAST           = []

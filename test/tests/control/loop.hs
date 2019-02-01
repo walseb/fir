@@ -46,4 +46,4 @@ program = Program do
     s <- #s
     t <- #t
 
-    #position .= vec4 r s t 1
+    #position .= Vec4 r s t 1

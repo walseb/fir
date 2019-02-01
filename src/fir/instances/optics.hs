@@ -47,6 +47,7 @@ import qualified Data.Vector as Array
 import Control.Monad.Indexed((:=))
 import Control.Type.Optic
   ( Optic(..)
+  , Indices
   , Gettable, ReifiedGetter(view)
   , Settable, ReifiedSetter(set )
   , Contained(..)
@@ -56,11 +57,15 @@ import Control.Type.Optic
   , Product
   )
 import Data.Function.Variadic(ListVariadic)
+import Data.Type.List
+  ( type (:++:), Zip
+  , Length, SLength, KnownLength(sLength)
+  , Snoc
+  )
 import Data.Type.Map
-  ( (:->)((:->)), Key, Value
-  , Lookup, Append, Length
-  , type (:++:), Zip
-  , SLength, KnownLength(sLength)
+  ( (:->)((:->))
+  , Key, Value
+  , Lookup
   )
 import FIR.Binding( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
@@ -68,8 +73,8 @@ import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
-  , PrimTys(primTysSing)
-  , SPrimTy(SStruct), SPrimTys
+  , PrimTyMap(primTyMapSing)
+  , SPrimTy(SStruct), SPrimTyMap
   , HasField(fieldIndex)
   )
 import FIR.Prim.Struct(Struct((:&), End))
@@ -125,7 +130,7 @@ showSOptic (SComposeO _   o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
 showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
 
 
-class KnownOptic optic where
+class KnownLength (Indices optic) => KnownOptic optic where
   opticSing :: SOptic optic
 
 instance ( empty ~ '[] ) => KnownOptic (Id_ :: Optic empty a a) where
@@ -148,14 +153,14 @@ instance ( KnownNat n
        where
   opticSing = SIndex (primTySing @s) (fromIntegral . natVal $ Proxy @n)
 instance ( KnownSymbol k
-         , PrimTys as
+         , PrimTyMap as
          , HasField k as
          , empty ~ '[]
          ) => KnownOptic (Name_ k :: Optic empty (Struct as) a)
          where
   opticSing =
-    let sing :: SPrimTys as
-        sing = primTysSing
+    let sing :: SPrimTyMap as
+        sing = primTyMapSing
     in SIndex (SStruct sing) (fieldIndex (Proxy @k) sing)
 instance ( KnownSymbol k
          , empty ~ '[]
@@ -168,6 +173,8 @@ instance forall is js ks s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          , KnownOptic o2
          , ks ~ (is :++: js)
          , KnownLength is
+         , KnownLength js
+         , KnownLength ks -- deduced from the above two in concrete situations
          )
        => KnownOptic ((o1 `ComposeO` o2) :: Optic ks s b) where
   opticSing = (opticSing @o1) %:.: (opticSing @o2)
@@ -178,6 +185,7 @@ instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
          , c ~ Product o1 o2
          , KnownLength is
          , KnownLength js
+         , KnownLength (Zip is js) -- deduced from the above two in concrete situations
          )
       => KnownOptic ((o1 `ProductO` o2) :: Optic ks s c) where
   opticSing = (opticSing @o1) %:*: (opticSing @o2)
@@ -513,7 +521,7 @@ instance
 ----------------------------------------------------------------------
 -- setters
 
-type Assigner (g :: Optic as i b) = ListVariadicIx (Append as b) i ()
+type Assigner (g :: Optic as i b) = ListVariadicIx (as `Snoc` b) i ()
 
 
 -- bindings

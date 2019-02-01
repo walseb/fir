@@ -206,7 +206,7 @@ import GHC.TypeLits
 import GHC.TypeNats(Nat)
 
 -- fir
-import Data.Type.Map(type (:++:), Zip)
+import Data.Type.List(type (:++:), Zip)
 import Data.Function.Variadic(ListVariadic)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)

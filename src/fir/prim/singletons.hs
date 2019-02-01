@@ -84,21 +84,21 @@ data SPrimTy :: Type -> Type where
   SRuntimeArray
           :: PrimTy a
           => SPrimTy a -> SPrimTy (RuntimeArray a)
-  SStruct :: PrimTys as
-          => SPrimTys as -> SPrimTy (Struct as)
+  SStruct :: PrimTyMap as
+          => SPrimTyMap as -> SPrimTy (Struct as)
 
-data SPrimTys :: [Symbol :-> Type] -> Type where
-  SNil  :: SPrimTys '[]
-  SCons :: (KnownSymbol k, PrimTy a, PrimTys as)
+data SPrimTyMap :: [Symbol :-> Type] -> Type where
+  SNil  :: SPrimTyMap '[]
+  SCons :: (KnownSymbol k, PrimTy a, PrimTyMap as)
         => Proxy k
         -> SPrimTy a
-        -> SPrimTys as
-        -> SPrimTys ((k ':-> a) ': as)
+        -> SPrimTyMap as
+        -> SPrimTyMap ((k ':-> a) ': as)
 
 ------------------------------------------------
 
 class HasField (k :: Symbol) (as :: [ Symbol :-> Type ]) where
-  fieldIndex :: Proxy k -> SPrimTys as -> Word32
+  fieldIndex :: Proxy k -> SPrimTyMap as -> Word32
 
 instance HasField k ( (k ':-> v) ': as) where
   fieldIndex _ _ = 0
@@ -239,23 +239,23 @@ instance PrimTy a => PrimTy (RuntimeArray a) where
   primTySing = SRuntimeArray (primTySing @a)
 
 
-class PrimTys as where
-  primTysSing :: SPrimTys as
+class PrimTyMap as where
+  primTyMapSing :: SPrimTyMap as
 
-instance PrimTys '[] where
-  primTysSing = SNil
+instance PrimTyMap '[] where
+  primTyMapSing = SNil
 
-instance (KnownSymbol k, PrimTy a, PrimTys as)
-       => PrimTys ((k ':-> a) ': as) where
-  primTysSing
+instance (KnownSymbol k, PrimTy a, PrimTyMap as)
+       => PrimTyMap ((k ':-> a) ': as) where
+  primTyMapSing
     = SCons
         ( Proxy       @k )
         ( primTySing  @a )
-        ( primTysSing @as )
+        ( primTyMapSing @as )
 
-instance ( Typeable as, PrimTys as )
+instance ( Typeable as, PrimTyMap as )
        => PrimTy (Struct as) where
-  primTySing = SStruct (primTysSing @as)
+  primTySing = SStruct (primTyMapSing @as)
 
 
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
@@ -275,12 +275,12 @@ sPrimTy (SVector n     a) = SPIRV.Vector (val n)         (sPrimTy   a)
 sPrimTy (SMatrix m n   a) = SPIRV.Matrix (val m) (val n) (sScalarTy a)
 sPrimTy (SArray l      a) = SPIRV.Array  (val l)         (sPrimTy   a)
 sPrimTy (SRuntimeArray a) = SPIRV.RuntimeArray           (sPrimTy   a)
-sPrimTy (SStruct      as) = SPIRV.Struct (sPrimTys as)
+sPrimTy (SStruct      as) = SPIRV.Struct (sPrimTyMap as)
 
-sPrimTys :: SPrimTys ty -> [(Text.Text, SPIRV.PrimTy)]
-sPrimTys SNil           = []
-sPrimTys (SCons k a as) = (Text.pack (symbolVal k), sPrimTy a)
-                        : sPrimTys as
+sPrimTyMap :: SPrimTyMap ty -> [(Text.Text, SPIRV.PrimTy)]
+sPrimTyMap SNil           = []
+sPrimTyMap (SCons k a as) = (Text.pack (symbolVal k), sPrimTy a)
+                        : sPrimTyMap as
 
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
 scalarTy = sScalarTy ( scalarTySing @ty )

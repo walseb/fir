@@ -72,6 +72,8 @@ import CodeGen.Optics
   , storeThroughAccessChain
   , extractUsingGetter
   , insertUsingSetter
+  , pattern OpticUse, pattern OpticAssign
+  , IndexedOptic(AnIndexedOptic)
   )
 import CodeGen.Put(putASM)
 import CodeGen.State
@@ -89,11 +91,14 @@ import CodeGen.State
   , _debugMode
   )
 import CodeGen.Untyped
-  ( UASTs(NilUAST)
-  , uastsLength, uastsHeadTail
+  ( UAST(UAST)
+  , UASTs(NilUAST)
+  , uastsLength
   , pattern Applied
-  , codeGenUAST, codeGenUASTs
+  , codeGenUASTs
   )
+import Data.Type.List
+  ( sLengthVal )
 import FIR.AST(AST(..), Syntactic(fromAST))
 import FIR.Binding
   ( Permission(Write)
@@ -195,7 +200,7 @@ codeGen (Entry k s :$ body)
       entryPointID <- declareEntryPoint name stage modes (codeGen body)
       pure ( entryPointID, SPIRV.Function [] SPIRV.Unit )
 
-codeGen (Applied (Use singOptic) is)
+codeGen (OpticUse (AnIndexedOptic singOptic is))
   = case singOptic of
 
       SBinding k ->
@@ -209,55 +214,70 @@ codeGen (Applied (Use singOptic) is)
       SComposeO _ (SBinding k) getter ->
         do  let varName = Text.pack ( symbolVal k )
             (bdID, bdTy) <- bindingID varName
-            indices <- map fst <$> codeGenUASTs is
 
             case bdTy of
               SPIRV.Pointer {}
-                -> loadThroughAccessChain bdID indices getter
-              _ -> extractUsingGetter     bdID indices getter
+                -> loadThroughAccessChain bdID getter is
+              _ -> extractUsingGetter     bdID getter is
 
       _ -> throwError (   "codeGen: cannot 'use', unsupported optic:\n"
                        <> Text.pack (showSOptic singOptic) <> "\n"
                        <> "Optic does not start by accessing a binding."
                       )
+codeGen (Applied (Use sLg singOptic) is)
+  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+                 <> " provided with the wrong number of run-time indices by 'use'.\n"
+                 <> "Expected " <> expected
+                 <> ", but provided " <> provided <> "."
+               )
+    where expected :: Text
+          expected = Text.pack . show $ sLengthVal sLg
+          provided :: Text
+          provided = Text.pack . show $ uastsLength is
 
-codeGen (Applied (Assign singOptic) as)
-  = do  (a, is) <- note
-                      "codeGen: 'assign' not provided any arguments"
-                      ( uastsHeadTail as )
+codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
+  = case singOptic of
 
-        indices <- map fst <$> codeGenUASTs is
+      SBinding k ->
+        do  let varName = Text.pack ( symbolVal k )
+            (a_ID, _)       <- codeGen a
+            bd@(bdID, bdTy) <- bindingID varName
 
-        case singOptic of
+            case bdTy of
+              SPIRV.Pointer {}
+                -> store (varName, a_ID) bdID bdTy
+              _ -> assign ( _localBinding varName ) (Just bd)
 
-          SBinding k ->
-            do  let varName = Text.pack ( symbolVal k )
-                (a_ID, _)       <- codeGenUAST a
-                bd@(bdID, bdTy) <- bindingID varName
+            pure (ID 0, SPIRV.Unit) -- ID should never be used
 
-                case bdTy of
-                  SPIRV.Pointer {}
-                    -> store (varName, a_ID) bdID bdTy
-                  _ -> assign ( _localBinding varName ) (Just bd)
+      SComposeO _ (SBinding k) setter  ->
+        do  let varName = Text.pack ( symbolVal k )
+            (a_ID, _) <- codeGen a
+            (bdID, bdTy) <- bindingID varName
 
-                pure (ID 0, SPIRV.Unit) -- ID should never be used
+            case bdTy of
+              SPIRV.Pointer {}
+                -> storeThroughAccessChain bdID a_ID setter is
+              _ -> insertUsingSetter       bdID a_ID setter is
 
-          SComposeO _ (SBinding k) setter  ->
-            do  let varName = Text.pack ( symbolVal k )
-                (a_ID, _) <- codeGenUAST a
-                (bdID, bdTy) <- bindingID varName
+            pure (ID 0, SPIRV.Unit) -- ID should never be used
 
-                case bdTy of
-                  SPIRV.Pointer {}
-                    -> storeThroughAccessChain bdID a_ID indices setter 
-                  _ -> insertUsingSetter       bdID a_ID indices setter 
-
-                pure (ID 0, SPIRV.Unit) -- ID should never be used
-
-          _ -> throwError (   "codeGen: cannot 'assign', unsupported optic:\n"
-                           <> Text.pack (showSOptic singOptic) <> "\n"
-                           <> "Optic does not start by accessing a binding."
-                          )
+      _ -> throwError (   "codeGen: cannot 'assign', unsupported optic:\n"
+                       <> Text.pack (showSOptic singOptic) <> "\n"
+                       <> "Optic does not start by accessing a binding."
+                      )
+codeGen (Applied (Assign sLg singOptic) is)
+  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+                 <> " provided with the wrong number of run-time indices by 'assign'.\n"
+                 <> "Expected " <> expected
+                 <> ", but provided " <> provided <> "."
+               )
+    where expected :: Text
+          expected = Text.pack . show $ sLengthVal sLg
+          provided :: Text
+          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ uastsLength is
+          -- off by one: the last argument is the value for the assignment,
+          -- which is not a run-time index
 
 codeGen (Applied (PrimOp primOp _) as)
   = codeGenPrimOp primOp =<< codeGenUASTs as

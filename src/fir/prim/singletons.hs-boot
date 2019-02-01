@@ -30,18 +30,18 @@ class ( Show ty
     => PrimTy ty where
   primTySing :: SPrimTy ty
 
-data SPrimTys :: [Symbol :-> Type] -> Type where
-  SNil  :: SPrimTys '[]
-  SCons :: (KnownSymbol k, PrimTy a, PrimTys as)
+data SPrimTyMap :: [Symbol :-> Type] -> Type where
+  SNil  :: SPrimTyMap '[]
+  SCons :: (KnownSymbol k, PrimTy a, PrimTyMap as)
         => Proxy k
         -> SPrimTy a
-        -> SPrimTys as
-        -> SPrimTys ((k ':-> a) ': as)
-type role SPrimTys nominal
+        -> SPrimTyMap as
+        -> SPrimTyMap ((k ':-> a) ': as)
+type role SPrimTyMap nominal
 
-class PrimTys as where
-  primTysSing :: SPrimTys as
+class PrimTyMap as where
+  primTyMapSing :: SPrimTyMap as
 
-instance PrimTys '[] where
-instance (KnownSymbol k, PrimTy a, PrimTys as)
-       => PrimTys ((k ':-> a) ': as) where
+instance PrimTyMap '[] where
+instance (KnownSymbol k, PrimTy a, PrimTyMap as)
+       => PrimTyMap ((k ':-> a) ': as) where

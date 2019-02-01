@@ -23,13 +23,14 @@ import Unsafe.Coerce(unsafeCoerce)
 
 -- fir
 import Data.ProxyProxy(asProxyProxyTypeOf)
-import Data.Type.Map((:->)((:->)), type (:++:), Key, Value)
+import Data.Type.List(type (:++:))
+import Data.Type.Map((:->)((:->)), Key, Value)
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
   , FreeGradedSemigroup(..)
   )
-import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTys(SNil, SCons), PrimTys(primTysSing))
+import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTyMap(SNil, SCons), PrimTyMap(primTyMapSing))
 
 ------------------------------------------------------------
 -- structs
@@ -41,8 +42,8 @@ data Struct :: [Symbol :-> Type] -> Type where
   (:&) :: forall k a as. a -> Struct as -> Struct ((k ':-> a) ': as)
 
 
-instance PrimTys as => Eq (Struct as) where
-  s1 == s2 = case primTysSing @as of
+instance PrimTyMap as => Eq (Struct as) where
+  s1 == s2 = case primTyMapSing @as of
     SNil
       -> True
     SCons {}
@@ -50,8 +51,8 @@ instance PrimTys as => Eq (Struct as) where
             (a :& as, b :& bs)
               -> a == b && as == bs
 
-instance PrimTys as => Ord (Struct as) where
-  compare s1 s2 = case primTysSing @as of
+instance PrimTyMap as => Ord (Struct as) where
+  compare s1 s2 = case primTyMapSing @as of
     SNil
       -> EQ
     SCons {}
@@ -63,8 +64,8 @@ instance PrimTys as => Ord (Struct as) where
 
 class Display as where
   display :: as -> String
-instance PrimTys as => Display (Struct as) where
-  display s = case primTysSing @as of
+instance PrimTyMap as => Display (Struct as) where
+  display s = case primTyMapSing @as of
     SNil
       -> ""
     SCons {}
@@ -74,7 +75,7 @@ instance PrimTys as => Display (Struct as) where
                     "" -> show a
                     d  -> show a ++ ", " ++ d
 
-instance PrimTys as => Show (Struct as) where
+instance PrimTyMap as => Show (Struct as) where
   show s = "{ " ++ display s ++ " }" 
 
 instance GradedSemigroup Struct [Symbol :-> Type] where
@@ -100,13 +101,13 @@ instance FreeGradedSemigroup
             [Symbol :-> Type]
             (Symbol :-> Type)
             where
-  type ValidDegree Struct as = PrimTys as
-  (>!<) :: forall as bs. (PrimTys as, PrimTys bs)
+  type ValidDegree Struct as = PrimTyMap as
+  (>!<) :: forall as bs. (PrimTyMap as, PrimTyMap bs)
         => Struct (as :++: bs) -> ( Struct as, Struct bs )
   (>!<) End = unsafeCoerce ( End, End )
           --    ^^^^^^   GHC cannot deduce (as ~ '[], bs ~ '[]) from (as :++: bs) ~ '[]
   (>!<) (s :& ss)
-    = case primTysSing @as of
+    = case primTyMapSing @as of
         SNil
           -> ( End, s :& ss )
         SCons _ _ nxt
@@ -126,8 +127,8 @@ class FoldrStruct x where
        (forall a. PrimTy a => a -> b -> b)
     -> b -> x -> b
 
-instance PrimTys as => FoldrStruct (Struct as) where
-  foldrStruct f b s = case primTysSing @as of
+instance PrimTyMap as => FoldrStruct (Struct as) where
+  foldrStruct f b s = case primTyMapSing @as of
     SNil
       -> b
     SCons {}

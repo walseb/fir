@@ -89,7 +89,9 @@ library
       , Data.Function.Variadic
       , Data.Map.Traverse
       , Data.ProxyProxy
+      , Data.Type.List
       , Data.Type.Map
+      , Data.Type.Snoc
       , Deriving.Prelude
       , FIR.AST
       , FIR.Binding

@@ -44,15 +44,11 @@ module FIR.Instances.AST
 
     -- patterns for vectors
   , pattern Vec2, pattern Vec3, pattern Vec4
-  , vec2, vec3, vec4
 
     -- patterns for matrices
   , pattern Mat22, pattern Mat23, pattern Mat24
   , pattern Mat32, pattern Mat33, pattern Mat34
   , pattern Mat42, pattern Mat43, pattern Mat44
-  , mat22, mat23, mat24
-  , mat32, mat33, mat34
-  , mat42, mat43, mat44
     -- + orphan instances
   )
   where
@@ -213,6 +209,10 @@ instance (ScalarTy a, RealFloat a) => RealFloat (AST a) where
 --
 -- $conversions
 -- Instance for 'Convert'.
+-- TODO: there should be a way to do this more efficiently,
+-- without using type reflection machinery.
+-- However this at least avoids writing out
+-- a large amount of instances by hand (one for each pair of types).
 
 instance (ScalarTy a, ScalarTy b, Convert '(a,b))
          => Convert '(AST a, AST b) where
@@ -348,35 +348,27 @@ instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
 instance (ScalarTy a, Floating a) => Cross (AST (V 0 a)) where
   cross = fromAST $ PrimOp (SPIRV.VecOp SPIRV.CrossV (val @3) (scalarTy @a)) cross
 
--- *** Unidirectional pattern synonyms
+-- *** Bidirectional pattern synonyms
 
--- these patterns and constructors could be generalised to have types such as:
--- Vec2 :: (Syntactic a, PrimTy (Internal a)) => a -> a -> AST ( V 2 (Internal a) )
+-- these patterns could be generalised to have types such as:
+-- Vec2 :: forall a. (Syntactic a, PrimTy (Internal a))
+--      => a -> a -> AST ( V 2 (Internal a) )
 -- but this leads to poor type-inference
 
 {-# COMPLETE Vec2 #-}
-pattern Vec2 :: PrimTy a => AST a -> AST a -> AST ( V 2 a )
+pattern Vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
 pattern Vec2 x y <- (fromAST -> V2 x y)
+  where Vec2 = fromAST $ MkVector @2 @a Proxy Proxy
 
 {-# COMPLETE Vec3 #-}
-pattern Vec3 :: PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
+pattern Vec3 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
 pattern Vec3 x y z <- (fromAST -> V3 x y z)
+  where Vec3 = fromAST $ MkVector @3 @a Proxy Proxy
 
 {-# COMPLETE Vec4 #-}
-pattern Vec4 :: PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
+pattern Vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
-
--- *** Smart constructors
-
-vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
-vec2 = fromAST $ MkVector @2 @a Proxy Proxy
-
-vec3 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
-vec3 = fromAST $ MkVector @3 @a Proxy Proxy
-
-vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
-vec4 = fromAST $ MkVector @4 @a Proxy Proxy
-
+  where Vec4 = fromAST $ MkVector @4 @a Proxy Proxy
 
 -- ** Matrices
 --
@@ -431,7 +423,7 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
        => AST (M i j a) -> AST a -> AST (M i j a)
   (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (val @i) (val @j) (scalarTy @a)) (!*)
 
--- *** Unidirectional pattern synonyms
+-- *** Bidirectional pattern synonyms
 
 {-# COMPLETE Mat22 #-}
 pattern Mat22
@@ -445,6 +437,12 @@ pattern Mat22 a11 a12
        -> V2 ( V2 a11 a12 )
              ( V2 a21 a22 )
      )
+  where Mat22
+            a11 a12
+            a21 a22
+          = Mat :$ Vec2
+            ( Vec2 a11 a12 )
+            ( Vec2 a21 a22 )
 
 {-# COMPLETE Mat23 #-}
 pattern Mat23
@@ -458,6 +456,12 @@ pattern Mat23 a11 a12 a13
         -> V2 ( V3 a11 a12 a13 )
               ( V3 a21 a22 a23 )
       )
+  where Mat23
+            a11 a12 a13
+            a21 a22 a23
+          = Mat :$ Vec2
+            ( Vec3 a11 a12 a13 )
+            ( Vec3 a21 a22 a23 )
 
 {-# COMPLETE Mat24 #-}
 pattern Mat24
@@ -471,6 +475,12 @@ pattern Mat24 a11 a12 a13 a14
         -> V2 ( V4 a11 a12 a13 a14 )
               ( V4 a21 a22 a23 a24 )
       )
+  where Mat24
+            a11 a12 a13 a14
+            a21 a22 a23 a24
+          = Mat :$ Vec2
+              ( Vec4 a11 a12 a13 a14 )
+              ( Vec4 a21 a22 a23 a24 )
 
 {-# COMPLETE Mat32 #-}
 pattern Mat32
@@ -487,6 +497,15 @@ pattern Mat32 a11 a12
               ( V2 a21 a22 )
               ( V2 a31 a32 )
       )
+  where Mat32
+            a11 a12
+            a21 a22
+            a31 a32
+          = Mat :$ Vec3
+            ( Vec2 a11 a12 )
+            ( Vec2 a21 a22 )
+            ( Vec2 a31 a32 )
+
 
 {-# COMPLETE Mat33 #-}
 pattern Mat33
@@ -503,6 +522,14 @@ pattern Mat33 a11 a12 a13
               ( V3 a21 a22 a23 )
               ( V3 a31 a32 a33 )
       )
+  where Mat33
+            a11 a12 a13
+            a21 a22 a23
+            a31 a32 a33
+          = Mat :$ Vec3
+              ( Vec3 a11 a12 a13 )
+              ( Vec3 a21 a22 a23 )
+              ( Vec3 a31 a32 a33 )
 
 {-# COMPLETE Mat34 #-}
 pattern Mat34
@@ -519,6 +546,14 @@ pattern Mat34 a11 a12 a13 a14
               ( V4 a21 a22 a23 a24 )
               ( V4 a31 a32 a33 a34 )
       )
+  where Mat34
+            a11 a12 a13 a14
+            a21 a22 a23 a24
+            a31 a32 a33 a34
+          = Mat :$ Vec3
+              ( Vec4 a11 a12 a13 a14 )
+              ( Vec4 a21 a22 a23 a24 )
+              ( Vec4 a31 a32 a33 a34 )
 
 {-# COMPLETE Mat42 #-}
 pattern Mat42
@@ -538,6 +573,16 @@ pattern Mat42 a11 a12
               ( V2 a31 a32 )
               ( V2 a41 a42 )
       )
+  where Mat42
+            a11 a12
+            a21 a22
+            a31 a32
+            a41 a42
+          = Mat :$ Vec4
+              ( Vec2 a11 a12 )
+              ( Vec2 a21 a22 )
+              ( Vec2 a31 a32 )
+              ( Vec2 a41 a42 )
 
 {-# COMPLETE Mat43 #-}
 pattern Mat43
@@ -557,6 +602,16 @@ pattern Mat43 a11 a12 a13
               ( V3 a31 a32 a33 )
               ( V3 a41 a42 a43 )
       )
+  where Mat43
+            a11 a12 a13
+            a21 a22 a23
+            a31 a32 a33
+            a41 a42 a43
+          = Mat :$ Vec4
+              ( Vec3 a11 a12 a13 )
+              ( Vec3 a21 a22 a23 )
+              ( Vec3 a31 a32 a33 )
+              ( Vec3 a41 a42 a43 )
 
 {-# COMPLETE Mat44 #-}
 pattern Mat44
@@ -576,131 +631,13 @@ pattern Mat44 a11 a12 a13 a14
               ( V4 a31 a32 a33 a34 )
               ( V4 a41 a42 a43 a44 )
       )
-
--- *** Smart constructors
-
-mat22
-  :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 2 2 a )
-mat22 a11 a12
-      a21 a22
-  = Mat :$ vec2
-      ( vec2 a11 a12 )
-      ( vec2 a21 a22 )
-
-mat23
-  :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 2 3 a )
-mat23 a11 a12 a13
-      a21 a22 a23
-  = Mat :$ vec2
-      ( vec3 a11 a12 a13 )
-      ( vec3 a21 a22 a23 )
-
-mat24
-  :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 2 4 a )
-mat24 a11 a12 a13 a14
-      a21 a22 a23 a24
-  = Mat :$ vec2
-      ( vec4 a11 a12 a13 a14 )
-      ( vec4 a21 a22 a23 a24 )
-
-mat32
-  :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 3 2 a )
-mat32 a11 a12
-      a21 a22
-      a31 a32
-  = Mat :$ vec3
-      ( vec2 a11 a12 )
-      ( vec2 a21 a22 )
-      ( vec2 a31 a32 )
-
-mat33
-  :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 3 3 a )
-mat33 a11 a12 a13
-      a21 a22 a23
-      a31 a32 a33
-  = Mat :$ vec3
-      ( vec3 a11 a12 a13 )
-      ( vec3 a21 a22 a23 )
-      ( vec3 a31 a32 a33 )
-
-mat34
-  :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 3 4 a )
-mat34 a11 a12 a13 a14
-      a21 a22 a23 a24
-      a31 a32 a33 a34
-  = Mat :$ vec3
-      ( vec4 a11 a12 a13 a14 )
-      ( vec4 a21 a22 a23 a24 )
-      ( vec4 a31 a32 a33 a34 )
-
-mat42
-  :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 4 2 a )
-mat42 a11 a12
-      a21 a22
-      a31 a32
-      a41 a42
-  = Mat :$ vec4
-      ( vec2 a11 a12 )
-      ( vec2 a21 a22 )
-      ( vec2 a31 a32 )
-      ( vec2 a41 a42 )
-
-mat43
-  :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 4 3 a )
-mat43 a11 a12 a13
-      a21 a22 a23
-      a31 a32 a33
-      a41 a42 a43
-  = Mat :$ vec4
-      ( vec3 a11 a12 a13 )
-      ( vec3 a21 a22 a23 )
-      ( vec3 a31 a32 a33 )
-      ( vec3 a41 a42 a43 )
-
-mat44
-  :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 4 4 a )
-mat44 a11 a12 a13 a14
-      a21 a22 a23 a24
-      a31 a32 a33 a34
-      a41 a42 a43 a44
-  = Mat :$ vec4
-      ( vec4 a11 a12 a13 a14 )
-      ( vec4 a21 a22 a23 a24 )
-      ( vec4 a31 a32 a33 a34 )
-      ( vec4 a41 a42 a43 a44 )
+  where Mat44
+            a11 a12 a13 a14
+            a21 a22 a23 a24
+            a31 a32 a33 a34
+            a41 a42 a43 a44
+          = Mat :$ Vec4
+              ( Vec4 a11 a12 a13 a14 )
+              ( Vec4 a21 a22 a23 a24 )
+              ( Vec4 a31 a32 a33 a34 )
+              ( Vec4 a41 a42 a43 a44 )

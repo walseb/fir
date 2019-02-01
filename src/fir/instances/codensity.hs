@@ -67,7 +67,8 @@ import Control.Monad.Indexed
   )
 import qualified Control.Monad.Indexed as Indexed
 import Control.Type.Optic(Optic, Name, Gettable, Settable, Part, Whole, Indices)
-import Data.Type.Map(Insert, Union, Append)
+import Data.Type.List(KnownLength(sLength), Postpend)
+import Data.Type.Map(Insert, Union)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
 import FIR.Binding(BindingsMap, BindingType, Var, Fun, KnownPermissions)
 import FIR.Builtin(StageBuiltins)
@@ -217,8 +218,8 @@ assign :: forall optic.
 def        = fromAST ( Def    @k @ps @a    @i Proxy Proxy       ) . toAST
 fundef'    = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
 entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
-use        = fromAST ( Use    @optic          opticSing         )
-assign     = fromAST ( Assign @optic          opticSing         )
+use        = fromAST ( Use    @optic          sLength opticSing )
+assign     = fromAST ( Assign @optic          sLength opticSing )
 
 -- | Get the value of a variable.
 -- Like @get@ for state monads, except a binding name needs to be specified with a type application.
@@ -274,8 +275,8 @@ type family ListVariadicCod
 -- type User     (g :: Optic is s a) = ListVariadicIx is            s a
 -- type Assigner (g :: Optic is s a) = ListVariadicIx (Append is a) s ()
 
-type CodUser     (optic :: Optic is s a) = ListVariadicCod is            s a
-type CodAssigner (optic :: Optic is s a) = ListVariadicCod (Append is a) s ()
+type CodUser     (optic :: Optic is s a) = ListVariadicCod  is               s a
+type CodAssigner (optic :: Optic is s a) = ListVariadicCod (is `Postpend` a) s ()
 
 --------------------------------------------------------------------------
 -- modifying
@@ -314,17 +315,17 @@ modifying
       ( assign @optic )
 
 class Modifier is s a where
-  modifier :: ListVariadicCod         is    s a
-           -> ListVariadicCod (Append is a) s ()
-           -> VariadicCodModifier     is    s a
+  modifier :: ListVariadicCod      is               s a
+           -> ListVariadicCod     (is `Postpend` a) s ()
+           -> VariadicCodModifier  is               s a
 
-instance Modifier '[] s b where
+instance Modifier '[] s a where
   modifier used assigned f
     = (ixFmap f used) Indexed.>>= assigned
 
-instance Modifier is s b => Modifier (i ': is) s b where
+instance Modifier is s a => Modifier (i ': is) s a where
   modifier used assigned i
-    = modifier @is @s @b (used i) (assigned i)
+    = modifier @is @s @a (used i) (assigned i)
 
 --------------------------------------------------------------------------
 -- * Instances for codensity representation

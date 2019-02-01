@@ -37,10 +37,10 @@ import GHC.TypeLits
   )
 
 -- fir
+import Data.Type.List(Elem)
 import Data.Type.Map
   ( (:->)((:->))
   , Lookup, Remove
-  , Elem
   )
 import FIR.Binding
   ( Binding, BindingsMap, BindingType

@@ -56,4 +56,4 @@ program = Program do
 
     ~(Vec4 x y z _) <- def @"pos" @R ( mvp !*^ (fmapAST (f . (*3) . f) position) )
 
-    #gl_Position .= vec4 x z y 1
+    #gl_Position .= Vec4 x z y 1

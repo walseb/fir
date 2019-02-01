@@ -46,4 +46,4 @@ program = Program do
 
     ~(Vec3 x y z) <- def @"pos" @RW ( position' )
 
-    #gl_Position .= vec4 x z y 10
+    #gl_Position .= Vec4 x z y 10

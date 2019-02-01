@@ -75,4 +75,4 @@ program = Program do
     lensTest <- use @(Name "arr1" :.: Index 3 :.: AnIndex Word32 :.: Index 0 :.: Index 2) 7
 
     #array @(Array 10 Float) #= (lit $ mkArray (Array.fromList [1,17,23,4,5,90,88,17,22,21]))
-    #gl_Position .= vec4 3 7 17 10
+    #gl_Position .= Vec4 3 7 17 10

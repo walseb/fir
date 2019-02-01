@@ -21,7 +21,7 @@ by Josef Svenningsson and Emil Axelsson.
 
 module FIR.AST
   ( -- * Main AST data type
-    AST(..), ASTs(NilAST, ConsAST)
+    AST(..)
     -- * Syntactic type class
   , Syntactic(Internal, toAST, fromAST)
     -- * Displaying ASTs graphically
@@ -48,9 +48,10 @@ import Data.Tree.View(showTree)
 -- fir
 import CodeGen.Instruction(ID(ID))
 import CodeGen.Monad(MonadFresh(fresh), runFreshSuccT)
-import Control.Type.Optic(Gettable, Settable)
+import Control.Type.Optic(Gettable, Settable, Indices)
 import Control.Monad.Indexed((:=))
 import Data.Function.Variadic(NatVariadic)
+import Data.Type.List(SLength)
 import Data.Type.Map(Insert, Union)
 import FIR.Binding(BindingType, Var, Fun, KnownPermissions)
 import FIR.Builtin(StageBuiltins)
@@ -132,14 +133,16 @@ data AST :: Type -> Type where
   -- Like @use@ from the lens library.
   Use :: forall optic.
         ( GHC.Stack.HasCallStack, KnownOptic optic, Gettable optic )
-      => SOptic optic -- ^ Singleton for the optic.
+      => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
+      -> SOptic optic            -- ^ Singleton for the optic.
       -> AST ( User optic )
-  -- | Assign a new value with an optic.
+  -- | /Assign/ a new value with an optic.
   --
   -- Like @assign@ from the lens library.
   Assign :: forall optic.
         ( GHC.Stack.HasCallStack, KnownOptic optic, Settable optic )
-      => SOptic optic -- ^ Singleton for the optic.
+      => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
+      -> SOptic optic            -- ^ Singleton for the optic.
       -> AST ( Assigner optic )
 
   If    :: ( GHC.Stack.HasCallStack
@@ -181,17 +184,8 @@ data AST :: Type -> Type where
   Snd  :: AST ( (a,b) -> b )
 
   -- | As @SPIR-V@ is based around identifiers,
-  -- this function can be used to create values of any type using their IDs
+  -- this function can be used to create values of any type using their IDs.
   MkID :: (ID, SPIRV.PrimTy) -> AST a
-
-------------------------------------------------
-
--- | Internal data type, mostly used to deal with run-time indices.
---
--- The user-facing interface is through variadic functions.
-data ASTs (is :: [Type]) :: Type where
-  NilAST  :: ASTs '[]
-  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
 
 ------------------------------------------------
 
@@ -232,8 +226,8 @@ toTreeArgs Snd      as = return (Node "Snd"      as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
 toTreeArgs (VectorAt   _ i) as = return (Node ("At "       ++ show (natVal i)) as)
-toTreeArgs (Use    o      ) as = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
-toTreeArgs (Assign o      ) as = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)
+toTreeArgs (Use    _ o    ) as = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
+toTreeArgs (Assign _ o    ) as = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
 toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"   ++ show (stageVal s)) as)
