@@ -1,6 +1,17 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms            #-}
 
-module SPIRV.PrimTy where
+module SPIRV.PrimTy
+  ( Width(..), width
+  , Signedness(..), signedness
+  , ScalarTy(..)
+  , PrimTy(..)
+  , PointerTy(pointerTy) -- constructor not exported
+  , pattern PointerTy
+  , tyOp
+  ) where
 
 -- base
 import Data.Word(Word32)
@@ -56,6 +67,18 @@ data PrimTy where
   Function     :: [PrimTy]           -> PrimTy -> PrimTy 
   -- todo: images, opaque types, ...
   deriving ( Show, Eq, Ord )
+
+-- newtype to deal with types that are known to be pointers,
+-- to avoids spurious error handling in code that deals with pointers
+--
+-- (newtype constructor not exported; pattern synonym instead)
+newtype PointerTy = PtrTy { pointerTy :: PrimTy }
+  deriving newtype ( Show, Eq, Ord )
+{-# COMPLETE PointerTy #-}
+pattern PointerTy :: StorageClass -> PrimTy -> PointerTy
+pattern PointerTy storage ty = PtrTy (Pointer storage ty)
+
+
 
 tyOp :: PrimTy -> Operation
 tyOp Unit                    = TypeVoid

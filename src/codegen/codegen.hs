@@ -61,6 +61,8 @@ import CodeGen.Instruction
   )
 import CodeGen.Phi
   ( phiInstruction, phiInstructions )
+import CodeGen.Pointers
+  ( newPointer, load, store )
 import CodeGen.Monad
   ( CGMonad, runCGMonad
   , MonadFresh(fresh)
@@ -79,13 +81,10 @@ import CodeGen.Put(putASM)
 import CodeGen.State
   ( CGState(currentBlock, knownBindings, localBindings)
   , CGContext
-  , FunctionContext(TopLevel, EntryPoint)
   , _currentBlock
-  , _functionContext
   , _knownExtInsts
   , _knownBindings
   , _localBindings, _localBinding
-  , _interfaceBinding
   , _userFunction
   , _userEntryPoint
   , _debugMode
@@ -172,10 +171,10 @@ codeGen (Def k perms :$ a)
 
         defRes <-
             if makeMutable
-            then do let ptrTy = SPIRV.Pointer Storage.Function a_ty
+            then do let ptrTy = SPIRV.PointerTy Storage.Function a_ty
                     ptrID <- newPointer ptrTy
-                    store (name, a_ID) ptrID a_ty
-                    pure (ptrID, ptrTy)
+                    store (name, a_ID) ptrID ptrTy
+                    pure (ptrID, SPIRV.pointerTy ptrTy)
             else pure cgRes
         
         assign ( _localBinding name ) ( Just defRes )
@@ -207,18 +206,18 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
         do  let varName = Text.pack ( symbolVal k )
             bd@(bdID, bdTy) <- bindingID varName
             case bdTy of
-              SPIRV.Pointer {}
-                -> load (varName, bdID) bdTy
+              SPIRV.Pointer storage eltTy
+                -> load (varName, bdID) (SPIRV.PointerTy storage eltTy)
               _ -> pure bd
 
       SComposeO _ (SBinding k) getter ->
         do  let varName = Text.pack ( symbolVal k )
-            (bdID, bdTy) <- bindingID varName
+            bd@(bdID, bdTy) <- bindingID varName
 
             case bdTy of
-              SPIRV.Pointer {}
-                -> loadThroughAccessChain bdID getter is
-              _ -> extractUsingGetter     bdID getter is
+              SPIRV.Pointer storage eltTy
+                -> loadThroughAccessChain (bdID, SPIRV.PointerTy storage eltTy) getter is
+              _ -> extractUsingGetter     bd                                    getter is
 
       _ -> throwError (   "codeGen: cannot 'use', unsupported optic:\n"
                        <> Text.pack (showSOptic singOptic) <> "\n"
@@ -244,21 +243,21 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
             bd@(bdID, bdTy) <- bindingID varName
 
             case bdTy of
-              SPIRV.Pointer {}
-                -> store (varName, a_ID) bdID bdTy
+              SPIRV.Pointer storage eltTy
+                -> store (varName, a_ID) bdID (SPIRV.PointerTy storage eltTy)
               _ -> assign ( _localBinding varName ) (Just bd)
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
       SComposeO _ (SBinding k) setter  ->
         do  let varName = Text.pack ( symbolVal k )
-            (a_ID, _) <- codeGen a
-            (bdID, bdTy) <- bindingID varName
+            a_IDTy          <- codeGen a
+            bd@(bdID, bdTy) <- bindingID varName
 
             case bdTy of
-              SPIRV.Pointer {}
-                -> storeThroughAccessChain bdID a_ID setter is
-              _ -> insertUsingSetter       bdID a_ID setter is
+              SPIRV.Pointer storage eltTy
+                -> storeThroughAccessChain (bdID, (SPIRV.PointerTy storage eltTy)) a_IDTy setter is
+              _ -> insertUsingSetter       bd                                      a_IDTy setter is
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
@@ -666,83 +665,3 @@ putSrcInfo callstack
                     $ Arg colNo EndArgs
             }
 
-----------------------------------------------------------------------------
--- load/store through pointers
-
-newPointer :: SPIRV.PrimTy -> CGMonad ID
-newPointer ptrTy@(SPIRV.Pointer storage _)
-  = do  ptrTyID <- typeID ptrTy -- ensure the pointer type is declared
-        v <- fresh
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Variable
-            , resTy     = Just ptrTyID
-            , resID     = Just v
-            , args      = Arg storage EndArgs
-            }
-        pure v
-newPointer nonPtrTy
-  = throwError
-  $  "codeGen: non-pointer-type "
-  <> Text.pack ( show nonPtrTy )
-  <> " provided for variable creation"
-
-load :: (Text, ID) -> SPIRV.PrimTy -> CGMonad (ID, SPIRV.PrimTy)
-load (loadeeName, loadeeID) ptrTy@(SPIRV.Pointer storage ty)
-  = do
-      _ <- typeID ptrTy -- ensure the pointer type is declared
-      context <- use _functionContext
-      case context of
-        TopLevel -> throwError "codeGen: load operation not allowed at top level"
-        EntryPoint stage entryPointName
-          | storage == Storage.Input
-          -- add this variable to the interface of the entry point
-          -> assign ( _interfaceBinding stage entryPointName loadeeName ) (Just loadeeID)
-        _ -> pure ()
-      loadInstruction ty loadeeID
-load _ nonPtrTy
-  = throwError
-  $  "codeGen: trying to load through non-pointer of type "
-  <> Text.pack ( show nonPtrTy )
-
-loadInstruction :: SPIRV.PrimTy -> ID -> CGMonad (ID, SPIRV.PrimTy)
-loadInstruction ty loadeeID
-  = do  tyID <- typeID ty
-        v <- fresh
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Load
-            , resTy = Just tyID
-            , resID = Just v
-            , args  = Arg loadeeID EndArgs
-            }
-        pure (v, ty)
-
-store :: (Text, ID) -> ID -> SPIRV.PrimTy -> CGMonad ()
-store (storeeName, storeeID) pointerID ptrTy@(SPIRV.Pointer storage _)
-  = do
-      _ <- typeID ptrTy -- ensure the pointer type is declared
-      context <- use _functionContext
-      case context of
-        TopLevel -> throwError "codeGen: store operation not allowed at top level"
-        EntryPoint stage entryPointName
-          | storage == Storage.Output
-          -- add this variable to the interface of the entry point
-          -> assign ( _interfaceBinding stage entryPointName storeeName ) (Just pointerID)
-        _ -> pure ()
-      storeInstruction pointerID storeeID
-store _ _ nonPtrTy
-  = throwError
-  $  "codeGen: trying to store through non-pointer of type "
-  <> Text.pack ( show nonPtrTy )
-
-storeInstruction :: ID -> ID -> CGMonad ()
-storeInstruction pointerID storeeID
-  = do  liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Store
-            , resTy = Nothing
-            , resID = Nothing
-            , args = Arg pointerID
-                   $ Arg storeeID EndArgs
-            }

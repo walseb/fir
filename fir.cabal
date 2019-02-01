@@ -79,6 +79,7 @@ library
       , CodeGen.Monad
       , CodeGen.Optics
       , CodeGen.Phi
+      , CodeGen.Pointers
       , CodeGen.Put
       , CodeGen.State
       , CodeGen.Untyped

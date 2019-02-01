@@ -90,8 +90,8 @@ data SOptic (optic :: Optic i s a) :: Type where
   -- the different methods SPIR-V supports for access:
   --  - vectors with VectorExtractDynamic / VectorInsertDynamic
   --  - arrays with OpAccessChain
-  SAnIndex :: SPrimTy s -> SScalarTy ix -> SOptic (AnIndex ix :: Optic '[ix] s a)
-  SIndex   :: SPrimTy s -> Word32 -> SOptic (o :: Optic '[] s a)
+  SAnIndex :: SPrimTy s -> SPrimTy a -> SScalarTy ix -> SOptic (AnIndex ix :: Optic '[ix] s a)
+  SIndex   :: SPrimTy s -> SPrimTy a -> Word32 -> SOptic (o :: Optic '[] s a)
   -- we allow an overly-general return type for the above,
   -- as we convert 'Name' optics to 'Index' optics behind the scenes
   SBinding  :: KnownSymbol k
@@ -123,8 +123,8 @@ o1 %:*: o2 = SProductO (sLength @_ @is) (sLength @_ @js) o1 o2
 showSOptic :: SOptic (o :: Optic i s a) -> String
 showSOptic SId    = "Id"
 showSOptic SJoint = "Joint"
-showSOptic (SAnIndex _ _) = "AnIndex"
-showSOptic (SIndex   _ n) = "Index "   ++ show n
+showSOptic (SAnIndex _ _ _) = "AnIndex"
+showSOptic (SIndex   _ _ n) = "Index "   ++ show n
 showSOptic (SBinding k  ) = "Binding " ++ show (symbolVal k)
 showSOptic (SComposeO _   o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
 showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
@@ -141,19 +141,21 @@ instance ( empty ~ '[]
          )
        => KnownOptic (Joint_ :: Optic empty a mono) where
   opticSing = SJoint
-instance ( is ~ '[ix], IntegralTy ix, PrimTy s )
+instance ( is ~ '[ix], IntegralTy ix, PrimTy s, PrimTy a )
         => KnownOptic (AnIndex_ :: Optic is s a)
         where
-  opticSing = SAnIndex (primTySing @s) (scalarTySing @ix)
+  opticSing = SAnIndex (primTySing @s) (primTySing @a) (scalarTySing @ix)
 instance ( KnownNat n
          , empty ~ '[]
          , PrimTy s
+         , PrimTy a
          )
        => KnownOptic (Index_ n :: Optic empty s a)
        where
-  opticSing = SIndex (primTySing @s) (fromIntegral . natVal $ Proxy @n)
+  opticSing = SIndex (primTySing @s) (primTySing @a) (fromIntegral . natVal $ Proxy @n)
 instance ( KnownSymbol k
          , PrimTyMap as
+         , PrimTy a
          , HasField k as
          , empty ~ '[]
          ) => KnownOptic (Name_ k :: Optic empty (Struct as) a)
@@ -161,7 +163,7 @@ instance ( KnownSymbol k
   opticSing =
     let sing :: SPrimTyMap as
         sing = primTyMapSing
-    in SIndex (SStruct sing) (fieldIndex (Proxy @k) sing)
+    in SIndex (SStruct sing) (primTySing @a) (fieldIndex (Proxy @k) sing)
 instance ( KnownSymbol k
          , empty ~ '[]
          )

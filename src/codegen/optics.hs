@@ -1,5 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-unused-matches   #-} -- WIP
-{-# OPTIONS_GHC -fno-warn-unused-top-binds #-} -- WIP
+{-# OPTIONS_GHC -fno-warn-unused-matches #-} -- WIP
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds           #-}
@@ -15,30 +14,31 @@
 {-# LANGUAGE ViewPatterns        #-}
 
 module CodeGen.Optics
-  ( loadThroughAccessChain
+  ( IndexedOptic(AnIndexedOptic)
+  , pattern OpticUse
+  , pattern OpticAssign
+  , loadThroughAccessChain
   , storeThroughAccessChain
   , extractUsingGetter
   , insertUsingSetter
-  , pattern OpticUse
-  , pattern OpticAssign
-  , IndexedOptic(AnIndexedOptic)
   ) where
 
 -- base
 import Control.Arrow(first)
 import Data.Kind(Type)
 
--- text-utf8
-import Data.Text(Text)
-
 -- mtl
-import Control.Monad.Except(MonadError, throwError)
+import Control.Monad.Except(throwError)
 
 -- fir
 import {-# SOURCE #-} CodeGen.CodeGen(codeGen)
 import CodeGen.IDs(constID)
 import CodeGen.Instruction(ID)
 import CodeGen.Monad(CGMonad)
+import CodeGen.Pointers
+  ( Safeness(Safe,Unsafe)
+  , loadInstruction
+  )
 import CodeGen.Untyped(UAST(UAST))
 import Control.Type.Optic(Optic)
 import Data.Type.List
@@ -49,26 +49,6 @@ import FIR.AST(AST((:$), Fst, Snd, Use, Assign))
 import FIR.Instances.Optics(SOptic(..))
 import FIR.Prim.Singletons(SPrimTy)
 import qualified SPIRV.PrimTy as SPIRV
-
-----------------------------------------------------------------------------
--- keeping track of run-time indices
-
-infixr 5 `ConsAST`
-
-data ASTs (is :: [Type]) :: Type where
-  NilAST  :: ASTs '[]
-  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
-
-{-
-infixl 5 `SnocAST`
-data SnocASTs (is :: [Type]) :: Type where
-  SnocNilAST :: SnocASTs '[]
-  SnocAST    :: SnocASTs is -> AST i -> SnocASTs (i ': is) -- type index is reversed!
-
-unSnocAST :: SnocASTs (Reverse is) -> ASTs is
-unSnocAST SnocNilAST = NilAST
-unSnocAST (is `SnocAST` i) = i `ConsAST` unSnocAST is
--}
 
 ----------------------------------------------------------------------------
 -- pattern synonyms for optics
@@ -107,12 +87,61 @@ assigned ((((Assign (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3) :$
 assigned _ = Nothing
 
 ----------------------------------------------------------------------------
+-- code generation for optics
+
+loadThroughAccessChain
+  :: forall is s a (optic :: Optic is s a).
+     (ID, SPIRV.PointerTy) -> SOptic optic -> ASTs is -> CGMonad (ID, SPIRV.PrimTy)
+loadThroughAccessChain basePtr sOptic is
+  = loadThroughAccessChainTree basePtr =<< opticalTree is sOptic
+
+extractUsingGetter
+  :: forall is s a (optic :: Optic is s a).
+     (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad (ID, SPIRV.PrimTy)
+extractUsingGetter base sOptic is
+  = extractUsingGetterTree base =<< opticalTree is sOptic
+
+storeThroughAccessChain
+  :: forall is s a (optic :: Optic is s a).
+     (ID, SPIRV.PointerTy) -> (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad ()
+storeThroughAccessChain ptr val sOptic is
+  = storeThroughAccessChainTree ptr val =<< opticalTree is sOptic
+
+insertUsingSetter
+  :: forall is s a (optic :: Optic is s a).
+     (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad ()
+insertUsingSetter base val sOptic is
+  = insertUsingSetterTree base val =<< opticalTree is sOptic
+
+----------------------------------------------------------------------------
+-- keeping track of run-time indices
+
+infixr 5 `ConsAST`
+
+data ASTs (is :: [Type]) :: Type where
+  NilAST  :: ASTs '[]
+  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
+
+{-
+infixl 5 `SnocAST`
+data SnocASTs (is :: [Type]) :: Type where
+  SnocNilAST :: SnocASTs '[]
+  SnocAST    :: SnocASTs is -> AST i -> SnocASTs (i ': is) -- type index is reversed!
+
+unSnocAST :: SnocASTs (Reverse is) -> ASTs is
+unSnocAST SnocNilAST = NilAST
+unSnocAST (is `SnocAST` i) = i `ConsAST` unSnocAST is
+-}
+
+
+
+----------------------------------------------------------------------------
 -- optical trees
 
 data OpticalEdge where
   Identity :: OpticalEdge
   Join     :: OpticalEdge
-  Index    :: SPrimTy ty -> ID -> OpticalEdge
+  Index    :: SPrimTy s -> SPrimTy a -> ID -> OpticalEdge
 
 data OpticalNode
   = Leaf     OpticalEdge
@@ -120,15 +149,6 @@ data OpticalNode
   | Combine  [OpticalTree]
 
 data OpticalTree = Node Safeness OpticalNode
-
-data Safeness
-  = Unsafe
-  | Safe
-  deriving ( Eq, Show )
-
-instance Semigroup Safeness where
-  Safe <> x = x
-  _    <> _ = Unsafe
 
 composedIndices :: SLength is -> ASTs (is :++: js) -> (ASTs is, ASTs js)
 composedIndices SZero js = ( NilAST, js )
@@ -147,8 +167,8 @@ opticalTree :: forall k is (s :: k) a (optic :: Optic is s a).
                ASTs is -> SOptic optic -> CGMonad OpticalTree
 opticalTree _ SId    = pure . Node Safe . Leaf $ Identity
 opticalTree _ SJoint = pure . Node Safe . Leaf $ Join
-opticalTree (i `ConsAST` _) (SAnIndex sing _) = Node Unsafe . Leaf . Index sing . fst <$> codeGen i
-opticalTree _ (SIndex sing n) = Node Safe . Leaf . Index sing <$> constID n
+opticalTree (i `ConsAST` _) (SAnIndex s a _) = Node Unsafe . Leaf . Index s a . fst <$> codeGen i
+opticalTree _ (SIndex s a n) = Node Safe . Leaf . Index s a <$> constID n
 opticalTree is (SComposeO lg1 opt1 opt2)
   = do  let (is1, is2) = composedIndices lg1 is
         res1 <- opticalTree is1 opt1
@@ -182,32 +202,30 @@ opticalTree _ (SBinding _)
   = throwError "opticalTree: trying to access a binding within a binding"
 
 ----------------------------------------------------------------------------
--- code generation for optics
+-- code generation for optics, using optical trees
 
-loadThroughAccessChain
-  :: forall is s a (optic :: Optic is s a) m.
-     MonadError Text m
-  => ID -> SOptic optic -> ASTs is -> m (ID, SPIRV.PrimTy)
-loadThroughAccessChain basePtrID sOptic is
-  = throwError "loadThroughAccessChain: todo"
+loadThroughAccessChainTree
+  :: (ID, SPIRV.PointerTy) -> OpticalTree -> CGMonad (ID, SPIRV.PrimTy)
+loadThroughAccessChainTree (basePtrID, SPIRV.PointerTy _ eltTy) (Node _ (Leaf Identity))
+  = loadInstruction eltTy basePtrID
+loadThroughAccessChainTree basePtr (Node _ (Leaf Join))
+  = throwError "loadThroughAccessChainTree: 'Joint' optic used as a getter"
+loadThroughAccessChainTree basePtr (Node safe (Leaf (Index s a i)))
+  = error "todo"
+loadThroughAccessChainTree basePtr tree
+  = error "todo"
 
-extractUsingGetter
-  :: forall is s a (optic :: Optic is s a) m.
-     MonadError Text m
-  => ID -> SOptic optic -> ASTs is -> m (ID, SPIRV.PrimTy)
-extractUsingGetter baseID sOptic is
-  = throwError "extractUsingGetter: todo"
+extractUsingGetterTree
+  :: (ID, SPIRV.PrimTy) -> OpticalTree -> CGMonad (ID, SPIRV.PrimTy)
+extractUsingGetterTree baseID tree
+  = throwError "extractUsingGetterTree: todo"
 
-storeThroughAccessChain
-  :: forall is s a (optic :: Optic is s a) m.
-     MonadError Text m
-  => ID -> ID -> SOptic optic -> ASTs is -> m ()
-storeThroughAccessChain ptrID valID sOptic is
-  = throwError "storeThroughAccessChain: todo"
+storeThroughAccessChainTree
+  :: (ID, SPIRV.PointerTy) -> (ID, SPIRV.PrimTy) -> OpticalTree -> CGMonad ()
+storeThroughAccessChainTree ptrID valID tree
+  = throwError "storeThroughAccessChainTree: todo"
 
-insertUsingSetter
-  :: forall is s a (optic :: Optic is s a) m.
-     MonadError Text m
-  => ID -> ID -> SOptic optic -> ASTs is -> m ()
-insertUsingSetter baseID valID sOptic is
-  = throwError "insertUsingSetter: todo"
+insertUsingSetterTree
+  :: (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> OpticalTree -> CGMonad ()
+insertUsingSetterTree baseID valID tree
+  = throwError "insertUsingSetterTree: todo"
