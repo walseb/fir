@@ -73,6 +73,8 @@ library
         CodeGen.Binary
       , CodeGen.CFG
       , CodeGen.CodeGen
+      , CodeGen.Composite
+      , CodeGen.Debug
       , CodeGen.Functions
       , CodeGen.IDs
       , CodeGen.Instruction
@@ -80,6 +82,7 @@ library
       , CodeGen.Optics
       , CodeGen.Phi
       , CodeGen.Pointers
+      , CodeGen.PrimOps
       , CodeGen.Put
       , CodeGen.State
       , CodeGen.Untyped

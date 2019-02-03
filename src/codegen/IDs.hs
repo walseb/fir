@@ -10,6 +10,7 @@
 module CodeGen.IDs where
 
 -- base
+import Control.Arrow(second)
 import Data.Coerce(coerce)
 import Data.Foldable(traverse_)
 import Data.Maybe(fromJust)
@@ -337,7 +338,8 @@ infixl 6 <<?>
 (<<?>) :: forall x. Maybe x -> Maybe x -> Maybe x
 (<<?>) = coerce ( (<>) @(Maybe (First x)) )
 
-bindingID :: ( MonadState CGState m
+bindingID :: forall m.
+             ( MonadState CGState m
              , MonadReader CGContext m
              , MonadError Text m
              , MonadFresh ID m
@@ -348,18 +350,24 @@ bindingID varName
           EntryPoint stage stageName
             | Just ptrTy <- lookup varName (stageBuiltins stage)
             -> do builtin <- builtinID stage stageName varName
+                  let ptrPrimTy = SPIRV.pointerTy ptrTy
+                  _ <- typeID ptrPrimTy -- ensure pointer type is declared
                   -- note that 'builtinID' sets the necessary decorations for the builtin
-                  pure (builtin, ptrTy)
+                  pure (builtin, ptrPrimTy)
                 
           _ -> do -- obtain the binding ID
-                  loc     <- use ( _localBinding varName )
-                  known   <- use ( _knownBinding varName )
-                  glob    <- globalID varName
+                  mbLoc     <- use ( _localBinding varName )
+                  mbKnown   <- use ( _knownBinding varName )
+                  mbGlob <-
+                    do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName
+                        -- declare pointer type (if necessary)
+                        mapM_ (typeID . snd) glob
+                        pure glob
 
                   bd@(bdID,_)
                       <- note
                           ( "codeGen: no binding with name " <> varName )
-                          ( loc <<?> known <<?> glob )
+                          ( mbLoc <<?> mbKnown <<?> mbGlob )
 
                   -- add the user decorations for this binding if necessary
                   decorations <- fmap snd <$> view ( _userGlobal varName )
@@ -374,7 +382,7 @@ globalID :: ( MonadState CGState m
             , MonadReader CGContext m
             , MonadFresh ID m
             )
-         => Text -> m ( Maybe (ID, SPIRV.PrimTy) )
+         => Text -> m ( Maybe (ID, SPIRV.PointerTy) )
 globalID globalName
   = do glob <- view ( _userGlobal globalName )
        case glob of

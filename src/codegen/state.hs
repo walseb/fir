@@ -65,16 +65,16 @@ data CGState
       , memberDecorations   :: Map (ID, Word32)        (Set (SPIRV.Decoration    Word32))
       , knownTypes          :: Map SPIRV.PrimTy        Instruction
       , knownConstants      :: Map AConstant           Instruction
-      , usedGlobals         :: Map Text                (ID, SPIRV.PrimTy)
-      , knownBindings       :: Map Text                (ID, SPIRV.PrimTy)
-      , localBindings       :: Map Text                (ID, SPIRV.PrimTy)
+      , usedGlobals         :: Map Text                (ID, SPIRV.PointerTy)
+      , knownBindings       :: Map Text                (ID, SPIRV.PrimTy   )
+      , localBindings       :: Map Text                (ID, SPIRV.PrimTy   )
       }
   deriving Show
 
 data FunctionContext
   = TopLevel
   | Function [(Text, SPIRV.PrimTy)] -- argument names & types
-  | EntryPoint SPIRV.Stage Text -- stage, and stage name
+  | EntryPoint SPIRV.Stage Text     -- stage, and stage name
   deriving ( Eq, Show )
 
 initialState :: CGState
@@ -102,7 +102,7 @@ data CGContext
   = CGContext
      { -- user defined inputs/outputs (not builtins)
        userGlobals
-          :: Map Text (SPIRV.PrimTy, Set (SPIRV.Decoration Word32) )
+          :: Map Text (SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
        -- user defined functions (not entry points)
      , userFunctions
           :: Map Text SPIRV.FunctionControl
@@ -162,10 +162,10 @@ _knownStringLit lit = _knownStringLits . at lit
 _names :: Lens' CGState ( Set (ID, Either Text (Word32, Text)) )
 _names = lens names ( \s v -> s { names = v } )
 
-_usedGlobals :: Lens' CGState (Map Text (ID, SPIRV.PrimTy))
+_usedGlobals :: Lens' CGState (Map Text (ID, SPIRV.PointerTy))
 _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
 
-_usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
+_usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PointerTy))
 _usedGlobal name = _usedGlobals . at name
 
 _interfaces :: Lens' CGState (Map (SPIRV.Stage, Text) (Map Text ID))
@@ -194,7 +194,7 @@ _builtin stage stageName builtinName
   where _interfaceBuiltin :: Lens' CGState (Maybe ID)
         _interfaceBuiltin = _interfaceBinding stage stageName builtinName
 
-        ty :: SPIRV.PrimTy
+        ty :: SPIRV.PointerTy
         ty =
           fromMaybe
             ( error
@@ -202,7 +202,7 @@ _builtin stage stageName builtinName
                   \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
               )
             )
-            ( lookup builtinName (stageBuiltins stage) )
+            ( lookup builtinName $ stageBuiltins stage )
 
 _executionModes :: Lens' CGState (Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32)))
 _executionModes = lens executionModes ( \s v -> s { executionModes = v } )
@@ -266,7 +266,7 @@ _localBinding binding = _localBindings . at binding
 _userGlobals
   :: Lens' CGContext
         ( Map Text
-            ( SPIRV.PrimTy
+            ( SPIRV.PointerTy
             , Set ( SPIRV.Decoration Word32 )
             )
         )
@@ -276,7 +276,7 @@ _userGlobal
   :: Text
   -> Lens' CGContext
         ( Maybe
-            ( SPIRV.PrimTy
+            ( SPIRV.PointerTy
             , Set ( SPIRV.Decoration Word32 )
             )
         )
@@ -315,7 +315,7 @@ addMemberName structTyID index name
 addDecorations :: MonadState CGState m
                => ID -> Set (SPIRV.Decoration Word32) -> m ()
 addDecorations bdID decs
-  = modifying ( _decorate bdID)
+  = modifying ( _decorate bdID )
       ( Just . maybe decs (Set.union decs) )
 
 addMemberDecoration :: MonadState CGState m

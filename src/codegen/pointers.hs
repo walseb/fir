@@ -1,12 +1,17 @@
 {-# LANGUAGE BlockArguments    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 
 module CodeGen.Pointers
   ( Safeness(Safe, Unsafe)
-  , newPointer, accessChain
+  , Indices(RTInds, CTInds)
+  , newVariable, accessChain
   , load, loadInstruction
   , store, storeInstruction
   ) where
+
+-- base
+import Data.Word(Word32)
 
 -- containers
 import qualified Data.Map.Strict as Map
@@ -24,7 +29,7 @@ import Data.Text(Text)
 import CodeGen.Binary
   ( putInstruction )
 import CodeGen.IDs
-  ( typeID )
+  ( typeID, constID )
 import CodeGen.Instruction
   ( Args(..), toArgs
   , ID, Instruction(..)
@@ -39,9 +44,9 @@ import CodeGen.State
   , _functionContext
   , _interfaceBinding
   )
-import qualified SPIRV.Operation       as SPIRV.Op
-import qualified SPIRV.PrimTy          as SPIRV
-import qualified SPIRV.Storage         as Storage
+import qualified SPIRV.Operation as SPIRV.Op
+import qualified SPIRV.PrimTy    as SPIRV
+import qualified SPIRV.Storage   as Storage
 
 ----------------------------------------------------------------------------
 -- safeness of pointer access (whether indices known to be within bounds)
@@ -55,12 +60,17 @@ instance Semigroup Safeness where
   Safe <> x = x
   _    <> _ = Unsafe
 
-----------------------------------------------------------------------------
--- creating new pointers
+data Indices
+  = CTInds [Word32]      -- compile-time indices
+  | RTInds Safeness [ID] -- run-time indices
+  deriving Show
 
-newPointer :: SPIRV.PointerTy -> CGMonad ID
-newPointer ptrTy@(SPIRV.PointerTy storage _)
-  = do  ptrTyID <- typeID (SPIRV.pointerTy ptrTy) -- ensure the pointer type is declared
+----------------------------------------------------------------------------
+-- creating pointers
+
+newVariable :: SPIRV.PointerTy -> CGMonad ID
+newVariable ptrTy@(SPIRV.PointerTy storage _)
+  = do  ptrTyID <- typeID (SPIRV.pointerTy ptrTy)
         v <- fresh
         liftPut $ putInstruction Map.empty
           Instruction
@@ -71,16 +81,22 @@ newPointer ptrTy@(SPIRV.PointerTy storage _)
             }
         pure v
 
+indicesIDs :: Indices -> CGMonad ( Safeness, [ID] )
+indicesIDs (CTInds ws)
+  = ( Safe, ) <$> traverse constID ws
+indicesIDs (RTInds safe is) = pure ( safe, is )
+
 -- create a pointer into a composite object with a list of successive indices
-accessChain :: Safeness -> (ID, SPIRV.PointerTy) -> SPIRV.PrimTy -> [ID] -> CGMonad (ID, SPIRV.PrimTy)
-accessChain safe (basePtrID, SPIRV.PointerTy storage _) eltTy indices
-  = let opAccessChain
-          = case safe of
-                Safe -> SPIRV.Op.InBoundsAccessChain
-                _    -> SPIRV.Op.AccessChain
-        accessPtrTy = SPIRV.Pointer storage eltTy
-    in do
-      accessPtrTyID <- typeID accessPtrTy
+accessChain :: (ID, SPIRV.PointerTy) -> SPIRV.PrimTy -> Indices -> CGMonad (ID, SPIRV.PointerTy)
+accessChain (basePtrID, SPIRV.PointerTy storage _) eltTy indices
+  = do
+      (safe, is) <- indicesIDs indices
+      let opAccessChain
+            = case safe of
+                  Safe -> SPIRV.Op.InBoundsAccessChain
+                  _    -> SPIRV.Op.AccessChain
+          accessPtrTy = SPIRV.PointerTy storage eltTy
+      accessPtrTyID <- typeID (SPIRV.pointerTy accessPtrTy)
       v <- fresh
       liftPut $ putInstruction Map.empty
         Instruction
@@ -88,7 +104,7 @@ accessChain safe (basePtrID, SPIRV.PointerTy storage _) eltTy indices
           , resTy     = Just accessPtrTyID
           , resID     = Just v
           , args      = Arg basePtrID
-                      $ toArgs indices
+                      $ toArgs is
           }
       pure (v, accessPtrTy)
 
@@ -96,9 +112,8 @@ accessChain safe (basePtrID, SPIRV.PointerTy storage _) eltTy indices
 -- load/store through pointers
 
 load :: (Text, ID) -> SPIRV.PointerTy -> CGMonad (ID, SPIRV.PrimTy)
-load (loadeeName, loadeeID) ptrTy@(SPIRV.PointerTy storage ty)
+load (loadeeName, loadeeID) (SPIRV.PointerTy storage ty)
   = do
-      _ <- typeID (SPIRV.pointerTy ptrTy) -- ensure the pointer type is declared
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: load operation not allowed at top level"
@@ -123,9 +138,8 @@ loadInstruction ty loadeeID
         pure (v, ty)
 
 store :: (Text, ID) -> ID -> SPIRV.PointerTy -> CGMonad ()
-store (storeeName, storeeID) pointerID ptrTy@(SPIRV.PointerTy storage _)
+store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
   = do
-      _ <- typeID (SPIRV.pointerTy ptrTy) -- ensure the pointer type is declared
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: store operation not allowed at top level"

@@ -45,16 +45,16 @@ import qualified SPIRV.Storage         as SPIRV
 -- for instance, annotating layout information
 
 data Definition where
-  Global :: SPIRV.StorageClass -> Type -> [ SPIRV.Decoration number ] -> Definition
-  Function  :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
-  EntryPoint  :: SPIRV.Stage -> [ SPIRV.ExecutionMode number ] -> Definition
+  Global     :: SPIRV.StorageClass -> Type -> [ SPIRV.Decoration number ] -> Definition
+  Function   :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
+  EntryPoint :: SPIRV.Stage -> [ SPIRV.ExecutionMode number ] -> Definition
 
 type Global_ s ty   = Global s ty '[]
 type Function_ as b = Function '(Nothing, Nothing) as b
 type EntryPoint_ s  = EntryPoint s '[]
 
 data Annotate
-  = AnnotateGlobal     ( SPIRV.PrimTy, Set (SPIRV.Decoration Word32) )
+  = AnnotateGlobal     ( SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
   | AnnotateFunction   SPIRV.FunctionControl
   | AnnotateEntryPoint ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
 
@@ -65,7 +65,7 @@ instance ( PrimTy ty, SPIRV.KnownStorage storage, SPIRV.KnownDecorations decs )
       => KnownDefinition (Global storage ty decs)
       where
   annotation = AnnotateGlobal
-    ( SPIRV.Pointer (SPIRV.storage @storage) (primTy @ty)
+    ( SPIRV.PointerTy (SPIRV.storage @storage) (primTy @ty)
     , Set.fromList ( SPIRV.decorations @_ @decs )
     )
 
@@ -83,7 +83,7 @@ instance ( SPIRV.KnownStage stage, SPIRV.KnownExecutionModes modes )
                   )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
-  annotations :: ( Map Text (SPIRV.PrimTy, Set (SPIRV.Decoration Word32) )
+  annotations :: ( Map Text (SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
                  , Map Text SPIRV.FunctionControl
                  , Map Text (SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
                  )

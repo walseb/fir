@@ -279,21 +279,15 @@ putTypesAndConstants as bs
       ( sortBy (comparing resID) $ Map.elems as ++ Map.elems bs )
 
 putGlobals :: Map SPIRV.PrimTy Instruction
-           -> Map Text (ID, SPIRV.PrimTy)          
+           -> Map Text (ID, SPIRV.PointerTy)
            -> ExceptT Text Binary.PutM ()
 putGlobals typeIDs
   = traverse_
-      ( \(globalID, ptrTy) ->
-        do  storage
-              <- note ( "putGlobals: non-pointer type " <> Text.pack (show ptrTy) )
-                    case ptrTy of
-                      SPIRV.Pointer stor _
-                        -> Just stor
-                      _ -> Nothing
-            ptrTyID 
+      ( \(globalID, ptrTy@(SPIRV.PointerTy storage _)) ->
+        do  ptrTyID
               <- note
                    ( "putGlobals: pointer type " <> Text.pack (show ptrTy) <> " not bound to any ID." )
-                   ( resID =<< Map.lookup ptrTy typeIDs )
+                   ( resID =<< Map.lookup (SPIRV.pointerTy ptrTy) typeIDs )
             lift $ putInstruction Map.empty
                   Instruction
                     { operation = SPIRV.Op.Variable

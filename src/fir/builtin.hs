@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
@@ -39,7 +40,7 @@ import qualified SPIRV.Builtin       as SPIRV
   , readBuiltin
   )
 import qualified SPIRV.Decoration    as SPIRV(Decoration(Builtin, Patch))
-import qualified SPIRV.PrimTy        as SPIRV(PrimTy(Pointer))
+import qualified SPIRV.PrimTy        as SPIRV(PrimTy, PointerTy, pattern PointerTy)
 import qualified SPIRV.Storage       as SPIRV(StorageClass)
 import SPIRV.Stage(Stage(..))
 
@@ -152,7 +153,7 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_SubgroupLocalInvocationId" ':-> Var R Word32
        ]
 
-stageBuiltins :: Stage -> [ (Text, SPIRV.PrimTy) ]
+stageBuiltins :: Stage -> [ (Text, SPIRV.PointerTy) ]
 stageBuiltins Vertex                 = builtinPointer . knownInterface $ Proxy @(StageBuiltins Vertex                )
 stageBuiltins TessellationControl    = builtinPointer . knownInterface $ Proxy @(StageBuiltins TessellationControl   )
 stageBuiltins TessellationEvaluation = builtinPointer . knownInterface $ Proxy @(StageBuiltins TessellationEvaluation)
@@ -162,11 +163,11 @@ stageBuiltins GLCompute              = builtinPointer . knownInterface $ Proxy @
 stageBuiltins Kernel                 = builtinPointer . knownInterface $ Proxy @(StageBuiltins Kernel                )
 
 builtinPointer :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
-               -> [ (Text, SPIRV.PrimTy) ]
+               -> [ (Text, SPIRV.PointerTy) ]
 builtinPointer
   = map 
       ( second
-          ( \ (ty, storage) -> SPIRV.Pointer storage ty )
+          ( \ (ty, storage) -> SPIRV.PointerTy storage ty )
       )
 
 --------------------------------------------------------------------------

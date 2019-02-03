@@ -12,14 +12,13 @@ module CodeGen.CodeGen
 
 -- base
 import Control.Arrow(second)
-import Control.Monad(when, void)
+import Control.Monad(when)
 import Data.Foldable(toList)
 import Data.Maybe(maybe, fromMaybe)
 import Data.Word(Word32)
 import GHC.TypeLits(symbolVal)
 import GHC.TypeNats(natVal)
 import qualified GHC.Stack
-import qualified GHC.Stack.Types as GHC.Stack
 import Prelude hiding (Monad(..))
 
 -- binary
@@ -35,7 +34,7 @@ import qualified Data.Set as Set
 
 -- mtl
 import Control.Monad.Except(throwError)
-import Control.Monad.Reader(MonadReader, ask)
+import Control.Monad.Reader(ask)
 import Control.Monad.State(get, put)
 
 -- lens
@@ -50,19 +49,25 @@ import CodeGen.Binary
   ( putInstruction )
 import CodeGen.CFG
   ( block, branch, branchConditional )
+import CodeGen.Composite
+  ( compositeConstruct, compositeExtract )
+import CodeGen.Debug
+  ( debug, putSrcInfo )
 import CodeGen.Functions
   ( declareFunction, declareFunctionCall, declareEntryPoint )
 import CodeGen.IDs
-  ( typeID, constID, bindingID, extInstID, stringLitID )
+  ( typeID, constID, bindingID )
 import CodeGen.Instruction
-  ( Args(..), toArgs
+  ( Args(..)
   , ID(ID), Instruction(..)
   , Pairs(Pairs)
   )
 import CodeGen.Phi
   ( phiInstruction, phiInstructions )
 import CodeGen.Pointers
-  ( newPointer, load, store )
+  ( newVariable, load, store )
+import CodeGen.PrimOps
+  ( primOp )
 import CodeGen.Monad
   ( CGMonad, runCGMonad
   , MonadFresh(fresh)
@@ -82,12 +87,10 @@ import CodeGen.State
   ( CGState(currentBlock, knownBindings, localBindings)
   , CGContext
   , _currentBlock
-  , _knownExtInsts
   , _knownBindings
   , _localBindings, _localBinding
   , _userFunction
   , _userEntryPoint
-  , _debugMode
   )
 import CodeGen.Untyped
   ( UAST(UAST)
@@ -114,7 +117,6 @@ import Math.Linear(V((:.)))
 import qualified SPIRV.FunctionControl as SPIRV
 import qualified SPIRV.Operation       as SPIRV.Op
 import qualified SPIRV.PrimTy          as SPIRV
-import qualified SPIRV.PrimOp          as SPIRV
 import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Storage         as Storage
 
@@ -172,7 +174,7 @@ codeGen (Def k perms :$ a)
         defRes <-
             if makeMutable
             then do let ptrTy = SPIRV.PointerTy Storage.Function a_ty
-                    ptrID <- newPointer ptrTy
+                    ptrID <- newVariable ptrTy
                     store (name, a_ID) ptrID ptrTy
                     pure (ptrID, SPIRV.pointerTy ptrTy)
             else pure cgRes
@@ -249,15 +251,15 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
-      SComposeO _ (SBinding k) setter  ->
+      SComposeO _ (SBinding k) setter ->
         do  let varName = Text.pack ( symbolVal k )
             a_IDTy          <- codeGen a
             bd@(bdID, bdTy) <- bindingID varName
 
             case bdTy of
               SPIRV.Pointer storage eltTy
-                -> storeThroughAccessChain (bdID, (SPIRV.PointerTy storage eltTy)) a_IDTy setter is
-              _ -> insertUsingSetter       bd                                      a_IDTy setter is
+                -> storeThroughAccessChain   (bdID, (SPIRV.PointerTy storage eltTy)) a_IDTy setter is
+              _ -> insertUsingSetter varName bd                                      a_IDTy setter is
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
@@ -278,8 +280,8 @@ codeGen (Applied (Assign sLg singOptic) is)
           -- off by one: the last argument is the value for the assignment,
           -- which is not a run-time index
 
-codeGen (Applied (PrimOp primOp _) as)
-  = codeGenPrimOp primOp =<< codeGenUASTs as
+codeGen (Applied (PrimOp op _) as)
+  = primOp op =<< codeGenUASTs as
 codeGen (Applied (MkVector n_px ty_px) as)
   = do  let n = fromIntegral (natVal n_px)
         compositeTy
@@ -291,9 +293,9 @@ codeGen (Applied (MkVector n_px ty_px) as)
                x -> throwError ( "codeGen: unexpected vector constituent "
                                <> Text.pack ( show x )
                                )
-        (codeGenCompositeConstruct compositeTy . map fst) =<< codeGenUASTs as
+        (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
 codeGen (VectorAt ty_px i_px :$ v)
- = codeGenCompositeExtract
+ = compositeExtract
       (primTyVal ty_px)
       [fromIntegral ( natVal i_px )]
       =<< codeGen v
@@ -316,10 +318,10 @@ codeGen (Fmap functorSing :$ f :$ a)
                                        <> Text.pack (show vecTy)
                                       )
               elems <- traverse
-                         (\i -> codeGenCompositeExtract constituentTy [i] vec)
+                         ( \i -> compositeExtract constituentTy [i] vec )
                          [1..fromIntegral (natVal n)] -- off by one issues remain
               fmapped <- traverse ( codeGen . (f :$) . MkID ) elems
-              codeGenCompositeConstruct vecTy (map fst . toList $ fmapped)
+              compositeConstruct vecTy (map fst . toList $ fmapped)
       SFuncMatrix m n
         -> do mat@(_, matTy) <- codeGen a
               constituentTy 
@@ -331,7 +333,7 @@ codeGen (Fmap functorSing :$ f :$ a)
                                        )
               let colDim = fromIntegral (natVal m)
               cols <- traverse
-                         (\i -> codeGenCompositeExtract 
+                         (\i -> compositeExtract
                                   ( SPIRV.Vector colDim (SPIRV.Scalar constituentTy) )
                                   [i]
                                   mat
@@ -340,14 +342,14 @@ codeGen (Fmap functorSing :$ f :$ a)
               fmapped <- traverse 
                            ( \ x -> fst <$> codeGen (Fmap (SFuncVector m) :$ f :$ MkID x) ) 
                            cols
-              codeGenCompositeConstruct matTy (toList fmapped)
+              compositeConstruct matTy (toList fmapped)
 codeGen (Pure functorSing :$ a)
   = case functorSing of
       SFuncVector n
         -> do (valID, valTy) <- codeGen a
               let dim :: Num a => a
                   dim = fromIntegral (natVal n)
-              codeGenCompositeConstruct
+              compositeConstruct
                  ( SPIRV.Vector dim valTy )
                  ( replicate dim valID )
       SFuncMatrix m n
@@ -364,7 +366,7 @@ codeGen (Pure functorSing :$ a)
                   rowDim :: Num a => a
                   rowDim = fromIntegral (natVal n)
               col <- fst <$> codeGen (Pure (SFuncVector m) :$ MkID val)
-              codeGenCompositeConstruct
+              compositeConstruct
                 ( SPIRV.Matrix colDim rowDim constituentTy )
                 ( replicate rowDim col )
 codeGen (Ap functorSing ty_px :$ f :$ a)
@@ -379,7 +381,7 @@ codeGen (Ap functorSing ty_px :$ f :$ a)
                        <$> fromAST @(V _ (AST _)) b
                        <*> fromAST @(V _ (AST _)) a
                   in do ids <- traverse codeGen t                    
-                        codeGenCompositeConstruct
+                        compositeConstruct
                           ( SPIRV.Vector dim (primTyVal ty_px) )
                           ( map fst (toList ids) )
             -- inductive case
@@ -568,100 +570,3 @@ codeGen other
   = throwError ( "codeGen: non-exhaustive pattern match:\n"
                  <> Text.pack ( show other )
                )
-
-----------------------------------------------------------------------------
--- primops
-
-codeGenPrimOp :: SPIRV.PrimOp -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
-codeGenPrimOp primOp as
-  = do  let (op,retTy) = SPIRV.opAndReturnType primOp
-
-        -- check if any extended instruction set is required
-        case op of
-          SPIRV.Op.ExtCode extInst _
-            -> void (extInstID extInst)
-          _ -> pure ()
-
-        extInsts <- use _knownExtInsts
-
-        resTyID <- typeID retTy
-        v <- fresh
-        liftPut $ putInstruction extInsts
-          Instruction
-            { operation = op
-            , resTy = Just resTyID
-            , resID = Just v
-            , args = toArgs (map fst as)
-            }
-        pure (v, retTy)
-
-----------------------------------------------------------------------------
--- composite structures
-
-codeGenCompositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad (ID, SPIRV.PrimTy)
-codeGenCompositeConstruct compositeType constituents
-  = do tyID <- typeID compositeType
-       v <- fresh
-       liftPut $ putInstruction Map.empty
-         Instruction
-           { operation = SPIRV.Op.CompositeConstruct
-           , resTy = Just tyID
-           , resID = Just v
-           , args  = toArgs constituents
-           }
-       pure (v, compositeType)
-
-codeGenCompositeExtract :: SPIRV.PrimTy
-                        -> [ Word32 ]
-                        -> (ID, SPIRV.PrimTy)
-                        -> CGMonad (ID, SPIRV.PrimTy)
-codeGenCompositeExtract constituentTy indices (compositeID, _)
-  = do constituentTyID <- typeID constituentTy
-       v <- fresh
-       liftPut $ putInstruction Map.empty
-         Instruction
-           { operation = SPIRV.Op.CompositeExtract
-           , resTy     = Just constituentTyID
-           , resID     = Just v
-           , args      = Arg compositeID
-                       $ toArgs (map pred indices) -- off by one, TODO: fix
-           }
-       pure (v, constituentTy)
-
-----------------------------------------------------------------------------
--- debugging annotations
-
-debug :: MonadReader CGContext m => m () -> m ()
-debug action = (`when` action) =<< view _debugMode
-
-sourceInfo :: GHC.Stack.CallStack -> Maybe (Text, Word32, Word32)
-sourceInfo GHC.Stack.EmptyCallStack = Nothing
-sourceInfo (GHC.Stack.PushCallStack _ loc stack)
-  = case sourceInfo stack of
-      Nothing
-        -> Just ( Text.pack    $ GHC.Stack.srcLocFile      loc
-                , fromIntegral $ GHC.Stack.srcLocStartLine loc
-                , fromIntegral $ GHC.Stack.srcLocStartCol  loc
-                )
-      Just info
-        -> Just info
-sourceInfo (GHC.Stack.FreezeCallStack stack) = sourceInfo stack
-
-putSrcInfo :: GHC.Stack.CallStack -> CGMonad ()
-putSrcInfo callstack
-  = do  (fileName, lineNo, colNo)
-          <- note ( "putSrcInfo: cannot find source location \
-                    \needed for debug statement"
-                  )
-                  ( sourceInfo callstack )
-        fileID <- stringLitID fileName
-        liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Line
-            , resTy = Nothing
-            , resID = Nothing
-            , args  = Arg fileID
-                    $ Arg lineNo
-                    $ Arg colNo EndArgs
-            }
-
