@@ -57,12 +57,16 @@ import Data.Kind(Type)
 import Data.Proxy(Proxy(Proxy))
 import Data.Word(Word16)
 import qualified GHC.Stack
-import GHC.TypeLits(Symbol, KnownSymbol)
+import GHC.TypeLits
+  ( Symbol, KnownSymbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats(KnownNat)
 
 -- fir
 import Control.Monad.Indexed
   ( (:=)(AtKey), Codensity(Codensity)
+  , MonadIxFail(fail)
   , ixFmap, ixPure, ixLiftA2
   )
 import qualified Control.Monad.Indexed as Indexed
@@ -517,3 +521,17 @@ instance (KnownNat m, KnownNat n) => CodensityASTFunctor (M m n) where
 instance KnownNat n => CodensityASTApplicative (V n) where
   pureCodAST = error "pureCodAST: todo"
   (<***>)  = error "pureCodAST: todo"
+
+instance TypeError (     Text "Failable pattern detected in 'do' block, but only unfailable patterns are supported."
+                    :$$: Text ""
+                    :$$: Text "As inference of pattern failability is sometimes patchy,"
+                    :$$: Text "consider using an irrefutable pattern instead, such as:"
+                    :$$: Text ""
+                    :$$: Text "    ~(Vec4 x y z w) <- get @\"position\""
+                    :$$: Text ""
+                    :$$: Text "instead of"
+                    :$$: Text ""
+                    :$$: Text "    Vec4 x y z w <- get @\"position\""
+                    :$$: Text ""
+                    ) => MonadIxFail (Codensity AST) where
+  fail = error "'fail': irrefutable pattern failed to match."
