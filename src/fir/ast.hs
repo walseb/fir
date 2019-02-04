@@ -187,10 +187,6 @@ data AST :: Type -> Type where
            => Proxy n
            -> Proxy a
            -> AST ( NatVariadic n a ( V n a ) )
-  VectorAt :: (KnownNat n, KnownNat i, PrimTy a)
-           => Proxy a
-           -> Proxy i
-           -> AST ( V n a -> a )
 
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
@@ -241,7 +237,6 @@ toTreeArgs Fst      as = return (Node "Fst"      as)
 toTreeArgs Snd      as = return (Node "Snd"      as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
-toTreeArgs (VectorAt   _ i) as = return (Node ("At "       ++ show (natVal i)) as)
 toTreeArgs (Use    _ o    ) as = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Assign _ o    ) as = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)
 toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")") as)

@@ -115,7 +115,7 @@ import FIR.Prim.Singletons
   , SPrimFunc(..)
   , KnownVars(knownVars)
   )
-import Math.Linear(V((:.)))
+import Math.Linear(V)
 import qualified SPIRV.FunctionControl as SPIRV
 import qualified SPIRV.Operation       as SPIRV.Op
 import qualified SPIRV.PrimTy          as SPIRV
@@ -328,18 +328,6 @@ codeGen (Applied (MkVector n_px ty_px) as)
                                <> Text.pack ( show x )
                                )
         (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
-codeGen (VectorAt ty_px i_px :$ v)
- = compositeExtract
-      (primTyVal ty_px)
-      [fromIntegral ( natVal i_px )]
-      =<< codeGen v
-codeGen (VectorAt ty_px _ :$ f :$ v)
-  = case primTyVal ty_px of
-      SPIRV.Function _ _
-        -> case fromAST @(V _ ( AST _ -> AST _)) f of
-                     (h:._) -> codeGen (h v)
-                     _      -> throwError "codeGen: accessing component of dimension 0 vector"
-      _ -> throwError "codeGen: trying to apply a vector of non-functions to a vector of arguments"
 codeGen (Fmap functorSing :$ f :$ a)
   = case functorSing of
       SFuncVector n
@@ -353,7 +341,7 @@ codeGen (Fmap functorSing :$ f :$ a)
                                       )
               elems <- traverse
                          ( \i -> compositeExtract constituentTy [i] vec )
-                         [1..fromIntegral (natVal n)] -- off by one issues remain
+                         [ 0 .. fromIntegral (natVal n) - 1 ]
               fmapped <- traverse ( codeGen . (f :$) . MkID ) elems
               compositeConstruct vecTy (map fst . toList $ fmapped)
       SFuncMatrix m n
@@ -372,7 +360,7 @@ codeGen (Fmap functorSing :$ f :$ a)
                                   [i]
                                   mat
                          )
-                         [1..fromIntegral (natVal n)]
+                         [ 0 .. fromIntegral (natVal n) - 1 ]
               fmapped <- traverse 
                            ( \ x -> fst <$> codeGen (Fmap (SFuncVector m) :$ f :$ MkID x) ) 
                            cols

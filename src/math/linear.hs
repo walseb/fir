@@ -264,33 +264,37 @@ sum = getSum #. foldMap Sum
 -- proper solution would be to use a type-checking plugin for inequalities
 
 deduceZero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
-deduceZero = unsafeCoerce
+deduceZero _ = unsafeCoerce Refl
 
-deduceOK :: (KnownNat j, KnownNat n) => (j <=? n) :~: 'True -> ((j-1) <=? n) :~: 'True
-deduceOK = unsafeCoerce
+lemma1 :: forall j n. (KnownNat j, KnownNat n)
+       => ((j+1) <=? n) :~: 'True -> (CmpNat j n :~: Prelude.LT)
+lemma1 _ = unsafeCoerce Refl
+
+lemma2 :: forall j n. (KnownNat j, KnownNat n)
+       => (j     <=? n) :~: 'True
+       -> ((j+1) <=? n) :~: 'False
+       -> (j :~: n)
+lemma2 _ _ = unsafeCoerce Refl
 
 -----------------------------------------------------------
 
--- TODO: indexing is slightly off, I'm doing {0, ..., n} instead of {1, ..., n}
 -- | Build a vector using an indexing function.
 buildV :: forall n a v. KnownNat n
-       => ( forall i. (KnownNat i, i <= n) => Proxy i -> v -> a) -- ^ Indexing function.
+       => ( forall i. (KnownNat i, CmpNat i n ~ Prelude.LT) => Proxy i -> v -> a) -- ^ Indexing function.
        -> v -- ^ Object to index into.
        -> V n a
-buildV f u = go @n f u Nil where
+buildV f v = go @0 Nil where
   go :: forall j. (KnownNat j, j <= n)
-     => ( forall i. (KnownNat i, i <= n) => Proxy i -> v -> a)
-     -> v
-     -> V (n-j) a
+     => V j a
      -> V n a
-  go g v w =
-    case Proxy @1 %<=? Proxy @j of
-         LE Refl   -> 
-          case deduceOK @j @n Refl  of
-               Refl -> go @(j-1) g v (g (Proxy @j) v :. w)
-         NLE nle _ -> 
-          case deduceZero nle of
-               Refl -> w
+  go w =
+    case Proxy @(j+1) %<=? Proxy @n of
+        LE Refl
+          -> case lemma1 @j @n Refl of
+                Refl -> go @(j+1) (f (Proxy @j) v :. w)
+        NLE Refl Refl
+          -> case lemma2 @j @n Refl Refl of
+                Refl -> w
 
 -- | Dependent fold of a vector.
 -- Folds a vector with a function whose type depends on the index.
@@ -301,7 +305,7 @@ dfoldrV :: forall n a b. KnownNat n
         -> b n
 dfoldrV f d = go
   where go :: (KnownNat m, m <= n) => V m a -> b m
-        go Nil    = d
+        go Nil     = d
         go (a:.as) = f a (go as)
 
 -- | Unfold: create a vector of specified length,

@@ -75,13 +75,14 @@ import GHC.TypeLits
   )
 import GHC.TypeNats
   ( KnownNat, natVal
-   , type (+), type (-), type (<=?)
-   )
+  , type (+), type (-)
+  , type (<=?), CmpNat
+  )
 import Type.Reflection(typeRep)
 
 -- fir
 import Control.Type.Optic
-  ( Optic(..)
+  ( Optic(..), Index
   , Gettable, ReifiedGetter(view)
   , Settable, ReifiedSetter(set)
   )
@@ -452,7 +453,12 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
 -- utility type for the following instance declaration
 newtype B n a b i = B { unB :: AST (NatVariadic (n-i) a b) }
 
-instance (KnownNat n, Syntactic a, PrimTy (Internal a)) => Syntactic (V n a) where
+instance  ( KnownNat n
+          , Syntactic a
+          , PrimTy (Internal a)
+          )
+        => Syntactic (V n a)
+        where
   type Internal (V n a) = V n (Internal a)
 
   toAST :: V n a -> AST (V n (Internal a))
@@ -470,9 +476,16 @@ instance (KnownNat n, Syntactic a, PrimTy (Internal a)) => Syntactic (V n a) whe
           res' = unB res
 
   fromAST :: AST (V n (Internal a)) -> V n a
-  fromAST = buildV ( \i v -> fromAST ( VectorAt (Proxy @(Internal a)) i :$ v) )
+  fromAST = buildV builder
+    where builder :: forall i. (KnownNat i, CmpNat i n ~ Prelude.LT)
+                  => Proxy i -> AST (V n (Internal a)) -> a
+          builder _ v = fromAST ( View sLength (opticSing @(Index i)) :$ v )
 
-deriving instance (KnownNat m, KnownNat n, Syntactic a, ScalarTy (Internal a))
+deriving instance
+    ( KnownNat m, KnownNat n
+    , Syntactic a
+    , ScalarTy (Internal a)
+    )
   => Syntactic (M m n a)
 
 -----------------------------------------------
