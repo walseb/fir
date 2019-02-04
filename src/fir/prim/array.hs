@@ -73,7 +73,7 @@ instance FreeGradedSemigroup (Array 0 a) Nat () where
     = let tk, dp :: Array.Vector a
           (tk, dp) = Array.splitAt (fromIntegral (natVal (Proxy @n))) arr
       in (MkArray @n @a tk, MkArray @m @a dp)
-  generated :: (Array (GenDeg Nat (Array 0 a) () unit) a) -> a
+  generated :: Array (GenDeg Nat (Array 0 a) () unit) a -> a
   generated (MkArray arr) = Array.head arr
 
 newtype RuntimeArray a = MkRuntimeArray (Array.Vector a)

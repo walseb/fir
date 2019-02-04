@@ -8,7 +8,7 @@ module CodeGen.Binary where
 
 -- base
 import Data.Maybe(maybe)
-import Data.List(sortBy)
+import Data.List(sortOn)
 import Data.Foldable(traverse_)
 import Data.Ord(comparing)
 import Data.Word(Word32)
@@ -270,13 +270,13 @@ putMemberDecorations
 putInstructionsInOrder :: Map a Instruction -> Binary.Put
 putInstructionsInOrder
   = traverse_ ( putInstruction Map.empty )
-  . sortBy ( comparing resID )
+  . sortOn resID
   . Map.elems
 
 putTypesAndConstants :: Map a Instruction -> Map b Instruction -> Binary.Put
 putTypesAndConstants as bs
   = traverse_ ( putInstruction Map.empty )
-      ( sortBy (comparing resID) $ Map.elems as ++ Map.elems bs )
+      ( sortOn resID $ Map.elems as ++ Map.elems bs )
 
 putGlobals :: Map SPIRV.PrimTy Instruction
            -> Map Text (ID, SPIRV.PointerTy)

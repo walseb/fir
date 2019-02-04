@@ -152,11 +152,11 @@ store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
 
 storeInstruction :: ID -> ID -> CGMonad ()
 storeInstruction pointerID storeeID
-  = do  liftPut $ putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.Store
-            , resTy = Nothing
-            , resID = Nothing
-            , args = Arg pointerID
-                   $ Arg storeeID EndArgs
-            }
+  = liftPut $ putInstruction Map.empty
+      Instruction
+        { operation = SPIRV.Op.Store
+        , resTy = Nothing
+        , resID = Nothing
+        , args = Arg pointerID
+               $ Arg storeeID EndArgs
+        }

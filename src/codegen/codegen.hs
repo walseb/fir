@@ -534,7 +534,7 @@ codeGen (While :$ cond :$ loopBody)
         let mbLoopEndBlock   = currentBlock  loopEndState
             loopEndBindings  = knownBindings loopEndState
             loopEndLBindings = localBindings loopEndState
-        loopEndBlock <- note ( "codeGen: while loop escaped CFG")
+        loopEndBlock <- note ( "codeGen: while loop escaped CFG" )
                           mbLoopEndBlock
 
         -- Update the state to be the state at the end of the loop

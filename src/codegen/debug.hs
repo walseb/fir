@@ -66,9 +66,8 @@ sourceInfo (GHC.Stack.FreezeCallStack stack) = sourceInfo stack
 putSrcInfo :: GHC.Stack.CallStack -> CGMonad ()
 putSrcInfo callstack
   = do  (fileName, lineNo, colNo)
-          <- note ( "putSrcInfo: cannot find source location \
-                    \needed for debug statement"
-                  )
+          <- note "putSrcInfo: cannot find source location \
+                  \needed for debug statement"
                   ( sourceInfo callstack )
         fileID <- stringLitID fileName
         liftPut $ putInstruction Map.empty

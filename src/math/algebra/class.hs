@@ -5,7 +5,6 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
@@ -307,7 +306,7 @@ instance Convert '(a,a) where
 
 
 -- fromIntegral conversions
-instance (Prelude.Integral a, Prelude.Num b) => Convert '((Prelude a), b) where
+instance (Prelude.Integral a, Prelude.Num b) => Convert '(Prelude a, b) where
   convert (Prelude a) = Prelude.fromIntegral a
 
 -- to unsigned integers

@@ -245,7 +245,7 @@ infixl 9 ^!
 -- e.g. to access index @3@ of vector @v@: @at \@3 v@.
 at :: forall i n a. (KnownNat i, KnownNat n, CmpNat i n ~ Prelude.LT)
    => V n a -> a
-at v = v ^! (fromIntegral (dim @i))
+at v = v ^! fromIntegral (dim @i)
 
 -----------------------------------------------------------
 -- todo: temporary workaround
@@ -374,7 +374,7 @@ instance FreeGradedSemigroup (V 0 a) Nat () where
                 (u, v) = (>!<) (as :: V ((i+j)-1) a)
             in (a :. u, v)
          NLE _ _ -> unsafeCoerce ( Nil, a :. as )
-  generated :: (V (GenDeg Nat (V 0 a) () unit) a) -> a
+  generated :: V (GenDeg Nat (V 0 a) () unit) a -> a
   generated = unsafeCoerce (headV :: V 1 a -> a)
 
 ------------------------------------------------------------------
@@ -638,7 +638,7 @@ instance KnownNat m => GeneratedGradedSemigroup (M m 0 a) Nat () where
   type GenType    (M m 0 a) ()  _  = V m a
   type GenDeg Nat (M m 0 a) () '() = 1
   generator :: V m a -> M m (GenDeg Nat (M m 0 a) () unit) a
-  generator = ( unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a ) )
+  generator = unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a )
 
 instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
   type ValidDegree (M m 0 a) i = KnownNat i
@@ -649,7 +649,7 @@ instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
           (u, v) = (>!<) (distribute m)
       in (M (distribute u), M (distribute v))
   generated :: M m (GenDeg Nat (M m 0 a) () unit) a -> V m a
-  generated = ( unsafeCoerce ( ( \(M m) -> headV (distribute m) ) :: M m 1 a -> V m a ) )
+  generated = unsafeCoerce ( ( \(M m) -> headV (distribute m) ) :: M m 1 a -> V m a )
 
 ------------------------------------------------------------------
 -- type classes for matrix operations

@@ -506,19 +506,19 @@ instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
 
   (^+^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV  (val @n)  (scalarTy @a)) (^+^)
+  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV   (val @n) (scalarTy @a)) (^+^)
 
   (^*) :: forall n. KnownNat n
         => AST (V n a) -> AST a -> AST (V n a)
-  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK (val @n)  (scalarTy @a)) (^*)
+  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK  (val @n) (scalarTy @a)) (^*)
 
 instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
   (^-^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV  (val @n)  (scalarTy @a)) (^-^)
+  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV   (val @n) (scalarTy @a)) (^-^)
 
 instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
-  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV  (val @0)  (scalarTy @a)) (^.^)
+  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV   (val @0) (scalarTy @a)) (^.^)
 
 instance (ScalarTy a, Floating a) => Cross (AST (V 0 a)) where
   cross = fromAST $ PrimOp (SPIRV.VecOp SPIRV.CrossV (val @3) (scalarTy @a)) cross
@@ -596,7 +596,7 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
 
   (!*) :: forall i j. (KnownNat i, KnownNat j)
        => AST (M i j a) -> AST a -> AST (M i j a)
-  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK (val @i) (val @j) (scalarTy @a)) (!*)
+  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK  (val @i) (val @j) (scalarTy @a)) (!*)
 
 -- *** Bidirectional pattern synonyms
 

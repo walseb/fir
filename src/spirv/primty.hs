@@ -81,15 +81,14 @@ pattern PointerTy storage ty = PtrTy (Pointer storage ty)
 
 
 tyOp :: PrimTy -> Operation
-tyOp Unit                    = TypeVoid
-tyOp Boolean                 = TypeBool
-tyOp (Scalar (Integer   {})) = TypeInt
-tyOp (Scalar (Floating  {})) = TypeFloat
-tyOp (Vector            {} ) = TypeVector
-tyOp (Matrix            {} ) = TypeMatrix
-tyOp (Array             {} ) = TypeArray
-tyOp (RuntimeArray      {} ) = TypeRuntimeArray
-tyOp (Struct            {} ) = TypeStruct
-tyOp (Function          {} ) = TypeFunction
-tyOp (Pointer           {} ) = TypePointer
-
+tyOp Unit                  = TypeVoid
+tyOp Boolean               = TypeBool
+tyOp (Scalar Integer   {}) = TypeInt
+tyOp (Scalar Floating  {}) = TypeFloat
+tyOp Vector             {} = TypeVector
+tyOp Matrix             {} = TypeMatrix
+tyOp Array              {} = TypeArray
+tyOp RuntimeArray       {} = TypeRuntimeArray
+tyOp Struct             {} = TypeStruct
+tyOp Function           {} = TypeFunction
+tyOp Pointer            {} = TypePointer
