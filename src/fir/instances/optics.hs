@@ -207,7 +207,8 @@ type family ListVariadicIx
 ----------------------------------------------------------------------
 -- getters
 
-type User (g :: Optic as i b) = ListVariadicIx as i b
+type User   (g :: Optic as i b) = ListVariadicIx as i b
+type Viewer (g :: Optic is s a) = ListVariadic (is `Snoc` s) a
 
 -- bindings
 instance ( KnownSymbol k
@@ -524,6 +525,7 @@ instance
 -- setters
 
 type Assigner (g :: Optic as i b) = ListVariadicIx (as `Snoc` b) i ()
+type Setter   (g :: Optic is s a) = ListVariadic   (is `Snoc` a `Snoc` s) s
 
 
 -- bindings

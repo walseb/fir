@@ -79,7 +79,9 @@ import CodeGen.Optics
   , storeThroughAccessChain
   , extractUsingGetter
   , insertUsingSetter
+  , setUsingSetter
   , pattern OpticUse, pattern OpticAssign
+  , pattern OpticView, pattern OpticSet
   , IndexedOptic(AnIndexedOptic)
   )
 import CodeGen.Put(putASM)
@@ -236,6 +238,22 @@ codeGen (Applied (Use sLg singOptic) is)
           provided :: Text
           provided = Text.pack . show $ uastsLength is
 
+codeGen (OpticView (AnIndexedOptic getter is) (UAST s))
+  = do base <- codeGen s
+       extractUsingGetter base getter is
+codeGen (Applied (View sLg singOptic) is)
+  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+                 <> " provided with the wrong number of run-time indices by 'view'.\n"
+                 <> "Expected " <> expected
+                 <> ", but provided " <> provided <> "."
+               )
+    where expected :: Text
+          expected = Text.pack . show $ sLengthVal sLg
+          provided :: Text
+          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ uastsLength is
+          -- off by one: the last argument is the object being accessed,
+          -- which is not a run-time index
+
 codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
   = case singOptic of
 
@@ -279,6 +297,22 @@ codeGen (Applied (Assign sLg singOptic) is)
           provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ uastsLength is
           -- off by one: the last argument is the value for the assignment,
           -- which is not a run-time index
+
+codeGen (OpticSet (AnIndexedOptic setter is) (UAST a) (UAST s))
+  = do base <- codeGen s
+       val  <- codeGen a
+       setUsingSetter  base val setter is
+codeGen (Applied (Set sLg singOptic) is)
+  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+                 <> " provided with the wrong number of run-time indices by 'set'.\n"
+                 <> "Expected " <> expected
+                 <> ", but provided " <> provided <> "."
+               )
+    where expected :: Text
+          expected = Text.pack . show $ sLengthVal sLg
+          provided :: Text
+          provided = Text.pack . show . (\i -> if i < 2 then 0 else i-2) $ uastsLength is
+          -- off by two
 
 codeGen (Applied (PrimOp op _) as)
   = primOp op =<< codeGenUASTs as

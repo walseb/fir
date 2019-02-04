@@ -58,7 +58,7 @@ compositeExtract constituentTy indices (compositeID, _)
           , resTy     = Just constituentTyID
           , resID     = Just v
           , args      = Arg compositeID
-                      $ toArgs (map pred indices) -- off by one, TODO: fix
+                      $ toArgs indices
           }
       pure (v, constituentTy)
 
@@ -78,6 +78,6 @@ compositeInsert inserteeID (compositeID, compositeTy) indices
           , resID     = Just v
           , args      = Arg inserteeID
                       $ Arg compositeID
-                      $ toArgs (map pred indices) -- off by one again
+                      $ toArgs indices
           }
       pure (v, compositeTy)

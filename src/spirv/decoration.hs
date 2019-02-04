@@ -27,7 +27,7 @@ data Decoration a
   | BufferBlock
   | RowMajor
   | ColMajor
-  | ArrayStride a
+  | ArrayStride  a
   | MatrixStride a
   | GLSLShared
   | GLSLPacked
@@ -50,15 +50,15 @@ data Decoration a
   | DynamicallyUniform -- simply called 'Uniform' in the SPIR-V spec
   -- no 27
   | SaturatedConversion
-  | Stream a
-  | Location a
-  | Component a
-  | Index a
-  | Binding a
+  | Stream        a
+  | Location      a
+  | Component     a
+  | Index         a
+  | Binding       a
   | DescriptorSet a
-  | Offset a
-  | XfbBuffer a
-  | XfbStride a
+  | Offset        a
+  | XfbBuffer     a
+  | XfbStride     a
   -- | FuncParamAttr Attribute
   -- | FPRoundingMode RoundingMode
   -- | FPFastMathMode FastMathMode
@@ -68,6 +68,7 @@ data Decoration a
   | Alignment a
   deriving ( Show, Eq, Ord )
 
+
 instance Put (Decoration Word32) where
   put RelaxedPrecision         = put @Word32  0
   put (SpecId i)               = put @Word32  1 *> put i
@@ -75,7 +76,7 @@ instance Put (Decoration Word32) where
   put BufferBlock              = put @Word32  3
   put RowMajor                 = put @Word32  4
   put ColMajor                 = put @Word32  5
-  put (ArrayStride i)          = put @Word32  6 *> put i
+  put (ArrayStride  i)         = put @Word32  6 *> put i
   put (MatrixStride i)         = put @Word32  7 *> put i
   put GLSLShared               = put @Word32  8
   put GLSLPacked               = put @Word32  9

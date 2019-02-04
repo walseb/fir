@@ -15,10 +15,13 @@ module CodeGen.Optics
   ( IndexedOptic(AnIndexedOptic)
   , pattern OpticUse
   , pattern OpticAssign
+  , pattern OpticView
+  , pattern OpticSet
   , loadThroughAccessChain
   , storeThroughAccessChain
   , extractUsingGetter
   , insertUsingSetter
+  , setUsingSetter
   ) where
 
 -- base
@@ -53,7 +56,7 @@ import Data.Type.List
   ( type (:++:), Zip
   , SLength(SZero, SSucc)
   )
-import FIR.AST(AST((:$), Fst, Snd, Use, Assign))
+import FIR.AST(AST((:$), Fst, Snd, Use, Assign, View, Set))
 import FIR.Instances.Optics(SOptic(..))
 import FIR.Prim.Singletons(sPrimTy)
 import qualified SPIRV.PrimTy  as SPIRV
@@ -82,7 +85,7 @@ used (((Use (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3)
 used _ = Nothing
 
 pattern OpticAssign :: IndexedOptic -> UAST -> AST t
-pattern OpticAssign indexedOptic u <- ( assigned -> Just ( indexedOptic, u ) )
+pattern OpticAssign indexedOptic a <- ( assigned -> Just ( indexedOptic, a ) )
 
 assigned :: AST t -> Maybe (IndexedOptic, UAST)
 assigned (Assign SZero sOptic :$ a)
@@ -94,6 +97,34 @@ assigned (((Assign (SSucc (SSucc SZero)) sOptic :$ i1) :$ i2) :$ a)
 assigned ((((Assign (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3) :$ a)
   = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` i3 `ConsAST` NilAST), UAST a )
 assigned _ = Nothing
+
+pattern OpticView :: IndexedOptic -> UAST -> AST t
+pattern OpticView indexedOptic s <- ( viewed -> Just ( indexedOptic, s ) )
+
+viewed :: AST t -> Maybe (IndexedOptic, UAST)
+viewed (View SZero sOptic :$ s)
+  = Just ( AnIndexedOptic sOptic NilAST, UAST s )
+viewed ((View (SSucc SZero) sOptic :$ i1) :$ s)
+  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` NilAST), UAST s )
+viewed (((View (SSucc (SSucc SZero)) sOptic :$ i1) :$ i2) :$ s)
+  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` NilAST), UAST s )
+viewed ((((View (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3) :$ s)
+  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` i3 `ConsAST` NilAST), UAST s )
+viewed _ = Nothing
+
+pattern OpticSet :: IndexedOptic -> UAST -> UAST -> AST t
+pattern OpticSet indexedOptic a s <- ( setted -> Just ( indexedOptic, a, s ) )
+
+setted :: AST t -> Maybe (IndexedOptic, UAST, UAST)
+setted ((Set SZero sOptic :$ a) :$ s)
+  = Just ( AnIndexedOptic sOptic NilAST, UAST a, UAST s )
+setted (((Set (SSucc SZero) sOptic :$ i1) :$ a) :$ s)
+  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` NilAST), UAST a, UAST s )
+setted ((((Set (SSucc (SSucc SZero)) sOptic :$ i1) :$ i2) :$ a) :$ s)
+  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` NilAST), UAST a, UAST s )
+setted (((((Set (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3) :$ a) :$ s)
+  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` i3 `ConsAST` NilAST), UAST a, UAST s )
+setted _ = Nothing
 
 ----------------------------------------------------------------------------
 -- exported optic code generation functions
@@ -121,6 +152,16 @@ insertUsingSetter
      Text -> (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad ()
 insertUsingSetter varName base val sOptic is
   = insertUsingSetter' varName base val =<< operationTree is sOptic
+
+setUsingSetter
+  :: forall is s a (optic :: Optic is s a).
+     (ID, SPIRV.PrimTy)
+  -> (ID, SPIRV.PrimTy)
+  -> SOptic optic
+  -> ASTs is
+  -> CGMonad (ID, SPIRV.PrimTy)
+setUsingSetter base val sOptic is
+  = setUsingSetter' base val =<< operationTree is sOptic
 
 ----------------------------------------------------------------------------
 -- keeping track of run-time indices
@@ -266,3 +307,21 @@ insertUsingSetter' varName (baseID, baseTy) val ops
       storeThroughAccessChain' (basePtrID, ptrTy) val ops
       assign ( _localBinding varName ) . Just
         =<< loadInstruction baseTy basePtrID
+
+setUsingSetter'
+  :: (ID, SPIRV.PrimTy)
+  -> (ID, SPIRV.PrimTy)
+  -> OpticalOperationTree
+  -> CGMonad (ID, SPIRV.PrimTy)
+setUsingSetter' _ val Done
+  = pure val
+setUsingSetter' base (valID, _) ( Access _ (CTInds is) `Then` Done )
+  = compositeInsert valID base is
+-- in more complex situations, revert to using load/store
+setUsingSetter' (baseID, baseTy) val ops
+  = do
+      let ptrTy = SPIRV.PointerTy Storage.Function baseTy
+      basePtrID <- newVariable ptrTy
+      storeInstruction basePtrID baseID
+      storeThroughAccessChain' (basePtrID, ptrTy) val ops
+      loadInstruction baseTy basePtrID

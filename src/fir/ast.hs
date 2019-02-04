@@ -56,7 +56,7 @@ import Data.Type.Map(Insert, Union)
 import FIR.Binding(BindingType, Var, Fun, KnownPermissions)
 import FIR.Builtin(StageBuiltins)
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
-import FIR.Instances.Optics(User, Assigner, KnownOptic, SOptic, showSOptic)
+import FIR.Instances.Optics(User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic)
 import FIR.Prim.Singletons(PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars)
 import Math.Linear(V, M)
 import qualified SPIRV.PrimOp as SPIRV
@@ -132,18 +132,34 @@ data AST :: Type -> Type where
   --
   -- Like @use@ from the lens library.
   Use :: forall optic.
-        ( GHC.Stack.HasCallStack, KnownOptic optic, Gettable optic )
-      => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
-      -> SOptic optic            -- ^ Singleton for the optic.
-      -> AST ( User optic )
+         ( GHC.Stack.HasCallStack, KnownOptic optic, Gettable optic )
+       => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
+       -> SOptic optic            -- ^ Singleton for the optic.
+       -> AST ( User optic )
   -- | /Assign/ a new value with an optic.
   --
   -- Like @assign@ from the lens library.
   Assign :: forall optic.
-        ( GHC.Stack.HasCallStack, KnownOptic optic, Settable optic )
+           ( GHC.Stack.HasCallStack, KnownOptic optic, Settable optic )
+         => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
+         -> SOptic optic            -- ^ Singleton for the optic.
+         -> AST ( Assigner optic )
+  -- | /View/: access a value using an optic.
+  --
+  -- Like @view@ from the lens library.
+  View :: forall optic.
+          ( GHC.Stack.HasCallStack, KnownOptic optic, Gettable optic )
+       => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
+       -> SOptic optic            -- ^ Singleton for the optic.
+       -> AST ( Viewer optic )
+  -- | /Set/: set a value using an optic.
+  --
+  -- Like @set@ from the lens library.
+  Set :: forall optic.
+         ( GHC.Stack.HasCallStack, KnownOptic optic, Settable optic )
       => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
       -> SOptic optic            -- ^ Singleton for the optic.
-      -> AST ( Assigner optic )
+      -> AST ( Setter optic )
 
   If    :: ( GHC.Stack.HasCallStack
            , PrimTy a
@@ -228,6 +244,8 @@ toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) a
 toTreeArgs (VectorAt   _ i) as = return (Node ("At "       ++ show (natVal i)) as)
 toTreeArgs (Use    _ o    ) as = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Assign _ o    ) as = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)
+toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")") as)
+toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
 toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"   ++ show (stageVal s)) as)

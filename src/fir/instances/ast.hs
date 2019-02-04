@@ -69,7 +69,10 @@ import qualified Prelude
 import Data.Proxy(Proxy(Proxy))
 import Data.Type.Equality((:~:)(Refl), testEquality)
 import Data.Word(Word16, Word32)
-import GHC.TypeLits(TypeError, ErrorMessage(..))
+import GHC.TypeLits
+  ( KnownSymbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats
   ( KnownNat, natVal
    , type (+), type (-), type (<=?)
@@ -77,10 +80,25 @@ import GHC.TypeNats
 import Type.Reflection(typeRep)
 
 -- fir
-import Data.Function.Variadic(NatVariadic)
-import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
+import Control.Type.Optic
+  ( Optic(..)
+  , Gettable, ReifiedGetter(view)
+  , Settable, ReifiedSetter(set)
+  )
+import Data.Function.Variadic
+  ( NatVariadic, ListVariadic )
+import Data.Type.List
+  ( KnownLength(sLength) )
+import FIR.AST
+  ( AST(..)
+  , Syntactic(Internal,toAST,fromAST)
+  )
+import FIR.Instances.Optics
+  ( KnownOptic(opticSing) )
 import FIR.Prim.Singletons
-  ( PrimTy, primTy, ScalarTy, scalarTy
+  ( PrimTy, primTy
+  , ScalarTy, scalarTy
+  , IntegralTy
   , SPrimFunc(SFuncVector, SFuncMatrix)
   )
 import Math.Algebra.Class
@@ -219,6 +237,150 @@ instance (ScalarTy a, ScalarTy b, Convert '(a,b))
   convert = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> id
     _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)) convert
+
+-----------------------------------------------
+-- * Optics
+
+
+-- ** Getters
+--
+-- $getters
+-- Instances for getters.
+
+instance ( KnownSymbol k
+         , empty ~ '[]
+         , Gettable (Name_ k :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => Gettable (Name_ k :: Optic empty (AST s) r)
+      where
+instance ( KnownSymbol k
+         , empty ~ '[]
+         , Gettable (Name_ k :: Optic '[] s a)
+         , ReifiedGetter (Name_ k :: Optic '[] s a)
+         , ListVariadic '[] a ~ a
+         , KnownOptic (Name_ k :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => ReifiedGetter (Name_ k :: Optic empty (AST s) r)
+      where
+  view = fromAST
+       $ View
+            sLength
+            ( opticSing @(Name_ k :: Optic '[] s a) )
+
+instance ( IntegralTy ty
+         , ix ~ '[AST ty]
+         , Gettable (AnIndex_ :: Optic '[ty] s a)
+         , r ~ AST a
+         )
+      => Gettable (AnIndex_ :: Optic ix (AST s) r)
+      where
+instance ( IntegralTy ty
+         , ix ~ '[AST ty]
+         , Gettable (AnIndex_ :: Optic '[ty] s a)
+         , ReifiedGetter (AnIndex_ :: Optic '[ty] s a)
+         , ListVariadic '[] a ~ a
+         , KnownOptic (AnIndex_ :: Optic '[ty] s a)
+         , r ~ AST a
+         )
+      => ReifiedGetter (AnIndex_ :: Optic ix (AST s) r)
+      where
+  view = fromAST
+       $ View
+            sLength
+            ( opticSing @(AnIndex_ :: Optic '[ty] s a) )
+instance ( KnownNat i
+         , empty ~ '[]
+         , Gettable (Index_ i :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => Gettable (Index_ i :: Optic empty (AST s) r)
+      where
+instance ( KnownNat i
+         , empty ~ '[]
+         , Gettable (Index_ i :: Optic '[] s a)
+         , ReifiedGetter (Index_ i :: Optic '[] s a)
+         , ListVariadic '[] a ~ a
+         , KnownOptic (Index_ i :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => ReifiedGetter (Index_ i :: Optic empty (AST s) r)
+      where
+  view = fromAST
+       $ View
+            sLength
+            ( opticSing @(Index_ i :: Optic '[] s a) )
+
+-- ** Setters
+--
+-- $setters
+-- Instances for setters.
+
+instance ( KnownSymbol k
+         , empty ~ '[]
+         , Settable (Name_ k :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => Settable (Name_ k :: Optic empty (AST s) r)
+      where
+instance ( KnownSymbol k
+         , empty ~ '[]
+         , Settable (Name_ k :: Optic '[] s a)
+         , ReifiedSetter (Name_ k :: Optic '[] s a)
+         , ListVariadic '[] s ~ s
+         , KnownOptic (Name_ k :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => ReifiedSetter (Name_ k :: Optic empty (AST s) r)
+      where
+  set = fromAST
+       $ Set
+            sLength
+            ( opticSing @(Name_ k :: Optic '[] s a) )
+
+instance ( IntegralTy ty
+         , ix ~ '[AST ty]
+         , Settable (AnIndex_ :: Optic '[ty] s a)
+         , r ~ AST a
+         )
+      => Settable (AnIndex_ :: Optic ix (AST s) r)
+      where
+instance ( IntegralTy ty
+         , ix ~ '[AST ty]
+         , Settable (AnIndex_ :: Optic '[ty] s a)
+         , ReifiedSetter (AnIndex_ :: Optic '[ty] s a)
+         , ListVariadic '[] s ~ s
+         , KnownOptic (AnIndex_ :: Optic '[ty] s a)
+         , r ~ AST a
+         )
+      => ReifiedSetter (AnIndex_ :: Optic ix (AST s) r)
+      where
+  set = fromAST
+       $ Set
+            sLength
+            ( opticSing @(AnIndex_ :: Optic '[ty] s a) )
+instance ( KnownNat i
+         , empty ~ '[]
+         , Settable (Index_ i :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => Settable (Index_ i :: Optic empty (AST s) r)
+      where
+instance ( KnownNat i
+         , empty ~ '[]
+         , Settable (Index_ i :: Optic '[] s a)
+         , ReifiedSetter (Index_ i :: Optic '[] s a)
+         , ListVariadic '[] s ~ s
+         , KnownOptic (Index_ i :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => ReifiedSetter (Index_ i :: Optic empty (AST s) r)
+      where
+  set = fromAST
+       $ Set
+            sLength
+            ( opticSing @(Index_ i :: Optic '[] s a) )
 
 -----------------------------------------------
 -- * Functor functionality

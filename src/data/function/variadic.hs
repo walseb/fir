@@ -16,6 +16,7 @@ import GHC.TypeNats(Nat, type (-), type (<=?))
 import Numeric.Half(Half)
 
 -- fir
+import {-# SOURCE #-} FIR.AST(AST)
 import FIR.Prim.Array(Array,RuntimeArray)
 import {-# SOURCE #-} FIR.Prim.Struct(Struct)
 import Math.Linear(V,M)
@@ -66,3 +67,4 @@ type family ListVariadic (as :: [Type]) (b :: Type) = (r :: Type) | r -> as b wh
   ListVariadic '[] (Struct as) = Struct as
   ListVariadic '[] (Array n a) = Array n a
   ListVariadic '[] (RuntimeArray a) = RuntimeArray a
+  ListVariadic '[] (AST a) = AST a

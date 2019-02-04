@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Tests.Optics.MVP where
+module Tests.Optics.MVP2 where
 
 -- base
 import Prelude hiding ( Functor(..), (<$>)
@@ -27,16 +27,18 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "ubo"     ':-> Global Uniform 
+type Defs = '[ "ubo"     ':-> Global Uniform
                                ( Struct '[ "mvp" ':-> M 4 4 Float ] )
                               '[ Binding 0, DescriptorSet 0, Block ]
              , "in_pos"  ':-> Global Input  (V 4 Float) '[ Location 0 ]
              , "out_pos" ':-> Global Output (V 4 Float) '[ Location 0 ]
              ]
- 
+
 program :: Program Defs ()
-program = 
+program =
   Program $ entryPoint @"main" @Vertex do
-    mvp    <- use @(Name "ubo" :.: Name "mvp")
+    ubo    <- use @(Name "ubo")
+    let mvp = view @(Name "mvp") ubo
     in_pos <- get @"in_pos"
-    put @"out_pos" (mvp !*^ in_pos)
+    let out_pos = set @(Index 3) 1 $ mvp !*^ in_pos
+    put @"out_pos" out_pos
