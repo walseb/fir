@@ -260,8 +260,8 @@ sum :: (AdditiveGroup a, Traversable t) => t a -> a
 sum = getSum #. foldMap Sum
 
 -----------------------------------------------------------
--- bypass limitations with inequalities
--- proper solution would be to use a type-checking plugin for inequalities
+-- some basic facts about inequalities, bypassing the type-checker
+-- a proper solution would be to use a type-checking plugin for this
 
 deduceZero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
 deduceZero _ = unsafeCoerce Refl
@@ -270,11 +270,15 @@ lemma1 :: forall j n. (KnownNat j, KnownNat n)
        => ((j+1) <=? n) :~: 'True -> (CmpNat j n :~: Prelude.LT)
 lemma1 _ = unsafeCoerce Refl
 
-lemma2 :: forall j n. (KnownNat j, KnownNat n)
+lemma2 :: forall j n. (KnownNat j, KnownNat n, j <= n, 1 <= j)
+       => CmpNat (n-j) n :~: 'Prelude.LT
+lemma2 = unsafeCoerce Refl
+
+lemma3 :: forall j n. (KnownNat j, KnownNat n)
        => (j     <=? n) :~: 'True
        -> ((j+1) <=? n) :~: 'False
        -> (j :~: n)
-lemma2 _ _ = unsafeCoerce Refl
+lemma3 _ _ = unsafeCoerce Refl
 
 -----------------------------------------------------------
 
@@ -290,10 +294,11 @@ buildV f v = go @0 Nil where
   go w =
     case Proxy @(j+1) %<=? Proxy @n of
         LE Refl
-          -> case lemma1 @j @n Refl of
-                Refl -> go @(j+1) (f (Proxy @j) v :. w)
+          -> case (lemma1 @j @n Refl, lemma2 @(j+1) @n) of
+                (Refl, Refl)
+                  -> go @(j+1) (f (Proxy @(n-(j+1))) v :. w)
         NLE Refl Refl
-          -> case lemma2 @j @n Refl Refl of
+          -> case lemma3 @j @n Refl Refl of
                 Refl -> w
 
 -- | Dependent fold of a vector.
