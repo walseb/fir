@@ -34,7 +34,7 @@ module FIR.Instances.Codensity
     -- Stateful operations
   , def, fundef, entryPoint
   , use, assign, modifying
-  , get, put
+  , get, put, modify
     -- Functor functionality
   , CodensityASTFunctor(fmapCodAST), (<$$$>)
   , CodensityASTApplicative(pureCodAST, (<***>))
@@ -238,6 +238,16 @@ put :: forall (k :: Symbol) a (i :: BindingsMap).
        ( KnownSymbol k, Settable (Name k :: Optic '[] i a) )
     => AST a -> Codensity AST (AST () := i) i
 put = assign @(Name k :: Optic '[] i a)
+
+-- | Modify the value of a variable.
+-- | Like @modify@ for state monads, except a binding name needs to be specified with a type application.
+modify :: forall (k :: Symbol) a (i :: BindingsMap).
+          ( KnownSymbol k
+          , Gettable (Name k :: Optic '[] i a)
+          , Settable (Name k :: Optic '[] i a)
+          )
+       => (AST a -> AST a) -> Codensity AST (AST () := i) i
+modify = modifying @(Name k :: Optic '[] i a)
 
 -- | Define a new function.
 --
