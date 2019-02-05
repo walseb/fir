@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
@@ -30,38 +31,60 @@ module FIR.AST
   where
 
 -- base
-import Data.Kind(Type)
-import Data.Proxy(Proxy)
+import Data.Kind
+  ( Type )
+import Data.Proxy
+  ( Proxy )
 import qualified GHC.Stack
-import GHC.TypeLits(KnownSymbol, symbolVal)
-import GHC.TypeNats(KnownNat, natVal)
+import GHC.TypeLits
+  ( KnownSymbol, symbolVal )
+import GHC.TypeNats
+  ( KnownNat, natVal )
 
 -- containers
-import Data.Tree(Tree(Node))
+import Data.Tree
+ ( Tree(Node) )
 
 -- mtl
-import Control.Monad.State.Lazy(evalState)
+import Control.Monad.State.Lazy
+  ( evalState )
 
 -- tree-view
-import Data.Tree.View(showTree)
+import Data.Tree.View
+  ( showTree )
 
 -- fir
-import CodeGen.Instruction(ID(ID))
-import CodeGen.Monad(MonadFresh(fresh), runFreshSuccT)
-import Control.Type.Optic(Gettable, Settable, Indices)
-import Control.Monad.Indexed((:=))
-import Data.Function.Variadic(NatVariadic)
-import Data.Type.List(SLength)
-import Data.Type.Map(Insert, Union)
-import FIR.Binding(BindingType, Var, Fun, KnownPermissions)
-import FIR.Builtin(StageBuiltins)
-import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
-import FIR.Instances.Optics(User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic)
-import FIR.Prim.Singletons(PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars)
-import Math.Linear(V, M)
+import CodeGen.Instruction
+  ( ID(ID) )
+import CodeGen.Monad
+  ( MonadFresh(fresh), runFreshSuccT )
+import Control.Type.Optic
+  ( Gettable, Settable, Indices )
+import Control.Monad.Indexed
+  ( (:=) )
+import Data.Function.Variadic
+  ( NatVariadic )
+import Data.Type.Known
+  ( Known, knownValue )
+import Data.Type.List
+  ( SLength )
+import Data.Type.Map
+  ( Insert, Union )
+import FIR.Binding
+  ( BindingType, Var, Fun, Permission )
+import FIR.Builtin
+  ( StageBuiltins )
+import FIR.Instances.Bindings
+  ( ValidDef, ValidFunDef, ValidEntryPoint )
+import FIR.Instances.Optics
+  ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
+import FIR.Prim.Singletons
+  ( PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars )
+import Math.Linear
+  ( V, M )
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
-import SPIRV.Stage(KnownStage(stageVal))
+import qualified SPIRV.Stage  as SPIRV
 
 ------------------------------------------------------------
 -- main AST data type
@@ -90,7 +113,7 @@ data AST :: Type -> Type where
   Def :: forall k ps a i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
-        , KnownPermissions ps
+        , Known [Permission] ps
         , PrimTy a
         , ValidDef k i ~ 'True
         )
@@ -120,7 +143,7 @@ data AST :: Type -> Type where
   Entry :: forall k s l i.
            ( GHC.Stack.HasCallStack
            , KnownSymbol k
-           , KnownStage s
+           , Known SPIRV.Stage s
            , ValidEntryPoint s i l ~ 'True
            )
          => Proxy k -- ^ Entry point name.
@@ -243,11 +266,13 @@ toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")
 toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
-toTreeArgs (Entry  _ s    ) as = return (Node ("Entry @"   ++ show (stageVal s)) as)
-toTreeArgs (Lit        t a) as = return (Node ("Lit @("    ++ show (primTyVal t) ++ ") " ++ show a ) as)
 toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @("   ++ primFuncName f ++ ") ") as)
 toTreeArgs (Pure   f      ) as = return (Node ("Pure @("   ++ primFuncName f ++ ") ") as)
 toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("     ++ primFuncName f ++ ") ") as)
+toTreeArgs (Entry  _ (_ :: Proxy stage) ) as
+  = return (Node ("Entry @" ++ show (knownValue @stage)) as)
+toTreeArgs (Lit (_ :: Proxy ty) a) as
+  = return (Node ("Lit @(" ++ show (primTyVal @ty) ++ ") " ++ show a ) as)
 
 toTree :: AST a -> Tree String
 toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )

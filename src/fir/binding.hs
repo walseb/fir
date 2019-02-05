@@ -1,27 +1,43 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
 
 module FIR.Binding where
 
 -- base
-import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
-import GHC.TypeLits(Symbol)
+import Data.Kind
+  ( Type )
+import GHC.TypeLits
+  ( Symbol )
 
 -- fir
-import Data.Type.Map((:->)((:->)), Map)
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )
+import Data.Type.Map
+  ( (:->)((:->)), Map )
+import FIR.Prim.Image
+  ( ImageHandle, ImageProperties(Properties), ImageFetchType )
+import Math.Linear
+  ( V )
 import qualified SPIRV.Storage as SPIRV
 
 ------------------------------------------------------------------------------------------------
--- bindings: variables, functions
+-- bindings: variables, functions, images
 
 data Permission = Read | Write
   deriving (Eq, Show)
+
+instance Demotable Permission where
+  type Demote Permission = Permission
+instance Known Permission 'Read where
+  known = Read
+instance Known Permission 'Write where
+  known = Write
 
 type R  = '[ 'Read  ]
 type W  = '[ 'Write ]
@@ -30,9 +46,15 @@ type RW = '[ 'Read, 'Write ]
 data Binding where
   Variable :: [Permission] -> Type -> Binding
   Function :: [Symbol :-> Binding] -> Type -> Binding
+  Image    :: ImageProperties
+           -> Binding
 
-type Var ps a    = 'Variable ps a
-type Fun as b    = 'Function as b
+-- shorthands
+type Var ps a = 'Variable ps a
+type Fun as b = 'Function as b
+type Img coord res dim depth arrayness ms usage fmt
+  = 'Image ( 'Properties coord res dim depth arrayness ms usage fmt )
+
 type BindingsMap = Map Symbol Binding
 
 type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
@@ -42,26 +64,8 @@ type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a
   BindingType (Fun as b) = Variadic as b
-
-------------------------------------------------------------------------------------------------
--- singletony stuff
-
-class KnownPermission (p :: Permission) where
-  permission :: Proxy p -> Permission
-
-instance KnownPermission 'Read where
-  permission _ = Read
-instance KnownPermission 'Write where
-  permission _ = Write
-
-class KnownPermissions (ps :: [Permission]) where
-  permissions :: Proxy ps -> [Permission]
-
-instance KnownPermissions '[] where
-  permissions _ = []
-instance (KnownPermission p, KnownPermissions ps)
-      => KnownPermissions ( p ': ps ) where
-  permissions _ = permission (Proxy @p) : permissions (Proxy @ps)
+  BindingType (Img coord res dim _ arr _ _ _)
+    = ImageHandle (ImageFetchType coord dim arr) (V 4 res)
 
 ------------------------------------------------------------------------------------------------
 -- relation to SPIRV storage classes
@@ -78,5 +82,5 @@ type family StoragePermissions (storage :: SPIRV.StorageClass) where
   StoragePermissions SPIRV.Generic         = RW
   StoragePermissions SPIRV.PushConstant    = R
   StoragePermissions SPIRV.AtomicCounter   = RW
-  StoragePermissions SPIRV.Image           = R
+  StoragePermissions SPIRV.Image           = RW -- default
   StoragePermissions SPIRV.StorageBuffer   = RW

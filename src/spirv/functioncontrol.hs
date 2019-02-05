@@ -1,15 +1,21 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module SPIRV.FunctionControl where
 
 -- base
-import Data.Word(Word32)
+import Data.Word
+  ( Word32 )
 
 -- fir
-import Data.Binary.Class.Put(Put(..))
+import Data.Binary.Class.Put
+  ( Put(..) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )
 
 ------------------------------------------------------------------------------------------------
 
@@ -22,6 +28,8 @@ type FunctionControl = ( Maybe Inlineability, Maybe SideEffects )
 
 noFunctionControl :: FunctionControl
 noFunctionControl = ( Nothing, Nothing )
+
+type NoFunctionControl = ( '( 'Nothing, 'Nothing ) :: FunctionControl )
 
 instance Put FunctionControl where
   sizeOf _ = 1
@@ -37,33 +45,16 @@ instance Put FunctionControl where
                   Just OnlyReads     -> 4
                   Just NoSideEffects -> 8
 
--- doing it by hand, don't feel like introducing auxiliary typeclases
-class KnownFunctionControl (control :: FunctionControl) where
-  functionControl :: FunctionControl
+instance Demotable Inlineability where
+  type Demote Inlineability = Inlineability
+instance Known Inlineability 'Inline where
+  known = Inline
+instance Known Inlineability 'DontInline where
+  known = DontInline
 
-instance KnownFunctionControl '(Nothing        , Nothing           ) where
-  functionControl = (Nothing        , Nothing           )
-
-instance KnownFunctionControl '(Just Inline    , Nothing           ) where
-  functionControl = (Just Inline    , Nothing           )
-
-instance KnownFunctionControl '(Just DontInline, Nothing           ) where
-  functionControl = (Just DontInline, Nothing           )
-
-instance KnownFunctionControl '(Nothing        , Just OnlyReads    ) where
-  functionControl = (Nothing        , Just OnlyReads    )
-
-instance KnownFunctionControl '(Just Inline    , Just OnlyReads    ) where
-  functionControl = (Just Inline    , Just OnlyReads    )
-
-instance KnownFunctionControl '(Just DontInline, Just OnlyReads    ) where
-  functionControl = (Just DontInline, Just OnlyReads    )
-
-instance KnownFunctionControl '(Nothing        , Just NoSideEffects) where
-  functionControl = (Nothing        , Just NoSideEffects)
-
-instance KnownFunctionControl '(Just Inline    , Just NoSideEffects) where
-  functionControl = (Just Inline    , Just NoSideEffects)
-
-instance KnownFunctionControl '(Just DontInline, Just NoSideEffects) where
-  functionControl = (Just DontInline, Just NoSideEffects)
+instance Demotable SideEffects where
+  type Demote SideEffects = SideEffects
+instance Known SideEffects 'OnlyReads where
+  known = OnlyReads
+instance Known SideEffects 'NoSideEffects where
+  known = NoSideEffects

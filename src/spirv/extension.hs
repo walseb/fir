@@ -5,13 +5,16 @@
 module SPIRV.Extension where
 
 -- base
-import Data.Word(Word32)
+import Data.Word
+  ( Word32 )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
-import Data.Binary.Class.Put(Put)
+import Data.Binary.Class.Put
+  ( Put )
 
 --------------------------------------------------
 -- extended instruction sets

@@ -74,7 +74,7 @@ module FIR
   , FIR.AST.AST((:$))
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.Binding.BindingsMap
-  , FIR.Binding.Var, FIR.Binding.Fun
+  , FIR.Binding.Var, FIR.Binding.Fun, FIR.Binding.Img
   , FIR.Binding.R
   , FIR.Binding.W
   , FIR.Binding.RW
@@ -108,6 +108,18 @@ module FIR
       ( Input, Output -- not exporting 'Function' storage class
       , Uniform, UniformConstant, PushConstant
       )
+  -- image properties
+  , SPIRV.Image.Dimensionality
+  , SPIRV.Image.Depth
+  , SPIRV.Image.Arrayness
+  , SPIRV.Image.MultiSampling
+  , SPIRV.Image.ImageUsage
+  , SNorm, UNorm, F, I, UI
+  , RGBA32, RGBA16, RGBA8
+  , RG32, RG16, RG8
+  , R32, R16, R8
+  , R11G11B10
+  , RGB10A2
 
   -- re-exporting parts of base
   , Prelude.Bool(..), Prelude.otherwise
@@ -179,6 +191,7 @@ import Math.Logic.Class
 import SPIRV.Decoration
 import SPIRV.ExecutionMode
 import SPIRV.FunctionControl
+import SPIRV.Image
 import SPIRV.Stage
 import SPIRV.Storage
 

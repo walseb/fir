@@ -10,7 +10,6 @@ module CodeGen.Binary where
 import Data.Maybe(maybe)
 import Data.List(sortOn)
 import Data.Foldable(traverse_)
-import Data.Ord(comparing)
 import Data.Word(Word32)
 import qualified Data.Bits as Bits
 

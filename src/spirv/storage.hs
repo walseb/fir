@@ -1,12 +1,17 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DerivingVia         #-}
-{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingVia           #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module SPIRV.Storage where
 
 -- fir
-import Data.Binary.Class.Put(Put, PutWord32Enum(..))
+import Data.Binary.Class.Put
+  ( Put, PutWord32Enum(..) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )
 
 --------------------------------------------------
 
@@ -27,32 +32,32 @@ data StorageClass
   deriving (Show, Eq, Ord, Enum, Bounded)
   deriving Put via (PutWord32Enum StorageClass)
 
-class KnownStorage (storage :: StorageClass) where
-  storage :: StorageClass
+instance Demotable StorageClass where
+  type Demote StorageClass = StorageClass
 
-instance KnownStorage UniformConstant where
-  storage = UniformConstant
-instance KnownStorage Input where
-  storage = Input
-instance KnownStorage Uniform where
-  storage = Uniform
-instance KnownStorage Output where
-  storage = Output
-instance KnownStorage Workgroup where
-  storage = Workgroup
-instance KnownStorage CrossWorkgroup where
-  storage = CrossWorkgroup
-instance KnownStorage Private where
-  storage = Private
-instance KnownStorage Function where
-  storage = Function
-instance KnownStorage Generic where
-  storage = Generic
-instance KnownStorage PushConstant where
-  storage = PushConstant
-instance KnownStorage AtomicCounter where
-  storage = AtomicCounter
-instance KnownStorage Image where
-  storage = Image
-instance KnownStorage StorageBuffer where
-  storage = StorageBuffer
+instance Known StorageClass UniformConstant where
+  known = UniformConstant
+instance Known StorageClass Input where
+  known = Input
+instance Known StorageClass Uniform where
+  known = Uniform
+instance Known StorageClass Output where
+  known = Output
+instance Known StorageClass Workgroup where
+  known = Workgroup
+instance Known StorageClass CrossWorkgroup where
+  known = CrossWorkgroup
+instance Known StorageClass Private where
+  known = Private
+instance Known StorageClass Function where
+  known = Function
+instance Known StorageClass Generic where
+  known = Generic
+instance Known StorageClass PushConstant where
+  known = PushConstant
+instance Known StorageClass AtomicCounter where
+  known = AtomicCounter
+instance Known StorageClass Image where
+  known = Image
+instance Known StorageClass StorageBuffer where
+  known = StorageBuffer

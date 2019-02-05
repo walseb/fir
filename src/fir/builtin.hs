@@ -13,7 +13,6 @@ module FIR.Builtin where
 import Control.Arrow(second)
 import Data.Int(Int32)
 import Data.Maybe(maybe)
-import Data.Proxy(Proxy(Proxy))
 import Data.Word(Word32)
 import GHC.TypeLits(Symbol)
 
@@ -154,13 +153,13 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        ]
 
 stageBuiltins :: Stage -> [ (Text, SPIRV.PointerTy) ]
-stageBuiltins Vertex                 = builtinPointer . knownInterface $ Proxy @(StageBuiltins Vertex                )
-stageBuiltins TessellationControl    = builtinPointer . knownInterface $ Proxy @(StageBuiltins TessellationControl   )
-stageBuiltins TessellationEvaluation = builtinPointer . knownInterface $ Proxy @(StageBuiltins TessellationEvaluation)
-stageBuiltins Geometry               = builtinPointer . knownInterface $ Proxy @(StageBuiltins Geometry              )
-stageBuiltins Fragment               = builtinPointer . knownInterface $ Proxy @(StageBuiltins Fragment              )
-stageBuiltins GLCompute              = builtinPointer . knownInterface $ Proxy @(StageBuiltins GLCompute             )
-stageBuiltins Kernel                 = builtinPointer . knownInterface $ Proxy @(StageBuiltins Kernel                )
+stageBuiltins Vertex                 = builtinPointer $ knownInterface @(StageBuiltins Vertex                )
+stageBuiltins TessellationControl    = builtinPointer $ knownInterface @(StageBuiltins TessellationControl   )
+stageBuiltins TessellationEvaluation = builtinPointer $ knownInterface @(StageBuiltins TessellationEvaluation)
+stageBuiltins Geometry               = builtinPointer $ knownInterface @(StageBuiltins Geometry              )
+stageBuiltins Fragment               = builtinPointer $ knownInterface @(StageBuiltins Fragment              )
+stageBuiltins GLCompute              = builtinPointer $ knownInterface @(StageBuiltins GLCompute             )
+stageBuiltins Kernel                 = builtinPointer $ knownInterface @(StageBuiltins Kernel                )
 
 builtinPointer :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
                -> [ (Text, SPIRV.PointerTy) ]

@@ -1,21 +1,28 @@
 
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
 
 module SPIRV.Decoration where
 
 -- base
-import Data.Proxy(Proxy(Proxy))
-import Data.Word(Word32)
-import GHC.TypeLits(KnownNat, natVal)
+import Data.Word
+  ( Word32 )
+import GHC.TypeLits
+  ( Nat )
 
 -- fir
-import Data.Binary.Class.Put(Put(..))
+import Data.Binary.Class.Put
+  ( Put(..) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known), knownValue )
 import qualified SPIRV.Builtin as Builtin
 
 --------------------------------------------------
@@ -133,95 +140,84 @@ instance Put (Decoration Word32) where
   sizeOf (Alignment            _) = 2
   sizeOf _ = 1
 
-class KnownDecoration (decoration :: Decoration a) where
-  decoration :: Decoration Word32
+instance Demotable (Decoration Nat) where
+  type Demote (Decoration Nat) = Decoration Word32
 
-instance KnownDecoration RelaxedPrecision where
-  decoration = RelaxedPrecision
-instance KnownNat i => KnownDecoration (SpecId i) where
-  decoration = SpecId ( fromIntegral . natVal $ Proxy @i )
-instance KnownDecoration Block where
-  decoration = Block
-instance KnownDecoration BufferBlock where
-  decoration = BufferBlock
-instance KnownDecoration RowMajor where
-  decoration = RowMajor
-instance KnownDecoration ColMajor where
-  decoration = ColMajor
-instance KnownNat i => KnownDecoration (ArrayStride i) where
-  decoration = ArrayStride ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (MatrixStride i) where
-  decoration = MatrixStride ( fromIntegral . natVal $ Proxy @i )
-instance KnownDecoration GLSLShared where
-  decoration = GLSLShared
-instance KnownDecoration GLSLPacked where
-  decoration = GLSLPacked
-instance KnownDecoration CPacked where
-  decoration = CPacked
-instance Builtin.KnownBuiltin builtin => KnownDecoration (Builtin builtin) where
-  decoration = Builtin ( Builtin.builtin @builtin )
-instance KnownDecoration NoPerspective where
-  decoration = NoPerspective
-instance KnownDecoration Flat where
-  decoration = Flat
-instance KnownDecoration Patch where
-  decoration = Patch
-instance KnownDecoration Centroid where
-  decoration = Centroid
-instance KnownDecoration Sample where
-  decoration = Sample
-instance KnownDecoration Invariant where
-  decoration = Invariant
-instance KnownDecoration Restrict where
-  decoration = Restrict
-instance KnownDecoration Aliased where
-  decoration = Aliased
-instance KnownDecoration Volatile where
-  decoration = Volatile
-instance KnownDecoration Constant where
-  decoration = Constant
-instance KnownDecoration Coherent where
-  decoration = Coherent
-instance KnownDecoration NonWritable where
-  decoration = NonWritable
-instance KnownDecoration NonReadable where
-  decoration = NonReadable
-instance KnownDecoration DynamicallyUniform where
-  decoration = DynamicallyUniform
-instance KnownDecoration SaturatedConversion where
-  decoration = SaturatedConversion
-instance KnownNat i => KnownDecoration (Stream i) where
-  decoration = Stream ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (Location i) where
-  decoration = Location ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (Component i) where
-  decoration = Component ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (Index i) where
-  decoration = Index ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (Binding i) where
-  decoration = Binding ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (DescriptorSet i) where
-  decoration = DescriptorSet ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (Offset i) where
-  decoration = Offset ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (XfbBuffer i) where
-  decoration = XfbBuffer ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (XfbStride i) where
-  decoration = XfbStride ( fromIntegral . natVal $ Proxy @i )
-instance KnownDecoration NoContraction where
-  decoration = NoContraction
-instance KnownNat i => KnownDecoration (InputAttachmentIndex i) where
-  decoration = InputAttachmentIndex ( fromIntegral . natVal $ Proxy @i )
-instance KnownNat i => KnownDecoration (Alignment i) where
-  decoration = Alignment ( fromIntegral . natVal $ Proxy @i )
-
-
-class KnownDecorations (modes :: [Decoration a]) where
-  decorations :: [Decoration Word32]
-
-instance KnownDecorations '[] where
-  decorations = []
-
-instance (KnownDecoration a, KnownDecorations as)
-      => KnownDecorations (a ': as) where
-  decorations = decoration @_ @a : decorations @_ @as
+instance Known (Decoration Nat) RelaxedPrecision where
+  known = RelaxedPrecision
+instance Known Nat i => Known (Decoration Nat) (SpecId i) where
+  known = SpecId ( knownValue @i )
+instance Known (Decoration Nat) Block where
+  known = Block
+instance Known (Decoration Nat) BufferBlock where
+  known = BufferBlock
+instance Known (Decoration Nat) RowMajor where
+  known = RowMajor
+instance Known (Decoration Nat) ColMajor where
+  known = ColMajor
+instance Known Nat i => Known (Decoration Nat) (ArrayStride i) where
+  known = ArrayStride ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (MatrixStride i) where
+  known = MatrixStride ( knownValue @i )
+instance Known (Decoration Nat) GLSLShared where
+  known = GLSLShared
+instance Known (Decoration Nat) GLSLPacked where
+  known = GLSLPacked
+instance Known (Decoration Nat) CPacked where
+  known = CPacked
+instance Known Builtin.Builtin builtin => Known (Decoration Nat) (Builtin builtin) where
+  known = Builtin ( knownValue @builtin )
+instance Known (Decoration Nat) NoPerspective where
+  known = NoPerspective
+instance Known (Decoration Nat) Flat where
+  known = Flat
+instance Known (Decoration Nat) Patch where
+  known = Patch
+instance Known (Decoration Nat) Centroid where
+  known = Centroid
+instance Known (Decoration Nat) Sample where
+  known = Sample
+instance Known (Decoration Nat) Invariant where
+  known = Invariant
+instance Known (Decoration Nat) Restrict where
+  known = Restrict
+instance Known (Decoration Nat) Aliased where
+  known = Aliased
+instance Known (Decoration Nat) Volatile where
+  known = Volatile
+instance Known (Decoration Nat) Constant where
+  known = Constant
+instance Known (Decoration Nat) Coherent where
+  known = Coherent
+instance Known (Decoration Nat) NonWritable where
+  known = NonWritable
+instance Known (Decoration Nat) NonReadable where
+  known = NonReadable
+instance Known (Decoration Nat) DynamicallyUniform where
+  known = DynamicallyUniform
+instance Known (Decoration Nat) SaturatedConversion where
+  known = SaturatedConversion
+instance Known Nat i => Known (Decoration Nat) (Stream i) where
+  known = Stream ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (Location i) where
+  known = Location ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (Component i) where
+  known = Component ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (Index i) where
+  known = Index ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (Binding i) where
+  known = Binding ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (DescriptorSet i) where
+  known = DescriptorSet ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (Offset i) where
+  known = Offset ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (XfbBuffer i) where
+  known = XfbBuffer ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (XfbStride i) where
+  known = XfbStride ( knownValue @i )
+instance Known (Decoration Nat) NoContraction where
+  known = NoContraction
+instance Known Nat i => Known (Decoration Nat) (InputAttachmentIndex i) where
+  known = InputAttachmentIndex ( knownValue @i )
+instance Known Nat i => Known (Decoration Nat) (Alignment i) where
+  known = Alignment ( knownValue @i )

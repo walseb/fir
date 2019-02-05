@@ -1,24 +1,30 @@
-{-# LANGUAGE DataKinds         #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE PolyKinds         #-}
-{-# LANGUAGE RoleAnnotations   #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RoleAnnotations     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeOperators       #-}
 
 module FIR.Prim.Singletons where
 
 -- base
 import Data.Kind(Type)
-import Data.Proxy(Proxy)
 import Data.Typeable(Typeable)
 import GHC.TypeLits(Symbol, KnownSymbol)
 
 -- fir
+import Data.Binary.Class.Put(Put)
 import Data.Function.Variadic(ListVariadic)
 import Data.Type.Map((:->)((:->)))
+import qualified SPIRV.ScalarTy as SPIRV
 
 ------------------------------------------------------------
 -- singletons for primitive types
+
+data SScalarTy :: Type -> Type where
+type role SScalarTy nominal
 
 data SPrimTy :: Type -> Type where
 type role SPrimTy nominal
@@ -30,13 +36,18 @@ class ( Show ty
     => PrimTy ty where
   primTySing :: SPrimTy ty
 
+class ( PrimTy ty
+      , Put ty
+      )
+    => ScalarTy ty where
+  scalarTySing :: SScalarTy ty
+
+scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
+
 data SPrimTyMap :: [Symbol :-> Type] -> Type where
   SNil  :: SPrimTyMap '[]
   SCons :: (KnownSymbol k, PrimTy a, PrimTyMap as)
-        => Proxy k
-        -> SPrimTy a
-        -> SPrimTyMap as
-        -> SPrimTyMap ((k ':-> a) ': as)
+        => SPrimTyMap ((k ':-> a) ': as)
 type role SPrimTyMap nominal
 
 class PrimTyMap as where

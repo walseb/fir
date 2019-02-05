@@ -1,21 +1,28 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DerivingVia         #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingVia           #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
 
 module SPIRV.ExecutionMode where
 
 -- base
-import Data.Proxy(Proxy(Proxy))
-import Data.Word(Word32)
-import GHC.TypeNats(KnownNat, natVal)
+import Data.Word
+  ( Word32 )
+import GHC.TypeNats
+  ( Nat )
 
 -- fir
-import Data.Binary.Class.Put(Put(..))
+import Data.Binary.Class.Put
+  ( Put(..) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known), knownValue )
 
 --------------------------------------------------
 -- execution modes
@@ -94,88 +101,77 @@ instance Put (ExecutionMode Word32) where
   sizeOf VecTypeHint    {} = 2
   sizeOf _                 = 1
 
-class KnownExecutionMode (mode :: ExecutionMode a) where
-  executionMode :: ExecutionMode Word32
+instance Demotable (ExecutionMode Nat) where
+  type Demote (ExecutionMode Nat) = ExecutionMode Word32
 
-instance KnownNat i => KnownExecutionMode (Invocations i) where
-  executionMode = Invocations ( fromIntegral . natVal $ Proxy @i )
-instance KnownExecutionMode SpacingEqual where
-  executionMode = SpacingEqual
-instance KnownExecutionMode SpacingFractionalEven where
-  executionMode = SpacingFractionalEven
-instance KnownExecutionMode SpacingFractionalOdd where
-  executionMode = SpacingFractionalOdd
-instance KnownExecutionMode VertexOrderCw where
-  executionMode = VertexOrderCw
-instance KnownExecutionMode VertexOrderCcw where
-  executionMode = VertexOrderCcw
-instance KnownExecutionMode PixelCenterInteger where
-  executionMode = PixelCenterInteger
-instance KnownExecutionMode OriginUpperLeft where
-  executionMode = OriginUpperLeft
-instance KnownExecutionMode OriginLowerLeft where
-  executionMode = OriginLowerLeft
-instance KnownExecutionMode EarlyFragmentTests where
-  executionMode = EarlyFragmentTests
-instance KnownExecutionMode PointMode where
-  executionMode = PointMode
-instance KnownExecutionMode Xfb where
-  executionMode = Xfb
-instance KnownExecutionMode DepthReplacing where
-  executionMode = DepthReplacing
-instance KnownExecutionMode DepthGreater where
-  executionMode = DepthGreater
-instance KnownExecutionMode DepthLess where
-  executionMode = DepthLess
-instance KnownExecutionMode DepthUnchanged where
-  executionMode = DepthUnchanged
-instance (KnownNat x, KnownNat y, KnownNat z)
-        => KnownExecutionMode (LocalSize x y z) where
-  executionMode = LocalSize
-                    ( fromIntegral . natVal $ Proxy @x )
-                    ( fromIntegral . natVal $ Proxy @y )
-                    ( fromIntegral . natVal $ Proxy @z )
-instance (KnownNat x, KnownNat y, KnownNat z)
-        => KnownExecutionMode (LocalSizeHint x y z) where
-  executionMode = LocalSizeHint
-                    ( fromIntegral . natVal $ Proxy @x )
-                    ( fromIntegral . natVal $ Proxy @y )
-                    ( fromIntegral . natVal $ Proxy @z )
-instance KnownExecutionMode InputPoints where
-  executionMode = InputPoints
-instance KnownExecutionMode InputLines where
-  executionMode = InputLines
-instance KnownExecutionMode InputLinesAdjacency where
-  executionMode = InputLinesAdjacency
-instance KnownExecutionMode Triangles where
-  executionMode = Triangles
-instance KnownExecutionMode InputTrianglesAdjacency where
-  executionMode = InputTrianglesAdjacency
-instance KnownExecutionMode Quads where
-  executionMode = Quads
-instance KnownExecutionMode Isoline where
-  executionMode = Isoline
-instance KnownNat i => KnownExecutionMode (OutputVertices i) where
-  executionMode = OutputVertices ( fromIntegral . natVal $ Proxy @i )
-instance KnownExecutionMode OutputPoints where
-  executionMode = OutputPoints
-instance KnownExecutionMode OutputLineStrip where
-  executionMode = OutputLineStrip
-instance KnownExecutionMode OutputTriangleStrip where
-  executionMode = OutputTriangleStrip
-instance KnownNat i => KnownExecutionMode (VecTypeHint i) where
-  executionMode = VecTypeHint ( fromIntegral . natVal $ Proxy @i )
-instance KnownExecutionMode ContractionOff where
-  executionMode = ContractionOff
+instance Known Nat i => Known (ExecutionMode Nat) (Invocations i) where
+  known = Invocations ( knownValue @i )
+instance Known (ExecutionMode Nat) SpacingEqual where
+  known = SpacingEqual
+instance Known (ExecutionMode Nat) SpacingFractionalEven where
+  known = SpacingFractionalEven
+instance Known (ExecutionMode Nat) SpacingFractionalOdd where
+  known = SpacingFractionalOdd
+instance Known (ExecutionMode Nat) VertexOrderCw where
+  known = VertexOrderCw
+instance Known (ExecutionMode Nat) VertexOrderCcw where
+  known = VertexOrderCcw
+instance Known (ExecutionMode Nat) PixelCenterInteger where
+  known = PixelCenterInteger
+instance Known (ExecutionMode Nat) OriginUpperLeft where
+  known = OriginUpperLeft
+instance Known (ExecutionMode Nat) OriginLowerLeft where
+  known = OriginLowerLeft
+instance Known (ExecutionMode Nat) EarlyFragmentTests where
+  known = EarlyFragmentTests
+instance Known (ExecutionMode Nat) PointMode where
+  known = PointMode
+instance Known (ExecutionMode Nat) Xfb where
+  known = Xfb
+instance Known (ExecutionMode Nat) DepthReplacing where
+  known = DepthReplacing
+instance Known (ExecutionMode Nat) DepthGreater where
+  known = DepthGreater
+instance Known (ExecutionMode Nat) DepthLess where
+  known = DepthLess
+instance Known (ExecutionMode Nat) DepthUnchanged where
+  known = DepthUnchanged
+instance (Known Nat x, Known Nat y, Known Nat z)
+        => Known (ExecutionMode Nat) (LocalSize x y z) where
+  known = LocalSize
+                    ( knownValue @x )
+                    ( knownValue @y )
+                    ( knownValue @z )
+instance (Known Nat x, Known Nat y, Known Nat z)
+        => Known (ExecutionMode Nat) (LocalSizeHint x y z) where
+  known = LocalSizeHint
+                    ( knownValue @x )
+                    ( knownValue @y )
+                    ( knownValue @z )
+instance Known (ExecutionMode Nat) InputPoints where
+  known = InputPoints
+instance Known (ExecutionMode Nat) InputLines where
+  known = InputLines
+instance Known (ExecutionMode Nat) InputLinesAdjacency where
+  known = InputLinesAdjacency
+instance Known (ExecutionMode Nat) Triangles where
+  known = Triangles
+instance Known (ExecutionMode Nat) InputTrianglesAdjacency where
+  known = InputTrianglesAdjacency
+instance Known (ExecutionMode Nat) Quads where
+  known = Quads
+instance Known (ExecutionMode Nat) Isoline where
+  known = Isoline
+instance Known Nat i => Known (ExecutionMode Nat) (OutputVertices i) where
+  known = OutputVertices ( knownValue @i )
+instance Known (ExecutionMode Nat) OutputPoints where
+  known = OutputPoints
+instance Known (ExecutionMode Nat) OutputLineStrip where
+  known = OutputLineStrip
+instance Known (ExecutionMode Nat) OutputTriangleStrip where
+  known = OutputTriangleStrip
+instance Known Nat i => Known (ExecutionMode Nat) (VecTypeHint i) where
+  known = VecTypeHint ( knownValue @i )
+instance Known (ExecutionMode Nat) ContractionOff where
+  known = ContractionOff
 
-
-
-class KnownExecutionModes (modes :: [ExecutionMode a]) where
-  executionModes :: [ExecutionMode Word32]
-
-instance KnownExecutionModes '[] where
-  executionModes = []
-
-instance (KnownExecutionMode a, KnownExecutionModes as)
-      => KnownExecutionModes (a ': as) where
-  executionModes = executionMode @_ @a : executionModes @_ @as

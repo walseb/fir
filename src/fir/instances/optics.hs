@@ -73,8 +73,8 @@ import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
-  , PrimTyMap(primTyMapSing)
-  , SPrimTy(SStruct), SPrimTyMap
+  , PrimTyMap
+  , SPrimTy(SStruct)
   , HasField(fieldIndex)
   )
 import FIR.Prim.Struct(Struct((:&), End))
@@ -160,10 +160,7 @@ instance ( KnownSymbol k
          , empty ~ '[]
          ) => KnownOptic (Name_ k :: Optic empty (Struct as) a)
          where
-  opticSing =
-    let sing :: SPrimTyMap as
-        sing = primTyMapSing
-    in SIndex (SStruct sing) (primTySing @a) (fieldIndex (Proxy @k) sing)
+  opticSing = SIndex (SStruct @as) (primTySing @a) (fieldIndex @k @as)
 instance ( KnownSymbol k
          , empty ~ '[]
          )

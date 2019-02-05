@@ -31,7 +31,6 @@ module FIR.Program
 -- base
 import Control.Arrow(second)
 import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
 import GHC.TypeLits(Symbol)
 
 -- containers
@@ -95,4 +94,4 @@ programGlobals _ = Map.fromList
                  . map ( second
                             ( \ (ty, storage) -> SPIRV.Pointer storage ty )
                        )
-                 $ knownInterface (Proxy @i)
+                 $ knownInterface @i

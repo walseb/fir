@@ -1,37 +1,52 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module FIR.Definition where
 
 -- base
-import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
-import Data.Word(Word32)
-import GHC.TypeLits(Symbol, KnownSymbol, symbolVal)
+import Data.Kind
+  ( Type )
+import Data.Word
+  ( Word32 )
+import GHC.TypeLits
+  ( Symbol )
+import GHC.TypeNats
+  ( Nat )
 
 -- containers
-import Data.Map(Map)
+import Data.Map
+  ( Map )
 import qualified Data.Map.Strict as Map
-import Data.Set(Set)
+import Data.Set
+  ( Set )
 import qualified Data.Set as Set
 
 -- text-utf8
-import Data.Text(Text)
-import qualified Data.Text as Text
+import Data.Text
+  ( Text )
 
 -- fir
-import CodeGen.State(CGContext(..), emptyContext)
-import Data.Type.Map((:->)((:->)))
-import FIR.Binding(Binding(Variable), StoragePermissions)
-import FIR.Prim.Singletons(PrimTy, primTy)
+import CodeGen.State
+  ( CGContext(..), emptyContext )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known), knownValue )
+import Data.Type.Map
+  ( (:->)((:->)) )
+import FIR.Binding
+  ( Binding(Variable), StoragePermissions )
+import FIR.Prim.Singletons
+  ( PrimTy, primTy )
 import qualified FIR.Binding as Binding
 import qualified SPIRV.Decoration      as SPIRV
 import qualified SPIRV.ExecutionMode   as SPIRV
@@ -45,9 +60,9 @@ import qualified SPIRV.Storage         as SPIRV
 -- for instance, annotating layout information
 
 data Definition where
-  Global     :: SPIRV.StorageClass -> Type -> [ SPIRV.Decoration number ] -> Definition
+  Global     :: SPIRV.StorageClass -> Type -> [ SPIRV.Decoration Nat ] -> Definition
   Function   :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
-  EntryPoint :: SPIRV.Stage -> [ SPIRV.ExecutionMode number ] -> Definition
+  EntryPoint :: SPIRV.Stage -> [ SPIRV.ExecutionMode Nat ] -> Definition
 
 type Global_ s ty   = Global s ty '[]
 type Function_ as b = Function '(Nothing, Nothing) as b
@@ -58,29 +73,29 @@ data Annotate
   | AnnotateFunction   SPIRV.FunctionControl
   | AnnotateEntryPoint ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
 
-class KnownDefinition (def :: Definition) where
-  annotation :: Annotate
+instance Demotable Definition where
+  type Demote Definition = Annotate
 
-instance ( PrimTy ty, SPIRV.KnownStorage storage, SPIRV.KnownDecorations decs )
-      => KnownDefinition (Global storage ty decs)
+instance ( PrimTy ty, Known SPIRV.StorageClass storage, Known [SPIRV.Decoration Nat] decs )
+      => Known Definition ('Global storage ty decs)
       where
-  annotation = AnnotateGlobal
-    ( SPIRV.PointerTy (SPIRV.storage @storage) (primTy @ty)
-    , Set.fromList ( SPIRV.decorations @_ @decs )
+  known = AnnotateGlobal
+    ( SPIRV.PointerTy ( knownValue @storage) (primTy @ty)
+    , Set.fromList ( knownValue @decs )
     )
 
-instance SPIRV.KnownFunctionControl control
-      => KnownDefinition (Function control args res)
+instance Known SPIRV.FunctionControl control
+      => Known Definition ('Function control args res)
       where
-  annotation = AnnotateFunction (SPIRV.functionControl @control)
+  known = AnnotateFunction (knownValue @control)
 
-instance ( SPIRV.KnownStage stage, SPIRV.KnownExecutionModes modes )
-      => KnownDefinition (EntryPoint stage modes)
+instance ( Known SPIRV.Stage stage, Known [SPIRV.ExecutionMode Nat] modes )
+      => Known Definition ('EntryPoint stage modes)
       where
-  annotation = AnnotateEntryPoint
-                  ( SPIRV.stageVal (Proxy @stage)
-                  , Set.fromList ( SPIRV.executionModes @_ @modes )
-                  )
+  known = AnnotateEntryPoint
+            ( knownValue @stage
+            , Set.fromList ( knownValue @modes )
+            )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
   annotations :: ( Map Text (SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
@@ -91,13 +106,13 @@ class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
 instance KnownDefinitions '[] where
   annotations = ( Map.empty, Map.empty, Map.empty )
 
-instance (KnownSymbol k, KnownDefinition def, KnownDefinitions defs)
+instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
       => KnownDefinitions ((k ':-> def) ': defs)
       where
   annotations
     = let (g,f,e) = annotations @defs
-          k = Text.pack (symbolVal (Proxy @k))
-      in case annotation @def of 
+          k = knownValue @k
+      in case knownValue @def of
            AnnotateGlobal     x -> ( Map.insert k x g, f, e )
            AnnotateFunction   x -> ( g, Map.insert k x f, e )
            AnnotateEntryPoint x -> ( g, f, Map.insert k x e )

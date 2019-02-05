@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -66,8 +67,10 @@ import qualified SPIRV.Builtin    as SPIRV(Builtin(Position,PointSize))
 import qualified SPIRV.Capability as SPIRV(primTyCapabilities)
 import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.Extension  as SPIRV
+import qualified SPIRV.Image      as SPIRV(ImageTy(..))
 import qualified SPIRV.Operation  as SPIRV.Op
 import qualified SPIRV.PrimTy     as SPIRV
+import qualified SPIRV.ScalarTy   as SPIRV
 import qualified SPIRV.Stage      as SPIRV
 
 ----------------------------------------------------------------------------
@@ -211,6 +214,28 @@ typeID ty =
             ( \ tyID -> mkTyConInstruction
                           ( Arg storage $ Arg tyID EndArgs )
             )
+
+        SPIRV.Image (SPIRV.ImageTy { .. })
+          -> createRec _knownPrimTy
+               ( typeID (SPIRV.Scalar component) )  -- get the type ID of the image 'component' type
+               ( \componentID
+                   -> mkTyConInstruction
+                        (   Arg componentID
+                          $ Arg dimensionality
+                          $ Arg depth
+                          $ Arg arrayness
+                          $ Arg multiSampling
+                          $ Arg imageUsage -- whether the image is sampled or serves as storage
+                          $ Arg imageFormat EndArgs
+                        )
+               )
+
+        SPIRV.Sampler -> create _knownPrimTy ( mkTyConInstruction EndArgs )
+
+        SPIRV.SampledImage imageTy
+          -> createRec _knownPrimTy
+               ( typeID (SPIRV.Image imageTy) )
+               ( \ imgTyID -> mkTyConInstruction (Arg imgTyID EndArgs ) )
 
   where _knownPrimTy :: Lens' CGState (Maybe Instruction)
         _knownPrimTy = _knownType ty

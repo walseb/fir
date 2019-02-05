@@ -1,20 +1,28 @@
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module SPIRV.Builtin where
 
 -- base
-import Data.Word(Word32)
+import Data.Word
+  ( Word32 )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
-import Data.Binary.Class.Put(Put(..))
-import SPIRV.Capability(Capability)
+import Data.Binary.Class.Put
+  ( Put(..) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )
+import SPIRV.Capability
+  ( Capability )
 import qualified SPIRV.Capability as Capability
 
 --------------------------------------------------
@@ -158,91 +166,90 @@ instance Put Builtin where
   put VertexIndex               = put @Word32 42
   put InstanceIndex             = put @Word32 43
 
-class KnownBuiltin (builtin :: Builtin) where
-  builtin :: Builtin
-
-instance KnownBuiltin Position where
-  builtin = Position
-instance KnownBuiltin PointSize where
-  builtin = PointSize
-instance KnownBuiltin ClipDistance where
-  builtin = ClipDistance
-instance KnownBuiltin CullDistance where
-  builtin = CullDistance
-instance KnownBuiltin VertexId where
-  builtin = VertexId
-instance KnownBuiltin InstanceId where
-  builtin = InstanceId
-instance KnownBuiltin PrimitiveId where
-  builtin = PrimitiveId
-instance KnownBuiltin InvocationId where
-  builtin = InvocationId
-instance KnownBuiltin Layer where
-  builtin = Layer
-instance KnownBuiltin ViewportIndex where
-  builtin = ViewportIndex
-instance KnownBuiltin TessLevelOuter where
-  builtin = TessLevelOuter
-instance KnownBuiltin TessLevelInner where
-  builtin = TessLevelInner
-instance KnownBuiltin TessCoord where
-  builtin = TessCoord
-instance KnownBuiltin PatchVertices where
-  builtin = PatchVertices
-instance KnownBuiltin FragCoord where
-  builtin = FragCoord
-instance KnownBuiltin PointCoord where
-  builtin = PointCoord
-instance KnownBuiltin FrontFacing where
-  builtin = FrontFacing
-instance KnownBuiltin SampleId where
-  builtin = SampleId
-instance KnownBuiltin SamplePosition where
-  builtin = SamplePosition
-instance KnownBuiltin SampleMask where
-  builtin = SampleMask
-instance KnownBuiltin FragDepth where
-  builtin = FragDepth
-instance KnownBuiltin HelperInvocation where
-  builtin = HelperInvocation
-instance KnownBuiltin NumWorkgroups where
-  builtin = NumWorkgroups
-instance KnownBuiltin WorkgroupSize where
-  builtin = WorkgroupSize
-instance KnownBuiltin WorkgroupId where
-  builtin = WorkgroupId
-instance KnownBuiltin LocalInvocationId where
-  builtin = LocalInvocationId
-instance KnownBuiltin GlobalInvocationId where
-  builtin = GlobalInvocationId
-instance KnownBuiltin LocalInvocationIndex where
-  builtin = LocalInvocationIndex
-instance KnownBuiltin WorkDim where
-  builtin = WorkDim
-instance KnownBuiltin GlobalSize where
-  builtin = GlobalSize
-instance KnownBuiltin EnqueuedWorkgroupSize where
-  builtin = EnqueuedWorkgroupSize
-instance KnownBuiltin GlobalOffset where
-  builtin = GlobalOffset
-instance KnownBuiltin GlobalLinearId where
-  builtin = GlobalLinearId
-instance KnownBuiltin SubgroupSize where
-  builtin = SubgroupSize
-instance KnownBuiltin SubgroupMaxSize where
-  builtin = SubgroupMaxSize
-instance KnownBuiltin NumSubgroups where
-  builtin = NumSubgroups
-instance KnownBuiltin NumEnqueuedSubgroups where
-  builtin = NumEnqueuedSubgroups
-instance KnownBuiltin SubgroupId where
-  builtin = SubgroupId
-instance KnownBuiltin SubgroupLocalInvocationId where
-  builtin = SubgroupLocalInvocationId
-instance KnownBuiltin VertexIndex where
-  builtin = VertexIndex
-instance KnownBuiltin InstanceIndex where
-  builtin = InstanceIndex
+instance Demotable Builtin where
+  type Demote Builtin = Builtin
+instance Known Builtin Position where
+  known = Position
+instance Known Builtin PointSize where
+  known = PointSize
+instance Known Builtin ClipDistance where
+  known = ClipDistance
+instance Known Builtin CullDistance where
+  known = CullDistance
+instance Known Builtin VertexId where
+  known = VertexId
+instance Known Builtin InstanceId where
+  known = InstanceId
+instance Known Builtin PrimitiveId where
+  known = PrimitiveId
+instance Known Builtin InvocationId where
+  known = InvocationId
+instance Known Builtin Layer where
+  known = Layer
+instance Known Builtin ViewportIndex where
+  known = ViewportIndex
+instance Known Builtin TessLevelOuter where
+  known = TessLevelOuter
+instance Known Builtin TessLevelInner where
+  known = TessLevelInner
+instance Known Builtin TessCoord where
+  known = TessCoord
+instance Known Builtin PatchVertices where
+  known = PatchVertices
+instance Known Builtin FragCoord where
+  known = FragCoord
+instance Known Builtin PointCoord where
+  known = PointCoord
+instance Known Builtin FrontFacing where
+  known = FrontFacing
+instance Known Builtin SampleId where
+  known = SampleId
+instance Known Builtin SamplePosition where
+  known = SamplePosition
+instance Known Builtin SampleMask where
+  known = SampleMask
+instance Known Builtin FragDepth where
+  known = FragDepth
+instance Known Builtin HelperInvocation where
+  known = HelperInvocation
+instance Known Builtin NumWorkgroups where
+  known = NumWorkgroups
+instance Known Builtin WorkgroupSize where
+  known = WorkgroupSize
+instance Known Builtin WorkgroupId where
+  known = WorkgroupId
+instance Known Builtin LocalInvocationId where
+  known = LocalInvocationId
+instance Known Builtin GlobalInvocationId where
+  known = GlobalInvocationId
+instance Known Builtin LocalInvocationIndex where
+  known = LocalInvocationIndex
+instance Known Builtin WorkDim where
+  known = WorkDim
+instance Known Builtin GlobalSize where
+  known = GlobalSize
+instance Known Builtin EnqueuedWorkgroupSize where
+  known = EnqueuedWorkgroupSize
+instance Known Builtin GlobalOffset where
+  known = GlobalOffset
+instance Known Builtin GlobalLinearId where
+  known = GlobalLinearId
+instance Known Builtin SubgroupSize where
+  known = SubgroupSize
+instance Known Builtin SubgroupMaxSize where
+  known = SubgroupMaxSize
+instance Known Builtin NumSubgroups where
+  known = NumSubgroups
+instance Known Builtin NumEnqueuedSubgroups where
+  known = NumEnqueuedSubgroups
+instance Known Builtin SubgroupId where
+  known = SubgroupId
+instance Known Builtin SubgroupLocalInvocationId where
+  known = SubgroupLocalInvocationId
+instance Known Builtin VertexIndex where
+  known = VertexIndex
+instance Known Builtin InstanceIndex where
+  known = InstanceIndex
 
 
 capabilityBuiltins :: Capability -> [ Builtin ]

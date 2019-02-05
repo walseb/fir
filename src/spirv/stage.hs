@@ -1,16 +1,19 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DerivingVia         #-}
-{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingVia           #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module SPIRV.Stage where
 
--- base
-import Data.Proxy(Proxy)
-
 -- fir
-import Data.Binary.Class.Put(Put, PutWord32Enum(..))
-import SPIRV.Capability(Capability)
+import Data.Binary.Class.Put
+  ( Put, PutWord32Enum(..) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )
+import SPIRV.Capability
+  ( Capability )
 import qualified SPIRV.Capability as Capability
 
 -------------------------------------------------------
@@ -36,20 +39,20 @@ stageCapabilities Fragment               = [ Capability.Shader ]
 stageCapabilities GLCompute              = [ Capability.Shader ]
 stageCapabilities Kernel                 = [ Capability.Kernel ]
 
-class KnownStage (s :: Stage) where
-  stageVal :: Proxy s -> Stage
+instance Demotable Stage where
+  type Demote Stage = Stage
 
-instance KnownStage Vertex where
-  stageVal _ = Vertex
-instance KnownStage TessellationControl where
-  stageVal _ = TessellationControl
-instance KnownStage TessellationEvaluation where
-  stageVal _ = TessellationEvaluation
-instance KnownStage Geometry where
-  stageVal _ = Geometry
-instance KnownStage Fragment where
-  stageVal _ = Fragment
-instance KnownStage GLCompute where
-  stageVal _ = GLCompute
-instance KnownStage Kernel where
-  stageVal _ = Kernel
+instance Known Stage Vertex where
+  known = Vertex
+instance Known Stage TessellationControl where
+  known = TessellationControl
+instance Known Stage TessellationEvaluation where
+  known = TessellationEvaluation
+instance Known Stage Geometry where
+  known = Geometry
+instance Known Stage Fragment where
+  known = Fragment
+instance Known Stage GLCompute where
+  known = GLCompute
+instance Known Stage Kernel where
+  known = Kernel

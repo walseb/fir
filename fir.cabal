@@ -92,7 +92,7 @@ library
       , Data.Binary.Class.Put
       , Data.Function.Variadic
       , Data.Map.Traverse
-      , Data.ProxyProxy
+      , Data.Type.Known
       , Data.Type.List
       , Data.Type.Map
       , Data.Type.Snoc
@@ -106,6 +106,7 @@ library
       , FIR.Instances.Codensity
       , FIR.Instances.Optics
       , FIR.Prim.Array
+      , FIR.Prim.Image
       , FIR.Prim.Singletons
       , FIR.Prim.Struct
       , FIR.Program
@@ -118,9 +119,11 @@ library
       , SPIRV.ExecutionMode
       , SPIRV.Extension
       , SPIRV.FunctionControl
+      , SPIRV.Image
       , SPIRV.Operation
       , SPIRV.PrimOp
       , SPIRV.PrimTy
+      , SPIRV.ScalarTy
       , SPIRV.Stage
       , SPIRV.Storage
 

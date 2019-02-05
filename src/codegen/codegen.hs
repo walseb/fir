@@ -1,47 +1,62 @@
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms   #-}
-{-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module CodeGen.CodeGen
   ( codeGen, runCodeGen )
   where
 
 -- base
-import Control.Arrow(second)
-import Control.Monad(when)
-import Data.Foldable(toList)
-import Data.Maybe(maybe, fromMaybe)
-import Data.Word(Word32)
-import GHC.TypeLits(symbolVal)
-import GHC.TypeNats(natVal)
+import Control.Arrow
+  ( second )
+import Control.Monad
+  ( when )
+import Data.Foldable
+  ( toList )
+import Data.Maybe
+  ( maybe, fromMaybe )
+import Data.Proxy
+  ( Proxy )
+import Data.Word
+  ( Word32 )
 import qualified GHC.Stack
-import Prelude hiding (Monad(..))
+import Prelude
+  hiding ( Monad(..) )
 
 -- binary
 import qualified Data.Binary.Put as Binary
 
 -- bytestring
-import Data.ByteString.Lazy(ByteString)
+import Data.ByteString.Lazy
+  ( ByteString )
 
 -- containers
-import Data.Map(Map)
+import Data.Map
+  ( Map )
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 -- mtl
-import Control.Monad.Except(throwError)
-import Control.Monad.Reader(ask)
-import Control.Monad.State(get, put)
+import Control.Monad.Except
+  ( throwError )
+import Control.Monad.Reader
+  ( ask )
+import Control.Monad.State
+  ( get, put )
 
 -- lens
-import Control.Lens(view, use, assign)
+import Control.Lens
+  ( view, use, assign )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 import qualified Data.Text as Text
 
 -- fir
@@ -84,7 +99,8 @@ import CodeGen.Optics
   , pattern OpticView, pattern OpticSet
   , IndexedOptic(AnIndexedOptic)
   )
-import CodeGen.Put(putASM)
+import CodeGen.Put
+  ( putASM )
 import CodeGen.State
   ( CGState(currentBlock, knownBindings, localBindings)
   , CGContext
@@ -101,25 +117,28 @@ import CodeGen.Untyped
   , pattern Applied
   , codeGenUASTs
   )
+import Data.Type.Known
+  ( knownValue )
 import Data.Type.List
   ( sLengthVal )
-import FIR.AST(AST(..), Syntactic(fromAST))
+import FIR.AST
+  ( AST(..), Syntactic(fromAST) )
 import FIR.Binding
-  ( Permission(Write)
-  , KnownPermissions(permissions)
-  )
-import FIR.Instances.AST()
-import FIR.Instances.Optics(SOptic(..), showSOptic)
+  ( Permission(Write) )
+import FIR.Instances.AST
+  ( )
+import FIR.Instances.Optics
+  ( SOptic(..), showSOptic )
 import FIR.Prim.Singletons
-  (  primTyVal
+  ( primTyVal
   , SPrimFunc(..)
   , KnownVars(knownVars)
   )
-import Math.Linear(V)
+import Math.Linear
+  ( V )
 import qualified SPIRV.FunctionControl as SPIRV
 import qualified SPIRV.Operation       as SPIRV.Op
 import qualified SPIRV.PrimTy          as SPIRV
-import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Storage         as Storage
 
 ----------------------------------------------------------------------------
@@ -149,7 +168,7 @@ codeGen (Applied (MkID ident@(_,ty)) as)
                           <> " arguments"
           _ -> throwError $ "codeGen: type " <> Text.pack (show ty) <> " used as a function"
 -- constants
-codeGen (Lit ty a) = ( , primTyVal ty) <$> constID a
+codeGen (Lit (_ :: Proxy ty) a) = ( , primTyVal @ty) <$> constID a
 -- perform substitution when possible
 codeGen (Lam f :$ a)
   = do cg <- codeGen a
@@ -159,9 +178,9 @@ codeGen (Bind :$ a :$ f)
   = do cg <- codeGen a
        codeGen $ (fromAST f) (MkID cg)
 -- stateful operations
-codeGen (Def k perms :$ a)
-  = do  let name     = Text.pack ( symbolVal k )
-            writable = Write `elem` permissions perms
+codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
+  = do  let name     = knownValue @name
+            writable = Write `elem` (knownValue @ps)
         debug ( putSrcInfo GHC.Stack.callStack ) 
         cgRes@(a_ID, a_ty) <- codeGen a
         
@@ -184,19 +203,19 @@ codeGen (Def k perms :$ a)
         assign ( _localBinding name ) ( Just defRes )
         pure cgRes
 
-codeGen (FunDef k as b :$ body)
-  = let argTys = map (second fst) (knownVars as)
-        retTy  = primTyVal b
-        name   = Text.pack ( symbolVal k )
+codeGen (FunDef (_ :: Proxy name) (_ :: Proxy as) (_ :: Proxy b) :$ body)
+  = let argTys = map (second fst) (knownVars @as)
+        retTy  = primTyVal @b
+        name   = knownValue @name
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
       control <- fromMaybe SPIRV.noFunctionControl <$> view ( _userFunction name )
       funID   <- declareFunction name control argTys retTy (codeGen body)
       pure ( funID , SPIRV.Function (map snd argTys) retTy )
 
-codeGen (Entry k s :$ body)
-  = let name  = Text.pack ( symbolVal k )
-        stage = SPIRV.stageVal s
+codeGen (Entry (_ :: Proxy name) (_ :: Proxy stage) :$ body)
+  = let name  = knownValue @name
+        stage = knownValue @stage
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
       modes        <- maybe Set.empty snd <$> view ( _userEntryPoint name )
@@ -206,16 +225,16 @@ codeGen (Entry k s :$ body)
 codeGen (OpticUse (AnIndexedOptic singOptic is))
   = case singOptic of
 
-      SBinding k ->
-        do  let varName = Text.pack ( symbolVal k )
+      SBinding (_ :: Proxy name ) ->
+        do  let varName = knownValue @name
             bd@(bdID, bdTy) <- bindingID varName
             case bdTy of
               SPIRV.Pointer storage eltTy
                 -> load (varName, bdID) (SPIRV.PointerTy storage eltTy)
               _ -> pure bd
 
-      SComposeO _ (SBinding k) getter ->
-        do  let varName = Text.pack ( symbolVal k )
+      SComposeO _ (SBinding (_ :: Proxy name )) getter ->
+        do  let varName = knownValue @name
             bd@(bdID, bdTy) <- bindingID varName
 
             case bdTy of
@@ -257,8 +276,8 @@ codeGen (Applied (View sLg singOptic) is)
 codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
   = case singOptic of
 
-      SBinding k ->
-        do  let varName = Text.pack ( symbolVal k )
+      SBinding (_ :: Proxy name) ->
+        do  let varName = knownValue @name
             (a_ID, _)       <- codeGen a
             bd@(bdID, bdTy) <- bindingID varName
 
@@ -269,8 +288,8 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
-      SComposeO _ (SBinding k) setter ->
-        do  let varName = Text.pack ( symbolVal k )
+      SComposeO _ (SBinding (_ :: Proxy name)) setter ->
+        do  let varName = knownValue @name
             a_IDTy          <- codeGen a
             bd@(bdID, bdTy) <- bindingID varName
 
@@ -300,8 +319,8 @@ codeGen (Applied (Assign sLg singOptic) is)
 
 codeGen (OpticSet (AnIndexedOptic setter is) (UAST a) (UAST s))
   = do base <- codeGen s
-       val  <- codeGen a
-       setUsingSetter  base val setter is
+       elt  <- codeGen a
+       setUsingSetter  base elt setter is
 codeGen (Applied (Set sLg singOptic) is)
   = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
                  <> " provided with the wrong number of run-time indices by 'set'.\n"
@@ -316,10 +335,10 @@ codeGen (Applied (Set sLg singOptic) is)
 
 codeGen (Applied (PrimOp op _) as)
   = primOp op =<< codeGenUASTs as
-codeGen (Applied (MkVector n_px ty_px) as)
-  = do  let n = fromIntegral (natVal n_px)
+codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
+  = do  let n = knownValue @n
         compositeTy
-          <- case primTyVal ty_px of
+          <- case primTyVal @ty of
                SPIRV.Scalar s
                  -> pure $ SPIRV.Vector n (SPIRV.Scalar s)
                SPIRV.Vector m (SPIRV.Scalar s)
@@ -330,7 +349,7 @@ codeGen (Applied (MkVector n_px ty_px) as)
         (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
 codeGen (Fmap functorSing :$ f :$ a)
   = case functorSing of
-      SFuncVector n
+      SFuncVector (_ :: Proxy n)
         -> do vec@(_,vecTy) <- codeGen a
               constituentTy 
                 <- case vecTy of
@@ -341,10 +360,10 @@ codeGen (Fmap functorSing :$ f :$ a)
                                       )
               elems <- traverse
                          ( \i -> compositeExtract constituentTy [i] vec )
-                         [ 0 .. fromIntegral (natVal n) - 1 ]
+                         [ 0 .. fromIntegral (knownValue @n) - 1 ]
               fmapped <- traverse ( codeGen . (f :$) . MkID ) elems
               compositeConstruct vecTy (map fst . toList $ fmapped)
-      SFuncMatrix m n
+      SFuncMatrix (m_px :: Proxy m) (_ :: Proxy n)
         -> do mat@(_, matTy) <- codeGen a
               constituentTy 
                 <- case matTy of
@@ -353,58 +372,56 @@ codeGen (Fmap functorSing :$ f :$ a)
                       ty -> throwError ( "codeGen: matrix fmap used over non-matrix-type "
                                         <> Text.pack (show ty)
                                        )
-              let colDim = fromIntegral (natVal m)
+              let colDim = fromIntegral (knownValue @m)
               cols <- traverse
                          (\i -> compositeExtract
                                   ( SPIRV.Vector colDim (SPIRV.Scalar constituentTy) )
                                   [i]
                                   mat
                          )
-                         [ 0 .. fromIntegral (natVal n) - 1 ]
-              fmapped <- traverse 
-                           ( \ x -> fst <$> codeGen (Fmap (SFuncVector m) :$ f :$ MkID x) ) 
+                         [ 0 .. fromIntegral (knownValue @n) - 1 ]
+              fmapped <- traverse
+                           ( \ x -> fst <$> codeGen (Fmap (SFuncVector m_px) :$ f :$ MkID x) )
                            cols
               compositeConstruct matTy (toList fmapped)
 codeGen (Pure functorSing :$ a)
   = case functorSing of
-      SFuncVector n
-        -> do (valID, valTy) <- codeGen a
-              let dim :: Num a => a
-                  dim = fromIntegral (natVal n)
+      SFuncVector (_ :: Proxy n)
+        -> do (eltID, eltTy) <- codeGen a
+              let n :: Num a => a
+                  n = fromIntegral (knownValue @n)
               compositeConstruct
-                 ( SPIRV.Vector dim valTy )
-                 ( replicate dim valID )
-      SFuncMatrix m n
-        -> do val@(_,valTy) <- codeGen a
+                 ( SPIRV.Vector n eltTy )
+                 ( replicate n eltID )
+      SFuncMatrix (m_px :: Proxy m) (_ :: Proxy n)
+        -> do elt@(_,eltTy) <- codeGen a
               constituentTy
-                <- case valTy of
+                <- case eltTy of
                       SPIRV.Scalar ty
                          -> pure ty
                       ty -> throwError ( "codeGen: matrix contains non-scalars of type "
                                         <> Text.pack (show ty)
                                        )
               let colDim :: Word32
-                  colDim = fromIntegral (natVal m)
+                  colDim = knownValue @m
                   rowDim :: Num a => a
-                  rowDim = fromIntegral (natVal n)
-              col <- fst <$> codeGen (Pure (SFuncVector m) :$ MkID val)
+                  rowDim = fromIntegral (knownValue @n)
+              col <- fst <$> codeGen (Pure (SFuncVector m_px) :$ MkID elt)
               compositeConstruct
                 ( SPIRV.Matrix colDim rowDim constituentTy )
                 ( replicate rowDim col )
-codeGen (Ap functorSing ty_px :$ f :$ a)
+codeGen (Ap functorSing (_ :: Proxy ty) :$ f :$ a)
   = case functorSing of
-      SFuncVector n
+      SFuncVector (_ :: Proxy n)
         -> case f of
             -- base case
             (Fmap _ :$ g :$ b)
-               -> let dim :: Word32
-                      dim = fromIntegral (natVal n)
-                      t =  fromAST @(AST _ -> AST _ -> AST _) g
-                       <$> fromAST @(V _ (AST _)) b
-                       <*> fromAST @(V _ (AST _)) a
+               -> let t =   fromAST @(AST _ -> AST _ -> AST _) g
+                        <$> fromAST @(V _ (AST _)) b
+                        <*> fromAST @(V _ (AST _)) a
                   in do ids <- traverse codeGen t                    
                         compositeConstruct
-                          ( SPIRV.Vector dim (primTyVal ty_px) )
+                          ( SPIRV.Vector (knownValue @n) (primTyVal @ty) )
                           ( map fst (toList ids) )
             -- inductive case
             (Ap _ _ :$ _ :$ _)

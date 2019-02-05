@@ -16,13 +16,11 @@ module FIR.Prim.Struct where
 
 -- base
 import Control.Applicative(liftA2)
-import Control.Arrow(first)
 import Data.Kind(Type)
 import GHC.TypeLits(Symbol)
 import Unsafe.Coerce(unsafeCoerce)
 
 -- fir
-import Data.ProxyProxy(asProxyProxyTypeOf)
 import Data.Type.List(type (:++:))
 import Data.Type.Map((:->)((:->)), Key, Value)
 import Math.Algebra.GradedSemigroup
@@ -110,13 +108,14 @@ instance FreeGradedSemigroup
     = case primTyMapSing @as of
         SNil
           -> ( End, s :& ss )
-        SCons _ _ nxt
-          ->  let
-                r :: Struct bs
-                -- workaround to specify the type of l
-                (l,r) = first (`asProxyProxyTypeOf` nxt)
-                          ( (>!<) @_ @_ @_ @_ @bs ss)
-              in ( s :& l, r )
+        sCons@SCons
+          -> case sCons of
+                ( _ :: SPrimTyMap ((k ':-> a) ': as'))
+                  -> let
+                        l :: Struct as'
+                        r :: Struct bs
+                        (l,r) = ( (>!<) @_ @_ @_ @_ @bs ss)
+                      in ( s :& l, r )
   generated :: Struct '[ kv ] -> Value kv
   generated (a :& End) = a
 

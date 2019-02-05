@@ -71,10 +71,11 @@ import Control.Monad.Indexed
   )
 import qualified Control.Monad.Indexed as Indexed
 import Control.Type.Optic(Optic, Name, Gettable, Settable, Part, Whole, Indices)
+import Data.Type.Known(Known)
 import Data.Type.List(KnownLength(sLength), Postpend)
 import Data.Type.Map(Insert, Union)
 import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
-import FIR.Binding(BindingsMap, BindingType, Var, Fun, KnownPermissions)
+import FIR.Binding(BindingsMap, BindingType, Var, Fun, Permission)
 import FIR.Builtin(StageBuiltins)
 import FIR.Instances.AST()
 import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
@@ -99,7 +100,7 @@ import Math.Logic.Class
   , Choose(..), ifThenElse
   , Ord(..)
   )
-import SPIRV.Stage(KnownStage)
+import SPIRV.Stage(Stage)
 
 --------------------------------------------------------------------------
 -- * Monadic control operations
@@ -159,7 +160,7 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 def :: forall k ps a i.
        ( GHC.Stack.HasCallStack
        , KnownSymbol k
-       , KnownPermissions ps
+       , Known [Permission] ps
        , PrimTy a
        , ValidDef k i ~ 'True
        )
@@ -189,7 +190,7 @@ fundef' :: forall k as b l i.
 entryPoint :: forall k s l i.
              ( GHC.Stack.HasCallStack
              , KnownSymbol k
-             , KnownStage s
+             , Known Stage s
              , ValidEntryPoint s i l ~ 'True
              )
            => Codensity AST (AST () := l) (Union i (StageBuiltins s)) -- ^ Entry-point body.

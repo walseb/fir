@@ -3,10 +3,12 @@
 module SPIRV.Operation where
 
 -- base
-import Data.Word(Word16, Word32)
+import Data.Word
+  ( Word16, Word32 )
 
 -- fir
-import SPIRV.Extension(ExtInst(GLSL))
+import SPIRV.Extension
+  ( ExtInst(GLSL) )
 
 --------------------------------------------------
 -- operation data type
@@ -521,6 +523,8 @@ showOperation MatrixTimesVector = "MatrixTimesVector"
 showOperation MatrixTimesMatrix = "MatrixTimesMatrix"
 showOperation OuterProduct = "OuterProduct"
 showOperation Dot = "Dot"
+showOperation LogicalEqual = "LogicalEqual"
+showOperation LogicalNotEqual = "LogicalNotEqual"
 showOperation LogicalOr = "LogicalOr"
 showOperation LogicalAnd = "LogicalAnd"
 showOperation LogicalNot = "LogicalNot"

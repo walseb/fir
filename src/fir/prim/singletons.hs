@@ -15,43 +15,62 @@
 module FIR.Prim.Singletons where
 
 -- base
-import Data.Int(Int8, Int16, Int32, Int64)
-import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
-import Data.Type.Equality((:~:)(Refl))
-import Data.Typeable(Typeable, eqT)
-import Data.Word(Word8, Word16, Word32, Word64)
+import Data.Int
+  ( Int8, Int16, Int32, Int64 )
+import Data.Kind
+  ( Type )
+import Data.Proxy
+  ( Proxy )
+import Data.Type.Equality
+  ( (:~:)(Refl) )
+import Data.Typeable
+  ( Typeable, eqT )
+import Data.Word
+  ( Word8, Word16, Word32, Word64 )
 import GHC.TypeLits
-  ( Symbol, KnownSymbol, symbolVal
+  ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(Text, ShowType, (:$$:), (:<>:))
   )
-import GHC.TypeNats(KnownNat, natVal)
+import GHC.TypeNats
+  ( KnownNat, natVal )
 
 -- half
-import Numeric.Half(Half)
+import Numeric.Half
+  ( Half )
 
 -- text-utf8
 import qualified Data.Text as Text
 
 -- fir
-import Data.Binary.Class.Put(Put)
-import Data.Function.Variadic(ListVariadic)
-import Data.Type.Map((:->)((:->)))
+import Data.Binary.Class.Put
+  ( Put )
+import Data.Function.Variadic
+  ( ListVariadic )
+import Data.Type.Known
+  ( Known, knownValue )
+import Data.Type.Map
+  ( (:->)((:->)) )
 import FIR.Binding
   ( Binding, BindingsMap, Var
-  , KnownPermissions(permissions), Permission(Read,Write)
+  , Permission(Read,Write)
   )
-import FIR.Prim.Array(Array,RuntimeArray)
-import FIR.Prim.Struct(Struct)
-import Math.Algebra.Class(Ring)
-import Math.Linear(V, M)
-import qualified SPIRV.PrimTy as SPIRV
-import SPIRV.PrimTy
+import FIR.Prim.Array
+  ( Array,RuntimeArray )
+import FIR.Prim.Struct
+  ( Struct )
+import Math.Algebra.Class
+  ( Ring )
+import Math.Linear
+  ( V, M )
+import qualified SPIRV.PrimTy   as SPIRV
+import SPIRV.ScalarTy
   ( Signedness(Unsigned, Signed)
   , Width(W8,W16,W32,W64)
   )
-import qualified SPIRV.Storage as SPIRV(StorageClass)
-import qualified SPIRV.Storage as Storage
+import qualified SPIRV.ScalarTy as SPIRV
+import qualified SPIRV.Storage  as SPIRV
+  ( StorageClass )
+import qualified SPIRV.Storage  as Storage
 
 ------------------------------------------------------------
 -- singletons for primitive types
@@ -73,41 +92,36 @@ data SScalarTy :: Type -> Type where
 data SPrimTy :: Type -> Type where
   SUnit   :: SPrimTy ()
   SBool   :: SPrimTy Bool
-  SScalar :: ScalarTy a
-          => SScalarTy a -> SPrimTy a
+  SScalar :: ScalarTy a => SPrimTy a
   SVector :: (KnownNat n, PrimTy a)
-          => Proxy n -> SPrimTy a -> SPrimTy (V n a)
+          => SPrimTy (V n a)
   SMatrix :: (KnownNat m, KnownNat n, ScalarTy a, Ring a)
-          => Proxy m -> Proxy n -> SScalarTy a -> SPrimTy (M m n a)
+          => SPrimTy (M m n a)
   SArray  :: (KnownNat n, PrimTy a)
-          => Proxy n -> SPrimTy a -> SPrimTy (Array n a)
+          => SPrimTy (Array n a)
   SRuntimeArray
           :: PrimTy a
-          => SPrimTy a -> SPrimTy (RuntimeArray a)
+          => SPrimTy (RuntimeArray a)
   SStruct :: PrimTyMap as
-          => SPrimTyMap as -> SPrimTy (Struct as)
+          => SPrimTy (Struct as)
 
 data SPrimTyMap :: [Symbol :-> Type] -> Type where
   SNil  :: SPrimTyMap '[]
   SCons :: (KnownSymbol k, PrimTy a, PrimTyMap as)
-        => Proxy k
-        -> SPrimTy a
-        -> SPrimTyMap as
-        -> SPrimTyMap ((k ':-> a) ': as)
+        => SPrimTyMap ((k ':-> a) ': as)
 
 ------------------------------------------------
 
 class HasField (k :: Symbol) (as :: [ Symbol :-> Type ]) where
-  fieldIndex :: Proxy k -> SPrimTyMap as -> Word32
+  fieldIndex :: Word32
 
 instance HasField k ( (k ':-> v) ': as) where
-  fieldIndex _ _ = 0
+  fieldIndex = 0
 
 instance {-# OVERLAPPABLE #-} HasField k as
        => HasField k ( (l ':-> v) ': as)
        where
-  fieldIndex _ (SCons _ _ as)
-    = succ ( fieldIndex @k @as Proxy as )
+  fieldIndex = succ ( fieldIndex @k @as )
 
 ------------------------------------------------
 
@@ -162,27 +176,27 @@ instance IntegralTy Int32  where
 instance IntegralTy Int64  where
 
 instance PrimTy Word8  where
-  primTySing = SScalar SWord8
+  primTySing = SScalar
 instance PrimTy Word16 where
-  primTySing = SScalar SWord16
+  primTySing = SScalar
 instance PrimTy Word32 where
-  primTySing = SScalar SWord32
+  primTySing = SScalar
 instance PrimTy Word64 where
-  primTySing = SScalar SWord64
+  primTySing = SScalar
 instance PrimTy Int8   where
-  primTySing = SScalar SInt8
+  primTySing = SScalar
 instance PrimTy Int16  where
-  primTySing = SScalar SInt16
+  primTySing = SScalar
 instance PrimTy Int32  where
-  primTySing = SScalar SInt32
+  primTySing = SScalar
 instance PrimTy Int64  where
-  primTySing = SScalar SInt64
+  primTySing = SScalar
 instance PrimTy Half   where
-  primTySing = SScalar SHalf
+  primTySing = SScalar
 instance PrimTy Float  where
-  primTySing = SScalar SFloat
+  primTySing = SScalar
 instance PrimTy Double where
-  primTySing = SScalar SDouble
+  primTySing = SScalar
 
 
 instance ( TypeError
@@ -222,21 +236,20 @@ instance ( TypeError
 instance ( PrimTy a
          , KnownNat n--, 2 <= n, n <= 4
          ) => PrimTy (V n a) where
-  primTySing = SVector (Proxy @n) (primTySing @a)
+  primTySing = SVector
 
 instance ( PrimTy a, ScalarTy a
          , Ring a
          , KnownNat m--, 2 <= m, m <= 4
          , KnownNat n--, 2 <= n, n <= 4
          ) => PrimTy (M m n a) where
-  primTySing = SMatrix (Proxy @m) (Proxy @n) (scalarTySing @a)
-
+  primTySing = SMatrix
 
 instance (PrimTy a, KnownNat l) => PrimTy (Array l a) where
-  primTySing = SArray (Proxy @l) (primTySing @a)
+  primTySing = SArray
 
 instance PrimTy a => PrimTy (RuntimeArray a) where
-  primTySing = SRuntimeArray (primTySing @a)
+  primTySing = SRuntimeArray
 
 
 class PrimTyMap as where
@@ -247,40 +260,47 @@ instance PrimTyMap '[] where
 
 instance (KnownSymbol k, PrimTy a, PrimTyMap as)
        => PrimTyMap ((k ':-> a) ': as) where
-  primTyMapSing
-    = SCons
-        ( Proxy       @k )
-        ( primTySing  @a )
-        ( primTyMapSing @as )
+  primTyMapSing = SCons
 
 instance ( Typeable as, PrimTyMap as )
        => PrimTy (Struct as) where
-  primTySing = SStruct (primTyMapSing @as)
+  primTySing = SStruct
 
 
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
 primTy = sPrimTy ( primTySing @ty )
 
-primTyVal :: forall ty. PrimTy ty => Proxy ty -> SPIRV.PrimTy
-primTyVal _ = primTy @ty
-
-val :: KnownNat n => Proxy n -> Word32
-val = fromIntegral . natVal
+primTyVal :: forall ty. PrimTy ty => SPIRV.PrimTy
+primTyVal = primTy @ty
 
 sPrimTy :: SPrimTy ty -> SPIRV.PrimTy
-sPrimTy SUnit             = SPIRV.Unit
-sPrimTy SBool             = SPIRV.Boolean
-sPrimTy (SScalar       a) = SPIRV.Scalar                 (sScalarTy a)
-sPrimTy (SVector n     a) = SPIRV.Vector (val n)         (sPrimTy   a)
-sPrimTy (SMatrix m n   a) = SPIRV.Matrix (val m) (val n) (sScalarTy a)
-sPrimTy (SArray l      a) = SPIRV.Array  (val l)         (sPrimTy   a)
-sPrimTy (SRuntimeArray a) = SPIRV.RuntimeArray           (sPrimTy   a)
-sPrimTy (SStruct      as) = SPIRV.Struct (sPrimTyMap as)
+sPrimTy SUnit = SPIRV.Unit
+sPrimTy SBool = SPIRV.Boolean
+sPrimTy (SScalar :: SPrimTy a)
+  = SPIRV.Scalar (scalarTy @a)
+sPrimTy vec@SVector = case vec of
+  ( _ :: SPrimTy (V n a) )
+    -> SPIRV.Vector (knownValue @n) (primTy @a)
+sPrimTy mat@SMatrix = case mat of
+  ( _ :: SPrimTy (M m n a) )
+    -> SPIRV.Matrix (knownValue @m) (knownValue @n) (scalarTy @a)
+sPrimTy arr@SArray = case arr of
+  ( _ :: SPrimTy (Array l a) )
+    -> SPIRV.Array  (knownValue @l) (primTy @a)
+sPrimTy rtArr@SRuntimeArray = case rtArr of
+  ( _ :: SPrimTy (RuntimeArray a) )
+    -> SPIRV.RuntimeArray (primTy @a)
+sPrimTy struct@SStruct = case struct of
+  ( _ :: SPrimTy (Struct as) )
+    -> SPIRV.Struct (sPrimTyMap (primTyMapSing @as))
 
 sPrimTyMap :: SPrimTyMap ty -> [(Text.Text, SPIRV.PrimTy)]
-sPrimTyMap SNil           = []
-sPrimTyMap (SCons k a as) = (Text.pack (symbolVal k), sPrimTy a)
-                        : sPrimTyMap as
+sPrimTyMap SNil = []
+sPrimTyMap cons@SCons = case cons of
+  ( _ :: SPrimTyMap ((k ':-> a) ': as) )
+    ->   (knownValue @k, primTy @a)
+       : sPrimTyMap (primTyMapSing @as)
+
 
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
 scalarTy = sScalarTy ( scalarTySing @ty )
@@ -302,42 +322,42 @@ sScalarTy SDouble = SPIRV.Floating         W64
 -- statically known list of variables (for function definitions)
 
 class KnownVar (bd :: (Symbol :-> Binding)) where
-  knownVar :: Proxy bd -> (Text.Text, (SPIRV.PrimTy, [Permission]))
+  knownVar :: (Text.Text, (SPIRV.PrimTy, [Permission]))
 
-instance (KnownSymbol k, KnownPermissions ps, PrimTy a)
+instance (KnownSymbol k, Known [Permission] ps, PrimTy a)
        => KnownVar (k ':-> Var ps a) where
-  knownVar _ = ( Text.pack . symbolVal $ Proxy @k
-               , ( primTy @a
-                 , permissions (Proxy @ps)
-                 )
+  knownVar = ( knownValue @k
+             , ( primTy @a
+               , knownValue @ps
                )
+             )
 
 class KnownVars (bds :: BindingsMap) where
-  knownVars :: Proxy bds -> [(Text.Text, (SPIRV.PrimTy, [Permission]))]
+  knownVars :: [(Text.Text, (SPIRV.PrimTy, [Permission]))]
 instance KnownVars '[] where
-  knownVars _ = []
+  knownVars = []
 instance (KnownVar bd, KnownVars bds)
       => KnownVars (bd ': bds) where
-  knownVars _ = knownVar (Proxy @bd) : knownVars (Proxy @bds)
+  knownVars = knownVar @bd : knownVars @bds
 
 ------------------------------------------------------------
 -- statically known interfaces (for entry points)
 
 class KnownInterfaceBinding (bd :: (Symbol :-> Binding)) where
-  knownInterfaceBinding :: Proxy bd -> (Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))
+  knownInterfaceBinding :: (Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))
 
 instance (KnownSymbol k, PrimTy a)
        => KnownInterfaceBinding (k ':-> Var '[ 'Read ] a) where
-  knownInterfaceBinding _
-    = ( Text.pack . symbolVal $ Proxy @k
+  knownInterfaceBinding
+    = ( knownValue @k
       , ( primTy @a
         , Storage.Input
         )
       )
 instance (KnownSymbol k, PrimTy a)
        => KnownInterfaceBinding (k ':-> Var '[ 'Write ] a) where
-  knownInterfaceBinding _
-    = ( Text.pack . symbolVal $ Proxy @k
+  knownInterfaceBinding
+    = ( knownValue @k
       , ( primTy @a
         , Storage.Output
         )
@@ -347,21 +367,21 @@ instance
     (    Text "Interface binding " :<>: ShowType k :<>: Text " is both readable and writable."
     :$$: Text "Interface variables must be of either 'Input' or 'Output' type, not both." )
   => KnownInterfaceBinding (k ':-> Var '[ 'Read, 'Write ] a) where
-  knownInterfaceBinding _ = error "unreachable"
+  knownInterfaceBinding = error "unreachable"
 instance
   TypeError
     (    Text "Interface binding " :<>: ShowType k :<>: Text " is both readable and writable."
     :$$: Text "Interface variables must be of either 'Input' or 'Output' type, not both." )
   => KnownInterfaceBinding (k ':-> Var '[ 'Write, 'Read ] a) where
-  knownInterfaceBinding _ = error "unreachable"
+  knownInterfaceBinding = error "unreachable"
 
 class KnownInterface (bds :: BindingsMap) where
-  knownInterface :: Proxy bds -> [(Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))]
+  knownInterface :: [(Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))]
 instance KnownInterface '[] where
-  knownInterface _ = []
+  knownInterface = []
 instance (KnownInterfaceBinding bd, KnownInterface bds)
       => KnownInterface (bd ': bds) where
-  knownInterface _ = knownInterfaceBinding (Proxy @bd) : knownInterface (Proxy @bds)
+  knownInterface = knownInterfaceBinding @bd : knownInterface @bds
 
 ------------------------------------------------------------
 -- functors
@@ -380,32 +400,28 @@ primFuncName (SFuncMatrix m n)
          ++ " "
          ++ show (natVal n)
 
-
 ------------------------------------------------------------
 -- dependent pair
 
 data AConstant :: Type where
-  AConstant :: PrimTy ty => Proxy ty -> ty -> AConstant
-  
+  AConstant :: PrimTy ty => ty -> AConstant
 
 aConstant :: PrimTy ty => ty -> AConstant
-aConstant = AConstant Proxy
-
-eqTProx :: forall s t. (Typeable s, Typeable t) => Proxy s -> Proxy t -> Maybe (s :~: t)
-eqTProx _ _ = eqT @s @t
+aConstant = AConstant
 
 instance Show AConstant where
-  show (AConstant ty a) = "Constant " ++ show a ++ " of type " ++ show (primTyVal ty)
+  show (AConstant (a :: ty))
+    = "Constant " ++ show a ++ " of type " ++ show (primTyVal @ty)
 
 instance Eq AConstant where
-  (AConstant ty1 a1) == (AConstant ty2 a2)
-    = case eqTProx ty1 ty2 of
+  (AConstant (a1 :: ty1)) == (AConstant (a2 :: ty2))
+    = case eqT @ty1 @ty2 of
         Just Refl -> a1 == a2
         _         -> False
 
 instance Ord AConstant where
-  (AConstant ty1 a1) `compare` (AConstant ty2 a2)
-    = case eqTProx ty1 ty2 of
+  (AConstant (a1 :: ty1)) `compare` (AConstant (a2 :: ty2))
+    = case eqT @ty1 @ty2 of
          Just Refl -> compare a1 a2
-         _         -> compare (primTyVal ty1)
-                              (primTyVal ty2)
+         _         -> compare (primTyVal @ty1)
+                              (primTyVal @ty2)

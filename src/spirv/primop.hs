@@ -10,13 +10,19 @@ module SPIRV.PrimOp
   ) where
 
 -- base
-import Control.Arrow(second)
-import Data.Word(Word32)
-import Prelude hiding( Ordering(..) )
+import Control.Arrow
+  ( second )
+import Data.Word
+  ( Word32 )
+import Prelude
+  hiding ( Ordering(..) )
 
 -- fir
 import SPIRV.Operation
-import SPIRV.PrimTy( PrimTy(..), ScalarTy(..), Signedness(..) )
+import SPIRV.PrimTy
+  ( PrimTy(..) )
+import SPIRV.ScalarTy
+  ( ScalarTy(..), Signedness(..) )
 
 -------------------------------------------------------------------------------
 -- primitive operations

@@ -5,14 +5,20 @@
 module SPIRV.Capability where
 
 -- base
-import Data.Word(Word32)
+import Data.Word
+  ( Word32 )
 
 -- fir
-import Data.Binary.Class.Put(Put)
+import Data.Binary.Class.Put
+  ( Put )
+import qualified SPIRV.Image  as Image
+import SPIRV.Operation
+  hiding ( Capability )
 import qualified SPIRV.PrimOp as PrimOp
 import qualified SPIRV.PrimTy as PrimTy
-import SPIRV.Operation hiding (Capability)
-import SPIRV.PrimTy(Width(..))
+import SPIRV.ScalarTy
+  ( Width(..) )
+import qualified SPIRV.ScalarTy as ScalarTy
 
 --------------------------------------------------
 
@@ -268,11 +274,22 @@ primTyCapabilities ( PrimTy.Matrix _ _ ty ) = Matrix : primTyCapabilities (PrimT
 primTyCapabilities ( PrimTy.Vector n   ty )
     | n > 4     = Vector16 : primTyCapabilities ty
     | otherwise =            primTyCapabilities ty
-primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ W8 ) ) = [ Int8  ]
-primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ W16) ) = [ Int16 ]
-primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ W64) ) = [ Int64 ]
-primTyCapabilities ( PrimTy.Scalar (PrimTy.Integer _ _  ) ) = [ ]
-primTyCapabilities ( PrimTy.Scalar (PrimTy.Floating  W16) ) = [ Float16 ]
-primTyCapabilities ( PrimTy.Scalar (PrimTy.Floating  W64) ) = [ Float64 ]
-primTyCapabilities ( PrimTy.Scalar (PrimTy.Floating  _  ) ) = [ ]
+primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ W8 ) ) = [ Int8  ]
+primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ W16) ) = [ Int16 ]
+primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ W64) ) = [ Int64 ]
+primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ _  ) ) = [ ]
+primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  W16) ) = [ Float16 ]
+primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  W64) ) = [ Float64 ]
+primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  _  ) ) = [ ]
 primTyCapabilities _                                        = [ ]
+
+formatCapabilities :: Image.ImageFormat Word32 -> [ Capability ]
+formatCapabilities format
+  = case Image.fromFormat format of
+      Nothing -> []
+      Just 0  -> []
+      Just w
+        | w >  5 && w < 21 -> [ StorageImageExtendedFormats ]
+        | w > 24 && w < 30 -> [ StorageImageExtendedFormats ]
+        | w > 33           -> [ StorageImageExtendedFormats ]
+        | otherwise        -> [ Shader ]
