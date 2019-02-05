@@ -168,7 +168,7 @@ codeGen (Applied (MkID ident@(_,ty)) as)
                           <> " arguments"
           _ -> throwError $ "codeGen: type " <> Text.pack (show ty) <> " used as a function"
 -- constants
-codeGen (Lit (_ :: Proxy ty) a) = ( , primTyVal @ty) <$> constID a
+codeGen (Lit (a :: ty)) = ( , primTyVal @ty) <$> constID a
 -- perform substitution when possible
 codeGen (Lam f :$ a)
   = do cg <- codeGen a
@@ -360,7 +360,7 @@ codeGen (Fmap functorSing :$ f :$ a)
                                       )
               elems <- traverse
                          ( \i -> compositeExtract constituentTy [i] vec )
-                         [ 0 .. fromIntegral (knownValue @n) - 1 ]
+                         [ 0 .. knownValue @n - 1 ]
               fmapped <- traverse ( codeGen . (f :$) . MkID ) elems
               compositeConstruct vecTy (map fst . toList $ fmapped)
       SFuncMatrix (m_px :: Proxy m) (_ :: Proxy n)
@@ -372,14 +372,14 @@ codeGen (Fmap functorSing :$ f :$ a)
                       ty -> throwError ( "codeGen: matrix fmap used over non-matrix-type "
                                         <> Text.pack (show ty)
                                        )
-              let colDim = fromIntegral (knownValue @m)
+              let colDim = knownValue @m
               cols <- traverse
                          (\i -> compositeExtract
                                   ( SPIRV.Vector colDim (SPIRV.Scalar constituentTy) )
                                   [i]
                                   mat
                          )
-                         [ 0 .. fromIntegral (knownValue @n) - 1 ]
+                         [ 0 .. knownValue @n - 1 ]
               fmapped <- traverse
                            ( \ x -> fst <$> codeGen (Fmap (SFuncVector m_px) :$ f :$ MkID x) )
                            cols

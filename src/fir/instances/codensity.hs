@@ -109,12 +109,12 @@ when :: forall i. AST Bool -> Codensity AST (AST () := i) i -> Codensity AST (AS
 when b action
   = if b
     then action
-    else ixPure (Lit Proxy ()) :: Codensity AST (AST () := i) i
+    else ixPure (Lit ()) :: Codensity AST (AST () := i) i
 
 unless :: forall i. AST Bool -> Codensity AST (AST () := i) i -> Codensity AST (AST () := i) i
 unless b action
   = if b
-    then ixPure (Lit Proxy ()) :: Codensity AST (AST () := i) i
+    then ixPure (Lit ()) :: Codensity AST (AST () := i) i
     else action
 
 locally :: Codensity AST (AST a := j) i -> Codensity AST (AST a := i) i

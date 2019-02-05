@@ -35,11 +35,8 @@ orphan instances for types of the form @AST a@
 -}
 
 module FIR.Instances.AST
-  ( -- literals
-    lit
-
-    -- functor/applicative for AST values
-  , ASTFunctor(fmapAST)
+  ( -- functor/applicative for AST values
+    ASTFunctor(fmapAST)
   , ASTApplicative(pureAST, (<**>)), (<$$>)
 
     -- patterns for vectors
@@ -49,6 +46,7 @@ module FIR.Instances.AST
   , pattern Mat22, pattern Mat23, pattern Mat24
   , pattern Mat32, pattern Mat33, pattern Mat34
   , pattern Mat42, pattern Mat43, pattern Mat44
+
     -- + orphan instances
   )
   where
@@ -66,9 +64,12 @@ import Prelude hiding
   , Applicative(..)
   )
 import qualified Prelude
-import Data.Proxy(Proxy(Proxy))
-import Data.Type.Equality((:~:)(Refl), testEquality)
-import Data.Word(Word16, Word32)
+import Data.Proxy
+  ( Proxy(Proxy) )
+import Data.Type.Equality
+  ( (:~:)(Refl), testEquality )
+import Data.Word
+  ( Word16, Word32 )
 import GHC.TypeLits
   ( KnownSymbol
   , TypeError, ErrorMessage(..)
@@ -78,7 +79,8 @@ import GHC.TypeNats
   , type (+), type (-)
   , type (<=?), CmpNat
   )
-import Type.Reflection(typeRep)
+import Type.Reflection
+  ( typeRep )
 
 -- fir
 import Control.Type.Optic
@@ -128,10 +130,6 @@ import qualified SPIRV.PrimOp as SPIRV
 --------------------------------------------------------------------------------------
 -- Instances for AST type
 
--- | Embed a Haskell constant value into the AST.
-lit :: forall a. PrimTy a => a -> AST a
-lit = Lit (Proxy @a)
-
 -- * Logical operations
 --
 -- $logical
@@ -142,8 +140,8 @@ lit = Lit (Proxy @a)
 -- 'Eq', 'Ord' (note: not the "Prelude" type classes).
 
 instance Boolean (AST Bool) where
-  true  = lit True
-  false = lit False
+  true  = Lit True
+  false = Lit False
   (&&)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.And) (&&)
   (||)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Or ) (||)
   not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Not) not
@@ -181,8 +179,8 @@ instance ( PrimTy a, Ord a, Logic a ~ Bool )
 
 instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
   (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalarTy @a)) (+)
-  zero   = lit (zero :: a)
-  fromInteger = lit . fromInteger
+  zero   = Lit (zero :: a)
+  fromInteger = Lit . fromInteger
 instance (ScalarTy a, Semiring a) => Semiring (AST a) where
   (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (scalarTy @a)) (*)
 instance (ScalarTy a, Ring a) => Ring (AST a) where
@@ -193,7 +191,7 @@ instance (ScalarTy a, Signed a) => Signed (AST a) where
   signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (scalarTy @a)) signum
 instance (ScalarTy a, DivisionRing a) => DivisionRing (AST a) where
   (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (scalarTy @a)) (/)
-  fromRational = lit . fromRational
+  fromRational = Lit . fromRational
 instance ( ScalarTy a
          , Archimedean a
          , Logic a ~ Bool
@@ -202,7 +200,7 @@ instance ( ScalarTy a
   rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (scalarTy @a)) rem
 
 instance (ScalarTy a, Floating a) => Floating (AST a) where
-  pi      = lit pi
+  pi      = Lit pi
   exp     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FExp     (scalarTy @a)) exp
   log     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FLog     (scalarTy @a)) log
   sqrt    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FSqrt    (scalarTy @a)) sqrt
@@ -433,7 +431,7 @@ instance Syntactic (AST a) where
 
 instance Syntactic () where
   type Internal () = ()
-  toAST   = lit
+  toAST   = Lit
   fromAST = const ()
 
 {-

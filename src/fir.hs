@@ -71,7 +71,7 @@ module FIR
   , Control.Type.Optic.ReifiedGetter(view)
   , Control.Type.Optic.ReifiedSetter(set)
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST((:$))
+  , FIR.AST.AST((:$), Lit)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.Binding.BindingsMap
   , FIR.Binding.Var, FIR.Binding.Fun, FIR.Binding.Img
@@ -109,11 +109,11 @@ module FIR
       , Uniform, UniformConstant, PushConstant
       )
   -- image properties
-  , SPIRV.Image.Dimensionality
-  , SPIRV.Image.Depth
-  , SPIRV.Image.Arrayness
-  , SPIRV.Image.MultiSampling
-  , SPIRV.Image.ImageUsage
+  , SPIRV.Image.Dimensionality(..)
+  , SPIRV.Image.Depth(..)
+  , SPIRV.Image.Arrayness(..)
+  , SPIRV.Image.MultiSampling(..)
+  , SPIRV.Image.ImageUsage(..)
   , SNorm, UNorm, F, I, UI
   , RGBA32, RGBA16, RGBA8
   , RG32, RG16, RG8

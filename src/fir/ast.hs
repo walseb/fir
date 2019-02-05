@@ -99,7 +99,7 @@ data AST :: Type -> Type where
   (:$) :: AST (a -> b) -> AST a -> AST b
 
   -- | Haskell-level constants can be embedded into the AST.
-  Lit :: PrimTy a => Proxy a -> a -> AST a
+  Lit :: PrimTy a => a -> AST a
   -- | @SPIR-V@ primitive operations
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
@@ -271,7 +271,7 @@ toTreeArgs (Pure   f      ) as = return (Node ("Pure @("   ++ primFuncName f ++ 
 toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("     ++ primFuncName f ++ ") ") as)
 toTreeArgs (Entry  _ (_ :: Proxy stage) ) as
   = return (Node ("Entry @" ++ show (knownValue @stage)) as)
-toTreeArgs (Lit (_ :: Proxy ty) a) as
+toTreeArgs (Lit (a :: ty)) as
   = return (Node ("Lit @(" ++ show (primTyVal @ty) ++ ") " ++ show a ) as)
 
 toTree :: AST a -> Tree String
