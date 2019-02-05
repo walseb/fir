@@ -35,6 +35,6 @@ program = Program do
   entryPoint @"main" @Vertex do
 
     def @"struct" @RW @(Struct '[ "field_0" ':-> Float, "field_1" ':-> Bool ])
-      ( lit ( 3 :& True :& End ) )
+      ( Lit ( 3 :& True :& End ) )
 
-    assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )
+    assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( Lit ( 4 :& 5 :& End ) )

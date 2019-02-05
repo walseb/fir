@@ -9,16 +9,16 @@ test\tests\optics\overlapping.hs:40:5: error:
     • In a stmt of a 'do' block:
         assign
           @(Name "struct" :.: (Name "field_0" :*: Index 0))
-          (lit (4 :& 5 :& End))
+          (Lit (4 :& 5 :& End))
       In the third argument of ‘entryPoint’, namely
         ‘do def
               @"struct"
               @RW
               @(Struct '["field_0" :-> Float, "field_1" :-> Bool])
-              (lit (3 :& True :& End))
+              (Lit (3 :& True :& End))
             assign
               @(Name "struct" :.: (Name "field_0" :*: Index 0))
-              (lit (4 :& 5 :& End))’
+              (Lit (4 :& 5 :& End))’
       In a stmt of a 'do' block:
         entryPoint
           @"main"
@@ -27,10 +27,10 @@ test\tests\optics\overlapping.hs:40:5: error:
                @"struct"
                @RW
                @(Struct '["field_0" :-> Float, "field_1" :-> Bool])
-               (lit (3 :& True :& End))
+               (Lit (3 :& True :& End))
              assign
                @(Name "struct" :.: (Name "field_0" :*: Index 0))
-               (lit (4 :& 5 :& End))
+               (Lit (4 :& 5 :& End))
    |
-40 |     assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( lit ( 4 :& 5 :& End ) )
+40 |     assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( Lit ( 4 :& 5 :& End ) )
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
