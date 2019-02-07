@@ -198,6 +198,38 @@ pattern CopyObject         = Code 83
 -- operation 84 (Transpose) defined later (141.5)
 -- no 85
 -- image instructions
+pattern SampledImage :: Operation
+pattern SampledImage = Code 86
+pattern ImageSampleImplicitLod :: Operation
+pattern ImageSampleImplicitLod = Code 87
+pattern ImageSampleExplicitLod :: Operation
+pattern ImageSampleExplicitLod = Code 88
+pattern ImageSampleDrefImplicitLod :: Operation
+pattern ImageSampleDrefImplicitLod = Code 89
+pattern ImageSampleDrefExplicitLod :: Operation
+pattern ImageSampleDrefExplicitLod = Code 90
+pattern ImageSampleProjImplicitLod :: Operation
+pattern ImageSampleProjImplicitLod = Code 91
+pattern ImageSampleProjExplicitLod :: Operation
+pattern ImageSampleProjExplicitLod = Code 92
+pattern ImageSampleProjDrefImplicitLod :: Operation
+pattern ImageSampleProjDrefImplicitLod = Code 93
+pattern ImageSampleProjDrefExplicitLod :: Operation
+pattern ImageSampleProjDrefExplicitLod = Code 94
+pattern ImageFetch :: Operation
+pattern ImageFetch = Code 95
+pattern ImageGather :: Operation
+pattern ImageGather = Code 96
+pattern ImageDrefGather :: Operation
+pattern ImageDrefGather = Code 97
+pattern ImageRead :: Operation
+pattern ImageRead = Code 98
+pattern ImageWrite :: Operation
+pattern ImageWrite = Code 99
+pattern Image :: Operation
+pattern Image = Code 100
+-- image queries
+-- sparse image instructions
 -- no 108
 -- conversion instructions
 pattern ConvertFToU    :: Operation
@@ -490,6 +522,21 @@ showOperation CompositeConstruct = "CompositeConstruct"
 showOperation CompositeExtract = "CompositeExtract"
 showOperation CompositeInsert = "CompositeInsert"
 showOperation CopyObject = "CopyObject"
+showOperation SampledImage = "SampledImage"
+showOperation ImageSampleImplicitLod = "ImageSampleImplicitLod"
+showOperation ImageSampleExplicitLod = "ImageSampleExplicitLod"
+showOperation ImageSampleDrefImplicitLod = "ImageSampleDrefImplicitLod"
+showOperation ImageSampleDrefExplicitLod = "ImageSampleDrefExplicitLod"
+showOperation ImageSampleProjImplicitLod = "ImageSampleProjImplicitLod"
+showOperation ImageSampleProjExplicitLod = "ImageSampleProjExplicitLod"
+showOperation ImageSampleProjDrefImplicitLod = "ImageSampleProjDrefImplicitLod"
+showOperation ImageSampleProjDrefExplicitLod = "ImageSampleProjDrefExplicitLod"
+showOperation ImageFetch = "ImageFetch"
+showOperation ImageGather = "ImageGather"
+showOperation ImageDrefGather = "ImageDrefGather"
+showOperation ImageRead = "ImageRead"
+showOperation ImageWrite = "ImageWrite"
+showOperation Image = "Image"
 showOperation ConvertFToU = "ConvertFToU"
 showOperation ConvertFToS = "ConvertFToS"
 showOperation ConvertSToF = "ConvertSToF"

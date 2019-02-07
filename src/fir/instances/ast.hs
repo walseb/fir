@@ -77,7 +77,7 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( KnownNat, natVal
   , type (+), type (-)
-  , type (<=?), CmpNat
+  , type (<=), CmpNat
   )
 import Type.Reflection
   ( typeRep )
@@ -461,7 +461,7 @@ instance  ( KnownNat n
 
   toAST :: V n a -> AST (V n (Internal a))
   toAST v = res'
-    where f :: forall i. (KnownNat i, (n-(i+1)) ~ ((n-i)-1), (1 <=? (n-i)) ~ 'True)
+    where f :: forall i. (KnownNat i, (n-(i+1)) ~ ((n-i)-1), (1 <= (n-i)))
             => a
             -> B n (Internal a) (V n (Internal a)) i
             -> B n (Internal a) (V n (Internal a)) (i+1)

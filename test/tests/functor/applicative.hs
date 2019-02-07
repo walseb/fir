@@ -12,14 +12,6 @@
 
 module Tests.Functor.Applicative where
 
--- base
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
-
 -- fir
 import FIR
 import FIR.Labels
@@ -28,7 +20,9 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Global_ Input (V 3 Float) ]
+type Defs = '[ "position" ':-> Global_ Input (V 3 Float)
+             , "main"     ':-> EntryPoint Vertex '[]
+             ]
 
 program :: Program Defs ()
 program = Program do

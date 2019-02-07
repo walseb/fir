@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
@@ -250,7 +251,6 @@ instance (PrimTy a, KnownNat l) => PrimTy (Array l a) where
 
 instance PrimTy a => PrimTy (RuntimeArray a) where
   primTySing = SRuntimeArray
-
 
 class PrimTyMap as where
   primTyMapSing :: SPrimTyMap as

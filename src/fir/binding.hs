@@ -3,27 +3,35 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
-module FIR.Binding where
+module FIR.Binding
+  ( Permission(Read,Write)
+  , R, W, RW
+  , Binding(Variable, Function, EntryPoint)
+  , Var, Fun
+  , BindingsMap
+  , FunctionType
+  , StoragePermissions
+  )
+  where
 
 -- base
 import Data.Kind
   ( Type )
 import GHC.TypeLits
-  ( Symbol )
+  ( Symbol
+  , TypeError, ErrorMessage(..)
+  )
 
 -- fir
 import Data.Type.Known
   ( Demotable(Demote), Known(known) )
 import Data.Type.Map
   ( (:->)((:->)), Map )
-import FIR.Prim.Image
-  ( ImageHandle, ImageProperties(Properties), ImageFetchType )
-import Math.Linear
-  ( V )
+import qualified SPIRV.Stage   as SPIRV
 import qualified SPIRV.Storage as SPIRV
 
 ------------------------------------------------------------------------------------------------
@@ -44,28 +52,27 @@ type W  = '[ 'Write ]
 type RW = '[ 'Read, 'Write ]
 
 data Binding where
-  Variable :: [Permission] -> Type -> Binding
-  Function :: [Symbol :-> Binding] -> Type -> Binding
-  Image    :: ImageProperties
-           -> Binding
+  Variable   :: [Permission] -> Type -> Binding
+  Function   :: [Symbol :-> Binding] -> Type -> Binding
+  EntryPoint :: SPIRV.Stage -> Binding
 
 -- shorthands
 type Var ps a = 'Variable ps a
 type Fun as b = 'Function as b
-type Img coord res dim depth arrayness ms usage fmt
-  = 'Image ( 'Properties coord res dim depth arrayness ms usage fmt )
 
 type BindingsMap = Map Symbol Binding
 
-type family Variadic (as :: BindingsMap) (b :: Type) = (res :: Type) where
-  Variadic '[]                b = b
-  Variadic ((_ ':-> a) ': as) b = BindingType a -> Variadic as b
+type family FunctionType (as :: BindingsMap) (b :: Type) = (res :: Type) where
+  FunctionType  '[]                b = b
+  FunctionType  ((_ ':-> a) ': as) b = BindingType a -> FunctionType as b
 
+-- auxiliary type family (non-exported),
+-- used only in the above 'FunctionType' type family
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a
-  BindingType (Fun as b) = Variadic as b
-  BindingType (Img coord res dim _ arr _ _ _)
-    = ImageHandle (ImageFetchType coord dim arr) (V 4 res)
+  BindingType (Fun as b) = FunctionType as b
+  BindingType (EntryPoint _)
+    = TypeError ( Text "Unexpected entry point provided as an argument to a function." )
 
 ------------------------------------------------------------------------------------------------
 -- relation to SPIRV storage classes

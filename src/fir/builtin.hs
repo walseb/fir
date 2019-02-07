@@ -10,18 +10,25 @@
 module FIR.Builtin where
 
 -- base
-import Control.Arrow(second)
-import Data.Int(Int32)
-import Data.Maybe(maybe)
-import Data.Word(Word32)
-import GHC.TypeLits(Symbol)
+import Control.Arrow
+  ( second )
+import Data.Int
+  ( Int32 )
+import Data.Maybe
+  ( maybe )
+import Data.Word
+  ( Word32 )
+import GHC.TypeLits
+  ( Symbol )
 
 -- containers
-import Data.Set(Set)
+import Data.Set
+  ( Set )
 import qualified Data.Set as Set
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
 import Data.Type.Map
@@ -30,18 +37,26 @@ import Data.Type.Map
   )
 import FIR.Binding
   ( BindingsMap, Var, R, W )
-import FIR.Prim.Array(RuntimeArray)
-import FIR.Prim.Singletons(KnownInterface(knownInterface))
-import FIR.Prim.Struct(Struct)
-import Math.Linear(V)
+import FIR.Prim.Array
+  ( RuntimeArray )
+import FIR.Prim.Singletons
+  ( KnownInterface(knownInterface) )
+import FIR.Prim.Struct
+  ( Struct )
+import Math.Linear
+  ( V )
 import qualified SPIRV.Builtin       as SPIRV
   ( Builtin(TessLevelInner, TessLevelOuter)
   , readBuiltin
   )
-import qualified SPIRV.Decoration    as SPIRV(Decoration(Builtin, Patch))
-import qualified SPIRV.PrimTy        as SPIRV(PrimTy, PointerTy, pattern PointerTy)
-import qualified SPIRV.Storage       as SPIRV(StorageClass)
-import SPIRV.Stage(Stage(..))
+import qualified SPIRV.Decoration    as SPIRV
+  ( Decoration(Builtin, Patch) )
+import qualified SPIRV.PrimTy        as SPIRV
+  ( PrimTy, PointerTy, pattern PointerTy )
+import qualified SPIRV.Storage       as SPIRV
+  ( StorageClass )
+import SPIRV.Stage
+  ( Stage(..) )
 
 --------------------------------------------------------------------------
 
@@ -49,8 +64,8 @@ type family GetAllBuiltins (entryPoints :: [( Symbol, Stage )]) :: BindingsMap w
   GetAllBuiltins '[]                    = '[ ]
   GetAllBuiltins ( '( _, stage) ': ps ) = Union ( StageBuiltins stage ) ( GetAllBuiltins ps )
 
-type family StageBuiltins (stage :: Stage) :: BindingsMap where
-  StageBuiltins stage = InsertionSort ( StageBuiltins' stage )
+type StageBuiltins (stage :: Stage)
+  = ( InsertionSort ( StageBuiltins' stage ) :: BindingsMap )
 
 type family StageBuiltins' (stage :: Stage) :: BindingsMap where
   StageBuiltins' Vertex

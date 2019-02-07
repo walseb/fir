@@ -12,14 +12,6 @@
 
 module Tests.Functor.Functor where
 
--- base
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
-
 -- fir
 import FIR
 import FIR.Labels
@@ -34,6 +26,7 @@ type Defs
      , "projectionMatrix" ':-> Global_ Uniform ( M 4 4 Float )
      , "position"         ':-> Global_ Input   ( V   4 Float )
      , "f"                ':-> Function_ '[ "u" ':-> Var R Float] Float
+     , "main"             ':-> EntryPoint Vertex '[]
      ]
 
 

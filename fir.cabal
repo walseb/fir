@@ -77,6 +77,7 @@ library
       , CodeGen.Debug
       , CodeGen.Functions
       , CodeGen.IDs
+      , CodeGen.Images
       , CodeGen.Instruction
       , CodeGen.Monad
       , CodeGen.Optics

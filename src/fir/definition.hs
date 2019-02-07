@@ -45,15 +45,20 @@ import Data.Type.Map
   ( (:->)((:->)) )
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
+import FIR.Prim.Image
+  ( Image, knownImage, ImageProperties )
 import FIR.Prim.Singletons
   ( PrimTy, primTy )
 import qualified FIR.Binding as Binding
 import qualified SPIRV.Decoration      as SPIRV
 import qualified SPIRV.ExecutionMode   as SPIRV
 import qualified SPIRV.FunctionControl as SPIRV
+import qualified SPIRV.Image           as SPIRV
+  ( Image(imageUsage), ImageUsage(Sampled) )
 import qualified SPIRV.PrimTy          as SPIRV
 import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Storage         as SPIRV
+  ( StorageClass )
 
 --------------------------------------------------------------------------
 -- annotating top-level definitions with necessary information
@@ -64,10 +69,6 @@ data Definition where
   Function   :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
   EntryPoint :: SPIRV.Stage -> [ SPIRV.ExecutionMode Nat ] -> Definition
 
-type Global_ s ty   = Global s ty '[]
-type Function_ as b = Function '(Nothing, Nothing) as b
-type EntryPoint_ s  = EntryPoint s '[]
-
 data Annotate
   = AnnotateGlobal     ( SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
   | AnnotateFunction   SPIRV.FunctionControl
@@ -75,6 +76,24 @@ data Annotate
 
 instance Demotable Definition where
   type Demote Definition = Annotate
+
+-- workaround for image types being opaque and not having a Haskell-level counterpart
+instance {-# OVERLAPPING #-}
+         ( Known ImageProperties props
+         , Known SPIRV.StorageClass storage
+         , Known [SPIRV.Decoration Nat] decs
+         )
+      => Known Definition ('Global storage (Image props) decs)
+      where
+  known = AnnotateGlobal
+    ( SPIRV.PointerTy ( knownValue @storage) imgTy
+    , Set.fromList ( knownValue @decs )
+    )
+        where imgTy :: SPIRV.PrimTy
+              imgTy = case knownImage @props of
+                        img -> case SPIRV.imageUsage img of
+                                Just SPIRV.Sampled -> SPIRV.SampledImage img
+                                _                  -> SPIRV.Image        img
 
 instance ( PrimTy ty, Known SPIRV.StorageClass storage, Known [SPIRV.Decoration Nat] decs )
       => Known Definition ('Global storage ty decs)
@@ -133,12 +152,25 @@ type family EndBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bind
     = (k ':-> Variable (StoragePermissions storage) ty) ': EndBindings defs
   EndBindings ((k ':-> Function _ as b) ': defs)
     = (k ':-> Binding.Function as b) ': EndBindings defs
-  -- (currently not keeping track of entry points in the indexed AST monad)
-  EndBindings ((_ ':-> EntryPoint _ _) ': defs)
-    = EndBindings defs
+  EndBindings ((k ':-> EntryPoint stage _) ': defs)
+    = (k ':-> Binding.EntryPoint stage) ': EndBindings defs
 
 --------------------------------------------------------------------------
 
 context :: forall defs. KnownDefinitions defs => CGContext
-context = let (userGlobals, userFunctions, userEntryPoints) = annotations @defs
-          in emptyContext { userGlobals, userFunctions, userEntryPoints }
+context = let (   userGlobals
+                , userFunctions
+                , userEntryPoints
+                ) = annotations @defs
+          in emptyContext
+                { userGlobals
+                , userFunctions
+                , userEntryPoints
+                }
+
+--------------------------------------------------------------------------
+-- helpful shorthand synonyms
+
+type Global_ s ty   = Global s ty '[]
+type Function_ as b = Function SPIRV.NoFunctionControl as b
+type EntryPoint_ s  = EntryPoint s '[]

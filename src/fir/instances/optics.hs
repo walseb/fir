@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise       #-}
 
+{-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE DataKinds              #-}
@@ -21,11 +22,16 @@
 module FIR.Instances.Optics where
 
 -- base
-import Data.Kind(Type)
-import Data.Type.Bool(If)
-import Data.Type.Equality(type (==))
-import Data.Proxy(Proxy(Proxy))
-import Data.Word(Word32)
+import Data.Kind
+  ( Type, Constraint )
+import Data.Type.Bool
+  ( If )
+import Data.Type.Equality
+  ( type (==) )
+import Data.Proxy
+  ( Proxy(Proxy) )
+import Data.Word
+  ( Word32 )
 import GHC.TypeLits
   ( Symbol, KnownSymbol, symbolVal
   , TypeError
@@ -38,13 +44,15 @@ import GHC.TypeNats
   )
 
 -- distributive
-import Data.Distributive(Distributive(..))
+import Data.Distributive
+  ( Distributive(..) )
 
 -- vector
 import qualified Data.Vector as Array
 
 -- fir
-import Control.Monad.Indexed((:=))
+import Control.Monad.Indexed
+  ( (:=) )
 import Control.Type.Optic
   ( Optic(..)
   , Indices
@@ -56,7 +64,8 @@ import Control.Type.Optic
   , (:.:), (:*:), Id, AnIndex, Index, Name, Joint
   , Product
   )
-import Data.Function.Variadic(ListVariadic)
+import Data.Function.Variadic
+  ( ListVariadic )
 import Data.Type.List
   ( type (:++:), Zip
   , Length, SLength, KnownLength(sLength)
@@ -67,9 +76,11 @@ import Data.Type.Map
   , Key, Value
   , Lookup
   )
-import FIR.Binding( BindingsMap )
+import FIR.Binding
+  ( BindingsMap )
 import qualified FIR.Instances.Bindings as Binding
-import FIR.Prim.Array(Array(MkArray), RuntimeArray(MkRuntimeArray))
+import FIR.Prim.Array
+  ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
@@ -77,8 +88,10 @@ import FIR.Prim.Singletons
   , SPrimTy(SStruct)
   , HasField(fieldIndex)
   )
-import FIR.Prim.Struct(Struct((:&), End))
-import Math.Linear(V((:.)), M(M), (^!), at)
+import FIR.Prim.Struct
+  ( Struct((:&), End) )
+import Math.Linear
+  ( V((:.)), M(M), (^!), at )
 
 ----------------------------------------------------------------------
 -- singletons
@@ -125,7 +138,7 @@ showSOptic SId    = "Id"
 showSOptic SJoint = "Joint"
 showSOptic (SAnIndex _ _ _) = "AnIndex"
 showSOptic (SIndex   _ _ n) = "Index "   ++ show n
-showSOptic (SBinding k  ) = "Binding " ++ show (symbolVal k)
+showSOptic (SBinding k    ) = "Binding " ++ show (symbolVal k)
 showSOptic (SComposeO _   o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
 showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
 
@@ -857,7 +870,7 @@ instance MonoContained (Struct ((k ':-> v) ': '[]))
   setAll = const . (:& End)
 
 instance {-# OVERLAPPABLE #-}
-         ( AllValuesEqual v as ~ 'True
+         ( AllValuesEqual k v as
          , MonoContained (Struct as)
          , MonoType (Struct as) ~ v
          )
@@ -865,10 +878,17 @@ instance {-# OVERLAPPABLE #-}
   type MonoType (Struct ((k ':-> v) ': as)) = v
   setAll a (_ :& as) = a :& setAll a as
 
-type family AllValuesEqual (a :: v) (as :: [k :-> v]) :: Bool where
-  AllValuesEqual _ '[]                 = True
-  AllValuesEqual v ( (_ ':-> v) ': as) = AllValuesEqual v as
-  AllValuesEqual _ _                   = False
+type family AllValuesEqual (k0 :: Symbol) (a :: v) (as :: [k :-> v]) :: Constraint where
+  AllValuesEqual _ _ '[]                 = ()
+  AllValuesEqual k0 v ( (_ ':-> v) ': as) = AllValuesEqual k0 v as
+  AllValuesEqual k0 v ( (k ':-> w) ': _ )
+    = TypeError (      Text "Cannot create 'Joint' setter for struct type."
+                  :$$: Text "Struct contains members of different types."
+                  :$$: Text "Type at key " :<>: ShowType k0 :<>: Text " is:" 
+                  :$$: Text "    " :<>: ShowType v
+                  :$$: Text "Type at key " :<>: ShowType k :<>: Text " is:" 
+                  :$$: Text "    " :<>: ShowType w
+                )
 
 ----------------------------------------------------------------------
 -- helper type families for structs
@@ -986,10 +1006,8 @@ instance Contained (RuntimeArray a) where
 ----------------------------------------------------------------------
 -- synonyms
 
-type family Col i = (r :: Optic '[] (M m n a) (V m a)) | r -> i where
-  Col i = Index i
-type family Ix i = (r :: Optic '[] (V m a) a) | r -> i where
-  Ix i = Index i
+type Col i = (Index i :: Optic '[] (M m n a) (V m a))
+type Ix  i = (Index i :: Optic '[] (V m a  )      a )
 
 type family Row (i :: Nat) = (optic :: Optic '[] (M m n a) (V n a)) | optic -> i where
   Row i = ( (     (Col 0 :.: Ix i) 

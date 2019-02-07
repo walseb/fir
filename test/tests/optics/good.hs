@@ -12,16 +12,6 @@
 
 module Tests.Optics.Good where
 
--- base
-import Data.Word(Word32)
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
-import qualified Prelude
-
 -- vector
 import qualified Data.Vector as Array
 
@@ -56,6 +46,7 @@ type Defs
                       )
      , "arr2" ':-> Global_ Input
                       ( Array 17 Float )
+     , "main"     ':-> EntryPoint Vertex '[]                      
      ]
 
 program :: Program Defs ()
@@ -74,5 +65,5 @@ program = Program do
     diagonal <- use @(Name "modelMatrix" :.: Diag )
     lensTest <- use @(Name "arr1" :.: Index 3 :.: AnIndex Word32 :.: Index 0 :.: Index 2) 7
 
-    #array @(Array 10 Float) #= (lit $ mkArray (Array.fromList [1,17,23,4,5,90,88,17,22,21]))
+    #array @(Array 10 Float) #= (Lit $ mkArray (Array.fromList [1,17,23,4,5,90,88,17,22,21]))
     #gl_Position .= Vec4 3 7 17 10

@@ -57,7 +57,7 @@ These optics can be combined in the following ways:
 
 Again, these are type-checked for validity. For instance, one cannot create a product setter
 unless the two argument setters are disjoint.
-(Note that this disallows product setters involving runtime indices,
+(Note that this disallows product setters involving run-time indices,
 as the required disjointness property can't be checked at compile-time.)
 
 
@@ -197,17 +197,22 @@ module Control.Type.Optic
 
 
 -- base
-import Data.Kind(Type)
-import Data.Type.Bool(If, type (&&), Not)
+import Data.Kind
+  ( Type )
+import Data.Type.Bool
+  ( If, type (&&), Not )
 import GHC.TypeLits
   ( Symbol
   , TypeError, ErrorMessage(..)
   )
-import GHC.TypeNats(Nat)
+import GHC.TypeNats
+  ( Nat )
 
 -- fir
-import Data.Type.List(type (:++:), Zip)
-import Data.Function.Variadic(ListVariadic)
+import Data.Type.List
+  ( type (:++:), Zip )
+import Data.Function.Variadic
+  ( ListVariadic )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
@@ -228,8 +233,8 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
   Id_      :: Optic is a a
   -- | Equaliser optic.
   Joint_   :: Optic is s a
-  -- | Run-time index.
-  AnIndex_ :: Optic is s a
+  -- | Optic with indexing information provided at run-time.
+  AnIndex_  :: Optic is s a
   -- | Compile-time index.
   Index_   :: Nat    -> Optic is s a
   -- | Compile-time field name.
@@ -241,18 +246,18 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 
 -- $kind_coercion
 --
--- /__Warning__/: the data constructors of the 'Optic' data type are not kind-correct.
+-- /__Warning__/: the data constructors of the 'Optic' data type are not type-correct.
 -- This is to bypass difficulties with kind coercions:
 -- at the time of writing, GHC does not full support kind coercions, in that
 -- given the context @a ~ b@, GHC is unable to unify a type
 -- of kind @a@ with a type of kind @b@.
 -- (See [GHC trac #15710](https://ghc.haskell.org/trac/ghc/ticket/15710).)
 --
--- As a result, the constructors for the 'Optic' data type have overly general kinds.
+-- As a result, the constructors for the 'Optic' data type have overly general types.
 -- Kind-correct type-level smart constructors are instead provided (and their use recommended):
 --
 --   * 'AnIndex', 'Index', 'Name', 'Id' and 'Joint' create specific optics,
---   * ':.:' composes two optics (leftmost argument = outermost optic),
+--   * ':.:' composes two optics (left-most argument = outer-most optic),
 --   * ':*:' takes the product of two optics.
 
 
@@ -278,6 +283,7 @@ type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
               s
               ( Product o1 o2 )
     )
+
 ----------------------------------------------------------------------
 -- Type classes and synonyms.
 

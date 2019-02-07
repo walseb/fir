@@ -1,5 +1,5 @@
 
-test\tests\optics\nostructfield.hs:50:17: error:
+test\tests\optics\nostructfield.hs:42:17: error:
     • get: struct has no field with name "inexistent".
       This struct has the following fields:
       '[ "position" ':-> V 3 Float, "colour" ':-> V 4 Float,
@@ -16,5 +16,5 @@ test\tests\optics\nostructfield.hs:50:17: error:
           do position <- use @(Name "vertexData" :.: Name "inexistent")
              #gl_Position .= position
    |
-50 |     position <- use @( Name "vertexData" :.: Name "inexistent" )
+42 |     position <- use @( Name "vertexData" :.: Name "inexistent" )
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

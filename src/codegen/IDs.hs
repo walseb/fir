@@ -67,9 +67,11 @@ import qualified SPIRV.Builtin    as SPIRV(Builtin(Position,PointSize))
 import qualified SPIRV.Capability as SPIRV(primTyCapabilities)
 import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.Extension  as SPIRV
-import qualified SPIRV.Image      as SPIRV(ImageTy(..))
+import qualified SPIRV.Image      as SPIRV(Image(..))
+import qualified SPIRV.Image      as SPIRV.Image
 import qualified SPIRV.Operation  as SPIRV.Op
 import qualified SPIRV.PrimTy     as SPIRV
+import qualified SPIRV.PrimTy     as SPIRV.PrimTy
 import qualified SPIRV.ScalarTy   as SPIRV
 import qualified SPIRV.Stage      as SPIRV
 
@@ -215,14 +217,14 @@ typeID ty =
                           ( Arg storage $ Arg tyID EndArgs )
             )
 
-        SPIRV.Image (SPIRV.ImageTy { .. })
+        SPIRV.PrimTy.Image (SPIRV.Image.Image { .. })
           -> createRec _knownPrimTy
                ( typeID (SPIRV.Scalar component) )  -- get the type ID of the image 'component' type
                ( \componentID
                    -> mkTyConInstruction
                         (   Arg componentID
                           $ Arg dimensionality
-                          $ Arg depth
+                          $ Arg hasDepth
                           $ Arg arrayness
                           $ Arg multiSampling
                           $ Arg imageUsage -- whether the image is sampled or serves as storage
@@ -234,7 +236,7 @@ typeID ty =
 
         SPIRV.SampledImage imageTy
           -> createRec _knownPrimTy
-               ( typeID (SPIRV.Image imageTy) )
+               ( typeID (SPIRV.PrimTy.Image imageTy) )
                ( \ imgTyID -> mkTyConInstruction (Arg imgTyID EndArgs ) )
 
   where _knownPrimTy :: Lens' CGState (Maybe Instruction)
@@ -327,7 +329,7 @@ constID a =
 
         SRuntimeArray {} ->
             throwError
-              "constID: cannot construct runtime arrays.\n\
+              "constID: cannot construct run-time arrays.\n\
               \Runtime arrays are only available through uniforms."
         
         SArray {} ->
@@ -381,9 +383,9 @@ bindingID varName
                   pure (builtin, ptrPrimTy)
                 
           _ -> do -- obtain the binding ID
-                  mbLoc     <- use ( _localBinding varName )
-                  mbKnown   <- use ( _knownBinding varName )
-                  mbGlob <-
+                  mbLoc   <- use ( _localBinding varName )
+                  mbKnown <- use ( _knownBinding varName )
+                  mbGlob  <-
                     do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName
                         -- declare pointer type (if necessary)
                         mapM_ (typeID . snd) glob

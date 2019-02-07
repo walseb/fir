@@ -1,5 +1,5 @@
 
-test\tests\optics\nomatrixindex.hs:43:17: error:
+test\tests\optics\nomatrixindex.hs:36:17: error:
     • get: matrix column index 4 is out of bounds.
       This matrix has 3 rows, 4 columns.
       Note: indexing starts from 0.
@@ -15,5 +15,5 @@ test\tests\optics\nomatrixindex.hs:43:17: error:
           do position <- use @(Name "vertexData" :.: Entry 4 2)
              #gl_Position .= position
    |
-43 |     position <- use @( Name "vertexData" :.: Entry 4 2 )
+36 |     position <- use @( Name "vertexData" :.: Entry 4 2 )
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

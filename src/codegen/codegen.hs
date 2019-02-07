@@ -72,6 +72,8 @@ import CodeGen.Functions
   ( declareFunction, declareFunctionCall, declareEntryPoint )
 import CodeGen.IDs
   ( typeID, constID, bindingID )
+import CodeGen.Images
+  ( sample, imageRead, imageWrite )
 import CodeGen.Instruction
   ( Args(..)
   , ID(ID), Instruction(..)
@@ -177,6 +179,8 @@ codeGen (Lam f :$ a)
 codeGen (Bind :$ a :$ f)
   = do cg <- codeGen a
        codeGen $ (fromAST f) (MkID cg)
+codeGen (Applied (PrimOp op _) as)
+  = primOp op =<< codeGenUASTs as
 -- stateful operations
 codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
   = do  let name     = knownValue @name
@@ -225,7 +229,7 @@ codeGen (Entry (_ :: Proxy name) (_ :: Proxy stage) :$ body)
 codeGen (OpticUse (AnIndexedOptic singOptic is))
   = case singOptic of
 
-      SBinding (_ :: Proxy name ) ->
+      SBinding (_ :: Proxy name) ->
         do  let varName = knownValue @name
             bd@(bdID, bdTy) <- bindingID varName
             case bdTy of
@@ -332,9 +336,6 @@ codeGen (Applied (Set sLg singOptic) is)
           provided :: Text
           provided = Text.pack . show . (\i -> if i < 2 then 0 else i-2) $ uastsLength is
           -- off by two
-
-codeGen (Applied (PrimOp op _) as)
-  = primOp op =<< codeGenUASTs as
 codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
   = do  let n = knownValue @n
         compositeTy
@@ -347,6 +348,42 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                                <> Text.pack ( show x )
                                )
         (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
+
+-- image operations
+codeGen (Sample (_ :: Proxy k) ops :$ coords)
+  = do  let imgName = knownValue @k
+        bd@(bdID, bdTy) <- bindingID imgName
+        img
+          <- case bdTy of
+                SPIRV.Pointer storage imgTy
+                  -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                _ -> pure bd
+        (cdID, _) <- codeGen coords
+        sample img ops cdID
+codeGen (ImageRead (_ :: Proxy k) ops :$ coords)
+  = do  (cdID, _) <- codeGen coords
+        let imgName= knownValue @k
+        bd@(bdID, bdTy) <- bindingID imgName
+        img
+          <- case bdTy of
+                SPIRV.Pointer storage imgTy
+                  -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                _ -> pure bd
+        imageRead img ops cdID
+codeGen (ImageWrite (_ :: Proxy k) ops :$ coords :$ writee)
+  = do  (cdID    , _) <- codeGen coords
+        (writeeID, _) <- codeGen writee
+        let imgName = knownValue @k
+        bd@(bdID, bdTy) <- bindingID imgName
+        img
+          <- case bdTy of
+                SPIRV.Pointer storage imgTy
+                  -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                _ -> pure bd
+        imageWrite img ops cdID writeeID
+        pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+-- functor / applicative operations
 codeGen (Fmap functorSing :$ f :$ a)
   = case functorSing of
       SFuncVector (_ :: Proxy n)

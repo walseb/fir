@@ -1,5 +1,5 @@
 
-test\tests\optics\novectorindex.hs:43:17: error:
+test\tests\optics\novectorindex.hs:36:17: error:
     • get: vector index 4 is out of bounds.
       Vector dimension is 4.
       Note: indexing starts from 0.
@@ -15,5 +15,5 @@ test\tests\optics\novectorindex.hs:43:17: error:
           do position <- use @(Name "vertexData" :.: Index 4)
              #gl_Position .= position
    |
-43 |     position <- use @( Name "vertexData" :.: Index 4 )
+36 |     position <- use @( Name "vertexData" :.: Index 4 )
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

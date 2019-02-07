@@ -23,13 +23,11 @@ import Math.Linear(V,M)
 
 ------------------------------------------------------------
 
-type family NatVariadic
-              ( n :: Nat  )
-              ( a :: Type )
-              ( b :: Type )
-            = ( r :: Type )
-            where
-  NatVariadic n a b = NatVariadic' n a b (1 <=? n)
+type NatVariadic
+      ( n :: Nat  )
+      ( a :: Type )
+      ( b :: Type )
+  = ( NatVariadic' n a b (1 <=? n) :: Type )
 
 type family NatVariadic'
               ( n    :: Nat  )

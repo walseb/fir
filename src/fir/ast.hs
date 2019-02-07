@@ -71,17 +71,23 @@ import Data.Type.List
 import Data.Type.Map
   ( Insert, Union )
 import FIR.Binding
-  ( BindingType, Var, Fun, Permission )
+  ( Binding(EntryPoint), FunctionType, Var, Fun, Permission )
 import FIR.Builtin
   ( StageBuiltins )
 import FIR.Instances.Bindings
-  ( ValidDef, ValidFunDef, ValidEntryPoint )
+  ( ValidDef, ValidFunDef, ValidEntryPoint
+  , LookupImageProperties
+  , ValidImageSample, ValidImageRead, ValidImageWrite
+  )
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
+import FIR.Prim.Image
+  ( ImageProperties, ImageOperands, ImageCoordinates, ImageData )
 import FIR.Prim.Singletons
   ( PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars )
 import Math.Linear
   ( V, M )
+import qualified SPIRV.Image  as SPIRV
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 import qualified SPIRV.Stage  as SPIRV
@@ -115,7 +121,7 @@ data AST :: Type -> Type where
         , KnownSymbol k
         , Known [Permission] ps
         , PrimTy a
-        , ValidDef k i ~ 'True
+        , ValidDef k i
         )
       => Proxy k  -- ^ Name.
       -> Proxy ps -- ^ Permissions (read,write,...).
@@ -128,13 +134,13 @@ data AST :: Type -> Type where
             , KnownSymbol k
             , KnownVars as
             , PrimTy b
-            , ValidFunDef k as i l ~ 'True
+            , ValidFunDef k as i l
             )
          => Proxy k  -- ^ Funtion name.
          -> Proxy as -- ^ Function argument types.
          -> Proxy b  -- ^ Function return type.
          -> AST (    (b := l) (Union i as)
-                  -> (BindingType (Fun as b) := Insert k (Fun as b) i) i
+                  -> (FunctionType as b := Insert k (Fun as b) i) i
                 )
   -- | Defining a new entry point.
   --
@@ -144,12 +150,12 @@ data AST :: Type -> Type where
            ( GHC.Stack.HasCallStack
            , KnownSymbol k
            , Known SPIRV.Stage s
-           , ValidEntryPoint s i l ~ 'True
+           , ValidEntryPoint s i l
            )
          => Proxy k -- ^ Entry point name.
          -> Proxy s -- ^ Entry point stage.
          -> AST (    (() := l) (Union i (StageBuiltins s))
-                  -> (() := i) i
+                  -> (() := Insert k (EntryPoint s) i) i
                 )
   -- | /Use/ an optic, returning a monadic value read from the (indexed) state.
   --
@@ -184,6 +190,47 @@ data AST :: Type -> Type where
       -> SOptic optic            -- ^ Singleton for the optic.
       -> AST ( Setter optic )
 
+  -- | /Sample/ an image with a given sampling method.
+  Sample :: forall k meth props i.
+            ( KnownSymbol k
+            , Known (Maybe SPIRV.SamplingMethod) meth
+            , LookupImageProperties k i ~ props
+            , Known ImageProperties props
+            , ValidImageSample meth props
+            )
+         => Proxy k                  -- ^ Image name.
+         -> ImageOperands meth props -- ^ List of (usually optional) image operands.
+         -> AST (    ImageCoordinates meth props
+                 -> (ImageData meth props := i) i
+                 )
+  -- | /Read/ from an image directly.
+  ImageRead
+    :: forall k props i.
+       ( KnownSymbol k
+       , LookupImageProperties k i ~ props
+       , Known ImageProperties props
+       , ValidImageRead props
+       )
+    => Proxy k                     -- ^ Image name.
+    -> ImageOperands Nothing props -- ^ List of (usually optional) image operands.
+    -> AST (    ImageCoordinates Nothing props
+            -> (ImageData Nothing props := i) i
+           )
+  -- | /Write/ to an image directly.
+  ImageWrite
+    :: forall k props i.
+       ( KnownSymbol k
+       , LookupImageProperties k i ~ props
+       , Known ImageProperties props
+       , ValidImageWrite props
+       )
+    => Proxy k                     -- ^ Image name.
+    -> ImageOperands Nothing props -- ^ List of (usually optional) image operands.
+    -> AST (   ImageCoordinates Nothing props
+            -> ImageData Nothing props
+            -> (() := i) i
+           )
+
   If    :: ( GHC.Stack.HasCallStack
            , PrimTy a
            )
@@ -214,6 +261,10 @@ data AST :: Type -> Type where
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
 
+  -- | Internal pair data type.
+  --
+  -- Only used for providing multiple run-time indices to product optics.
+  -- See [FIR issue #13](https://gitlab.com/sheaf/fir/issues/13).
   Pair :: AST ( a -> b -> (a,b) )
   Fst  :: AST ( (a,b) -> a )
   Snd  :: AST ( (a,b) -> b )
@@ -266,6 +317,9 @@ toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")
 toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
+toTreeArgs (Sample k _    ) as = return (Node ("Sample @"  ++ symbolVal k ) as)
+toTreeArgs (ImageRead  k _) as = return (Node ("ImageRead @"  ++ symbolVal k ) as)
+toTreeArgs (ImageWrite k _) as = return (Node ("ImageWrite @" ++ symbolVal k ) as)
 toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @("   ++ primFuncName f ++ ") ") as)
 toTreeArgs (Pure   f      ) as = return (Node ("Pure @("   ++ primFuncName f ++ ") ") as)
 toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("     ++ primFuncName f ++ ") ") as)

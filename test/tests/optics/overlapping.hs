@@ -12,15 +12,6 @@
 
 module Tests.Optics.Overlapping where
 
--- base
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
-import qualified Prelude
-
 -- fir
 import FIR
 import FIR.Labels
@@ -29,7 +20,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-program :: Program '[] ()
+program :: Program '[ "main" ':-> EntryPoint Vertex '[] ] ()
 program = Program do
 
   entryPoint @"main" @Vertex do

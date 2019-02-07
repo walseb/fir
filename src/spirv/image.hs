@@ -1,18 +1,25 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DerivingVia           #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module SPIRV.Image where
 
 -- base
+import Prelude hiding
+  ( Integral, Floating )
 import Data.Word
   ( Word32 )
+import GHC.TypeLits
+  ( TypeError, ErrorMessage(..) )
 import GHC.TypeNats
   ( Nat )
 
@@ -20,21 +27,21 @@ import GHC.TypeNats
 import Data.Binary.Class.Put
   ( Put(..), PutWord32Enum(..) )
 import Data.Type.Known
-  ( Demotable(Demote), Known(known) )
+  ( Demotable(Demote), Known(known), knownValue )
 import SPIRV.ScalarTy
   ( ScalarTy, Signedness(..) )
 
 --------------------------------------------------
 
-data ImageTy
-  = ImageTy
+data Image
+  = Image
       { component      :: ScalarTy -- called the 'Sampled type' in SPIR-V
       , dimensionality :: Dimensionality
-      , depth          :: Maybe Depth
+      , hasDepth       :: Maybe HasDepth
       , arrayness      :: Arrayness
       , multiSampling  :: MultiSampling
       , imageUsage     :: Maybe ImageUsage
-      , imageFormat    :: ImageFormat Word32
+      , imageFormat    :: Maybe (ImageFormat Word32)
       }
   deriving ( Eq, Show, Ord )
 
@@ -66,20 +73,20 @@ instance Known Dimensionality 'Buffer where
 instance Known Dimensionality 'SubpassData where
   known = SubpassData
 
-data Depth
-  = NoDepth
-  | Depth
+data HasDepth
+  = NotDepthImage
+  | DepthImage
   deriving ( Eq, Show, Ord, Enum, Bounded )
-  deriving Put via (PutWord32Enum Depth)
+  deriving Put via (PutWord32Enum HasDepth)
 
-instance Demotable Depth where
-  type Demote Depth = Depth
-instance Known Depth 'NoDepth where
-  known = NoDepth
-instance Known Depth 'Depth where
-  known = Depth
+instance Demotable HasDepth where
+  type Demote HasDepth = HasDepth
+instance Known HasDepth NotDepthImage where
+  known = NotDepthImage
+instance Known HasDepth DepthImage where
+  known = DepthImage
 
-instance Put (Maybe Depth) where
+instance Put (Maybe HasDepth) where
   put (Just d) = put         d
   put Nothing  = put @Word32 2
   sizeOf _ = 1
@@ -131,12 +138,31 @@ instance Known ImageUsage 'Storage where
 data Normalisation
   = Unnormalised
   | Normalised
-  deriving ( Eq, Show, Ord )
+  deriving ( Eq, Show, Ord, Enum, Bounded )
+  deriving Put via (PutWord32Enum Normalisation)
+
+instance Demotable Normalisation where
+  type Demote Normalisation = Normalisation
+instance Known Normalisation Unnormalised where
+  known = Unnormalised
+instance Known Normalisation Normalised where
+  known = Normalised
 
 data Component
   = Integer Normalisation Signedness
   | Floating
   deriving ( Eq, Show, Ord )
+
+instance Demotable Component where
+  type Demote Component = Component
+instance ( Known Normalisation norm
+         , Known Signedness    sign
+         ) 
+      => Known Component ('Integer norm sign)
+      where
+  known = Integer (knownValue @norm) (knownValue @sign)
+instance Known Component 'Floating where
+  known = Floating
 
 pattern SNorm :: Component
 pattern SNorm = Integer Normalised Signed
@@ -162,11 +188,12 @@ data ImageFormat a
   = ImageFormat Component [a]
   deriving ( Eq, Show, Ord )
 
-
-
 pattern RGBA32 :: Component -> ImageFormat Word32
 pattern RGBA32 component = ImageFormat component [32,32,32,32]
-type RGBA32 (component :: Component) = ( 'ImageFormat component '[32,32,32,32] :: ImageFormat Nat )
+type family RGBA32 (component :: Component) :: ImageFormat Nat where
+  RGBA32 SNorm = TypeError ( Text "RGBA32 format cannot use normalised integers." )
+  RGBA32 UNorm = TypeError ( Text "RGBA32 format cannot use normalised integers." )
+  RGBA32 comp  = 'ImageFormat comp '[32,32,32,32] 
 
 pattern RGBA16 :: Component -> ImageFormat Word32
 pattern RGBA16 component = ImageFormat component [16,16,16,16]
@@ -174,23 +201,33 @@ type RGBA16 (component :: Component) = ( 'ImageFormat component '[16,16,16,16] :
 
 pattern RGBA8 :: Component -> ImageFormat Word32
 pattern RGBA8 component = ImageFormat component [8,8,8,8]
-type RGBA8 (component :: Component) = ( 'ImageFormat component '[8,8,8,8] :: ImageFormat Nat )
+type family RGBA8 (component :: Component) :: ImageFormat Nat where
+  RGBA8 F    = TypeError ( Text "RGBA8 format cannot use floating-point numbers." )
+  RGBA8 comp = 'ImageFormat comp '[8,8,8,8]
 
 pattern RG32 :: Component -> ImageFormat Word32
 pattern RG32 component = ImageFormat component [32,32]
-type RG32 (component :: Component) = ( 'ImageFormat component '[32,32] :: ImageFormat Nat )
+type family RG32 (component :: Component) :: ImageFormat Nat where
+  RG32 SNorm = TypeError ( Text "RG32 format cannot use normalised integers." )
+  RG32 UNorm = TypeError ( Text "RG32 format cannot use normalised integers." )
+  RG32 comp  = 'ImageFormat comp '[32,32] 
 
 pattern RG16 :: Component -> ImageFormat Word32
 pattern RG16 component = ImageFormat component [16,16]
 type RG16 (component :: Component) = ( 'ImageFormat component '[16,16] :: ImageFormat Nat )
 
 pattern RG8 :: Component -> ImageFormat Word32
-pattern RG8 component = ImageFormat component [8,8]
-type RG8 (component :: Component) = ( 'ImageFormat component '[8,8] :: ImageFormat Nat )
+pattern RG8 component = ImageFormat component [8,8,8,8]
+type family RG8 (component :: Component) :: ImageFormat Nat where
+  RG8 F    = TypeError ( Text "RG8 format cannot use floating-point numbers." )
+  RG8 comp = 'ImageFormat comp '[8,8]
 
 pattern R32 :: Component -> ImageFormat Word32
 pattern R32 component = ImageFormat component [32]
-type R32 (component :: Component) = ( 'ImageFormat component '[32] :: ImageFormat Nat )
+type family R32 (component :: Component) :: ImageFormat Nat where
+  R32 SNorm = TypeError ( Text "R32 format cannot use normalised integers." )
+  R32 UNorm = TypeError ( Text "R32 format cannot use normalised integers." )
+  R32 comp  = 'ImageFormat comp '[32] 
 
 pattern R16 :: Component -> ImageFormat Word32
 pattern R16 component = ImageFormat component [16]
@@ -198,97 +235,31 @@ type R16 (component :: Component) = ( 'ImageFormat component '[16] :: ImageForma
 
 pattern R8 :: Component -> ImageFormat Word32
 pattern R8 component = ImageFormat component [8]
-type R8 (component :: Component) = ( 'ImageFormat component '[8] :: ImageFormat Nat )
+type family R8 (component :: Component) :: ImageFormat Nat where
+  R8 F    = TypeError ( Text "R8 format cannot use floating-point numbers." )
+  R8 comp = 'ImageFormat comp '[8]
 
 pattern R11G11B10 :: Component -> ImageFormat Word32
 pattern R11G11B10 component = ImageFormat component [11,11,10]
-type R11G11B10 (component :: Component) = ( 'ImageFormat component '[11,11,10] :: ImageFormat Nat )
+type family R11G11B10 (component :: Component) :: ImageFormat Nat where
+  R11G11B10 F    = 'ImageFormat F '[11,11,10]
+  R11G11B10 comp = TypeError ( Text "R11G11B10 format must use floating-point numbers." )
 
 pattern RGB10A2 :: Component -> ImageFormat Word32
 pattern RGB10A2 component = ImageFormat component [10,10,10,2]
-type RGB10A2 (component :: Component) = ( 'ImageFormat component '[10,10,10,2] :: ImageFormat Nat )
+type family RGB10A2 (component :: Component) :: ImageFormat Nat where
+  RGB10A2 UI    = 'ImageFormat UI    '[10,10,10,2]
+  RGB10A2 UNorm = 'ImageFormat UNorm '[10,10,10,2]
+  RGB10A2 comp  = TypeError ( Text "RGB10A2 format must use unsigned integers." )
 
 instance Demotable (ImageFormat Nat) where
   type Demote (ImageFormat Nat) = ImageFormat Word32
-
-instance Known (ImageFormat Nat) (RGBA32    F     ) where
-  known = RGBA32    F
-instance Known (ImageFormat Nat) (RGBA16    F     ) where
-  known = RGBA16    F
-instance Known (ImageFormat Nat) (R32       F     ) where
-  known = R32       F
-instance Known (ImageFormat Nat) (RGBA8     UNorm ) where
-  known = RGBA8     UNorm
-instance Known (ImageFormat Nat) (RGBA8     SNorm ) where
-  known = RGBA8     SNorm
-instance Known (ImageFormat Nat) (RG32      F     ) where
-  known = RG32      F
-instance Known (ImageFormat Nat) (RG16      F     ) where
-  known = RG16      F
-instance Known (ImageFormat Nat) (R11G11B10 F     ) where
-  known = R11G11B10 F
-instance Known (ImageFormat Nat) (R16       F     ) where
-  known = R16       F
-instance Known (ImageFormat Nat) (RGBA16    UNorm ) where
-  known = RGBA16    UNorm
-instance Known (ImageFormat Nat) (RGB10A2   UNorm ) where
-  known = RGB10A2   UNorm
-instance Known (ImageFormat Nat) (RG16      UNorm ) where
-  known = RG16      UNorm
-instance Known (ImageFormat Nat) (RG8       UNorm ) where
-  known = RG8       UNorm
-instance Known (ImageFormat Nat) (R16       UNorm ) where
-  known = R16       UNorm
-instance Known (ImageFormat Nat) (R8        UNorm ) where
-  known = R8        UNorm
-instance Known (ImageFormat Nat) (RGBA16    SNorm ) where
-  known = RGBA16    SNorm
-instance Known (ImageFormat Nat) (RG16      SNorm ) where
-  known = RG16      SNorm
-instance Known (ImageFormat Nat) (RG8       SNorm ) where
-  known = RG8       SNorm
-instance Known (ImageFormat Nat) (R16       SNorm ) where
-  known = R16       SNorm
-instance Known (ImageFormat Nat) (R8        SNorm ) where
-  known = R8        SNorm
-instance Known (ImageFormat Nat) (RGBA32    I     ) where
-  known = RGBA32    I
-instance Known (ImageFormat Nat) (RGBA16    I     ) where
-  known = RGBA16    I
-instance Known (ImageFormat Nat) (RGBA8     I     ) where
-  known = RGBA8     I
-instance Known (ImageFormat Nat) (R32       I     ) where
-  known = R32       I
-instance Known (ImageFormat Nat) (RG32      I     ) where
-  known = RG32      I
-instance Known (ImageFormat Nat) (RG16      I     ) where
-  known = RG16      I
-instance Known (ImageFormat Nat) (RG8       I     ) where
-  known = RG8       I
-instance Known (ImageFormat Nat) (R16       I     ) where
-  known = R16       I
-instance Known (ImageFormat Nat) (R8        I     ) where
-  known = R8        I
-instance Known (ImageFormat Nat) (RGBA32    UI    ) where
-  known = RGBA32    UI
-instance Known (ImageFormat Nat) (RGBA16    UI    ) where
-  known = RGBA16    UI
-instance Known (ImageFormat Nat) (RGBA8     UI    ) where
-  known = RGBA8     UI
-instance Known (ImageFormat Nat) (R32       UI    ) where
-  known = R32       UI
-instance Known (ImageFormat Nat) (RGB10A2   UI    ) where
-  known = RGB10A2   UI
-instance Known (ImageFormat Nat) (RG32      UI    ) where
-  known = RG32      UI
-instance Known (ImageFormat Nat) (RG16      UI    ) where
-  known = RG16      UI
-instance Known (ImageFormat Nat) (RG8       UI    ) where
-  known = RG8       UI
-instance Known (ImageFormat Nat) (R16       UI    ) where
-  known = R16       UI
-instance Known (ImageFormat Nat) (R8        UI    ) where
-  known = R8        UI
+instance ( Known Component comp
+         , Known [Nat] sizes
+         )
+       => Known (ImageFormat Nat) ('ImageFormat comp sizes)
+     where
+  known = ImageFormat (knownValue @comp) (knownValue @sizes)
 
 
 fromFormat :: ImageFormat Word32 -> Maybe Word32
@@ -343,3 +314,109 @@ instance Put (Maybe (ImageFormat Word32)) where
   put (Just format) = put         format
   put Nothing       = put @Word32 0
   sizeOf _ = 1
+
+data SamplerAddressing
+  = ClampToEdge
+  | Clamp
+  | Repeat
+  | RepeatMirrored
+  deriving ( Show, Eq, Ord, Enum, Bounded )
+
+instance Put SamplerAddressing where
+  put = put @Word32 . fromIntegral . succ . fromEnum
+  sizeOf _ = 1
+
+instance Put (Maybe SamplerAddressing) where
+  put (Just addr) = put         addr
+  put Nothing     = put @Word32 0
+  sizeOf _ = 1
+
+data FilterMode
+  = Nearest
+  | Linear
+  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving Put via (PutWord32Enum FilterMode)
+
+instance Demotable SamplerAddressing where
+  type Demote SamplerAddressing = SamplerAddressing
+instance Known SamplerAddressing ClampToEdge where
+  known = ClampToEdge
+instance Known SamplerAddressing Clamp where
+  known = Clamp
+instance Known SamplerAddressing Repeat where
+  known = Repeat
+instance Known SamplerAddressing RepeatMirrored   where
+  known = RepeatMirrored
+
+instance Demotable FilterMode where
+  type Demote FilterMode = FilterMode
+instance Known FilterMode Nearest where
+  known = Nearest
+instance Known FilterMode Linear where
+  known = Linear
+
+data DepthTesting
+  = NoDepthTest
+  | DepthTest
+  deriving ( Show, Eq, Ord, Enum, Bounded )
+
+instance Demotable DepthTesting where
+  type Demote DepthTesting = DepthTesting
+instance Known DepthTesting NoDepthTest where
+  known = NoDepthTest
+instance Known DepthTesting DepthTest where
+  known = DepthTest
+
+data Projection
+  = Affine
+  | Projective
+  deriving ( Show, Eq, Ord, Enum, Bounded )
+
+instance Demotable Projection where
+  type Demote Projection = Projection
+instance Known Projection Affine where
+  known = Affine
+instance Known Projection Projective where
+  known = Projective
+
+data LODOperand
+  = Bias
+  | LOD
+  | Grad
+  | MinLOD
+  deriving ( Show, Eq, Ord )
+
+data Operand
+  = LODOperand LODOperand
+  | ConstOffset
+  | Offset
+  | ConstOffsets
+  | Sample
+  deriving ( Show, Eq, Ord )
+
+operandBit :: Operand -> Word32
+operandBit (LODOperand Bias )   = 0x01
+operandBit (LODOperand LOD  )   = 0x02
+operandBit (LODOperand Grad )   = 0x04
+operandBit ConstOffset          = 0x08
+operandBit Offset               = 0x10
+operandBit ConstOffsets         = 0x20
+operandBit Sample               = 0x40
+operandBit (LODOperand MinLOD ) = 0x80
+
+data SamplingMethod
+  = Method
+      DepthTesting
+      Projection
+  deriving ( Show, Eq, Ord )
+
+instance Demotable SamplingMethod where
+  type Demote SamplingMethod = SamplingMethod
+instance ( Known DepthTesting depth
+         , Known Projection   proj
+         )
+      => Known SamplingMethod (Method depth proj)
+      where
+  known = Method
+            ( knownValue @depth   )
+            ( knownValue @proj    )

@@ -7,11 +7,14 @@
 module FIR.Prim.Struct where
 
 -- base
-import Data.Kind(Type)
-import GHC.TypeLits(Symbol)
+import Data.Kind
+  ( Type )
+import GHC.TypeLits
+  ( Symbol )
 
 -- fir
-import Data.Type.Map((:->))
+import Data.Type.Map
+  ( (:->) )
 
 ------------------------------------------------------------
 -- structs

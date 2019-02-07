@@ -19,11 +19,15 @@ import Prelude
   , Float, Double
   )
 import qualified Prelude
-import Data.Coerce(coerce)
-import Data.Int(Int8, Int16, Int32, Int64)
-import Data.Kind(Type)
+import Data.Coerce
+  ( coerce )
+import Data.Int
+  ( Int8, Int16, Int32, Int64 )
+import Data.Kind
+  ( Type )
 import qualified Data.Fixed as Fixed
-import Data.Word(Word8, Word16, Word32, Word64)
+import Data.Word
+  ( Word8, Word16, Word32, Word64 )
 import Foreign.C.Types
 import qualified GHC.Float as Float
 
@@ -32,8 +36,10 @@ import Numeric.Half(Half)
 import qualified Numeric.Half as Half
 
 -- fir
-import Deriving.Prelude(Prelude(..)) -- newtype for deriving Prelude instances
-import Math.Logic.Class(ifThenElse, Eq(Logic,(==)), Ord)
+import Deriving.Prelude
+  ( Prelude(..) ) -- newtype for deriving Prelude instances
+import Math.Logic.Class
+  ( ifThenElse, Eq(Logic,(==)), Ord )
 
 
 
@@ -304,6 +310,30 @@ class Convert (c :: (Type,Type)) where
 instance Convert '(a,a) where
   convert = id
 
+-- constraint for 'Integral' types,
+-- no methods
+class Semiring a => Integral a where
+instance Integral Word8   where
+instance Integral Word16  where
+instance Integral Word32  where
+instance Integral Word64  where
+instance Integral Word    where
+instance Integral Int8    where
+instance Integral Int16   where
+instance Integral Int32   where
+instance Integral Int64   where
+instance Integral Int     where
+instance Integral CChar   where
+instance Integral CSChar  where
+instance Integral CUChar  where
+instance Integral CShort  where
+instance Integral CUShort where
+instance Integral CInt    where
+instance Integral CUInt   where
+instance Integral CLong   where
+instance Integral CULong  where
+instance Integral CLLong  where
+instance Integral CULLong where
 
 -- fromIntegral conversions
 instance (Prelude.Integral a, Prelude.Num b) => Convert '(Prelude a, b) where

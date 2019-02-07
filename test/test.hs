@@ -4,40 +4,53 @@
 module Test where
 
 -- base
-import Control.Arrow ( second )
-import Control.Monad ( when, replicateM )
-import System.IO ( openBinaryTempFile, hClose )
+import Control.Arrow
+  ( second )
+import Control.Monad
+  ( when, replicateM )
+import System.IO
+  ( openBinaryTempFile, hClose )
 
 -- bytestring
-import Data.ByteString ( ByteString )
-import qualified Data.ByteString       as ByteString ( readFile, writeFile
-                                                     , null, take
-                                                     )
-import qualified Data.ByteString.Char8 as ByteString ( lines, unlines )
+import Data.ByteString
+  ( ByteString )
+import qualified Data.ByteString as ByteString
+  ( readFile, writeFile
+  , null, take
+  )
+import qualified Data.ByteString.Char8 as ByteString
+  ( lines, unlines )
 
 -- directory
-import System.Directory ( doesFileExist, renameFile, removeFile )
+import System.Directory
+  ( doesFileExist, renameFile, removeFile )
 
 -- filepath
-import System.FilePath ( (</>), (<.>), replaceExtension, splitFileName )
+import System.FilePath
+  ( (</>), (<.>), replaceExtension, splitFileName )
 
 -- process
-import System.Process ( proc, createProcess
-                      , CreateProcess(std_in, std_out, std_err)
-                      , StdStream(UseHandle, CreatePipe)
-                      , waitForProcess
-                      )
+import System.Process
+  ( proc, createProcess
+  , CreateProcess(std_in, std_out, std_err)
+  , StdStream(UseHandle, CreatePipe)
+  , waitForProcess
+  )
 
 -- text-utf8
-import Data.Text ( Text )
-import qualified Data.Text    as Text ( pack, lines
-                                      , take, drop, dropWhile
-                                      , dropAround, breakOn
-                                      )
-import qualified Data.Text.IO as Text ( readFile, hPutStrLn )
+import Data.Text
+  ( Text )
+import qualified Data.Text    as Text
+  ( pack, lines
+  , take, drop, dropWhile
+  , dropAround, breakOn
+  )
+import qualified Data.Text.IO as Text
+  ( readFile, hPutStrLn )
 
 -- fir
-import FIR ( CompilerFlag(NoCode, Debug) )
+import FIR
+  ( CompilerFlag(NoCode, Debug) )
 
 --------------------------------------------------
 
@@ -45,6 +58,7 @@ tests :: [ (FilePath, Test) ]
 tests = [ ( "control" </> "loop"         , Validate  )
         , ( "functor" </> "applicative"  , Validate  )
         , ( "functor" </> "functor"      , Validate  )
+        , ( "images"  </> "sample"       , Validate  )
         , ( "optics"  </> "good"         , Validate  )
         , ( "optics"  </> "mvp1"         , Validate  )
         , ( "optics"  </> "mvp2"         , Validate  )
@@ -53,7 +67,7 @@ tests = [ ( "control" </> "loop"         , Validate  )
         , ( "optics"  </> "nostructindex", TypeCheck )
         , ( "optics"  </> "novectorindex", TypeCheck )
         , ( "optics"  </> "overlapping"  , TypeCheck )
-        , ( "optics"  </> "products"     , TypeCheck )
+        , ( "optics"  </> "pureproducts" , TypeCheck )
         ]
 
 runTests :: IO [ (FilePath, Test, TestOutput) ]
@@ -82,7 +96,7 @@ data TestFailure
   | UnexpectedTypeCheck
   | CodeGenFail  Text
   | ValidateFail Text
-  | Error
+  | CGOutputParseError
   deriving ( Eq, Show )
 
 data TestOutput
@@ -278,8 +292,8 @@ parseCGOutput contents
                                            )
                               ( "Right", _)
                                 -> Success
-                              _ -> Failure Error
+                              _ -> Failure CGOutputParseError
                   "Failed, no modules loaded."
                      -> Failure ExpectedTypeCheck
-                  _  -> Failure Error
-          _ -> Failure Error
+                  _  -> Failure CGOutputParseError
+          _ -> Failure CGOutputParseError

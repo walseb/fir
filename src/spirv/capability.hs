@@ -11,11 +11,11 @@ import Data.Word
 -- fir
 import Data.Binary.Class.Put
   ( Put )
-import qualified SPIRV.Image  as Image
+import qualified SPIRV.Image    as Image
 import SPIRV.Operation
   hiding ( Capability )
-import qualified SPIRV.PrimOp as PrimOp
-import qualified SPIRV.PrimTy as PrimTy
+import qualified SPIRV.PrimOp   as PrimOp
+import qualified SPIRV.PrimTy   as PrimTy
 import SPIRV.ScalarTy
   ( Width(..) )
 import qualified SPIRV.ScalarTy as ScalarTy
@@ -266,7 +266,7 @@ showCapability (Capability i) = show i
 primOpCapabilities :: PrimOp.PrimOp -> [ Capability ]
 primOpCapabilities ( PrimOp.op -> SatConvertSToU ) = [ Kernel ] -- why?
 primOpCapabilities ( PrimOp.op -> SatConvertUToS ) = [ Kernel ] -- why?
-primOpCapabilities ( PrimOp.MatOp _ _ _ _        ) = [ Matrix ]
+primOpCapabilities ( PrimOp.MatOp {}             ) = [ Matrix ]
 primOpCapabilities _                               = [ ]
 
 primTyCapabilities :: PrimTy.PrimTy -> [ Capability ]
@@ -281,7 +281,7 @@ primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ _  ) ) = [ ]
 primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  W16) ) = [ Float16 ]
 primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  W64) ) = [ Float64 ]
 primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  _  ) ) = [ ]
-primTyCapabilities _                                        = [ ]
+primTyCapabilities _                                          = [ ]
 
 formatCapabilities :: Image.ImageFormat Word32 -> [ Capability ]
 formatCapabilities format

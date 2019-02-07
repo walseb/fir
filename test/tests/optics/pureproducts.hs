@@ -10,15 +10,9 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Tests.Optics.Products where
+module Tests.Optics.PureProducts where
 
 -- base
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
 import qualified Prelude
 
 -- fir
@@ -124,4 +118,3 @@ m7 = set @( ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 0 :*: Entry 2 2 ) :.: Joint ) 
 
 m8 :: M 3 3 Double
 m8 = set @Center 9 m6
-

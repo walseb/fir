@@ -25,23 +25,32 @@ module CodeGen.Optics
   ) where
 
 -- base
-import Control.Arrow(first)
-import Data.Kind(Type)
+import Control.Arrow
+  ( first )
+import Data.Kind
+  ( Type )
 
 -- lens
-import Control.Lens(assign)
+import Control.Lens
+  ( assign )
 
 -- mtl
-import Control.Monad.Except(throwError)
+import Control.Monad.Except
+  ( throwError )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
-import {-# SOURCE #-} CodeGen.CodeGen(codeGen)
-import CodeGen.Composite(compositeExtract, compositeInsert)
-import CodeGen.Instruction(ID)
-import CodeGen.Monad(CGMonad)
+import {-# SOURCE #-} CodeGen.CodeGen
+  ( codeGen )
+import CodeGen.Composite
+  ( compositeExtract, compositeInsert )
+import CodeGen.Instruction
+  ( ID )
+import CodeGen.Monad
+  ( CGMonad )
 import CodeGen.Pointers
   ( Safeness(Unsafe)
   , Indices(RTInds, CTInds)
@@ -50,15 +59,20 @@ import CodeGen.Pointers
   )
 import CodeGen.State
   ( _localBinding )
-import CodeGen.Untyped(UAST(UAST))
-import Control.Type.Optic(Optic)
+import CodeGen.Untyped
+  ( UAST(UAST) )
+import Control.Type.Optic
+  ( Optic )
 import Data.Type.List
   ( type (:++:), Zip
   , SLength(SZero, SSucc)
   )
-import FIR.AST(AST((:$), Fst, Snd, Use, Assign, View, Set))
-import FIR.Instances.Optics(SOptic(..))
-import FIR.Prim.Singletons(sPrimTy)
+import FIR.AST
+  ( AST((:$), Fst, Snd, Use, Assign, View, Set) )
+import FIR.Instances.Optics
+  ( SOptic(..) )
+import FIR.Prim.Singletons
+  ( sPrimTy )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 

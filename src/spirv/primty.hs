@@ -22,9 +22,9 @@ import Data.Text
 
 -- fir
 import SPIRV.Image
-  ( ImageTy )
+  ( Image )
 import SPIRV.Operation
-  hiding ( Function )
+  hiding ( Function, Image, SampledImage )
 import SPIRV.ScalarTy
   ( ScalarTy(Integer, Floating) )
 import SPIRV.Storage
@@ -44,9 +44,9 @@ data PrimTy where
   Struct       :: [(Text,PrimTy)]              -> PrimTy
   Pointer      :: StorageClass       -> PrimTy -> PrimTy
   Function     :: [PrimTy]           -> PrimTy -> PrimTy 
-  Image        ::                      ImageTy -> PrimTy
+  Image        ::                        Image -> PrimTy
   Sampler      ::                                 PrimTy -- opaque
-  SampledImage ::                      ImageTy -> PrimTy
+  SampledImage ::                        Image -> PrimTy
   deriving ( Show, Eq, Ord )
 
 -- newtype to deal with types that are known to be pointers,

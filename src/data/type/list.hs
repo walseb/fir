@@ -21,13 +21,16 @@ module Data.Type.List
   ) where
 
 -- base 
-import Data.Kind(Type)
+import Data.Kind
+  ( Type )
 import GHC.TypeLits
   ( TypeError, ErrorMessage(..) )
-import GHC.TypeNats (Nat, type (+))
+import GHC.TypeNats
+  ( Nat, type (+) )
 
 -- fir
-import Data.Type.Snoc(Snoc, Reverse) -- for re-export
+import Data.Type.Snoc -- for re-export
+  ( Snoc, Reverse )
 
 ------------------------------------------------
 -- functionality to deal with type-level lists

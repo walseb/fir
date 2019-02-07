@@ -4,14 +4,19 @@
 module CodeGen.State where
 
 -- base
-import Data.Foldable(traverse_)
-import Data.Maybe(fromMaybe)
-import Data.Word(Word32)
+import Data.Foldable
+  ( traverse_ )
+import Data.Maybe
+  ( fromMaybe )
+import Data.Word
+  ( Word32 )
 
 -- containers
-import Data.Map(Map)
+import Data.Map
+  ( Map )
 import qualified Data.Map as Map
-import Data.Set(Set)
+import Data.Set
+  ( Set )
 import qualified Data.Set as Set
 
 -- lens
@@ -23,10 +28,12 @@ import Control.Lens
   )
 
 -- mtl
-import Control.Monad.State(MonadState)
+import Control.Monad.State
+  ( MonadState )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 import qualified Data.Text as Text
 
 -- fir
@@ -34,13 +41,16 @@ import CodeGen.Instruction
   ( ID(ID)
   , Instruction
   )
-import FIR.Builtin(stageBuiltins, builtinDecorations)
-import FIR.Prim.Singletons(AConstant)
+import FIR.Builtin
+  ( stageBuiltins, builtinDecorations )
+import FIR.Prim.Singletons
+  ( AConstant )
 import qualified SPIRV.Capability      as SPIRV
 import qualified SPIRV.Decoration      as SPIRV
 import qualified SPIRV.ExecutionMode   as SPIRV
 import qualified SPIRV.Extension       as SPIRV
 import qualified SPIRV.FunctionControl as SPIRV
+import qualified SPIRV.Image           as SPIRV
 import qualified SPIRV.PrimTy          as SPIRV
 import qualified SPIRV.Stage           as SPIRV
 
@@ -109,6 +119,9 @@ data CGContext
        -- entry points
      , userEntryPoints
           :: Map Text (SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
+       -- images
+     , userImages
+          :: Map Text SPIRV.Image
      , debugMode :: Bool
      }
 
@@ -118,6 +131,7 @@ emptyContext
       { userGlobals     = Map.empty
       , userFunctions   = Map.empty
       , userEntryPoints = Map.empty
+      , userImages      = Map.empty
       , debugMode       = True
       }
 
@@ -285,7 +299,7 @@ _userGlobal global = _userGlobals . at global
 _userFunctions :: Lens' CGContext ( Map Text SPIRV.FunctionControl )
 _userFunctions = lens userFunctions ( \c v -> c { userFunctions = v } )
 
-_userFunction :: Text -> Lens' CGContext (Maybe SPIRV.FunctionControl)
+_userFunction :: Text -> Lens' CGContext ( Maybe SPIRV.FunctionControl )
 _userFunction function = _userFunctions . at function
 
 _userEntryPoints :: Lens' CGContext ( Map Text ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) ) )
@@ -293,6 +307,12 @@ _userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
 
 _userEntryPoint :: Text -> Lens' CGContext ( Maybe ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) ) )
 _userEntryPoint entryPoint = _userEntryPoints . at entryPoint
+
+_userImages :: Lens' CGContext ( Map Text SPIRV.Image )
+_userImages = lens userImages ( \c v -> c { userImages = v } )
+
+_userImage :: Text -> Lens' CGContext ( Maybe SPIRV.Image )
+_userImage image = _userImages . at image
 
 _debugMode :: Lens' CGContext Bool
 _debugMode = lens debugMode ( \c v -> c { debugMode = v } )

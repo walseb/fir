@@ -12,15 +12,6 @@
 
 module Tests.Optics.NoMatrixIndex where
 
--- base
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
-import qualified Prelude
-
 -- vector
 import qualified Data.Vector as Array
 
@@ -33,7 +24,9 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "vertexData" ':-> Global_ Input ( M 3 4 Float ) ]
+  = '[ "vertexData" ':-> Global_ Input ( M 3 4 Float )
+     , "main"       ':-> EntryPoint Vertex '[]
+     ]
 
 program :: Program Defs ()
 program = Program do

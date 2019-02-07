@@ -9,9 +9,6 @@
 
 module Tests.Control.Loop where
 
--- base
-import Prelude ( Float )
-
 -- fir
 import FIR
 import FIR.Labels
@@ -20,7 +17,9 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Global_ Output (V 4 Float) ]
+type Defs = '[ "position" ':-> Global_ Output (V 4 Float)
+             , "main"     ':-> EntryPoint Fragment '[]
+             ]
 
 program :: Program Defs ()
 program = Program do

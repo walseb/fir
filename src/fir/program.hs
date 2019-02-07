@@ -29,24 +29,37 @@ module FIR.Program
   where
 
 -- base
-import Control.Arrow(second)
-import Data.Kind(Type)
-import GHC.TypeLits(Symbol)
+import Control.Arrow
+  ( second )
+import Data.Kind
+  ( Type )
+import GHC.TypeLits
+  ( Symbol )
 
 -- containers
-import Data.Map(Map)
+import Data.Map
+  ( Map )
 import qualified Data.Map as Map
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
-import Control.Monad.Indexed((:=), Codensity)
-import Data.Type.Map((:->), InsertionSort)
-import FIR.AST(AST)
-import FIR.Binding(BindingsMap)
-import FIR.Definition(Definition, KnownDefinitions, StartBindings, EndBindings)
-import FIR.Prim.Singletons(KnownInterface(knownInterface))
+import Control.Monad.Indexed
+  ( (:=), Codensity )
+import Data.Type.Map
+  ( (:->), InsertionSort )
+import FIR.AST
+  ( AST )
+import FIR.Binding
+  ( BindingsMap )
+import FIR.Definition
+  ( Definition, KnownDefinitions
+  , StartBindings, EndBindings
+  )
+import FIR.Prim.Singletons
+  ( KnownInterface(knownInterface) )
 import qualified SPIRV.PrimTy as SPIRV
 
 --------------------------------------------------------------------------
@@ -59,12 +72,10 @@ import qualified SPIRV.PrimTy as SPIRV
 type Procedure (a :: Type) (i :: BindingsMap) (j :: BindingsMap)
   = Codensity AST (AST a := j) i
 
-type family UndecoratedProgram
+type UndecoratedProgram
     ( defs :: [ Symbol :-> Definition ] )
     ( a    :: Type                      )
-  = ( r    :: Type                      )
-  where
-  UndecoratedProgram defs a = CodensityProgram (StartBindings defs) (EndBindings defs) a
+  = ( CodensityProgram (StartBindings defs) (EndBindings defs) a :: Type )
 
 type family CodensityProgram
     (i :: BindingsMap) -- available data at the start (e.g. uniforms)

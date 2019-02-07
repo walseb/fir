@@ -9,8 +9,10 @@
 module Data.Type.Map where
 
 -- base 
-import Data.Type.Bool(If)
-import Data.Type.Equality(type (==))
+import Data.Type.Bool
+  ( If )
+import Data.Type.Equality
+  ( type (==) )
 import GHC.TypeLits
   ( CmpSymbol
   , TypeError, ErrorMessage(..)
@@ -70,4 +72,3 @@ type family Remove (i :: [k :-> v]) (j :: [k :-> v]) :: [k :-> v] where
 type family InsertionSort (i :: [k :-> v]) :: Map k v where
   InsertionSort '[]              = '[]
   InsertionSort ((k ':-> v) : l) = Insert k v (InsertionSort l)
-

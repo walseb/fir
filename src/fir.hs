@@ -71,10 +71,10 @@ module FIR
   , Control.Type.Optic.ReifiedGetter(view)
   , Control.Type.Optic.ReifiedSetter(set)
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST((:$), Lit)
+  , FIR.AST.AST((:$), Lit, Pair)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.Binding.BindingsMap
-  , FIR.Binding.Var, FIR.Binding.Fun, FIR.Binding.Img
+  , FIR.Binding.Var, FIR.Binding.Fun
   , FIR.Binding.R
   , FIR.Binding.W
   , FIR.Binding.RW
@@ -92,6 +92,11 @@ module FIR
   , FIR.Prim.Array.Array
   , FIR.Prim.Array.mkArray
   , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
+  , FIR.Prim.Image.ImageOperand(..)
+  , FIR.Prim.Image.ImageOperandList(..)
+  , FIR.Prim.Image.ImageOperands(..)
+  , FIR.Prim.Image.ImageProperties(..)
+  , FIR.Prim.Image.Image
   , FIR.Prim.Struct.Struct(End,(:&))
   , FIR.Program.Procedure
   , FIR.Program.Program(Program)
@@ -103,6 +108,9 @@ module FIR
   , SPIRV.FunctionControl.Inlineability(..)
   , SPIRV.FunctionControl.SideEffects(..)
   , SPIRV.FunctionControl.FunctionControl
+  , SPIRV.Image.DepthTesting(..)
+  , SPIRV.Image.Projection(..)
+  , SPIRV.Image.SamplingMethod(Method)
   , SPIRV.Stage.Stage(..)
   , SPIRV.Storage.StorageClass
       ( Input, Output -- not exporting 'Function' storage class
@@ -110,7 +118,7 @@ module FIR
       )
   -- image properties
   , SPIRV.Image.Dimensionality(..)
-  , SPIRV.Image.Depth(..)
+  , SPIRV.Image.HasDepth(..)
   , SPIRV.Image.Arrayness(..)
   , SPIRV.Image.MultiSampling(..)
   , SPIRV.Image.ImageUsage(..)
@@ -121,7 +129,7 @@ module FIR
   , R11G11B10
   , RGB10A2
 
-  -- re-exporting parts of base
+  -- re-exporting parts of Prelude
   , Prelude.Bool(..), Prelude.otherwise
   , Prelude.Maybe(..), Prelude.maybe
   , Prelude.Either(..), Prelude.either
@@ -153,22 +161,28 @@ module FIR
   ) where
 
 -- base
-import qualified Control.Monad as Monad (unless)
+import qualified Control.Monad as Monad
+  ( unless )
 import Prelude
-import Data.Word(Word8, Word16, Word32, Word64)
-import Data.Int(Int8, Int16, Int32, Int64)
+import Data.Word
+  ( Word8, Word16, Word32, Word64 )
+import Data.Int
+  ( Int8, Int16, Int32, Int64 )
 
 -- bytestring
 import qualified Data.ByteString.Lazy as ByteString
 
 -- half
-import Numeric.Half(Half)
+import Numeric.Half
+  ( Half )
 
 -- tree-view
-import Data.Tree.View(drawTree)
+import Data.Tree.View
+  ( drawTree )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
 import CodeGen.CodeGen
@@ -183,6 +197,7 @@ import FIR.Instances.AST
 import FIR.Instances.Codensity
 import FIR.Instances.Optics
 import FIR.Prim.Array
+import FIR.Prim.Image
 import FIR.Prim.Struct
 import FIR.Program
 import Math.Algebra.Class

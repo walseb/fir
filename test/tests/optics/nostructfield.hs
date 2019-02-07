@@ -12,15 +12,6 @@
 
 module Tests.Optics.NoStructField where
 
--- base
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
-import qualified Prelude
-
 -- vector
 import qualified Data.Vector as Array
 
@@ -40,6 +31,7 @@ type Defs
                     , "weight"   ':-> Float
                     ]
           )
+     , "main" ':-> EntryPoint Vertex '[]     
      ]
 
 program :: Program Defs ()

@@ -15,20 +15,30 @@
 module FIR.Prim.Struct where
 
 -- base
-import Control.Applicative(liftA2)
-import Data.Kind(Type)
-import GHC.TypeLits(Symbol)
-import Unsafe.Coerce(unsafeCoerce)
+import Control.Applicative
+  ( liftA2 )
+import Data.Kind
+  ( Type )
+import GHC.TypeLits
+  ( Symbol )
+import Unsafe.Coerce
+  ( unsafeCoerce )
 
 -- fir
-import Data.Type.List(type (:++:))
-import Data.Type.Map((:->)((:->)), Key, Value)
+import Data.Type.List
+  ( type (:++:) )
+import Data.Type.Map
+  ( (:->)((:->)), Key, Value )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
   , FreeGradedSemigroup(..)
   )
-import {-# SOURCE #-} FIR.Prim.Singletons(PrimTy, SPrimTyMap(SNil, SCons), PrimTyMap(primTyMapSing))
+import {-# SOURCE #-} FIR.Prim.Singletons
+  ( PrimTy
+  , PrimTyMap(primTyMapSing)
+  , SPrimTyMap(SNil, SCons)
+  )
 
 ------------------------------------------------------------
 -- structs

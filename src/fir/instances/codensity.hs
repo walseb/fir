@@ -35,6 +35,7 @@ module FIR.Instances.Codensity
   , def, fundef, entryPoint
   , use, assign, modifying
   , get, put, modify
+  , sample, imageRead, imageWrite
     -- Functor functionality
   , CodensityASTFunctor(fmapCodAST), (<$$$>)
   , CodensityASTApplicative(pureCodAST, (<***>))
@@ -53,15 +54,19 @@ import Prelude hiding
   , Functor(..)
   , Applicative(..)
   )
-import Data.Kind(Type)
-import Data.Proxy(Proxy(Proxy))
-import Data.Word(Word16)
+import Data.Kind
+  ( Type )
+import Data.Proxy
+  ( Proxy(Proxy) )
+import Data.Word
+  ( Word16 )
 import qualified GHC.Stack
 import GHC.TypeLits
   ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(..)
   )
-import GHC.TypeNats(KnownNat)
+import GHC.TypeNats
+  ( KnownNat )
 
 -- fir
 import Control.Monad.Indexed
@@ -70,17 +75,41 @@ import Control.Monad.Indexed
   , ixFmap, ixPure, ixLiftA2
   )
 import qualified Control.Monad.Indexed as Indexed
-import Control.Type.Optic(Optic, Name, Gettable, Settable, Part, Whole, Indices)
-import Data.Type.Known(Known)
-import Data.Type.List(KnownLength(sLength), Postpend)
-import Data.Type.Map(Insert, Union)
-import FIR.AST(AST(..), Syntactic(Internal,toAST,fromAST))
-import FIR.Binding(BindingsMap, BindingType, Var, Fun, Permission)
-import FIR.Builtin(StageBuiltins)
-import FIR.Instances.AST()
-import FIR.Instances.Bindings(ValidDef, ValidFunDef, ValidEntryPoint)
-import FIR.Instances.Optics(User, Assigner, KnownOptic, opticSing)
-import FIR.Prim.Singletons(PrimTy, ScalarTy, KnownVars)
+import Control.Type.Optic
+  ( Optic, Name, Gettable, Settable, Part, Whole, Indices )
+import Data.Type.Known
+  ( Known )
+import Data.Type.List
+  ( KnownLength(sLength), Postpend )
+import Data.Type.Map
+  ( Insert, Union )
+import FIR.AST
+  ( AST(..), Syntactic(Internal,toAST,fromAST) )
+import FIR.Binding
+  ( Binding(EntryPoint)
+  , BindingsMap
+  , FunctionType, Var, Fun
+  , Permission
+  )
+import FIR.Builtin
+  ( StageBuiltins )
+import FIR.Instances.AST
+  ( )
+import FIR.Instances.Bindings
+  ( ValidDef, ValidFunDef, ValidEntryPoint
+  , LookupImageProperties
+  , ValidImageSample, ValidImageRead, ValidImageWrite
+  )
+import FIR.Instances.Optics
+  ( User, Assigner, KnownOptic, opticSing )
+import FIR.Prim.Image
+  ( ImageProperties
+  , ImageCoordinates
+  , ImageData
+  , ImageOperands
+  )
+import FIR.Prim.Singletons
+  ( PrimTy, ScalarTy, KnownVars )
 import Math.Algebra.Class
   ( AdditiveGroup(..)
   , Semiring(..), Ring(..)
@@ -100,7 +129,10 @@ import Math.Logic.Class
   , Choose(..), ifThenElse
   , Ord(..)
   )
-import SPIRV.Stage(Stage)
+import SPIRV.Image
+  ( SamplingMethod )
+import SPIRV.Stage
+  ( Stage )
 
 --------------------------------------------------------------------------
 -- * Monadic control operations
@@ -162,7 +194,7 @@ def :: forall k ps a i.
        , KnownSymbol k
        , Known [Permission] ps
        , PrimTy a
-       , ValidDef k i ~ 'True
+       , ValidDef k i
        )
     => AST a -- ^ Initial value.
     -> Codensity AST (AST a := Insert k (Var ps a) i) i
@@ -172,29 +204,29 @@ fundef' :: forall k as b l i.
           , KnownSymbol k
           , KnownVars as
           , PrimTy b
-          , ValidFunDef k as i l ~ 'True
+          , ValidFunDef k as i l
           )
        => Codensity AST (AST b := l) (Union i as)
-       -> Codensity AST (AST (BindingType (Fun as b)) := Insert k (Fun as b) i) i
+       -> Codensity AST (AST (FunctionType as b) := Insert k (Fun as b) i) i
 
--- | Define a new entry-point (or shader stage).
+-- | Define a new entry point (or shader stage).
 --
--- Builtin variables for the relevant shader stage are made available in the entry-point body.
+-- Builtin variables for the relevant shader stage are made available in the entry point body.
 --
 -- Type-level arguments:
 --
--- *@k@: name of entry-point,
--- *@s@: entry-point 'SPIRV.Stage.Stage',
--- *@l@: state at end of entry-point body (usually inferred),
--- *@i@: state at start of entry-point body (usually inferred).
+-- *@k@: name of entry point,
+-- *@s@: entry point 'SPIRV.Stage.Stage',
+-- *@l@: state at end of entry point body (usually inferred),
+-- *@i@: state at start of entry point body (usually inferred).
 entryPoint :: forall k s l i.
              ( GHC.Stack.HasCallStack
              , KnownSymbol k
              , Known Stage s
-             , ValidEntryPoint s i l ~ 'True
+             , ValidEntryPoint s i l
              )
-           => Codensity AST (AST () := l) (Union i (StageBuiltins s)) -- ^ Entry-point body.
-           -> Codensity AST (AST () := i) i
+           => Codensity AST (AST () := l) (Union i (StageBuiltins s)) -- ^ Entry point body.
+           -> Codensity AST (AST () := Insert k (EntryPoint s) i) i
 
 -- | /Use/ an optic, returning a monadic value read from the (indexed) state.
 --
@@ -263,15 +295,86 @@ modify = modifying @(Name k :: Optic '[] i a)
 fundef :: forall k as b l i r.
            ( GHC.Stack.HasCallStack
            , Syntactic r
-           , Internal r ~ BindingType (Fun as b)
+           , Internal r ~ FunctionType as b
            , KnownSymbol k
            , KnownVars as
            , PrimTy b
-           , ValidFunDef k as i l ~ 'True
+           , ValidFunDef k as i l
            )
         => Codensity AST (AST b := l) (Union i as) -- ^ Function body code.
         -> Codensity AST ( r := Insert k (Fun as b) i) i
 fundef = fromAST . toAST . fundef' @k @as @b @l @i
+
+--------------------------
+-- ** Image read/write
+
+-- | Read from a sampling image.
+--
+-- Type level arguments:
+--
+-- * @k@: image name,
+-- * @meth@: optional sampling method to use (sampler, depth test, projective coordinates),
+-- * @props@: image properties (usually inferred),
+-- * @i@: monadic state (usually inferred).
+--
+-- If a sampler is provided, access is done via floating-point coordinates.
+-- Without a sampler, integral coordinates must be used instead.
+sample :: forall ( k     :: Symbol )
+                 ( meth  :: Maybe SamplingMethod  )
+                 ( props :: ImageProperties )
+                 ( i     :: BindingsMap     ).
+          ( KnownSymbol k
+          , Known (Maybe SamplingMethod) meth
+          , LookupImageProperties k i ~ props
+          , Known ImageProperties props
+          , ValidImageSample meth props
+          )
+       => ImageOperands meth props          -- ^ List of (usually optional) image operands.
+       -> AST (ImageCoordinates meth props) -- ^ Coordinates to sample at.
+       -> Codensity AST (AST (ImageData meth props) := i) i
+
+-- | Read from a storage image directly (without a sampler).
+--
+-- Type level arguments:
+--
+-- * @k@: image name,
+-- * @props@: image properties (usually inferred),
+-- * @i@: monadic state (usually inferred).
+imageRead :: forall ( k     :: Symbol )
+                    ( props :: ImageProperties )
+                    ( i     :: BindingsMap     ).
+             ( KnownSymbol k
+             , LookupImageProperties k i ~ props
+             , Known ImageProperties props
+             , ValidImageRead props
+             )
+          => ImageOperands Nothing props          -- ^ List of (usually optional) image operands.
+          -> AST (ImageCoordinates Nothing props) -- ^ Coordinates to read from.
+          -> Codensity AST (AST (ImageData Nothing props) := i) i
+
+-- | Write to a storage image directly.
+--
+-- Type level arguments:
+--
+-- * @k@: image name,
+-- * @props@: image properties (usually inferred),
+-- * @i@: monadic state (usually inferred).
+imageWrite :: forall ( k     :: Symbol )
+                     ( props :: ImageProperties )
+                     ( i     :: BindingsMap     ).
+              ( KnownSymbol k
+              , LookupImageProperties k i ~ props
+              , Known ImageProperties props
+              , ValidImageWrite props
+              )
+           => ImageOperands Nothing props
+           -> AST (ImageCoordinates Nothing props)
+           -> AST (ImageData Nothing props)
+           -> Codensity AST (AST () := i) i
+
+sample     operands = fromAST (Sample     @k @meth @props Proxy operands)
+imageRead  operands = fromAST (ImageRead  @k       @props Proxy operands)
+imageWrite operands = fromAST (ImageWrite @k       @props Proxy operands)
 
 --------------------------------------------------------------------------
 -- type synonyms for use/assign

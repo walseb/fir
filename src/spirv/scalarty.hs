@@ -1,4 +1,7 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module SPIRV.ScalarTy
   ( Width(..), width
@@ -11,6 +14,10 @@ import Data.Word
   ( Word32 )
 import Prelude
   hiding ( Integer, Floating )
+
+-- fir
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )
 
 --------------------------------------------------
 -- SPIR-V scalar types
@@ -32,6 +39,13 @@ data Signedness
   = Unsigned
   | Signed
   deriving ( Show, Eq, Ord, Enum, Bounded )
+
+instance Demotable Signedness where
+  type Demote Signedness = Signedness
+instance Known Signedness Unsigned where
+  known = Unsigned
+instance Known Signedness Signed where
+  known = Signed
 
 signedness :: Signedness -> Word32
 signedness Unsigned = 0

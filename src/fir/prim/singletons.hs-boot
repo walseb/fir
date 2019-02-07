@@ -10,14 +10,21 @@
 module FIR.Prim.Singletons where
 
 -- base
-import Data.Kind(Type)
-import Data.Typeable(Typeable)
-import GHC.TypeLits(Symbol, KnownSymbol)
+import Data.Kind
+  ( Type )
+import Data.Typeable
+  ( Typeable )
+import GHC.TypeLits
+  ( Symbol, KnownSymbol )
 
 -- fir
-import Data.Binary.Class.Put(Put)
-import Data.Function.Variadic(ListVariadic)
-import Data.Type.Map((:->)((:->)))
+import Data.Binary.Class.Put
+  ( Put )
+import Data.Function.Variadic
+  ( ListVariadic )
+import Data.Type.Map
+  ( (:->)((:->)) )
+import qualified SPIRV.PrimTy   as SPIRV
 import qualified SPIRV.ScalarTy as SPIRV
 
 ------------------------------------------------------------
@@ -43,6 +50,7 @@ class ( PrimTy ty
   scalarTySing :: SScalarTy ty
 
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
+primTy   :: forall ty. PrimTy   ty => SPIRV.PrimTy
 
 data SPrimTyMap :: [Symbol :-> Type] -> Type where
   SNil  :: SPrimTyMap '[]

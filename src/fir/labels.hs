@@ -45,7 +45,6 @@ within the context of the indexed monad of the @do@ block.
 
 -}
 
-
 module FIR.Labels
  ( -- * Overloaded labels
    IsLabel(fromLabel)
@@ -55,20 +54,29 @@ module FIR.Labels
  where
 
 -- base
-import Data.Kind(Type)
+import Data.Kind
+  ( Type )
 import qualified GHC.Stack
-import GHC.TypeLits(Symbol, KnownSymbol)
-import Prelude(Bool(True))
+import GHC.TypeLits
+  ( Symbol, KnownSymbol )
 
 -- fir
-import Control.Monad.Indexed(Codensity, (:=))
-import Control.Type.Optic(Optic, Name)
-import Data.Type.Map(Insert)
-import FIR.AST(AST)
-import FIR.Binding(BindingsMap, Var, R, RW)
-import FIR.Instances.Bindings(ValidDef,Get, Put)
-import FIR.Instances.Codensity(def, use, assign, modifying)
-import FIR.Prim.Singletons(PrimTy)
+import Control.Monad.Indexed
+  ( Codensity, (:=) )
+import Control.Type.Optic
+  ( Optic, Name )
+import Data.Type.Map
+  ( Insert )
+import FIR.AST
+  ( AST )
+import FIR.Binding
+  ( BindingsMap, Var, R, RW )
+import FIR.Instances.Bindings
+  ( ValidDef,Get, Put )
+import FIR.Instances.Codensity
+  ( def, use, assign, modifying )
+import FIR.Prim.Singletons
+  ( PrimTy )
 
 --------------------------------------------------------------------------
 -- overloaded labels
@@ -118,7 +126,7 @@ infixr 4 .=
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , PrimTy a
-        , ValidDef k i ~ 'True
+        , ValidDef k i
         )
      => Label k a
      -> AST a
@@ -130,7 +138,7 @@ _ #= a = def @k @RW a
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , PrimTy a
-        , ValidDef k i ~ 'True
+        , ValidDef k i
         )
      => Label k a
      -> AST a

@@ -12,14 +12,6 @@
 
 module Tests.Optics.MVP2 where
 
--- base
-import Prelude hiding ( Functor(..), (<$>)
-                      , Applicative(..), Monad(..)
-                      , Num(..), Fractional(..), Integral(..), Floating(..)
-                      , Eq(..), Ord(..)
-                      , (&&)
-                      )
-
 -- fir
 import FIR
 import Math.Linear
@@ -32,6 +24,7 @@ type Defs = '[ "ubo"     ':-> Global Uniform
                               '[ Binding 0, DescriptorSet 0, Block ]
              , "in_pos"  ':-> Global Input  (V 4 Float) '[ Location 0 ]
              , "out_pos" ':-> Global Output (V 4 Float) '[ Location 0 ]
+             , "main"    ':-> EntryPoint Vertex '[]
              ]
 
 program :: Program Defs ()
