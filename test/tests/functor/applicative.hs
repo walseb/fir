@@ -20,8 +20,8 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Global_ Input (V 3 Float)
-             , "main"     ':-> EntryPoint Vertex '[]
+type Defs = '[ "position" ':-> Input      '[] (V 3 Float)
+             , "main"     ':-> EntryPoint '[] Vertex
              ]
 
 program :: Program Defs ()

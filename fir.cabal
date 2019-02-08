@@ -112,6 +112,7 @@ library
       , FIR.Prim.Singletons
       , FIR.Prim.Struct
       , FIR.Program
+      , FIR.Synonyms
       , Math.Algebra.Class
       , Math.Algebra.GradedSemigroup
       , Math.Logic.Class

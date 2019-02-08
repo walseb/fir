@@ -24,14 +24,14 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "vertexData"':-> Global_ Input
+  = '[ "vertexData"':-> Input '[]
           ( Struct [ "position" ':-> V 3 Float
                    , "colour"   ':-> V 4 Float
                    , "size"     ':-> Float
                    , "weight"   ':-> Float
                    ]
          )
-     , "main" ':-> EntryPoint Vertex '[]
+     , "main" ':-> EntryPoint '[] Vertex
      ]
 
 program :: Program Defs ()

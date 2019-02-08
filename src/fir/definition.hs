@@ -65,9 +65,9 @@ import qualified SPIRV.Storage         as SPIRV
 -- for instance, annotating layout information
 
 data Definition where
-  Global     :: SPIRV.StorageClass -> Type -> [ SPIRV.Decoration Nat ] -> Definition
+  Global     :: SPIRV.StorageClass -> [ SPIRV.Decoration Nat ] -> Type -> Definition
   Function   :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
-  EntryPoint :: SPIRV.Stage -> [ SPIRV.ExecutionMode Nat ] -> Definition
+  EntryPoint :: [ SPIRV.ExecutionMode Nat ] -> SPIRV.Stage -> Definition
 
 data Annotate
   = AnnotateGlobal     ( SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
@@ -79,11 +79,11 @@ instance Demotable Definition where
 
 -- workaround for image types being opaque and not having a Haskell-level counterpart
 instance {-# OVERLAPPING #-}
-         ( Known ImageProperties props
-         , Known SPIRV.StorageClass storage
+         ( Known ImageProperties        props
+         , Known SPIRV.StorageClass     storage
          , Known [SPIRV.Decoration Nat] decs
          )
-      => Known Definition ('Global storage (Image props) decs)
+      => Known Definition ('Global storage decs (Image props))
       where
   known = AnnotateGlobal
     ( SPIRV.PointerTy ( knownValue @storage) imgTy
@@ -96,7 +96,7 @@ instance {-# OVERLAPPING #-}
                                 _                  -> SPIRV.Image        img
 
 instance ( PrimTy ty, Known SPIRV.StorageClass storage, Known [SPIRV.Decoration Nat] decs )
-      => Known Definition ('Global storage ty decs)
+      => Known Definition ('Global storage decs ty)
       where
   known = AnnotateGlobal
     ( SPIRV.PointerTy ( knownValue @storage) (primTy @ty)
@@ -109,7 +109,7 @@ instance Known SPIRV.FunctionControl control
   known = AnnotateFunction (knownValue @control)
 
 instance ( Known SPIRV.Stage stage, Known [SPIRV.ExecutionMode Nat] modes )
-      => Known Definition ('EntryPoint stage modes)
+      => Known Definition ('EntryPoint modes stage)
       where
   known = AnnotateEntryPoint
             ( knownValue @stage
@@ -140,7 +140,7 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
 type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   StartBindings '[]
     = '[]
-  StartBindings ((k ':-> Global storage ty _) ': defs)
+  StartBindings ((k ':-> Global storage _ ty) ': defs)
     = (k ':-> Variable (StoragePermissions storage) ty) ': StartBindings defs
   StartBindings ((k ':-> _) ': defs)
     = StartBindings defs
@@ -148,11 +148,11 @@ type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bi
 type family EndBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   EndBindings '[]
     = '[]
-  EndBindings ((k ':-> Global storage ty _) ': defs)
+  EndBindings ((k ':-> Global storage _ ty) ': defs)
     = (k ':-> Variable (StoragePermissions storage) ty) ': EndBindings defs
   EndBindings ((k ':-> Function _ as b) ': defs)
     = (k ':-> Binding.Function as b) ': EndBindings defs
-  EndBindings ((k ':-> EntryPoint stage _) ': defs)
+  EndBindings ((k ':-> EntryPoint _ stage) ': defs)
     = (k ':-> Binding.EntryPoint stage) ': EndBindings defs
 
 --------------------------------------------------------------------------
@@ -168,9 +168,3 @@ context = let (   userGlobals
                 , userEntryPoints
                 }
 
---------------------------------------------------------------------------
--- helpful shorthand synonyms
-
-type Global_ s ty   = Global s ty '[]
-type Function_ as b = Function SPIRV.NoFunctionControl as b
-type EntryPoint_ s  = EntryPoint s '[]

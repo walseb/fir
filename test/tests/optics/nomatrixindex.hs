@@ -24,8 +24,8 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "vertexData" ':-> Global_ Input ( M 3 4 Float )
-     , "main"       ':-> EntryPoint Vertex '[]
+  = '[ "vertexData" ':-> Input '[] ( M 3 4 Float )
+     , "main"       ':-> EntryPoint '[] Vertex
      ]
 
 program :: Program Defs ()

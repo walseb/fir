@@ -24,17 +24,17 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "modelMatrix"      ':-> Global_ Uniform ( M 4 4 Float )
-     , "viewMatrix"       ':-> Global_ Uniform ( M 4 4 Float )
-     , "projectionMatrix" ':-> Global_ Uniform ( M 4 4 Float )
-     , "vertexData"       ':-> Global_ Input
+  = '[ "modelMatrix"      ':-> Uniform '[] ( M 4 4 Float )
+     , "viewMatrix"       ':-> Uniform '[] ( M 4 4 Float )
+     , "projectionMatrix" ':-> Uniform '[] ( M 4 4 Float )
+     , "vertexData"       ':-> Input '[]
                                   ( Struct [ "position" ':-> V 3 Float
                                            , "colour"   ':-> V 4 Float
                                            , "size"     ':-> Float
                                            , "weight"   ':-> Float
                                            ]
                                   )
-     , "arr1" ':-> Global_ Input
+     , "arr1" ':-> Input '[]
                       ( RuntimeArray
                         ( RuntimeArray
                             ( Struct
@@ -44,9 +44,8 @@ type Defs
                             )
                         )
                       )
-     , "arr2" ':-> Global_ Input
-                      ( Array 17 Float )
-     , "main"     ':-> EntryPoint Vertex '[]                      
+     , "arr2" ':-> Input '[] ( Array 17 Float )
+     , "main" ':-> EntryPoint '[] Vertex
      ]
 
 program :: Program Defs ()

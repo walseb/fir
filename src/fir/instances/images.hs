@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -12,6 +13,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE ViewPatterns           #-}
 
 module FIR.Instances.Images where
 
@@ -33,7 +35,8 @@ import Data.Type.Known
 import FIR.Binding
   ( BindingsMap )
 import FIR.Prim.Image
-  ( ImageProperties, Image, ImageData, ImageCoordinates
+  ( ImageProperties
+  , Image, ImageData, ImageCoordinates
   , OperandName, ImageOperands
   )
 import FIR.Instances.Bindings

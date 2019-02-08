@@ -21,6 +21,8 @@ import Data.Int
   ( Int32 )
 import Data.Kind
   ( Type, Constraint )
+import Data.Word
+  ( Word32 )
 import Data.Type.Bool
   ( If )
 import GHC.TypeLits
@@ -144,9 +146,7 @@ data ImageOperands
      where
   Done :: ImageOperands props '[ ]
   Proj :: ImageOperands props '[ ProjectiveCoords ]
-  Dref :: ( Floating a
-          , NoDuplicate DepthComparison ops
-          )
+  Dref :: ( NoDuplicate DepthComparison ops )
        => AST a
        -> ImageOperands props ops
        -> ImageOperands props (DepthComparison ': ops)
@@ -166,8 +166,7 @@ data ImageOperands
        => AST a
        -> ImageOperands props ops
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.LOD ) ': ops)
-  MinLOD :: ( Floating a
-            , BasicDim "MinLOD" props
+  MinLOD :: ( BasicDim "MinLOD" props
             , NoMS "MinLOD" props
             , NoDuplicate (BaseOperand ('LODOperand SPIRV.MinLOD)) ops
             , NoLODOps "MinLOD" '[SPIRV.LOD, SPIRV.Bias] ops
@@ -200,18 +199,13 @@ data ImageOperands
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.Offset ': ops)
   ConstOffsetsBy
-    :: ( Integral a
-       , PrimTy a
-       , NotCubeDim "ConstOffsetsBy" props
-      )
-    => Array 4 (V 2 a)
+    :: ( NotCubeDim "ConstOffsetsBy" props )
+    => Array 4 (V 2 Int32)
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops)
   SampleNo
-    :: ( Integral a
-       , CanMultiSample props
-       )
-    => AST a
+    :: ( CanMultiSample props )
+    => AST Word32
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.Sample ': ops)
 
@@ -254,40 +248,6 @@ type family SupportsDepthTest ( props :: ImageProperties ) :: Constraint where
   SupportsDepthTest (Properties _ _ _ (Just NotDepthImage) _ _ _ _)
     = TypeError ( Text "Cannot do a depth comparison: image is not a depth image." )
   SupportsDepthTest _ = ()
-
-{-
-type family ValidDepth
-              ( meth     :: Maybe SamplingMethod )
-              ( hasDepth :: Maybe HasDepth       )
-            :: Constraint
-            where
-  ValidDepth Nothing _ = ()
-  ValidDepth
-    ( Just ( Method DepthTest _ ) )
-    ( Just NotDepthImage            )
-      = TypeError ( Text "Cannot perform a depth-test: not a depth image." )
-  ValidDepth
-    ( Just ( Method NoDepthTest _ ) )
-    ( Just DepthImage                 )
-      = TypeError ( Text "Must perform depth-comparison on this depth image." )
-  ValidDepth _ _ = ()
-
-type family ValidOps
-                ( meth  :: Maybe SamplingMethod )
-                ( ops   :: [OperandName]        )
-              :: Constraint
-              where
-  ValidOps Nothing ops
-    = ( NoLODOps ops, NoDepthOp (Elem DepthComparison ops) )
-  ValidOps
-    ( Just ( Method 'NoDepthTest _ ) )
-    ops
-      = ( CompatibleLODOps ops, NoDepthOp (Elem DepthComparison ops) )
-  ValidOps
-    ( Just ( Method 'DepthTest _ ) )
-    ops
-      = ( CompatibleLODOps ops, HasDepthOp (Elem DepthComparison ops) )
--}
 
 -----------------------------------------------------------
 
@@ -419,88 +379,3 @@ type family NoLODOps
         )
         ( NoLODOps name excl ops )
   NoLODOps name excl ( _ ': ops ) = NoLODOps name excl ops
-
-data LODMethod
-  = ImplicitLOD
-  | ExplicitLOD
-  deriving ( Show, Eq, Ord, Enum, Bounded )
-
-{-
-type family NoLODOps (ops :: [OperandName]) :: Constraint where
-  NoLODOps '[] = ()
-  NoLODOps ((BaseOperand ('LODOperand op)) ': _)
-    = TypeError ( ShowType op :<>: Text " operand not allowed; no LOD necessary." )
-  NoLODOps (_ ': ops) = NoLODOps ops
-
-type family NoDepthOp (hasDepthOp :: Bool) :: Constraint where
-  NoDepthOp False = ()
-  NoDepthOp True
-    = TypeError ( Text "Sampling without depth comparison: no 'Dref' operand required." )
-
-type family HasDepthOp (hasDepthop :: Bool) :: Constraint where
-  HasDepthOp True = ()
-  HasDepthOp False
-    = TypeError ( Text "Missing 'Dref' operand (depth reference value required to perform depth comparison)." )
-
-type CompatibleLODOps (ops :: [OperandName]) = ( ValidLODMethod (GetLODMethod ops) :: Constraint )
-
-type family NotExplicitLOD (lod :: LODMethod) :: Constraint where
-  NotExplicitLOD ExplicitLOD
-    = TypeError (     Text "Sampling with 'ExplicitLOD', but 'MinLOD' operand provided."
-                 :$$: Text "Cannot set both 'LOD' and 'MinLOD'."
-                )
-  NotExplicitLOD _ = ()
-
--- evaluate the 'GetLODMethod' type family
-type family ValidLODMethod (meth :: LODMethod) :: Constraint where
-  ValidLODMethod ImplicitLOD = ()
-  ValidLODMethod ExplicitLOD = ()
-  ValidLODMethod _ = TypeError ( Text "Invalid LOD method." )
-
-type GetLODMethod (ops :: [OperandName])
-  = ( GetLODMethodWithAccum '[] ops :: LODMethod )
-
-type family GetLODMethodWithAccum
-              ( acc :: [LODOperand] )
-              ( ops :: [OperandName]      )
-            :: LODMethod where
-  GetLODMethodWithAccum acc '[] = GetLODFromAcc acc
-  GetLODMethodWithAccum acc (BaseOperand ('LODOperand lod) ': ops)
-    = GetLODMethodWithAccum (LODUpdateAcc acc lod) ops
-  GetLODMethodWithAccum acc (nonLODop ': ops)
-    = GetLODMethodWithAccum acc ops
-  
-type family GetLODFromAcc (acc :: [LODOperand]) :: LODMethod where
-  GetLODFromAcc '[] = ImplicitLOD
-  GetLODFromAcc (SPIRV.Grad ': _) = ExplicitLOD
-  GetLODFromAcc (SPIRV.LOD ': _ ) = ExplicitLOD
-  GetLODFromAcc (SPIRV.Bias ': _) = ImplicitLOD
-  GetLODFromAcc (SPIRV.MinLOD ': lods) = GetLODFromAcc lods
-
-type family LODUpdateAcc
-                ( acc :: [LODOperand])
-                ( lod :: LODOperand  )
-              :: [LODOperand] where
-  LODUpdateAcc '[] lod = '[lod]
-  LODUpdateAcc '[SPIRV.Bias]   SPIRV.MinLOD
-    = '[SPIRV.Bias, SPIRV.MinLOD]
-  LODUpdateAcc '[SPIRV.MinLOD] SPIRV.Bias
-    = '[SPIRV.Bias, SPIRV.MinLOD]
-  LODUpdateAcc '[SPIRV.Grad]   SPIRV.MinLOD
-    = '[SPIRV.Grad, SPIRV.MinLOD]
-  LODUpdateAcc '[SPIRV.MinLOD] SPIRV.Grad
-    = '[SPIRV.Grad, SPIRV.MinLOD]
-  LODUpdateAcc (lod ': _) lod -- can't happen as we have already checked for duplicates
-  -- return a bogus value instead of throwing a second type error
-    = '[]
---  = TypeError ( Text "Attempt to set " :<>: ShowType lod :<>: Text " operand more than once." )
-  LODUpdateAcc (_ ': _ ': _) SPIRV.MinLOD
-    = TypeError ( Text "Attempt to set MinLOD operand more than once." )
-  LODUpdateAcc (op ': _) lod
-    = TypeError ( Text "Incompatible image operands "
-                 :<>: ShowType op
-                 :<>: Text " and "
-                 :<>: ShowType lod
-                 :<>: Text "."
-                )
--}

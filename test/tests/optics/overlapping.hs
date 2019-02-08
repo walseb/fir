@@ -20,7 +20,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-program :: Program '[ "main" ':-> EntryPoint Vertex '[] ] ()
+program :: Program '[ "main" ':-> EntryPoint '[] Vertex ] ()
 program = Program do
 
   entryPoint @"main" @Vertex do

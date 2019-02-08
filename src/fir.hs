@@ -33,10 +33,11 @@ import Math.Linear -- for vectors
 -- Specify the input/output of the shader, with memory locations (and other interface parameters).
 -- This consists of a type level map of top-level definitions.
 type FragmentDefs = 
-  '[ "in_colour"  ':-> Global Input  (V 4 Float) '[ Location 0 ] -- input  (varying) of type V 4 Float and memory location 0
-   , "out_colour" ':-> Global Output (V 4 Float) '[ Location 0 ] -- output (varying) of type V 4 Float and memory location 0
+  '[ "in_colour"  ':-> Input      '[ Location 0 ] (V 4 Float)   -- input  (varying) of type V 4 Float and memory location 0
+   , "out_colour" ':-> Output     '[ Location 0 ] (V 4 Float)   -- output (varying) of type V 4 Float and memory location 0
+   , "main"       ':-> EntryPoint '[ OriginLowerLeft ] Fragment -- fragment shader stage, with given coordinate system
    ]
--- Other definitions can be declared: global constants (uniforms, push constants), and (top-level) functions.
+
 
 -- Simple fragment shader.
 fragment :: Program FragmentDefs ()
@@ -79,13 +80,9 @@ module FIR
   , FIR.Binding.W
   , FIR.Binding.RW
   , FIR.Definition.Definition
-      ( Global
-      , Function
+      ( Function
       , EntryPoint
       )
-  , FIR.Definition.Global_
-  , FIR.Definition.Function_
-  , FIR.Definition.EntryPoint_
   , module FIR.Instances.AST
   , module FIR.Instances.Codensity
   , module FIR.Instances.Images
@@ -93,12 +90,13 @@ module FIR
   , FIR.Prim.Array.Array
   , FIR.Prim.Array.mkArray
   , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
-  , FIR.Prim.Image.ImageOperands(..)
+  -- , FIR.Prim.Image.ImageOperands(..)
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
   , FIR.Prim.Struct.Struct(End,(:&))
   , FIR.Program.Procedure
   , FIR.Program.Program(Program)
+  , module FIR.Synonyms
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Class
@@ -107,14 +105,7 @@ module FIR
   , SPIRV.FunctionControl.Inlineability(..)
   , SPIRV.FunctionControl.SideEffects(..)
   , SPIRV.FunctionControl.FunctionControl
-  , SPIRV.Image.DepthTesting(..)
-  , SPIRV.Image.Projection(..)
-  , SPIRV.Image.SamplingMethod(Method)
   , SPIRV.Stage.Stage(..)
-  , SPIRV.Storage.StorageClass
-      ( Input, Output -- not exporting 'Function' storage class
-      , Uniform, UniformConstant, PushConstant
-      )
   -- image properties
   , SPIRV.Image.Dimensionality(..)
   , SPIRV.Image.HasDepth(..)
@@ -200,6 +191,7 @@ import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct
 import FIR.Program
+import FIR.Synonyms
 import Math.Algebra.Class
 import Math.Algebra.GradedSemigroup
 import Math.Logic.Class
@@ -208,7 +200,6 @@ import SPIRV.ExecutionMode
 import SPIRV.FunctionControl
 import SPIRV.Image
 import SPIRV.Stage
-import SPIRV.Storage
 
 ------------------------------------------------
 

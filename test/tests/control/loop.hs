@@ -17,8 +17,8 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Global_ Output (V 4 Float)
-             , "main"     ':-> EntryPoint Fragment '[]
+type Defs = '[ "position" ':-> Output     '[] (V 4 Float)
+             , "main"     ':-> EntryPoint '[] Fragment
              ]
 
 program :: Program Defs ()

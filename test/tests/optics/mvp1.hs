@@ -19,12 +19,11 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "ubo"     ':-> Global Uniform
-                               ( Struct '[ "mvp" ':-> M 4 4 Float ] )
-                              '[ Binding 0, DescriptorSet 0, Block ]
-             , "in_pos"  ':-> Global Input  (V 4 Float) '[ Location 0 ]
-             , "out_pos" ':-> Global Output (V 4 Float) '[ Location 0 ]
-             , "main"    ':-> EntryPoint Vertex '[]
+type Defs = '[ "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0, Block ]
+                                ( Struct '[ "mvp" ':-> M 4 4 Float ] )
+             , "in_pos"  ':-> Input  '[ Location 0 ] (V 4 Float) 
+             , "out_pos" ':-> Output '[ Location 0 ] (V 4 Float) 
+             , "main"    ':-> EntryPoint '[] Vertex
              ]
 
 program :: Program Defs ()

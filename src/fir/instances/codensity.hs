@@ -35,6 +35,7 @@ module FIR.Instances.Codensity
   , def, fundef, entryPoint
   , use, assign, modifying
   , get, put, modify
+  , imageRead, imageWrite
     -- Functor functionality
   , CodensityASTFunctor(fmapCodAST), (<$$$>)
   , CodensityASTApplicative(pureCodAST, (<***>))
@@ -95,9 +96,18 @@ import FIR.Builtin
 import FIR.Instances.AST
   ( )
 import FIR.Instances.Bindings
-  ( ValidDef, ValidFunDef, ValidEntryPoint )
+  ( ValidDef, ValidFunDef, ValidEntryPoint
+  , LookupImageProperties
+  , ValidImageRead, ValidImageWrite
+  )
+import FIR.Instances.Images
+  ( ImageTexel )
 import FIR.Instances.Optics
   ( User, Assigner, KnownOptic, opticSing )
+import FIR.Prim.Image
+  ( ImageOperands(..), ImageProperties
+  , ImageData, ImageCoordinates
+  )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
 import Math.Algebra.Class
@@ -292,6 +302,56 @@ fundef :: forall k as b l i r.
         => Codensity AST (AST b := l) (Union i as) -- ^ Function body code.
         -> Codensity AST ( r := Insert k (Fun as b) i) i
 fundef = fromAST . toAST . fundef' @k @as @b @l @i
+
+--------------------------------------------------------------------------
+-- * Image operations (synonyms for 'use'/'assign').
+
+-- | Read from an image (with or without a sampler).
+--
+-- Synonym for @use \@(ImageTexel \"imgName\")@,
+-- but with no additional image operands provided.
+--
+-- To provide additional image operands, use 'assign'.
+--
+-- Type-level arguments:
+-- 
+-- * @k@: image name,
+-- * @props@: image properties (usually inferred),
+-- * @i@: monadic state (usually inferred).
+imageRead :: forall k props (i :: BindingsMap).
+            ( KnownSymbol k
+            , Gettable (ImageTexel k)
+            , LookupImageProperties k i ~ props
+            , Known ImageProperties props
+            , ValidImageRead props '[]
+            )
+          => AST (ImageCoordinates props '[])
+          -> Codensity AST ( AST (ImageData props '[]) := i ) i
+imageRead = use @(ImageTexel k) (Ops Done)
+
+-- | Write directly to an image (without a sampler).
+--
+-- Synonym for @assign \@(ImageTexel \"imgName\")@,
+-- but with no additional image operands provided.
+--
+-- To provide additional image operands, use 'assign'.
+--
+-- Type-level arguments:
+-- 
+-- * @k@: image name,
+-- * @props@: image properties (usually inferred),
+-- * @i@: monadic state (usually inferred).
+imageWrite :: forall k props (i :: BindingsMap).
+             ( KnownSymbol k
+             , Gettable (ImageTexel k)
+             , LookupImageProperties k i ~ props
+             , Known ImageProperties props
+             , ValidImageWrite props '[]
+             )
+           => AST (ImageCoordinates props '[])
+           -> AST (ImageData props '[])
+           -> Codensity AST ( AST () := i ) i
+imageWrite = assign @(ImageTexel k) (Ops Done)
 
 --------------------------------------------------------------------------
 -- type synonyms for use/assign

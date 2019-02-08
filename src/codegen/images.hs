@@ -53,7 +53,6 @@ import Data.Type.Known
 import FIR.Prim.Image
   ( ImageProperties
   , ImageOperands(..)
-  , LODMethod(..)
   , knownImage
   , knownImageReturnComponent
   )
@@ -212,6 +211,11 @@ removeSampler (imgID, imgTy)
 
 --------------------------------------------------------------------------
 -- sampling: find which sampling operation to use
+
+data LODMethod
+  = ImplicitLOD
+  | ExplicitLOD
+  deriving ( Show, Eq, Ord, Enum, Bounded )
 
 lodMethod :: Word32 -> LODMethod
 lodMethod bm
