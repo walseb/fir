@@ -222,20 +222,21 @@ instance (ScalarTy a, Floating a) => Floating (AST a) where
 instance (ScalarTy a, RealFloat a) => RealFloat (AST a) where
   atan2 = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtan2 (scalarTy @a)) atan2
 
+
 -- * Numeric conversions
 --
 -- $conversions
 -- Instance for 'Convert'.
--- TODO: there should be a way to do this more efficiently,
--- without using type reflection machinery.
--- However this at least avoids writing out
--- a large amount of instances by hand (one for each pair of types).
-
 instance (ScalarTy a, ScalarTy b, Convert '(a,b))
          => Convert '(AST a, AST b) where
   convert = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> id
     _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)) convert
+
+-- TODO: there should be a way to do this more efficiently,
+-- without using type reflection machinery.
+-- However this at least avoids writing out
+-- a large amount of instances by hand (one for each pair of types).
 
 -----------------------------------------------
 -- * Optics

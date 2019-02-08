@@ -20,10 +20,10 @@ import Math.Linear
 -- program
 
 type Defs
-  =  '[ "image"   ':-> Texture2D  '[ Binding  0      ] (RGBA8 UNorm) 
-      , "in_pos"  ':-> Input      '[ Location 0      ] (V 2 Float)       
-      , "out_col" ':-> Output     '[ Location 0      ] (V 4 Float)       
-      , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment      
+  =  '[ "image"   ':-> Texture2D  '[ Binding  0      ] (RGBA8 UNorm)
+      , "in_pos"  ':-> Input      '[ Location 0      ] (V 2 Float)
+      , "out_col" ':-> Output     '[ Location 0      ] (V 4 Float)
+      , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment
       ]
 
 program :: Program Defs ()

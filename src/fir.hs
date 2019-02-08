@@ -31,27 +31,39 @@ import FIR
 import Math.Linear -- for vectors
 
 -- Specify the input/output of the shader, with memory locations (and other interface parameters).
--- This consists of a type level map of top-level definitions.
-type FragmentDefs = 
-  '[ "in_colour"  ':-> Input      '[ Location 0 ] (V 4 Float)   -- input  (varying) of type V 4 Float and memory location 0
-   , "out_colour" ':-> Output     '[ Location 0 ] (V 4 Float)   -- output (varying) of type V 4 Float and memory location 0
-   , "main"       ':-> EntryPoint '[ OriginLowerLeft ] Fragment -- fragment shader stage, with given coordinate system
-   ]
+-- This consists of a type-level list of top-level definitions.
+type FragmentDefs
+  =  '[ "in_pos"  ':-> Input      '[ Location 0      ] (V 2 Float)    -- input  (varying) of type V 2 Float and memory location 0
+      , "out_col" ':-> Output     '[ Location 0      ] (V 4 Float)    -- output (varying) of type V 4 Float and memory location 0
+      , "image"   ':-> Texture2D  '[ Binding  0      ] (RGBA8 UNorm)  -- input sampled image
+      , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment       -- fragment shader stage (using standard Cartesian coordinates)
+      ]
 
-
--- Simple fragment shader.
 fragment :: Program FragmentDefs ()
-fragment = Program do
-  entryPoint \@"main" \@Fragment do
-    col <- get \@"in_colour"
-    put \@"out_colour" col
+fragment =
+  Program $ entryPoint \@"main" \@Fragment do
+    pos <- get \@"in_pos"
+    col <- use \@(ImageTexel "image") NoOperands pos
+    put \@"out_col" col
 @
+
+Note the lens-like operations:
+
+  - @get \@"in_pos"@ – equivalent to @use \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
+    This operation is similar to @get@ in a state monad, except that an additional binding name
+    is provided via a type application.
+  - @use \@(ImageTexel "image") NoOperands pos@ samples the provided image
+    at coordinates @pos@. Additional operands can be provided for this sampling operation,
+    such as an explicit level of detail or whether to use projective coordinates.
+  - @put \@"out_col" col@ – equivalent to @assign \@(Name "out_col") col@ –
+    sets the output value of the shader.
+
 
 This fragment shader can then be compiled using:
 
 > compile filePath flags fragment
 
-Where @filePath@ is the desired output filepath, and @flags@ is a list of 'CompilerFlag's.
+where @filePath@ is the desired output filepath, and @flags@ is a list of 'CompilerFlag's.
 
 
 More meaningful examples can be found in the @fir-examples@ subdirectory of the project's repository.

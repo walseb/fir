@@ -119,7 +119,7 @@ data AST :: Type -> Type where
         , PrimTy a
         , ValidDef k i
         )
-      => Proxy k  -- ^ Name.
+      => Proxy k  -- ^ Variable name.
       -> Proxy ps -- ^ Permissions (read,write,...).
       -> AST (    a
                -> (a := Insert k (Var ps a) i) i

@@ -15,7 +15,64 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ViewPatterns           #-}
 
-module FIR.Instances.Images where
+{-|
+Module: FIR.Instances.Images 
+
+This module allows for the operations 'FIR.Instances.Codensity.use'
+and 'FIR.Instances.Codensity.assign' to work with images, by providing the 'ImageTexel' lens.
+
+This allows accessing image data in a shader like so:
+
+@ use \@(ImageTexel "imageName") imageOperands coords @
+
+provided that @"imageName"@ binds an image in the monadic context.
+
+@coords@ are the coordinates at which to access the image.
+The specific type of these coordinates depends on:
+
+  * whether we are sampling or reading directly,
+  * the image dimensionality,
+  * whether the image is arrayed,
+  * the type of coordinates being used (affine or projective).
+
+The return type of this operation depends on:
+
+  * the image format (for instance a normalised integer image format
+    will return floating-point types),
+  * whether a depth-comparison is being performed: the return type
+    will be a scalar in that case, and otherwise a vector with 4 components.
+
+
+These properties are specified either at the type level,
+with a top-level type annotation declaring the image properties,
+or by the image operands @imageOperands@ (optional
+unless a depth-comparison value is required, but can be used
+e.g. to set an explicit level of detail).
+
+
+
+As images in @SPIR-V@ form an opaque type, the corresponding
+'FIR.Prim.Image.Image' data type used by this library is
+uninhabited, meaning it is impossible to construct or obtain
+a value of this type. Instead, 'FIR.Prim.Image.Image'
+is used only indirectly.
+If one attempts to directly obtain an 'FIR.Prim.Image.Image':
+
+> img <- use @(Name "imgName")
+>
+>   • Variable named "imgName" refers to an image.
+>     To access image data, use the 'ImageTexel' optic or the 'imageRead' function.
+
+However, the composite optic @ImageTexel "imgName" = Name "imgName" :.: Texel@ __can__ be used,
+with the image type only making a phantomatic apparition.
+
+-}
+
+module FIR.Instances.Images
+  ( -- * Lens focusing on an image texel    
+    ImageTexel
+  )
+where
 
 -- base
 import Prelude
@@ -44,7 +101,37 @@ import FIR.Instances.Bindings
   , ValidImageRead, ValidImageWrite
   )
 
--- testing optics
+-----------------------------------------------------------------------
+
+-- | Lens for focusing on texels of an image.
+--
+-- This is a /phantom/ composite @ Name k :.: Texel @,
+-- where @Texel@ denotes a (hypothetical) run-time optic
+-- which focuses on the texel at a given coordinate (with specified image operands).
+--
+-- As it is impossible to obtain actual values of type 'FIR.Prim.Image.Image',
+-- it is only the composite optic @ImageTexel k@, understood atomically,
+-- which allows focusing on image texels.
+type family ImageTexel k :: Optic
+                              '[ ImageOperands props ops, ImageCoordinates props ops]
+                              i (ImageData props ops)
+                  where
+  ImageTexel k
+    = ( ( ( Name_  k :: Optic '[] i (Image props) )
+          `ComposeO`
+          ( RTOptic_ :: Optic
+                          '[ ImageOperands props ops, ImageCoordinates props ops]
+                          (Image props)
+                          (ImageData props ops) )
+        ) :: Optic
+              '[ ImageOperands props ops, ImageCoordinates props ops]
+              i
+              (ImageData props ops)
+      )
+
+----------------------------------------------------
+-- instances for this particular 'ghost' composite
+
 instance {-# OVERLAPPING #-} 
          forall 
            ( k       :: Symbol      )
@@ -94,15 +181,3 @@ instance {-# OVERLAPPING #-}
                     ) :: Optic is i imgData
                   )
       where
-
-
-type family ImageTexel k :: Optic
-                              '[ ImageOperands props ops, ImageCoordinates props ops]
-                              i (ImageData props ops)
-                  where
-  ImageTexel k
-    = ( ( ( Name_  k :: Optic '[] i (Image props) )
-          `ComposeO`
-          ( RTOptic_ :: Optic '[ ImageOperands props ops, ImageCoordinates props ops] (Image props) (ImageData props ops) )
-        ) :: Optic '[ ImageOperands props ops, ImageCoordinates props ops] i (ImageData props ops)
-      )

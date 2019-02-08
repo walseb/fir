@@ -67,7 +67,7 @@ infixl 6 :<!>:
 
 -- | Semigroup with graded structure.
 class GradedSemigroup g k | g -> k where
-  -- | For extra flexibility, instead of specifying a type level function \( G \colon I \to \textrm{Type} \)
+  -- | For extra flexibility, instead of specifying a type-level function \( G \colon I \to \textrm{Type} \)
   -- to define the grading (which is often too restrictive), we use an associated /injective/ type family.
   type Apply k g (i :: k) = (r :: Type) | r -> k g i
   -- | Type-level semigroup operation on indices.

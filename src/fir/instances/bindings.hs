@@ -82,7 +82,7 @@ import SPIRV.Stage
   ( Stage )
 
 -------------------------------------------------
--- * Constraints for 'FIR.Instances.Codensity.get'
+-- * Constraints for 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.use'
 
 -- | Compute the type of a binding with a given name.
 --
@@ -100,7 +100,7 @@ type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :
   PutBinding k _ ('Just (Var _ (Image _)))
     = TypeError 
           (     Text "'get': variable named " :<>: ShowType k :<>: Text " refers to an image."
-           :$$: Text "To access image data, use 'sample' or 'imageRead'."
+           :$$: Text "To access image data, use the 'ImageTexel' optic or the 'imageRead' function."
           )
   GetBinding k _ ('Just (Var perms a))
     = If 
@@ -116,7 +116,7 @@ type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :
                 )
 
 -------------------------------------------------
--- * Constraints for 'FIR.Instances.Codensity.put'
+-- * Constraints for 'FIR.Instances.Codensity.put' and 'FIR.Instances.Codensity.assign'
 
 -- | Compute the type of a binding with a given name.
 --
@@ -140,7 +140,7 @@ type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding
   PutBinding k _ ('Just (Var _ (Image _)))
     = TypeError 
           (     Text "'put': image bound by name " :<>: ShowType k :<>: Text "."
-           :$$: Text "To write to a storage image, use 'imageWrite'."
+           :$$: Text "To write to a storage image, assign with the 'ImageTexel' optic or use 'imageWrite'."
           )
   PutBinding k _ ('Just (Var perms a))
     = If
@@ -180,8 +180,8 @@ type family NotAlreadyDefined (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe 
 -- Returns a type error if:
 -- 
 --   * function name is already in use,
---   * one of the function's argument is a function (higher order functions are not allowed natively)
---   * another function is defined inside the function (nested functions are not allowed natively)
+--   * one of the function's arguments is itself a function,
+--   * another function is defined inside the function.
 type ValidFunDef 
       ( k  :: Symbol      )  -- name of function to be defined
       ( as :: BindingsMap )  -- function arguments
@@ -260,8 +260,8 @@ type family NoFunctionNameConflict
 --
 -- Returns a type error if:
 --
---   * a function is defined within the entry point
---   * the name of a builtin for this entry point is already in use
+--   * a function is defined within the entry point,
+--   * the name of a builtin for this entry point is already in use.
 type ValidEntryPoint
               ( s :: Stage       )
               ( i :: BindingsMap )
@@ -322,6 +322,8 @@ type family BuiltinDoesNotAppearBefore
 -- * Constraints for images.
 
 -- | Retrieve the properties of an image.
+--
+-- Throws a type error if there is no image with given name.
 type LookupImageProperties k i
   = ( ImagePropertiesFromLookup k i (Lookup k i) :: ImageProperties )
 
@@ -342,7 +344,16 @@ type family ImagePropertiesFromLookup
                  :$$: Text "Expected an image."
                  )
 
--- | Check that we can read from an image (either directly or using a sampler).
+-- | Check that we can read from an image.
+--
+-- Depending on the coordinate type, this is either a sampling operation
+-- or a direct image read operation.
+--
+-- Returns a type error if the operation is incompatible with the given
+-- image properties. For instance, if the image is a depth image,
+-- a depth-comparison reference value must be provided.
+--
+-- Refer to the @SPIR-V@ specification for what operations are allowed.
 type family ValidImageRead
               ( props :: ImageProperties )
               ( ops   :: [OperandName]   )
@@ -357,6 +368,15 @@ type family ValidImageRead
         )
 
 -- | Check that we can write to an image.
+--
+-- Returns a type error if:
+--
+--   * the image is not a storage image,
+--   * the image is a depth image,
+--   * the coordinate type is not an integral type,
+--   * the operands are incompatible with the given image properties.
+--
+-- Refer to the @SPIR-V@ specification for what operations are allowed.
 type family ValidImageWrite
               ( props :: ImageProperties )
               ( ops   :: [OperandName]   )
@@ -382,7 +402,7 @@ type family IntegralIndexing (inty :: SPIRV.ScalarTy) :: Constraint where
     = TypeError ( Text "Cannot write to an image using floating-point coordinates." )
   IntegralIndexing _ = ()   
 
--- | Check whether floating-point coordinates are allowed.
+-- Check whether floating-point coordinates are allowed.
 type family AllowedIndexing
               ( inty  :: SPIRV.ScalarTy )
               ( ms    :: MultiSampling  )
@@ -396,7 +416,7 @@ type family AllowedIndexing
         ( Text "Cannot use floating-point coordinates with multi-sampling." )
   AllowedIndexing _ _ _ = ()
 
--- | Check that depth-testing is appropriately performed.
+-- Check that depth-testing is appropriately performed.
 type family CheckDepthTest
               ( depthTesting :: Bool   )
               ( inty :: SPIRV.ScalarTy )
@@ -413,7 +433,7 @@ type family CheckDepthTest
         ( Text "Cannot perform depth comparison using integral coordinates." )
   CheckDepthTest _ _ _ = ()
 
--- | If using integral coordinates, LOD instructions cannot be provided.
+-- If using integral coordinates, LOD instructions cannot be provided.
 type family CheckLODOperands
                 ( inty :: SPIRV.ScalarTy )
                 ( ops  :: [OperandName]  )

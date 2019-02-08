@@ -259,6 +259,8 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 --   * 'AnIndex', 'Index', 'Name', 'Id' and 'Joint' create specific optics,
 --   * ':.:' composes two optics (left-most argument = outer-most optic),
 --   * ':*:' takes the product of two optics.
+--
+-- See also "FIR.Instances.Images" for an overview of how to use optics with images.
 
 
 -- | Run-time index (kind-correct).
@@ -389,6 +391,7 @@ class Contained s => MonoContained s where
 -- The specific instances, as they pertain to datatypes used by this library,
 -- are found in the "FIR.Instances.Optics" module.
 -- This includes instances for vectors, matrices and structs.
+-- See also "FIR.Instances.Images" for the peculiar 'FIR.Instances.Images.ImageTexel' lens.
 
 --------------------------
 -- $identity_instances

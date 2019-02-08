@@ -1,11 +1,10 @@
-{-# OPTIONS_HADDOCK ignore-exports #-}
-
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RebindableSyntax       #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -29,16 +28,43 @@ orphan instances for types of the form @Codensity AST (AST a := j) i@
 -}
 
 module FIR.Instances.Codensity
-  ( -- Monadic control operations
+  ( -- * Monadic control operations
     when, unless, locally, while
-    -- Stateful operations
+
+    -- * Stateful operations (with indexed monadic state)
+    -- ** Defining variables and functions
   , def, fundef, entryPoint
+    -- ** Optics
+    -- *** General functions: use, assign, modifying
   , use, assign, modifying
+    -- *** Special cases for manipulating variables
   , get, put, modify
+    -- *** Special cases for manipulating images
   , imageRead, imageWrite
-    -- Functor functionality
+    -- * Instances
+
+    -- ** Syntactic type class
+    -- $syntactic
+
+    -- ** Logical operations
+    -- $logical
+
+    -- ** Numeric operations
+    -- $numeric
+
+    -- ** Numeric conversions
+    -- $conversions
+
+    -- ** Vectors
+    -- $vectors
+
+    -- ** Matrices
+    -- $matrices
+
+    -- ** Functor functionality
   , CodensityASTFunctor(fmapCodAST), (<$$$>)
   , CodensityASTApplicative(pureCodAST, (<***>))
+
     -- + orphan instances
   )
   where
@@ -105,11 +131,11 @@ import FIR.Instances.Images
 import FIR.Instances.Optics
   ( User, Assigner, KnownOptic, opticSing )
 import FIR.Prim.Image
-  ( ImageOperands(..), ImageProperties
-  , ImageData, ImageCoordinates
-  )
+  ( ImageProperties, ImageData, ImageCoordinates )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
+import FIR.Synonyms
+  ( pattern NoOperands )
 import Math.Algebra.Class
   ( AdditiveGroup(..)
   , Semiring(..), Ring(..)
@@ -162,10 +188,10 @@ while :: ( GHC.Stack.HasCallStack
 while = fromAST While
 
 --------------------------------------------------------------------------
--- * Syntactic type class
---
+-- Syntactic type class
+
 -- $syntactic
--- Instance for 'Syntactic'.
+-- Instance for the 'Syntactic' typeclass.
 
 instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
   type Internal (Codensity AST (a := j) i) = (Internal a := j) i
@@ -177,7 +203,9 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
   fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
 
 --------------------------------------------------------------------------
--- * Stateful operations (with indexed monadic state)
+-- Stateful operations (with indexed monadic state)
+
+-- Defining variables and functions.
 
 -- | Define a new variable.
 --
@@ -207,6 +235,29 @@ fundef' :: forall k as b l i.
        => Codensity AST (AST b := l) (Union i as)
        -> Codensity AST (AST (FunctionType as b) := Insert k (Fun as b) i) i
 
+-- | Define a new function.
+--
+-- Type-level arguments:
+-- 
+-- * @k@: function name,
+-- * @as@: list of argument types,
+-- * @b@: return type,
+-- * @l@: state at end of function body (usually inferred),
+-- * @i@: state at start of function body (usually inferred),
+-- * @r@: function type itself, result of 'fundef' (usually inferred).
+fundef :: forall k as b l i r.
+           ( GHC.Stack.HasCallStack
+           , Syntactic r
+           , Internal r ~ FunctionType as b
+           , KnownSymbol k
+           , KnownVars as
+           , PrimTy b
+           , ValidFunDef k as i l
+           )
+        => Codensity AST (AST b := l) (Union i as) -- ^ Function body code.
+        -> Codensity AST ( r := Insert k (Fun as b) i) i
+fundef = fromAST . toAST . fundef' @k @as @b @l @i
+
 -- | Define a new entry point (or shader stage).
 --
 -- Builtin variables for the relevant shader stage are made available in the entry point body.
@@ -225,6 +276,8 @@ entryPoint :: forall k s l i.
              )
            => Codensity AST (AST () := l) (Union i (StageBuiltins s)) -- ^ Entry point body.
            -> Codensity AST (AST () := Insert k (EntryPoint s) i) i
+
+-- Optics.
 
 -- | /Use/ an optic, returning a monadic value read from the (indexed) state.
 --
@@ -256,8 +309,12 @@ entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
 use        = fromAST ( Use    @optic          sLength opticSing )
 assign     = fromAST ( Assign @optic          sLength opticSing )
 
+-- *** Get, put, modify.
+
 -- | Get the value of a variable.
 -- Like @get@ for state monads, except a binding name needs to be specified with a type application.
+--
+-- Synonym for @use \@(Name k)@.
 get :: forall (k :: Symbol) a (i :: BindingsMap).
        ( KnownSymbol k, Gettable (Name k :: Optic '[] i a) )
     => Codensity AST (AST a := i) i
@@ -265,6 +322,8 @@ get = use @(Name k :: Optic '[] i a)
 
 -- | Set the value of a variable.
 -- Like @put@ for state monads, except a binding name needs to be specified with a type application.
+--
+-- Synonym for @assign \@(Name k)@.
 put :: forall (k :: Symbol) a (i :: BindingsMap).
        ( KnownSymbol k, Settable (Name k :: Optic '[] i a) )
     => AST a -> Codensity AST (AST () := i) i
@@ -272,6 +331,8 @@ put = assign @(Name k :: Optic '[] i a)
 
 -- | Modify the value of a variable.
 -- | Like @modify@ for state monads, except a binding name needs to be specified with a type application.
+--
+-- Synonym for @modifying \@(Name k)@.
 modify :: forall (k :: Symbol) a (i :: BindingsMap).
           ( KnownSymbol k
           , Gettable (Name k :: Optic '[] i a)
@@ -280,38 +341,13 @@ modify :: forall (k :: Symbol) a (i :: BindingsMap).
        => (AST a -> AST a) -> Codensity AST (AST () := i) i
 modify = modifying @(Name k :: Optic '[] i a)
 
--- | Define a new function.
---
--- Type-level arguments:
--- 
--- * @k@: function name,
--- * @as@: list of argument types,
--- * @b@: return type,
--- * @l@: state at end of function body (usually inferred),
--- * @i@: state at start of function body (usually inferred),
--- * @r@: function type itself, result of 'fundef' (usually inferred).
-fundef :: forall k as b l i r.
-           ( GHC.Stack.HasCallStack
-           , Syntactic r
-           , Internal r ~ FunctionType as b
-           , KnownSymbol k
-           , KnownVars as
-           , PrimTy b
-           , ValidFunDef k as i l
-           )
-        => Codensity AST (AST b := l) (Union i as) -- ^ Function body code.
-        -> Codensity AST ( r := Insert k (Fun as b) i) i
-fundef = fromAST . toAST . fundef' @k @as @b @l @i
-
 --------------------------------------------------------------------------
--- * Image operations (synonyms for 'use'/'assign').
+-- Image operations (synonyms for 'use'/'assign').
 
 -- | Read from an image (with or without a sampler).
 --
 -- Synonym for @use \@(ImageTexel \"imgName\")@,
 -- but with no additional image operands provided.
---
--- To provide additional image operands, use 'assign'.
 --
 -- Type-level arguments:
 -- 
@@ -327,14 +363,12 @@ imageRead :: forall k props (i :: BindingsMap).
             )
           => AST (ImageCoordinates props '[])
           -> Codensity AST ( AST (ImageData props '[]) := i ) i
-imageRead = use @(ImageTexel k) (Ops Done)
+imageRead = use @(ImageTexel k) NoOperands
 
 -- | Write directly to an image (without a sampler).
 --
 -- Synonym for @assign \@(ImageTexel \"imgName\")@,
 -- but with no additional image operands provided.
---
--- To provide additional image operands, use 'assign'.
 --
 -- Type-level arguments:
 -- 
@@ -351,7 +385,7 @@ imageWrite :: forall k props (i :: BindingsMap).
            => AST (ImageCoordinates props '[])
            -> AST (ImageData props '[])
            -> Codensity AST ( AST () := i ) i
-imageWrite = assign @(ImageTexel k) (Ops Done)
+imageWrite = assign @(ImageTexel k) NoOperands
 
 --------------------------------------------------------------------------
 -- type synonyms for use/assign
@@ -423,10 +457,10 @@ instance Modifier is s a => Modifier (i ': is) s a where
     = modifier @is @s @a (used i) (assigned i)
 
 --------------------------------------------------------------------------
--- * Instances for codensity representation
+-- Instances for codensity representation
 
--- ** Logical operations
---
+-- Logical operations
+
 -- $logical
 -- Instances for:
 --
@@ -473,8 +507,8 @@ instance ( PrimTy a, Ord a, Logic a ~ Bool
   min  = ixLiftA2 min
   max  = ixLiftA2 max
 
--- * Numeric operations
--- 
+-- Numeric operations
+
 -- $numeric
 -- Instances for:
 --
@@ -529,8 +563,8 @@ instance (ScalarTy a, Floating a, j ~ i) => Floating (Codensity AST (AST a := j)
 instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Codensity AST (AST a := j) i ) where
   atan2 = ixLiftA2 atan2
 
--- * Numeric conversions
---
+-- Numeric conversions
+
 -- $conversions
 -- Instance for 'Convert'.
 instance ( ScalarTy a, ScalarTy b, Convert '(a,b)
@@ -542,8 +576,8 @@ instance ( ScalarTy a, ScalarTy b, Convert '(a,b)
   convert = ixFmap convert
 
 
--- * Vectors
---
+-- Vectors
+
 -- $vectors
 -- Instances for:
 --
@@ -564,8 +598,8 @@ instance (ScalarTy a, Semiring a, j ~ i) => Inner (Codensity AST (AST (V 0 a) :=
 instance (ScalarTy a, Floating a, j ~ i) => Cross (Codensity AST (AST (V 0 a) := j) i) where
   cross = ixLiftA2 cross
 
--- * Matrices
---
+-- Matrices
+
 -- $matrices
 -- Instance for 'Matrix'.
 
@@ -588,7 +622,7 @@ instance (ScalarTy a, Ring a, j ~ i) => Matrix (Codensity AST (AST (M 0 0 a) := 
   (!*)  = ixLiftA2 (!*)
 
 
--- * Functor functionality
+-- Functor functionality
 
 infixl 4 <$$$>
 infixl 4 <***>
