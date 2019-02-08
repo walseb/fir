@@ -90,6 +90,22 @@ data SScalarTy :: Type -> Type where
   SFloat  :: SScalarTy Float
   SDouble :: SScalarTy Double
 
+type family Integrality (ty :: Type) :: SPIRV.ScalarTy where
+  Integrality Word8  = SPIRV.Integer Unsigned W8
+  Integrality Word16 = SPIRV.Integer Unsigned W16
+  Integrality Word32 = SPIRV.Integer Unsigned W32
+  Integrality Word64 = SPIRV.Integer Unsigned W64
+  Integrality Int8   = SPIRV.Integer Signed   W8
+  Integrality Int16  = SPIRV.Integer Signed   W16
+  Integrality Int32  = SPIRV.Integer Signed   W32
+  Integrality Int64  = SPIRV.Integer Signed   W64
+  Integrality Half   = SPIRV.Floating         W16
+  Integrality Float  = SPIRV.Floating         W32
+  Integrality Double = SPIRV.Floating         W64
+  Integrality ty
+    = TypeError
+        ( Text "Expected a scalar type, but provided " :<>: ShowType ty )
+
 data SPrimTy :: Type -> Type where
   SUnit   :: SPrimTy ()
   SBool   :: SPrimTy Bool

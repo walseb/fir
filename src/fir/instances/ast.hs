@@ -101,7 +101,6 @@ import FIR.Instances.Optics
 import FIR.Prim.Singletons
   ( PrimTy, primTy
   , ScalarTy, scalarTy
-  , IntegralTy
   , SPrimFunc(SFuncVector, SFuncMatrix)
   )
 import Math.Algebra.Class
@@ -110,6 +109,7 @@ import Math.Algebra.Class
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
   , Floating(..), RealFloat(..)
+  , Integral
   , Convert(..)
   )
 import Math.Linear
@@ -268,27 +268,27 @@ instance ( KnownSymbol k
             sLength
             ( opticSing @(Name_ k :: Optic '[] s a) )
 
-instance ( IntegralTy ty
+instance ( Integral ty
          , ix ~ '[AST ty]
-         , Gettable (AnIndex_ :: Optic '[ty] s a)
+         , Gettable (RTOptic_ :: Optic '[ty] s a)
          , r ~ AST a
          )
-      => Gettable (AnIndex_ :: Optic ix (AST s) r)
+      => Gettable (RTOptic_ :: Optic ix (AST s) r)
       where
-instance ( IntegralTy ty
+instance ( Integral ty
          , ix ~ '[AST ty]
-         , Gettable (AnIndex_ :: Optic '[ty] s a)
-         , ReifiedGetter (AnIndex_ :: Optic '[ty] s a)
+         , Gettable (RTOptic_ :: Optic '[ty] s a)
+         , ReifiedGetter (RTOptic_ :: Optic '[ty] s a)
          , ListVariadic '[] a ~ a
-         , KnownOptic (AnIndex_ :: Optic '[ty] s a)
+         , KnownOptic (RTOptic_ :: Optic '[ty] s a)
          , r ~ AST a
          )
-      => ReifiedGetter (AnIndex_ :: Optic ix (AST s) r)
+      => ReifiedGetter (RTOptic_ :: Optic ix (AST s) r)
       where
   view = fromAST
        $ View
             sLength
-            ( opticSing @(AnIndex_ :: Optic '[ty] s a) )
+            ( opticSing @(RTOptic_ :: Optic '[ty] s a) )
 instance ( KnownNat i
          , empty ~ '[]
          , Gettable (Index_ i :: Optic '[] s a)
@@ -338,27 +338,27 @@ instance ( KnownSymbol k
             sLength
             ( opticSing @(Name_ k :: Optic '[] s a) )
 
-instance ( IntegralTy ty
+instance ( Integral ty
          , ix ~ '[AST ty]
-         , Settable (AnIndex_ :: Optic '[ty] s a)
+         , Settable (RTOptic_ :: Optic '[ty] s a)
          , r ~ AST a
          )
-      => Settable (AnIndex_ :: Optic ix (AST s) r)
+      => Settable (RTOptic_ :: Optic ix (AST s) r)
       where
-instance ( IntegralTy ty
+instance ( Integral ty
          , ix ~ '[AST ty]
-         , Settable (AnIndex_ :: Optic '[ty] s a)
-         , ReifiedSetter (AnIndex_ :: Optic '[ty] s a)
+         , Settable (RTOptic_ :: Optic '[ty] s a)
+         , ReifiedSetter (RTOptic_ :: Optic '[ty] s a)
          , ListVariadic '[] s ~ s
-         , KnownOptic (AnIndex_ :: Optic '[ty] s a)
+         , KnownOptic (RTOptic_ :: Optic '[ty] s a)
          , r ~ AST a
          )
-      => ReifiedSetter (AnIndex_ :: Optic ix (AST s) r)
+      => ReifiedSetter (RTOptic_ :: Optic ix (AST s) r)
       where
   set = fromAST
        $ Set
             sLength
-            ( opticSing @(AnIndex_ :: Optic '[ty] s a) )
+            ( opticSing @(RTOptic_ :: Optic '[ty] s a) )
 instance ( KnownNat i
          , empty ~ '[]
          , Settable (Index_ i :: Optic '[] s a)

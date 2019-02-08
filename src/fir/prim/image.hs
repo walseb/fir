@@ -21,6 +21,8 @@ import Data.Int
   ( Int32 )
 import Data.Kind
   ( Type, Constraint )
+import Data.Type.Bool
+  ( If )
 import GHC.TypeLits
   ( Symbol
   , TypeError, ErrorMessage(..)
@@ -47,7 +49,6 @@ import Math.Linear
   ( V )
 import SPIRV.Image
   ( Arrayness(..)
-  , DepthTesting(..)
   , Dimensionality(..)
   , HasDepth(..)
   , ImageUsage(..)
@@ -132,75 +133,113 @@ knownImage
 
 data OperandName
   = DepthComparison
+  | ProjectiveCoords
   | BaseOperand SPIRV.Image.Operand
   deriving ( Show, Eq, Ord )
 
-data ImageOperand
-        ( a    :: Type           )
-        ( dim  :: Dimensionality )
-        ( proj :: Projection     )
-        ( ms   :: MultiSampling  )
-        ( op   :: OperandName    )
-      :: Type
-      where
-  Bias :: (BasicDim "Bias" dim, NoMS "Bias" ms)
-       => AST Float -> ImageOperand a dim proj ms (BaseOperand ('LODOperand SPIRV.Bias))
-  LOD  :: (BasicDim "LOD" dim, NoMS "LOD" ms)
-       => AST a -> ImageOperand a dim proj ms (BaseOperand ('LODOperand SPIRV.LOD))
-  Grad :: ( Floating a
-          , vec ~ ImageCoordinatesType a dim NonArrayed proj
-          , NoMS "Grad" ms
+data ImageOperands
+       ( props :: ImageProperties )
+       ( ops   :: [OperandName]   )
+     :: Type
+     where
+  Done :: ImageOperands props '[ ]
+  Proj :: ImageOperands props '[ ProjectiveCoords ]
+  Dref :: ( Floating a
+          , NoDuplicate DepthComparison ops
           )
-       => { grad_x :: AST vec
-          , grad_y :: AST vec
-          } -> ImageOperand a dim proj ms (BaseOperand ('LODOperand SPIRV.Grad))
+       => AST a
+       -> ImageOperands props ops
+       -> ImageOperands props (DepthComparison ': ops)
+  Bias :: ( BasicDim "Bias" props
+          , NoMS "Bias" props
+          , NoDuplicate (BaseOperand ('LODOperand SPIRV.Bias)) ops
+          , NoLODOps "Bias" '[SPIRV.LOD, SPIRV.Grad] ops
+          )
+       => AST Float
+       -> ImageOperands props ops 
+       -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Bias) ': ops)
+  LOD  :: ( BasicDim "LOD" props
+          , NoMS "LOD" props
+          , NoDuplicate (BaseOperand ('LODOperand SPIRV.LOD)) ops
+          , NoLODOps "LOD" '[SPIRV.Bias, SPIRV.Grad, SPIRV.MinLOD] ops
+          )
+       => AST a
+       -> ImageOperands props ops
+       -> ImageOperands props (BaseOperand ('LODOperand SPIRV.LOD ) ': ops)
+  MinLOD :: ( Floating a
+            , BasicDim "MinLOD" props
+            , NoMS "MinLOD" props
+            , NoDuplicate (BaseOperand ('LODOperand SPIRV.MinLOD)) ops
+            , NoLODOps "MinLOD" '[SPIRV.LOD, SPIRV.Bias] ops
+            )
+         => AST a
+         -> ImageOperands props ops
+         -> ImageOperands props (BaseOperand ('LODOperand SPIRV.MinLOD ) ': ops)
+  Grad :: ( vec ~ GradCoordinates props ops
+          , NoMS "Grad" props
+          , NoLODOps "Grad" '[ SPIRV.Bias, SPIRV.LOD ] ops
+          )
+       => AST vec -- df/dx
+       -> AST vec -- df/dy
+       -> ImageOperands props ops
+       -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Grad) ': ops)
   ConstOffsetBy
     :: ( PrimTy vec
-       , vec ~ ImageCoordinatesType Int32 dim NonArrayed proj
+       , vec ~ OffsetCoordinates props ops
+       , NotCubeDim "ConstOffsetBy" props
        )
     => vec
-    -> ImageOperand a dim proj ms (BaseOperand SPIRV.ConstOffset)
+    -> ImageOperands props ops
+    -> ImageOperands props (BaseOperand SPIRV.ConstOffset ': ops)
   OffsetBy
-    :: (vec ~ ImageCoordinatesType Int32 dim NonArrayed proj)
-    => AST vec
-    -> ImageOperand a dim proj ms (BaseOperand SPIRV.Offset)
-  ConstOffsetsBy
-    :: (Integral a, PrimTy a)
-    => Array 4 (V 2 a)
-    -> ImageOperand a dim proj ms (BaseOperand SPIRV.ConstOffsets)
-  SampleNo :: (Integral a, HasMS "SampleNo" ms)
-           => AST a
-           -> ImageOperand a dim proj ms (BaseOperand SPIRV.Sample)
-  MinLOD :: (Floating a, BasicDim "MinLOD" dim, NoMS "MinLOD" ms)
-         => AST a
-         -> ImageOperand a dim proj ms (BaseOperand ('LODOperand SPIRV.MinLOD))
-  Dref :: AST a -> ImageOperand a dim proj ms DepthComparison
-
-infixr 5 `Op`
-data ImageOperandList
-        ( a    :: Type           )
-        ( dim  :: Dimensionality )
-        ( proj :: Projection     )
-        ( ms   :: MultiSampling  )
-        ( ops  :: [OperandName]  )
-        where
-  Done :: ImageOperandList a dim proj ms '[]
-  Op   :: ( NoDuplicate op (Elem op ops) )
-       => ImageOperand     a dim proj ms op
-       -> ImageOperandList a dim proj ms ops
-       -> ImageOperandList a dim proj ms (op ': ops)
-
-data ImageOperands
-        ( meth  :: Maybe SamplingMethod )
-        ( props :: ImageProperties      )
-        where
-  Operands
-    :: ( ValidOps   meth ops
-       , ValidProj  meth proj  -- ensure affine coordinates if no sampler
-       , ValidDepth meth depth -- check for correct depth testing setting
+    :: ( PrimTy vec
+       , vec ~ OffsetCoordinates props ops
+       , NotCubeDim "OffsetBy" props
        )
-    => ImageOperandList a dim proj ms ops
-    -> ImageOperands meth (Properties a b dim depth arr ms usage mbfmt )
+    => AST vec
+    -> ImageOperands props ops
+    -> ImageOperands props (BaseOperand SPIRV.Offset ': ops)
+  ConstOffsetsBy
+    :: ( Integral a
+       , PrimTy a
+       , NotCubeDim "ConstOffsetsBy" props
+      )
+    => Array 4 (V 2 a)
+    -> ImageOperands props ops
+    -> ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops)
+  SampleNo
+    :: ( Integral a
+       , CanMultiSample props
+       )
+    => AST a
+    -> ImageOperands props ops
+    -> ImageOperands props (BaseOperand SPIRV.Sample ': ops)
+
+
+type family GradCoordinates
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
+            :: Type where
+  GradCoordinates
+    ( Properties a _ dim _ arr _ _ _ )
+    ops
+      = If
+          ( ProjectiveCoords `Elem` ops )
+          ( ImageCoordinatesType a dim arr Projective )
+          ( ImageCoordinatesType a dim arr Affine     )
+
+type family OffsetCoordinates
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
+            :: Type where
+  OffsetCoordinates
+    ( Properties _ _ dim _ _ _ _ _ )
+    ops
+    = If
+        ( ProjectiveCoords `Elem` ops )
+        ( ImageCoordinatesType Int32 dim NonArrayed Projective )
+        ( ImageCoordinatesType Int32 dim NonArrayed Affine     )
+
 
 type family ValidProj
               ( meth :: Maybe SamplingMethod )
@@ -211,6 +250,12 @@ type family ValidProj
     = TypeError ( Text "Cannot use projective coordinates without a sampler." )
   ValidProj _ _ = ()
 
+type family SupportsDepthTest ( props :: ImageProperties ) :: Constraint where
+  SupportsDepthTest (Properties _ _ _ (Just NotDepthImage) _ _ _ _)
+    = TypeError ( Text "Cannot do a depth comparison: image is not a depth image." )
+  SupportsDepthTest _ = ()
+
+{-
 type family ValidDepth
               ( meth     :: Maybe SamplingMethod )
               ( hasDepth :: Maybe HasDepth       )
@@ -242,22 +287,21 @@ type family ValidOps
     ( Just ( Method 'DepthTest _ ) )
     ops
       = ( CompatibleLODOps ops, HasDepthOp (Elem DepthComparison ops) )
-
+-}
 
 -----------------------------------------------------------
 
 type family ImageCoordinates
-              ( meth  :: Maybe SamplingMethod  )
-              ( props :: ImageProperties       )
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
             :: Type where
   ImageCoordinates
-    ( Just ( Method _ proj ) )
     ( Properties a _ dim _ arr _ _ _ )
-      = ImageCoordinatesType a dim arr proj
-  ImageCoordinates
-    Nothing
-    ( Properties a _ dim _ arr _ _ _ )
-      = ImageCoordinatesType a dim arr Affine
+    ops
+      = If
+          ( ProjectiveCoords `Elem` ops )
+          ( ImageCoordinatesType a dim arr Projective )
+          ( ImageCoordinatesType a dim arr Affine )
 
 type family ImageCoordinatesType
               ( a    :: Type           )
@@ -292,21 +336,15 @@ type family ImageCoordinatesType
     = TypeError ( Text "Cannot use projective coordinates with an arrayed image." )
 
 type family ImageData
-                ( meth  :: Maybe SamplingMethod )
-                ( props :: ImageProperties      )
-              :: Type where
-  ImageData
-    ( Just ( Method DepthTest proj ) )
-    ( Properties _ r _ _ _ _ _ _ )
-      = r
-  ImageData
-    ( Just ( Method NoDepthTest proj ) )
-    ( Properties _ r _ _ _ _ _ _ )
-      = V 4 r
-  ImageData
-    Nothing
-    ( Properties _ r _ _ _ _ _ _ )
-      = V 4 r
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
+            :: Type
+            where
+  ImageData ( Properties _ r _ _ _ _ _ _ ) ops
+    = If
+        ( DepthComparison `Elem` ops )
+        r
+        (V 4 r)
       
 -----------------------------------------------------------
 -- helper type families to ensure image operands are valid
@@ -324,50 +362,70 @@ type family MatchesFormat
   MatchesFormat (Just ('ImageFormat _  _)) a = Floating a
   MatchesFormat _                          _ = ()
 
-type family BasicDim (opName :: Symbol) (dim :: Dimensionality) :: Constraint where
-  BasicDim _      OneD   = ()
-  BasicDim _      TwoD   = ()
-  BasicDim _      ThreeD = ()
-  BasicDim _      Cube   = ()
-  BasicDim opName dim
+type family BasicDim (opName :: Symbol) (props :: ImageProperties) :: Constraint where
+  BasicDim _      ( Properties _ _ OneD   _ _ _ _ _ ) = ()
+  BasicDim _      ( Properties _ _ TwoD   _ _ _ _ _ ) = ()
+  BasicDim _      ( Properties _ _ ThreeD _ _ _ _ _ ) = ()
+  BasicDim _      ( Properties _ _ Cube   _ _ _ _ _ ) = ()
+  BasicDim opName ( Properties _ _ dim    _ _ _ _ _ )
     = TypeError
         (     Text opName :<>: Text " operand: unexpected image dimensionality "
          :<>: ShowType dim :<>: Text "."
          :$$: Text "Image dimensionality must be 'OneD', 'TwoD', 'ThreeD' or 'Cube'. "
         )
 
-type family NotCubeDim (opName :: Symbol) (dim :: Dimensionality) :: Constraint where
-  NotCubeDim opName Cube
+type family NotCubeDim (opName :: Symbol) (props :: ImageProperties) :: Constraint where
+  NotCubeDim opName ( Properties _ _ Cube _ _ _ _ _ )
     = TypeError
         (    Text opName :<>: Text " operand: unexpected 'Cube' image dimensionality."
         :$$: Text "Image dimensionality must not be 'Cube'."
         )
   NotCubeDim _ _ = ()
 
-type family NotExplicitLOD (lod :: LODMethod) :: Constraint where
-  NotExplicitLOD ExplicitLOD
-    = TypeError (     Text "Sampling with 'ExplicitLOD', but 'MinLOD' operand provided."
-                 :$$: Text "Cannot set both 'LOD' and 'MinLOD'."
-                )
-  NotExplicitLOD _ = ()
+type NoDuplicate op ops = NoDuplicateFromElem op (op `Elem` ops)
 
-type family NoDuplicate op dup :: Constraint where
-  NoDuplicate _ False   = ()
-  NoDuplicate op True
+type family NoDuplicateFromElem op dup :: Constraint where
+  NoDuplicateFromElem _ False   = ()
+  NoDuplicateFromElem op True
     = TypeError ( Text "Duplicate image operand " :<>: ShowType op :<>: Text "." )
 
-type family NoMS (opName :: Symbol) (ms :: MultiSampling) :: Constraint where
-  NoMS _      SingleSampled = ()
-  NoMS opName MultiSampled
+type family NoMS (opName :: Symbol) (props :: ImageProperties) :: Constraint where
+  NoMS _      (Properties _ _ _ _ _ SingleSampled _ _) = ()
+  NoMS opName _
     = TypeError
         ( Text opName :<>: Text " operand: image cannot be multisampled." )
 
-type family HasMS (opName :: Symbol) (ms :: MultiSampling) :: Constraint where
-  NoMS _      MultiSampled = ()
-  NoMS opName SingleSampled
-    = TypeError
-        ( Text opName :<>: Text " operand: image must be multisampled." )
+type family CanMultiSample (ms :: ImageProperties) :: Constraint where
+  CanMultiSample (Properties _ _ _ _ _ SingleSampled _ _)
+    = TypeError ( Text "Cannot multi-sample this single-sampled image." )
+  CanMultiSample _ = ()
+  -- TODO: can only multisample when not using a sampler!!
 
+
+type family NoLODOps
+              ( name  :: Symbol       )
+              ( excl :: [LODOperand]  )
+              ( ops  :: [OperandName] )
+            :: Constraint
+            where
+  NoLODOps _ _ '[] = ()
+  NoLODOps name excl (BaseOperand ('LODOperand op) ': ops)
+    = If
+        (op `Elem` excl)
+        ( TypeError 
+            (     Text "Cannot provide " :<>: ShowType name :<>: Text " operand:"
+             :$$: ShowType op :<>: Text " operand already provided."
+            )
+        )
+        ( NoLODOps name excl ops )
+  NoLODOps name excl ( _ ': ops ) = NoLODOps name excl ops
+
+data LODMethod
+  = ImplicitLOD
+  | ExplicitLOD
+  deriving ( Show, Eq, Ord, Enum, Bounded )
+
+{-
 type family NoLODOps (ops :: [OperandName]) :: Constraint where
   NoLODOps '[] = ()
   NoLODOps ((BaseOperand ('LODOperand op)) ': _)
@@ -386,10 +444,12 @@ type family HasDepthOp (hasDepthop :: Bool) :: Constraint where
 
 type CompatibleLODOps (ops :: [OperandName]) = ( ValidLODMethod (GetLODMethod ops) :: Constraint )
 
-data LODMethod
-  = ImplicitLOD
-  | ExplicitLOD
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+type family NotExplicitLOD (lod :: LODMethod) :: Constraint where
+  NotExplicitLOD ExplicitLOD
+    = TypeError (     Text "Sampling with 'ExplicitLOD', but 'MinLOD' operand provided."
+                 :$$: Text "Cannot set both 'LOD' and 'MinLOD'."
+                )
+  NotExplicitLOD _ = ()
 
 -- evaluate the 'GetLODMethod' type family
 type family ValidLODMethod (meth :: LODMethod) :: Constraint where
@@ -443,3 +503,4 @@ type family LODUpdateAcc
                  :<>: ShowType lod
                  :<>: Text "."
                 )
+-}

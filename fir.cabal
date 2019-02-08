@@ -105,6 +105,7 @@ library
       , FIR.Instances.AST
       , FIR.Instances.Bindings
       , FIR.Instances.Codensity
+      , FIR.Instances.Images
       , FIR.Instances.Optics
       , FIR.Prim.Array
       , FIR.Prim.Image

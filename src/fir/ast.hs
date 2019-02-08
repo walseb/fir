@@ -75,19 +75,15 @@ import FIR.Binding
 import FIR.Builtin
   ( StageBuiltins )
 import FIR.Instances.Bindings
-  ( ValidDef, ValidFunDef, ValidEntryPoint
-  , LookupImageProperties
-  , ValidImageSample, ValidImageRead, ValidImageWrite
-  )
+  ( ValidDef, ValidFunDef, ValidEntryPoint )
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
 import FIR.Prim.Image
-  ( ImageProperties, ImageOperands, ImageCoordinates, ImageData )
+  ( ImageOperands )
 import FIR.Prim.Singletons
   ( PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars )
 import Math.Linear
   ( V, M )
-import qualified SPIRV.Image  as SPIRV
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 import qualified SPIRV.Stage  as SPIRV
@@ -190,47 +186,6 @@ data AST :: Type -> Type where
       -> SOptic optic            -- ^ Singleton for the optic.
       -> AST ( Setter optic )
 
-  -- | /Sample/ an image with a given sampling method.
-  Sample :: forall k meth props i.
-            ( KnownSymbol k
-            , Known (Maybe SPIRV.SamplingMethod) meth
-            , LookupImageProperties k i ~ props
-            , Known ImageProperties props
-            , ValidImageSample meth props
-            )
-         => Proxy k                  -- ^ Image name.
-         -> ImageOperands meth props -- ^ List of (usually optional) image operands.
-         -> AST (    ImageCoordinates meth props
-                 -> (ImageData meth props := i) i
-                 )
-  -- | /Read/ from an image directly.
-  ImageRead
-    :: forall k props i.
-       ( KnownSymbol k
-       , LookupImageProperties k i ~ props
-       , Known ImageProperties props
-       , ValidImageRead props
-       )
-    => Proxy k                     -- ^ Image name.
-    -> ImageOperands Nothing props -- ^ List of (usually optional) image operands.
-    -> AST (    ImageCoordinates Nothing props
-            -> (ImageData Nothing props := i) i
-           )
-  -- | /Write/ to an image directly.
-  ImageWrite
-    :: forall k props i.
-       ( KnownSymbol k
-       , LookupImageProperties k i ~ props
-       , Known ImageProperties props
-       , ValidImageWrite props
-       )
-    => Proxy k                     -- ^ Image name.
-    -> ImageOperands Nothing props -- ^ List of (usually optional) image operands.
-    -> AST (   ImageCoordinates Nothing props
-            -> ImageData Nothing props
-            -> (() := i) i
-           )
-
   If    :: ( GHC.Stack.HasCallStack
            , PrimTy a
            )
@@ -258,8 +213,10 @@ data AST :: Type -> Type where
            -> Proxy a
            -> AST ( NatVariadic n a ( V n a ) )
 
+  -- Newtype wrapping/unwrapping.
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
+  Ops   :: ImageOperands props ops -> AST ( ImageOperands props ops )
 
   -- | Internal pair data type.
   --
@@ -306,6 +263,7 @@ toTreeArgs Return   as = return (Node "Return"   as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
+toTreeArgs (Ops _ ) as = return (Node "ImageOperands" as)
 toTreeArgs Pair     as = return (Node "Pair"     as)
 toTreeArgs Fst      as = return (Node "Fst"      as)
 toTreeArgs Snd      as = return (Node "Snd"      as)
@@ -317,9 +275,6 @@ toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")
 toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
-toTreeArgs (Sample k _    ) as = return (Node ("Sample @"  ++ symbolVal k ) as)
-toTreeArgs (ImageRead  k _) as = return (Node ("ImageRead @"  ++ symbolVal k ) as)
-toTreeArgs (ImageWrite k _) as = return (Node ("ImageWrite @" ++ symbolVal k ) as)
 toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @("   ++ primFuncName f ++ ") ") as)
 toTreeArgs (Pure   f      ) as = return (Node ("Pure @("   ++ primFuncName f ++ ") ") as)
 toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("     ++ primFuncName f ++ ") ") as)

@@ -64,6 +64,8 @@ import Control.Type.Optic
   , (:.:), (:*:), Id, AnIndex, Index, Name, Joint
   , Product
   )
+import Data.Type.Known
+  ( Known )
 import Data.Function.Variadic
   ( ListVariadic )
 import Data.Type.List
@@ -81,6 +83,9 @@ import FIR.Binding
 import qualified FIR.Instances.Bindings as Binding
 import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
+import FIR.Prim.Image
+  ( Image, ImageProperties, ImageData
+  , ImageOperands, ImageCoordinates )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
@@ -110,6 +115,23 @@ data SOptic (optic :: Optic i s a) :: Type where
   SBinding  :: KnownSymbol k
             => Proxy k
             -> SOptic (Name k :: Optic '[] (as :: BindingsMap) b)
+  SImageTexel :: ( KnownSymbol k
+                 , Known ImageProperties props
+                 )
+              => Proxy k
+              -> Proxy props
+              -> SOptic ( (  ( Name_  k :: Optic '[] i (Image props) )
+                             `ComposeO`
+                             ( RTOptic_ :: Optic
+                                            '[ ImageOperands props ops, ImageCoordinates props ops ]
+                                             (Image props)
+                                             (ImageData props ops)
+                             )
+                          ) :: Optic
+                                '[ ImageOperands props ops, ImageCoordinates props ops ]
+                                i
+                                (ImageData props ops)
+                        )
   SComposeO :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
                SLength is -> SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
      --        ^^^^^^^^^^
@@ -133,12 +155,13 @@ o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
         => SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
 o1 %:*: o2 = SProductO (sLength @_ @is) (sLength @_ @js) o1 o2
 
-showSOptic :: SOptic (o :: Optic i s a) -> String
+showSOptic :: SOptic (o :: Optic is s a) -> String
 showSOptic SId    = "Id"
 showSOptic SJoint = "Joint"
 showSOptic (SAnIndex _ _ _) = "AnIndex"
 showSOptic (SIndex   _ _ n) = "Index "   ++ show n
-showSOptic (SBinding k    ) = "Binding " ++ show (symbolVal k)
+showSOptic (SBinding    k  ) = "Binding "    ++ show (symbolVal k)
+showSOptic (SImageTexel k _) = "ImageTexel " ++ show (symbolVal k)
 showSOptic (SComposeO _   o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
 showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
 
@@ -154,10 +177,6 @@ instance ( empty ~ '[]
          )
        => KnownOptic (Joint_ :: Optic empty a mono) where
   opticSing = SJoint
-instance ( is ~ '[ix], IntegralTy ix, PrimTy s, PrimTy a )
-        => KnownOptic (AnIndex_ :: Optic is s a)
-        where
-  opticSing = SAnIndex (primTySing @s) (primTySing @a) (scalarTySing @ix)
 instance ( KnownNat n
          , empty ~ '[]
          , PrimTy s
@@ -202,6 +221,44 @@ instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
       => KnownOptic ((o1 `ProductO` o2) :: Optic ks s c) where
   opticSing = (opticSing @o1) %:*: (opticSing @o2)
 
+--------------------------------------------------------------
+-- some trickery to account for peculiarities of image optics
+
+-- normal run-time index optic, not allowed to be used for images on its own
+instance ( ValidAnIndexOptic is s a, is ~ '[ix], IntegralTy ix, PrimTy s, PrimTy a )
+  => KnownOptic (RTOptic_ :: Optic is s a)
+  where
+  opticSing = SAnIndex (primTySing @s) (primTySing @a) (scalarTySing @ix)
+
+
+-- binding + image texel optic... the two parts must always occur together
+instance {-# OVERLAPPING #-}
+    ( KnownSymbol k
+    , Known ImageProperties props
+    , empty ~ '[]
+    , is ~ '[ ImageOperands props ops, ImageCoordinates props ops ]
+    , r ~ ImageData props ops
+    )
+  => KnownOptic ( ( ( Name_ k :: Optic empty i (Image props) )
+                    `ComposeO`
+                    ( RTOptic_ :: Optic is (Image props) r)
+                  ) :: Optic is (i :: BindingsMap) r
+                )
+  where
+  opticSing = SImageTexel (Proxy @k) (Proxy @props)
+
+type family ValidAnIndexOptic (is :: [Type]) (s :: Type) (a :: Type) :: Constraint where
+  ValidAnIndexOptic '[] _ _
+    = TypeError ( Text "Run-time optic does not specify the type of its run-time indices." )
+  ValidAnIndexOptic _ _ (Image _)
+    = TypeError (    Text "Forbidden standalone image texel optic."
+                :$$: Text "Optics for image texels must be copresent with a binding optic."
+                )
+  ValidAnIndexOptic '[ix] s a = ()
+  ValidAnIndexOptic is s a
+    = TypeError (    Text "Run-time optic specifies more than one type of index:"
+                :$$: Text "    " :<>: ShowType is
+                )
 
 ----------------------------------------------------------------------
 
@@ -280,28 +337,28 @@ instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
          )
-      => Gettable (AnIndex_ :: Optic ix (Array n a) r) where
+      => Gettable (RTOptic_ :: Optic ix (Array n a) r) where
 instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
-         , Gettable (AnIndex_ :: Optic ix (Array n a) r)
+         , Gettable (RTOptic_ :: Optic ix (Array n a) r)
          , PrimTy a
          )
-      => ReifiedGetter (AnIndex_ :: Optic ix (Array n a) r) where
+      => ReifiedGetter (RTOptic_ :: Optic ix (Array n a) r) where
   view i (MkArray arr) = arr Array.! fromIntegral i
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
          )
-      => Gettable (AnIndex_ :: Optic ix (RuntimeArray a) r) where
+      => Gettable (RTOptic_ :: Optic ix (RuntimeArray a) r) where
 instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
-         , Gettable (AnIndex_ :: Optic ix (RuntimeArray a) r)
+         , Gettable (RTOptic_ :: Optic ix (RuntimeArray a) r)
          , PrimTy a
          )
-      => ReifiedGetter (AnIndex_ :: Optic ix (RuntimeArray a) r) where
+      => ReifiedGetter (RTOptic_ :: Optic ix (RuntimeArray a) r) where
   view i (MkRuntimeArray arr) = arr Array.! fromIntegral i
 
 instance
@@ -394,7 +451,7 @@ instance
               :$$: Text "Structs can only be accessed using \
                         \compile-time indices, or field names."
               )
-    => Gettable (AnIndex_ :: Optic ix (Struct as) r) where
+    => Gettable (RTOptic_ :: Optic ix (Struct as) r) where
 
 
 -- vectors
@@ -441,14 +498,14 @@ instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
          )
-       => Gettable (AnIndex_ :: Optic ix (V n a) r) where
+       => Gettable (RTOptic_ :: Optic ix (V n a) r) where
 instance ( IntegralTy ty
          , r ~ a
          , ix ~ '[ty]
          , PrimTy a
          )
       => ReifiedGetter
-            (AnIndex_ :: Optic ix (V n a) r)
+            (RTOptic_ :: Optic ix (V n a) r)
       where
   view i v = v ^! fromIntegral i
 
@@ -511,7 +568,7 @@ instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ V m a
          )
-        => Gettable (AnIndex_ :: Optic ix (M m n a) r) where
+        => Gettable (RTOptic_ :: Optic ix (M m n a) r) where
 instance ( KnownNat m
          , KnownNat n
          , IntegralTy ty
@@ -519,7 +576,7 @@ instance ( KnownNat m
          , ix ~ '[ty]
          )
       => ReifiedGetter
-            (AnIndex_ :: Optic ix (M m n a) r)
+            (RTOptic_ :: Optic ix (M m n a) r)
       where
   view i (M rows) = distribute rows ^! fromIntegral i
 
@@ -600,14 +657,14 @@ instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
          )
-      => Settable (AnIndex_ :: Optic ix (Array n a) r) where
+      => Settable (RTOptic_ :: Optic ix (Array n a) r) where
 instance ( IntegralTy ty
          , r ~ a
          , ix ~ '[ty]
-         , Settable (AnIndex_ :: Optic ix (Array n a) r)
+         , Settable (RTOptic_ :: Optic ix (Array n a) r)
          )
       => ReifiedSetter
-           (AnIndex_ :: Optic ix (Array n a) r)
+           (RTOptic_ :: Optic ix (Array n a) r)
       where
   set i a (MkArray arr) = MkArray ( arr Array.// [(fromIntegral i, a)] )
 
@@ -615,14 +672,14 @@ instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
          )
-      => Settable (AnIndex_ :: Optic ix (RuntimeArray a) r) where
+      => Settable (RTOptic_ :: Optic ix (RuntimeArray a) r) where
 instance ( IntegralTy ty
          , r ~ a
          , ix ~ '[ty]
-         , Settable (AnIndex_ :: Optic ix (RuntimeArray a) r)
+         , Settable (RTOptic_ :: Optic ix (RuntimeArray a) r)
          )
       => ReifiedSetter
-           (AnIndex_ :: Optic ix (RuntimeArray a) r)
+           (RTOptic_ :: Optic ix (RuntimeArray a) r)
       where
   set i a (MkRuntimeArray arr)
     = MkRuntimeArray ( arr Array.// [(fromIntegral i, a)] )
@@ -709,7 +766,7 @@ instance
               :$$: Text "Structs can only be modified using \
                         \compile-time indices or field names."
               )
-    => Settable (AnIndex_ :: Optic ix (Struct as) r) where
+    => Settable (RTOptic_ :: Optic ix (Struct as) r) where
 
 -- vectors
 instance ( KnownNat i
@@ -759,17 +816,17 @@ instance ( IntegralTy ty
          , r ~ a
          , KnownNat n, 1 <= n
          )
-    => Settable (AnIndex_ :: Optic ix (V n a) r) where
+    => Settable (RTOptic_ :: Optic ix (V n a) r) where
 instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
          , KnownNat n, 1 <= n
          )
-    => ReifiedSetter (AnIndex_ :: Optic ix (V n a) r) where
+    => ReifiedSetter (RTOptic_ :: Optic ix (V n a) r) where
   set i b (a :. as)
     = if i == 0
       then b :. as
-      else a :. set @(AnIndex_ :: Optic ix (V (n-1) a) r) (i-1) b as
+      else a :. set @(RTOptic_ :: Optic ix (V (n-1) a) r) (i-1) b as
 
 instance
     TypeError (    Text "set: attempt to update vector element \
@@ -819,18 +876,18 @@ instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ V m a
          )
-       => Settable (AnIndex_ :: Optic ix (M m n a) r) where
+       => Settable (RTOptic_ :: Optic ix (M m n a) r) where
 instance ( IntegralTy ty
          , ix ~ '[ty]
          , r ~ V m a
          , KnownNat m, KnownNat n, 1 <= n
          )
-       => ReifiedSetter (AnIndex_ :: Optic ix (M m n a) r)
+       => ReifiedSetter (RTOptic_ :: Optic ix (M m n a) r)
        where
   set i c (M m)
     = ( M
       . distribute
-      . set @(AnIndex_ :: Optic ix (V n (V m a)) (V m a)) i c
+      . set @(RTOptic_ :: Optic ix (V n (V m a)) (V m a)) i c
       . distribute
       ) m
 

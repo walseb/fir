@@ -71,7 +71,7 @@ module FIR
   , Control.Type.Optic.ReifiedGetter(view)
   , Control.Type.Optic.ReifiedSetter(set)
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST((:$), Lit, Pair)
+  , FIR.AST.AST((:$), Lit, Pair, Ops)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.Binding.BindingsMap
   , FIR.Binding.Var, FIR.Binding.Fun
@@ -88,12 +88,11 @@ module FIR
   , FIR.Definition.EntryPoint_
   , module FIR.Instances.AST
   , module FIR.Instances.Codensity
+  , module FIR.Instances.Images
   , module FIR.Instances.Optics
   , FIR.Prim.Array.Array
   , FIR.Prim.Array.mkArray
   , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
-  , FIR.Prim.Image.ImageOperand(..)
-  , FIR.Prim.Image.ImageOperandList(..)
   , FIR.Prim.Image.ImageOperands(..)
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
@@ -195,6 +194,7 @@ import FIR.Binding
 import FIR.Definition
 import FIR.Instances.AST
 import FIR.Instances.Codensity
+import FIR.Instances.Images
 import FIR.Instances.Optics
 import FIR.Prim.Array
 import FIR.Prim.Image

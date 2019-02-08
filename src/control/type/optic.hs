@@ -234,7 +234,7 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
   -- | Equaliser optic.
   Joint_   :: Optic is s a
   -- | Optic with indexing information provided at run-time.
-  AnIndex_  :: Optic is s a
+  RTOptic_ :: Optic is s a
   -- | Compile-time index.
   Index_   :: Nat    -> Optic is s a
   -- | Compile-time field name.
@@ -262,7 +262,7 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 
 
 -- | Run-time index (kind-correct).
-type AnIndex (ix :: Type  ) = (AnIndex_   :: Optic '[ix] s a)
+type AnIndex (ix :: Type  ) = (RTOptic_   :: Optic '[ix] s a)
 -- | Compile-time index (kind-correct).
 type Index   (i  :: Nat   ) = (Index_   i :: Optic '[]   s a)
 -- | Compile-time field name (kind-correct).
@@ -583,7 +583,7 @@ type family LastOptic ( o :: Optic is s a) :: Optic (LastIndices o) (LastAccesse
   LastOptic (o1 `ComposeO` o2) = LastOptic o2
   LastOptic Joint_             = Joint_
   LastOptic Id_                = Id_
-  LastOptic AnIndex_           = AnIndex_
+  LastOptic RTOptic_           = RTOptic_
   LastOptic (Index_ i        ) = Index_ i
   LastOptic (Name_  k        ) = Name_  k
   LastOptic (o1 `ProductO` o2) = o1 `ProductO` o2
@@ -681,12 +681,12 @@ type family Disjoint
               where
   Disjoint (Name_  k) (Name_  k) = False
   Disjoint (Index_ n) (Index_ n) = False
-  Disjoint AnIndex_   _       
-    = TypeError (    Text "set: cannot create a product setter involving run-time indices."
+  Disjoint RTOptic_   _       
+    = TypeError (    Text "set: cannot create a product setter involving run-time indexing."
                 :$$: Text "Impossible to verify the required disjointness property."
                 )
-  Disjoint o AnIndex_
-    = Disjoint AnIndex_ o
+  Disjoint o RTOptic_
+    = Disjoint RTOptic_ o
   Disjoint ((Name_ k) :: Optic is s a) ((Index_ n) :: Optic js s b)
     = Not (Overlapping s k n)
   Disjoint ((Index_ n) :: Optic is s a) ((Name_ k) :: Optic js s b)

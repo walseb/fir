@@ -73,7 +73,7 @@ import CodeGen.Functions
 import CodeGen.IDs
   ( typeID, constID, bindingID )
 import CodeGen.Images
-  ( sample, imageRead, imageWrite )
+  ( imageTexel, writeTexel )
 import CodeGen.Instruction
   ( Args(..)
   , ID(ID), Instruction(..)
@@ -100,6 +100,7 @@ import CodeGen.Optics
   , pattern OpticUse, pattern OpticAssign
   , pattern OpticView, pattern OpticSet
   , IndexedOptic(AnIndexedOptic)
+  , ASTs(NilAST,ConsAST)
   )
 import CodeGen.Put
   ( putASM )
@@ -122,7 +123,7 @@ import CodeGen.Untyped
 import Data.Type.Known
   ( knownValue )
 import Data.Type.List
-  ( sLengthVal )
+  ( SLength(SSucc), sLengthVal )
 import FIR.AST
   ( AST(..), Syntactic(fromAST) )
 import FIR.Binding
@@ -237,6 +238,24 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
                 -> load (varName, bdID) (SPIRV.PointerTy storage eltTy)
               _ -> pure bd
 
+      -- image
+      SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
+        -> case is of 
+            ( astOps `ConsAST` coords `ConsAST` NilAST )
+              -> do
+                    let imgName = knownValue @name
+                    bd@(bdID, bdTy) <- bindingID imgName
+                    img <- case bdTy of
+                              SPIRV.Pointer storage imgTy
+                                -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                              _ -> pure bd
+                    (cdID, _) <- codeGen coords
+                    ops <- case astOps of
+                              Ops rawOps -> pure rawOps
+                              _ -> throwError
+                                      "codeGen: image operands not of the expected form."
+                    imageTexel img ops cdID
+
       SComposeO _ (SBinding (_ :: Proxy name )) getter ->
         do  let varName = knownValue @name
             bd@(bdID, bdTy) <- bindingID varName
@@ -246,9 +265,34 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
                 -> loadThroughAccessChain (bdID, SPIRV.PointerTy storage eltTy) getter is
               _ -> extractUsingGetter     bd                                    getter is
 
+      SComposeO
+        (SSucc (SSucc _))
+        (SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props ))
+        getter
+         -> case is of
+              ( astOps `ConsAST` coords `ConsAST` nextindices )
+                ->
+                  do 
+                    -- copy-pasted from above
+                    let imgName = knownValue @name
+                    bd@(bdID, bdTy) <- bindingID imgName
+                    img <- case bdTy of
+                              SPIRV.Pointer storage imgTy
+                                -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                              _ -> pure bd
+                    (cdID, _) <- codeGen coords
+                    ops <- case astOps of
+                              Ops rawOps -> pure rawOps
+                              _ -> throwError
+                                      "codeGen: image operands not of the expected form."
+                    -- end of copy-paste
+                    texel <- imageTexel img ops cdID
+                    extractUsingGetter texel getter nextindices
+
       _ -> throwError (   "codeGen: cannot 'use', unsupported optic:\n"
                        <> Text.pack (showSOptic singOptic) <> "\n"
-                       <> "Optic does not start by accessing a binding."
+                       <> "Optic does not start by accessing a binding (or image texel).\n"
+                       <> "Cannot access multiple bindings simultaneously."
                       )
 codeGen (Applied (Use sLg singOptic) is)
   = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
@@ -292,6 +336,26 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
+      -- image
+      SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
+        -> case is of 
+            ( astOps `ConsAST` coords `ConsAST` NilAST )
+              -> do
+                    let imgName = knownValue @name
+                    bd@(bdID, bdTy) <- bindingID imgName
+                    img <- case bdTy of
+                              SPIRV.Pointer storage imgTy
+                                -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                              _ -> pure bd
+                    (cdID , _) <- codeGen coords
+                    (texID, _) <- codeGen a
+                    ops <- case astOps of
+                              Ops rawOps -> pure rawOps
+                              _ -> throwError
+                                      "codeGen: image operands not of the expected form."
+                    writeTexel img ops cdID texID
+                    pure (ID 0, SPIRV.Unit) -- ID should never be used
+
       SComposeO _ (SBinding (_ :: Proxy name)) setter ->
         do  let varName = knownValue @name
             a_IDTy          <- codeGen a
@@ -304,9 +368,15 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
+      SComposeO _ SImageTexel {} _
+        -> throwError ( "codeGen: cannot write to individual components \
+                        \of an image texel"
+                      )
+
       _ -> throwError (   "codeGen: cannot 'assign', unsupported optic:\n"
                        <> Text.pack (showSOptic singOptic) <> "\n"
                        <> "Optic does not start by accessing a binding."
+                       <> "Cannot update multiple bindings simultaneously."
                       )
 codeGen (Applied (Assign sLg singOptic) is)
   = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
@@ -349,6 +419,7 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                                )
         (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
 
+{-
 -- image operations
 codeGen (Sample (_ :: Proxy k) ops :$ coords)
   = do  let imgName = knownValue @k
@@ -382,6 +453,7 @@ codeGen (ImageWrite (_ :: Proxy k) ops :$ coords :$ writee)
                 _ -> pure bd
         imageWrite img ops cdID writeeID
         pure (ID 0, SPIRV.Unit) -- ID should never be used
+-}
 
 -- functor / applicative operations
 codeGen (Fmap functorSing :$ f :$ a)

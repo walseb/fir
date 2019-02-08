@@ -28,16 +28,10 @@ type Defs = '[ "image"   ':-> Global UniformConstant (Texture2D Float Float (RGB
              , "main"    ':-> EntryPoint Fragment '[]
              ]
 
-type MyMethod
-  = Method
-      NoDepthTest
-      Affine
 
 program :: Program Defs ()
 program =
   Program $ entryPoint @"main" @Fragment do
     pos <- get @"in_pos"
-    col <- sample @"image" @(Just MyMethod)
-              ( Operands Done )
-              pos       
+    col <- use @(ImageTexel "image") ( Ops $ Bias 0 Done ) pos
     put @"out_col" col

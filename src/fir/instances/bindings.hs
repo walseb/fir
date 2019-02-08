@@ -26,7 +26,6 @@ module FIR.Instances.Bindings
   , ValidFunDef
   , ValidEntryPoint
   , LookupImageProperties
-  , ValidImageSample
   , ValidImageRead
   , ValidImageWrite
   )
@@ -44,6 +43,8 @@ import GHC.TypeLits
   , TypeError
   , ErrorMessage(..)
   )
+import GHC.TypeNats
+  ( Nat )
 
 -- fir
 import Data.Type.List
@@ -52,19 +53,31 @@ import Data.Type.Map
   ( (:->)((:->))
   , Lookup, Remove
   )
-import Math.Algebra.Class
-  ( Integral, Floating )
 import FIR.Binding
   ( Binding(EntryPoint), BindingsMap, FunctionType
   , Permission(Read,Write)
   , Var, Fun
   )
-import FIR.Prim.Image
-  ( ImageProperties(Properties), Image )
 import FIR.Builtin
   ( StageBuiltins )
+import FIR.Prim.Image
+  ( ImageProperties(Properties), Image
+  , OperandName(DepthComparison, BaseOperand)
+  )
+import FIR.Prim.Singletons
+  ( Integrality )
 import SPIRV.Image
-  ( ImageUsage(Sampled, Storage), SamplingMethod )
+  ( ImageUsage(Sampled, Storage)
+  , ImageFormat(ImageFormat)
+  , Normalisation(..)
+  , HasDepth(..)
+  , MultiSampling(..)
+  , Operand(LODOperand)
+  )
+import qualified SPIRV.Image    as Image
+  ( Component(Integer, Floating) )
+import qualified SPIRV.ScalarTy as SPIRV
+  ( ScalarTy(Integer, Floating) )
 import SPIRV.Stage
   ( Stage )
 
@@ -320,7 +333,7 @@ type family ImagePropertiesFromLookup
               where
   ImagePropertiesFromLookup _ _ (Just (Var _ (Image props))) = props
   ImagePropertiesFromLookup k i  Nothing
-    = TypeError (     Text "Expected an image\
+    = TypeError (     Text "Expected an image, \
                            \but nothing is bound by name " :<>: ShowType k
                 )
   ImagePropertiesFromLookup k i (Just nonImage)
@@ -329,44 +342,106 @@ type family ImagePropertiesFromLookup
                  :$$: Text "Expected an image."
                  )
 
--- | Check that we can call 'FIR.Instances.Codensity.sample'.
-type family ValidImageSample
-              ( meth  :: Maybe SamplingMethod )
-              ( props :: ImageProperties      )
+-- | Check that we can read from an image (either directly or using a sampler).
+type family ValidImageRead
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
             :: Constraint where
-  ValidImageSample _ ( Properties _ _ _ _ _ _ Storage _ )
-    = TypeError (      Text "'sample': cannot sample a storage image."
-                  :$$: Text "Image data must be accessed directly."
-                 )
-  ValidImageSample (Just _) ( Properties a _ _ _ _ _ _ _ )
-    = Floating a -- accessing with a sampler: must use floating-point coordinates
-  ValidImageSample Nothing ( Properties a _ _ _ _ _ _ _ )
-    = Integral a -- accessing without a sampler: must use integral coordinates
+  ValidImageRead
+    ( Properties coords res _ depth _ ms usage fmt )
+    ops
+      = ( AllowedIndexing (Integrality coords) ms usage
+        , CheckDepthTest (DepthComparison `Elem` ops) (Integrality coords) depth
+        , CheckLODOperands (Integrality coords) ops
+        , CompatibleFormat (Integrality res) fmt
+        )
 
--- | Check that we can call 'FIR.Instances.Codensity.imageRead'.
-type family ValidImageRead (props :: ImageProperties) :: Constraint where
-  ValidImageRead ( Properties _ _ _ _ _ _ Sampled _ )
-    = TypeError (      Text "'imageRead': cannot directly access sampling image."
-                  :$$: Text "Image data must be accessed using a sampler."
-                 )
-  ValidImageRead ( Properties a _ _ _ _ _ _ _ ) = Integral a
+-- | Check that we can write to an image.
+type family ValidImageWrite
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
+           :: Constraint where
+  ValidImageWrite
+    ( Properties _ _ _ _ _ _ Sampled _ )
+    ops
+      = TypeError ( Text "Cannot write to a sampled image; must be a storage image." )
+  ValidImageWrite
+    ( Properties _ _ _ (Just DepthImage) _ _ _ _ )
+    ops
+      = TypeError ( Text "Cannot write to a depth image." )
 
--- | Check that we can call 'FIR.Instances.Codensity.imageWrite'.
-type family ValidImageWrite (props :: ImageProperties) :: Constraint where
-  ValidImageWrite ( Properties _ _ _ _ _ _ Sampled _ )
-    = TypeError ( Text "'imageWrite': Cannot write to a sampling image.")
-  ValidImageWrite ( Properties a _ _ _ _ _ _ _ ) = Integral a
+  ValidImageWrite
+    ( Properties coords res _ _ _ _ _ fmt )
+    ops
+      = ( IntegralIndexing (Integrality coords)
+        , CompatibleFormat (Integrality res) fmt
+        )
 
+type family IntegralIndexing (inty :: SPIRV.ScalarTy) :: Constraint where
+  IntegralIndexing (SPIRV.Floating _)
+    = TypeError ( Text "Cannot write to an image using floating-point coordinates." )
+  IntegralIndexing _ = ()   
 
-type family ValidAccessCoordinates
-              ( meth  :: Maybe SamplingMethod )
-              ( props :: ImageProperties      )
+-- | Check whether floating-point coordinates are allowed.
+type family AllowedIndexing
+              ( inty  :: SPIRV.ScalarTy )
+              ( ms    :: MultiSampling  )
+              ( usage :: ImageUsage     )
             :: Constraint where
-  ValidAccessCoordinates
-    Nothing
-    ( Properties a _ _ _ _ _ _ _ )
-      = Integral a -- accessing without a sampler: must use integral coordinates
-  ValidAccessCoordinates
-    (Just _)
-    ( Properties a _ _ _ _ _ _ _ )
-      = Floating a 
+  AllowedIndexing (SPIRV.Floating _) _ Storage
+    = TypeError
+        ( Text "Cannot use floating-point coordinates with a storage image." )
+  AllowedIndexing (SPIRV.Floating _) MultiSampled _
+    = TypeError
+        ( Text "Cannot use floating-point coordinates with multi-sampling." )
+  AllowedIndexing _ _ _ = ()
+
+-- | Check that depth-testing is appropriately performed.
+type family CheckDepthTest
+              ( depthTesting :: Bool   )
+              ( inty :: SPIRV.ScalarTy )
+              ( depth :: Maybe HasDepth )
+            :: Constraint where
+  CheckDepthTest False _ (Just DepthImage)
+    = TypeError
+        ( Text "Must use a depth comparison with this depth image." )
+  CheckDepthTest True _ (Just NotDepthImage)
+    = TypeError
+        ( Text "Cannot perform depth comparison: not a depth image." )
+  CheckDepthTest True (SPIRV.Integer _ _ ) _
+    = TypeError
+        ( Text "Cannot perform depth comparison using integral coordinates." )
+  CheckDepthTest _ _ _ = ()
+
+-- | If using integral coordinates, LOD instructions cannot be provided.
+type family CheckLODOperands
+                ( inty :: SPIRV.ScalarTy )
+                ( ops  :: [OperandName]  )
+              :: Constraint where
+  CheckLODOperands (SPIRV.Floating _) _ = ()
+  CheckLODOperands _ ( BaseOperand ('LODOperand lod) ': _ )
+    = TypeError 
+        ( ShowType lod :<>: Text " operand not allowed: using integral coordinates." )
+  CheckLODOperands inty ( op ': ops ) = CheckLODOperands inty ops
+
+type family CompatibleFormat
+                ( inty :: SPIRV.ScalarTy          )
+                ( fmt  :: Maybe (ImageFormat Nat) )
+              :: Constraint
+              where
+  CompatibleFormat (SPIRV.Integer _ _) (Just ('ImageFormat (Image.Integer Normalised _) _))
+    = TypeError
+       (    Text "Expected a floating-point type, but provided an integer type."
+       :$$: Text "Image uses a normalised integer format, resulting in floating-point texel data."
+       )
+  CompatibleFormat (SPIRV.Integer _ _) (Just ('ImageFormat Image.Floating _))
+    = TypeError
+       (    Text "Expected a floating-point type, but provided an integer type."
+       :$$: Text "Image uses a floating-point format."
+       )
+  CompatibleFormat (SPIRV.Floating _) (Just ('ImageFormat (Image.Integer Unnormalised _) _))
+    = TypeError
+       (    Text "Expected an integral type, but provided a floating-point type."
+       :$$: Text "Image uses unnormalised integers, resulting in integral texel data."
+       )
+  CompatibleFormat _ _ = ()

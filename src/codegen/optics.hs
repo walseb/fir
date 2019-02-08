@@ -22,6 +22,7 @@ module CodeGen.Optics
   , extractUsingGetter
   , insertUsingSetter
   , setUsingSetter
+  , ASTs(NilAST, ConsAST)
   ) where
 
 -- base
@@ -239,6 +240,8 @@ operationTree is (SProductO lg1 lg2 o1 o2)
         pure (Combine children)
 operationTree _ (SBinding _)
   = throwError "operationTree: trying to access a binding within a binding"
+operationTree _ (SImageTexel _ _)
+  = throwError "operationTree: unexpected image optic"
 
 composedIndices :: SLength is -> ASTs (is :++: js) -> (ASTs is, ASTs js)
 composedIndices SZero js = ( NilAST, js )

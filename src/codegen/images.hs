@@ -8,14 +8,18 @@
 {-# LANGUAGE TypeApplications    #-}
 
 module CodeGen.Images
-  ( sample, imageRead, imageWrite )
+  ( imageTexel, writeTexel )
   where
 
 -- base
 import Control.Arrow
   ( (&&&) )
 import Data.Bits
-  ( Bits((.&.), shiftR, testBit) )
+  ( Bits((.|.), shiftR, testBit) )
+import Data.List
+  ( insertBy )
+import Data.Ord
+  ( comparing )
 import Data.Word
   ( Word32 )
 
@@ -45,114 +49,130 @@ import CodeGen.Monad
   , MonadFresh(fresh)
   )
 import Data.Type.Known
-  ( Known, knownValue )
+  ( Known )
 import FIR.Prim.Image
   ( ImageProperties
-  , ImageOperand(..), ImageOperands(..), ImageOperandList(..)
+  , ImageOperands(..)
   , LODMethod(..)
+  , knownImage
   , knownImageReturnComponent
   )
 import SPIRV.Image
   ( DepthTesting(..), Projection(..) )
 import qualified SPIRV.Image     as SPIRV
+  ( Image(component) )
 import qualified SPIRV.Operation as SPIRV
   ( Operation )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 import qualified SPIRV.PrimTy
   ( PrimTy(Image, SampledImage) )
+import qualified SPIRV.ScalarTy  as SPIRV
+  ( ScalarTy(Integer, Floating) )
 
 --------------------------------------------------------------------------
 
-sample :: forall meth props.
-          ( Known (Maybe SPIRV.SamplingMethod) meth
-          , Known ImageProperties props
-          )
-       => (ID, SPIRV.PrimTy)
-       -> ImageOperands meth props
-       -> ID
-       -> CGMonad (ID, SPIRV.PrimTy)
-sample (imgID, imgTy) (Operands ops) coords
+
+imageTexel
+      :: forall props ops.
+         ( Known ImageProperties props )
+      => (ID, SPIRV.PrimTy)
+      -> ImageOperands props ops
+      -> ID
+      -> CGMonad (ID, SPIRV.PrimTy)
+imageTexel (imgID, imgTy) ops coords
   = do
       ( bm, operandsArgs ) <- operandsToArgs ops
       let lod    = lodMethod    bm
-          mbMeth = knownValue @meth
-          proj = case mbMeth of
-            Nothing                  -> Affine
-            Just (SPIRV.Method _ pr) -> pr
+          proj   = projection   bm
           dtest  = depthTesting bm
           imgResCompTy = knownImageReturnComponent @props
           imgResTy = case dtest of
               DepthTest -> imgResCompTy
               _         -> SPIRV.Vector 4 imgResCompTy
-      -- create sampled image
-      sampledImgID <-
-        case imgTy of
-          SPIRV.PrimTy.SampledImage _
-            -> pure imgID
-          SPIRV.PrimTy.Image _
-            -> throwError
-                  ( "codeGen: trying to sample storage image." )
-          _ -> throwError
-                  ( "codeGen: image sampling provided non-image of type " <> Text.pack ( show imgTy ) )
-      --
       resTyID <- typeID imgResTy
       v <- fresh
-      liftPut $ putInstruction Map.empty
-        Instruction
-          { operation = sampleOperation lod dtest proj
-          , resTy     = Just resTyID
-          , resID     = Just v
-          , args      = Arg sampledImgID
-                      $ Arg coords
-                      $ operandsArgs
-          }
+      
+      case SPIRV.component (knownImage @props) of
+        -- must be using a sampler (accessing with floating-point coordinates)
+        SPIRV.Floating _
+          -> do sampledImgID
+                  <- case imgTy of
+                        SPIRV.PrimTy.SampledImage _
+                          -> pure imgID
+                        SPIRV.PrimTy.Image _
+                          -> throwError
+                                ( "codeGen: cannot sample image with floating-point coordinates: \
+                                  \no sampler provided."
+                                )
+                        _ -> throwError
+                                ( "codeGen: image sampling operation provided non-image \
+                                  \of type " <> Text.pack ( show imgTy )
+                                )
+                liftPut $ putInstruction Map.empty
+                  Instruction
+                    { operation = sampleOperation lod dtest proj
+                    , resTy     = Just resTyID
+                    , resID     = Just v
+                    , args      = Arg sampledImgID
+                                $ Arg coords
+                                $ operandsArgs
+                    }
+        -- reading from image directly (using integral coordinates)
+        SPIRV.Integer _ _
+          -> do plainImgID
+                  <- case imgTy of
+                        SPIRV.PrimTy.Image _
+                          -> pure imgID
+                        SPIRV.PrimTy.SampledImage plainImg
+                          -> fst <$> removeSampler (imgID, plainImg)
+                        _ -> throwError
+                               ( "codeGen: image read operation provided non-image \
+                                 \of type " <> Text.pack ( show imgTy )
+                               )
+                liftPut $ putInstruction Map.empty
+                  Instruction
+                    { operation = SPIRV.Op.ImageRead
+                    , resTy     = Just resTyID
+                    , resID     = Just v
+                    , args      = Arg plainImgID
+                                $ Arg coords
+                                $ operandsArgs
+                    }
+      -- return the result ID
       pure (v, imgResTy)
 
-imageRead :: forall props.
-            ( Known ImageProperties props )
-          => (ID, SPIRV.PrimTy)
-          -> ImageOperands Nothing props
-          -> ID
-          -> CGMonad (ID, SPIRV.PrimTy)
-imageRead (imgID, _) (Operands ops) coords
-  = do
-      ( _, operandsArgs ) <- operandsToArgs ops
-      let imgResTy = SPIRV.Vector 4 (knownImageReturnComponent @props)
-      resTyID <- typeID imgResTy
-      v <- fresh
-      liftPut $ putInstruction Map.empty
-        Instruction
-          { operation = SPIRV.Op.ImageRead
-          , resTy     = Just resTyID
-          , resID     = Just v
-          , args      = Arg imgID
-                      $ Arg coords
-                      $ operandsArgs
-          }
-      pure (v, imgResTy)
 
-imageWrite :: ( Known ImageProperties props )
+writeTexel :: ( Known ImageProperties props )
            => (ID, SPIRV.PrimTy)
-           -> ImageOperands Nothing props
+           -> ImageOperands props ops
            -> ID
            -> ID
            -> CGMonad ()
-imageWrite (imgID, _) (Operands ops) coords texelToWrite
+writeTexel (imgID, imgTy) ops coords texel
   = do
       ( _, operandsArgs ) <- operandsToArgs ops
+      plainImgID
+        <- case imgTy of
+              SPIRV.PrimTy.Image _
+                -> pure imgID
+              SPIRV.PrimTy.SampledImage plainImg
+                -> fst <$> removeSampler (imgID, plainImg)
+              _ -> throwError
+                     ( "codeGen: image write operation provided non-image \
+                       \of type " <> Text.pack ( show imgTy )
+                     )
       liftPut $ putInstruction Map.empty
         Instruction
           { operation = SPIRV.Op.ImageRead
           , resTy     = Nothing
           , resID     = Nothing
-          , args      = Arg imgID
+          , args      = Arg plainImgID
                       $ Arg coords
-                      $ Arg texelToWrite
+                      $ Arg texel
                       $ operandsArgs
           }
       pure ()
-
 {-
 
 --------------------------------------------------------------------------
@@ -173,8 +193,9 @@ addSampler (imgID, imgTy) samplerID
                       $ Arg samplerID EndArgs
           }
       pure (v, sampledImgTy)
+-}
 
-removeSampler :: (ID, SPIRV.Image.Image) -> CGMonad (ID, SPIRV.PrimTy)
+removeSampler :: (ID, SPIRV.Image) -> CGMonad (ID, SPIRV.PrimTy)
 removeSampler (imgID, imgTy)
   = do
       let plainImgTy = SPIRV.PrimTy.Image imgTy
@@ -188,7 +209,6 @@ removeSampler (imgID, imgTy)
           , args      = Arg imgID EndArgs
           }
       pure (v, plainImgTy)
--}
 
 --------------------------------------------------------------------------
 -- sampling: find which sampling operation to use
@@ -200,8 +220,13 @@ lodMethod bm
 
 depthTesting :: Word32 -> DepthTesting
 depthTesting bm
-  | testBit bm 0 = DepthTest
+  | testBit bm 1 = DepthTest
   | otherwise    = NoDepthTest
+
+projection :: Word32 -> Projection
+projection bm
+  | testBit bm 0 = Projective
+  | otherwise    = Affine
 
 sampleOperation :: LODMethod -> DepthTesting -> Projection -> SPIRV.Operation
 sampleOperation ImplicitLOD NoDepthTest Affine     = SPIRV.Op.ImageSampleImplicitLod
@@ -216,19 +241,84 @@ sampleOperation ExplicitLOD DepthTest   Projective = SPIRV.Op.ImageSampleProjDre
 --------------------------------------------------------------------------
 -- dealing with operands
 
--- sorting operands as SPIR-V needs
--- bottom byte reserved for depth
-operandBit :: ImageOperand a dim proj ms op -> Word32
-operandBit ( Dref           _ ) = 0x0001
-operandBit ( Bias           _ ) = 0x0100
-operandBit ( LOD            _ ) = 0x0200
-operandBit ( Grad          {} ) = 0x0400
-operandBit ( ConstOffsetBy  _ ) = 0x0800
-operandBit ( OffsetBy       _ ) = 0x1000
-operandBit ( ConstOffsetsBy _ ) = 0x2000
-operandBit ( SampleNo       _ ) = 0x4000
-operandBit ( MinLOD         _ ) = 0x8000
+operands :: ImageOperands props ops -> CGMonad (Word32, [(ID, Word32)])
+operands Done = pure ( 0x0000, [] )
+operands Proj = pure ( 0x0001, [] )
+operands (Dref dref ops)
+  = do
+      i <- fst <$> codeGen dref
+      (bm, nxt) <- operands ops
+      let opBit = 0x0002
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
+operands (Bias bias ops)
+  = do
+      i <- fst <$> codeGen bias
+      (bm, nxt) <- operands ops
+      let opBit = 0x0100
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
+operands (LOD lod ops)
+  = do
+      i <- fst <$> codeGen lod
+      (bm, nxt) <- operands ops
+      let opBit = 0x0200
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
+operands (Grad gx gy ops)
+  = do
+      i1 <- fst <$> codeGen gx
+      i2 <- fst <$> codeGen gy
+      (bm, nxt) <- operands ops
+      let opBit = 0x0400
+      pure ( opBit .|. bm
+           , stableSplice ([i1,i2], opBit) nxt )
+operands (ConstOffsetBy off ops)
+  = do
+      i <- constID off
+      (bm, nxt) <- operands ops
+      let opBit = 0x0800
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
+operands (OffsetBy off ops)
+  = do
+      i <- fst <$> codeGen off
+      (bm, nxt) <- operands ops
+      let opBit = 0x1000
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
+operands (ConstOffsetsBy offs ops)
+  = do
+      i <- constID offs
+      (bm, nxt) <- operands ops
+      let opBit = 0x2000
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
+operands (SampleNo no ops)
+  = do
+      i <- fst <$> codeGen no
+      (bm, nxt) <- operands ops
+      let opBit = 0x0400
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
+operands (MinLOD lod ops)
+  = do
+      i <- fst <$> codeGen lod
+      (bm, nxt) <- operands ops
+      let opBit = 0x0800
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (i, opBit) nxt
+           )
 
+
+{-
 operand :: ImageOperand a dim proj ms op -> CGMonad [ID]
 operand (Dref    dref) = (:[]) . fst <$> codeGen dref
 operand (Bias    b   ) = (:[]) . fst <$> codeGen b
@@ -247,20 +337,21 @@ operands (op `Op` ops)
       opIDs        <- operand op
       (bm, opsIDs) <- operands ops
       let opBit = operandBit op
-      pure $ ( bm .&. opBit
+      pure $ ( bm .|. opBit
              , stableSplice ( opIDs, opBit ) opsIDs
              )
+-}
 
 opArgs :: Word32 -> [(ID, Word32)] -> Args
 opArgs _  [] = EndArgs
-opArgs bm ((dref, 0x0001) : ops)  -- special case for depth argument
+opArgs bm ((dref, 0x0002) : ops)  -- special case for depth argument
   = Arg dref (opArgs bm ops) -- must go before everything else (including bitmask)
 opArgs bm ops
   = Arg
       ( shiftR bm 8 ) -- bitmask first, with bottom byte removed
       ( toArgs (map fst ops) ) -- then the IDs in order
 
-operandsToArgs :: ImageOperandList a dim proj ms ops -> CGMonad (Word32, Args)
+operandsToArgs :: ImageOperands props ops -> CGMonad (Word32, Args)
 operandsToArgs ops = (fst &&& uncurry opArgs) <$> operands ops
 
 stableSplice :: Ord b => ( [a], b ) -> [ (a,b) ] -> [ (a,b) ]
