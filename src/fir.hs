@@ -104,9 +104,9 @@ module FIR
   , FIR.Prim.Array.Array
   , FIR.Prim.Array.mkArray
   , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
-  -- , FIR.Prim.Image.ImageOperands(..)
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
+  , FIR.Prim.Image.GatherInfo(..)
   , FIR.Prim.Struct.Struct(End,(:&))
   , FIR.Program.Procedure
   , FIR.Program.Program(Program)

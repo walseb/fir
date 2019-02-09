@@ -13,7 +13,7 @@ module CodeGen.Images
 
 -- base
 import Control.Arrow
-  ( (&&&) )
+  ( first, (&&&) )
 import Data.Bits
   ( Bits((.|.), shiftR, testBit) )
 import Data.Functor.Compose
@@ -57,6 +57,7 @@ import Data.Type.Known
 import FIR.Prim.Image
   ( ImageProperties
   , ImageOperands(..)
+  , GatherInfo(..)
   , knownImage
   , knownImageComponent
   )
@@ -96,10 +97,13 @@ imageTexel (imgID, imgTy) ops coords
       let lod    = lodMethod    bm
           proj   = projection   bm
           dtest  = depthTesting bm
+          gathering = gather    bm
           imgCompTy = knownImageComponent @props
           imgResTy = case dtest of
-              DepthTest -> imgCompTy
-              _         -> SPIRV.Vector 4 imgCompTy
+                        DepthTest
+                          | not gathering
+                          -> imgCompTy
+                        _ -> SPIRV.Vector 4 imgCompTy
       resTyID <- typeID imgResTy
       v <- fresh
 
@@ -127,16 +131,29 @@ imageTexel (imgID, imgTy) ops coords
                                 ( "codeGen: image sampling operation provided non-image \
                                   \of type " <> Text.pack ( show imgTy )
                                 )
-                liftPut $ putInstruction Map.empty
-                  Instruction
-                    { operation = sampleOperation lod dtest proj
-                    , resTy     = Just resTyID
-                    , resID     = Just v
-                    , args      = Arg sampledImgID
-                                $ Arg coords
-                                $ operandsArgs
-                    }
-                pure True
+                if gathering
+                then do
+                  liftPut $ putInstruction Map.empty
+                    Instruction
+                      { operation = gatherOperation dtest
+                      , resTy     = Just resTyID
+                      , resID     = Just v
+                      , args      = Arg sampledImgID
+                                  $ Arg coords
+                                  $ operandsArgs
+                      }
+                  pure False
+                else do
+                  liftPut $ putInstruction Map.empty
+                    Instruction
+                      { operation = sampleOperation lod dtest proj
+                      , resTy     = Just resTyID
+                      , resID     = Just v
+                      , args      = Arg sampledImgID
+                                  $ Arg coords
+                                  $ operandsArgs
+                      }
+                  pure True
         -- reading from image directly (using integral coordinates)
         SPIRV.ScalarTy.Integer _ _
           -> do plainImgID
@@ -257,18 +274,21 @@ data LODMethod
 
 lodMethod :: Word32 -> LODMethod
 lodMethod bm
-  | testBit bm 9 || testBit bm 10 = ExplicitLOD --'LOD' or 'Grad' operand provided
-  | otherwise                     = ImplicitLOD
+  | bm `testBit` 9 || bm `testBit` 10 = ExplicitLOD --'LOD' or 'Grad' operand provided
+  | otherwise                         = ImplicitLOD
 
 depthTesting :: Word32 -> DepthTesting
 depthTesting bm
-  | testBit bm 1 = DepthTest
-  | otherwise    = NoDepthTest
+  | bm `testBit` 0 = DepthTest
+  | otherwise      = NoDepthTest
 
 projection :: Word32 -> Projection
 projection bm
-  | testBit bm 0 = Projective
-  | otherwise    = Affine
+  | bm `testBit` 1 = Projective
+  | otherwise      = Affine
+
+gather :: Word32 -> Bool
+gather = (`testBit` 13)
 
 sampleOperation :: LODMethod -> DepthTesting -> Projection -> SPIRV.Operation
 sampleOperation ImplicitLOD NoDepthTest Affine     = SPIRV.Op.ImageSampleImplicitLod
@@ -279,6 +299,10 @@ sampleOperation ImplicitLOD NoDepthTest Projective = SPIRV.Op.ImageSampleProjImp
 sampleOperation ExplicitLOD NoDepthTest Projective = SPIRV.Op.ImageSampleProjExplicitLod
 sampleOperation ImplicitLOD DepthTest   Projective = SPIRV.Op.ImageSampleProjDrefImplicitLod
 sampleOperation ExplicitLOD DepthTest   Projective = SPIRV.Op.ImageSampleProjDrefExplicitLod
+
+gatherOperation :: DepthTesting -> SPIRV.Operation
+gatherOperation NoDepthTest = SPIRV.Op.ImageGather
+gatherOperation DepthTest   = SPIRV.Op.ImageDrefGather
 
 --------------------------------------------------------------------------
 -- capabilities
@@ -303,13 +327,13 @@ addImageCapabilities sampling bm dim arrayness ms mbFmt
 -- dealing with operands
 
 operands :: ImageOperands props ops -> CGMonad (Word32, [(ID, Word32)])
-operands Done = pure ( 0x0000, [] )
-operands Proj = pure ( 0x0001, [] )
+operands Done       = pure  ( 0x0000, [] )
+operands (Proj ops) = first ( 0x0002 .|. ) <$> operands ops
 operands (Dref dref ops)
   = do
       i <- fst <$> codeGen dref
       (bm, nxt) <- operands ops
-      let opBit = 0x0002
+      let opBit = 0x0001
       pure ( opBit .|. bm
            , insertBy (comparing snd) (i, opBit) nxt
            )
@@ -329,7 +353,7 @@ operands (LOD lod ops)
       pure ( opBit .|. bm
            , insertBy (comparing snd) (i, opBit) nxt
            )
-operands (Grad gx gy ops)
+operands (Grad (gx,gy) ops)
   = do
       i1 <- fst <$> codeGen gx
       i2 <- fst <$> codeGen gy
@@ -347,25 +371,36 @@ operands (ConstOffsetBy off ops)
            )
 operands (OffsetBy off ops)
   = do
-      i <- fst <$> codeGen off
+      offID <- fst <$> codeGen off
       (bm, nxt) <- operands ops
       let opBit = 0x1000
       pure ( opBit .|. bm
-           , insertBy (comparing snd) (i, opBit) nxt
+           , insertBy (comparing snd) (offID, opBit) nxt
            )
-operands (ConstOffsetsBy offs ops)
+operands (Gather (ComponentWithOffsets comp offs) ops)
   = do
-      i <- constID offs
+      compID <- fst <$> codeGen comp
+      offsID <- constID offs
       (bm, nxt) <- operands ops
       let opBit = 0x2000
       pure ( opBit .|. bm
-           , insertBy (comparing snd) (i, opBit) nxt
+           , insertBy (comparing snd) (compID, 0x0001) -- says "put me first", see 'opArgs'
+           . insertBy (comparing snd) (offsID, opBit )
+           $ nxt
+           )
+operands (Gather (DepthWithOffsets offs) ops)
+  = do
+      offsID <- constID offs
+      (bm, nxt) <- operands ops
+      let opBit = 0x2000
+      pure ( opBit .|. bm
+           , insertBy (comparing snd) (offsID, opBit) nxt
            )
 operands (SampleNo no ops)
   = do
       i <- fst <$> codeGen no
       (bm, nxt) <- operands ops
-      let opBit = 0x0400
+      let opBit = 0x4000
       pure ( opBit .|. bm
            , insertBy (comparing snd) (i, opBit) nxt
            )
@@ -373,7 +408,7 @@ operands (MinLOD lod ops)
   = do
       i <- fst <$> codeGen lod
       (bm, nxt) <- operands ops
-      let opBit = 0x0800
+      let opBit = 0x8000
       pure ( opBit .|. bm
            , insertBy (comparing snd) (i, opBit) nxt
            )
@@ -381,8 +416,10 @@ operands (MinLOD lod ops)
 
 opArgs :: Word32 -> [(ID, Word32)] -> Args
 opArgs _  [] = EndArgs
-opArgs bm ((dref, 0x0002) : ops)  -- special case for depth argument
-  = Arg dref (opArgs bm ops) -- must go before everything else (including bitmask)
+opArgs bm ((putMeFirst, 0x0001) : ops)
+  -- special case for an argument that needs to be put first
+  -- must go before everything else (including bitmask)
+  = Arg putMeFirst (opArgs bm ops) 
 opArgs bm ops
   = Arg
       ( shiftR bm 8 ) -- bitmask first, with bottom byte removed

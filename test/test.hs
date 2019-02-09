@@ -58,6 +58,7 @@ tests :: [ (FilePath, Test) ]
 tests = [ ( "control" </> "loop"         , Validate  )
         , ( "functor" </> "applicative"  , Validate  )
         , ( "functor" </> "functor"      , Validate  )
+        , ( "images"  </> "gather"       , Validate  )
         , ( "images"  </> "sample"       , Validate  )
         , ( "optics"  </> "good"         , Validate  )
         , ( "optics"  </> "mvp1"         , Validate  )

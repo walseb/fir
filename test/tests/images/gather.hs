@@ -10,11 +10,14 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Tests.Images.Sample where
+module Tests.Images.Gather where
 
 -- fir
 import FIR
 import Math.Linear
+
+-- vector
+import qualified Data.Vector as Array
 
 ------------------------------------------------
 -- program
@@ -29,6 +32,8 @@ type Defs
 program :: Program Defs ()
 program =
   Program $ entryPoint @"main" @Fragment do
-    pos <- get @"in_pos"
-    col <- use @(ImageTexel "image") (MinLOD 0.5 Done) pos
+    pos   <- get @"in_pos"
+    let offsetArray :: Array 4 (V 2 Int32)
+        offsetArray = mkArray (Array.fromList [V2 0 0, V2 0 1, V2 1 0, V2 1 1])
+    col <- use @(ImageTexel "image") (Gather (ComponentWithOffsets 0 offsetArray) Done) pos
     put @"out_col" col

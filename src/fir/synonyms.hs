@@ -43,7 +43,7 @@ import FIR.Definition
 import qualified FIR.Definition as Def
 import FIR.Prim.Image
   ( ImageProperties(Properties)
-  , Image, ImageOperands
+  , Image, ImageOperands, GatherInfo(..)
   )
 import qualified FIR.Prim.Image as Op -- for image operands
 import SPIRV.ScalarTy
@@ -106,18 +106,23 @@ type StorageImage decs props
 
 -- pattern synonyms for image operands
 -- these perform wrapping/unwrapping for nicer user syntax... quite hacky
-pattern NoOperands = Ops Op.Done
-pattern Done       = Ops Op.Done
-pattern Proj       = Ops Op.Proj
-pattern Dref           dref ops = Ops (Op.Dref           dref (UnOps ops))
-pattern Bias           b    ops = Ops (Op.Bias           b    (UnOps ops))
-pattern LOD            lod  ops = Ops (Op.LOD            lod  (UnOps ops))
-pattern MinLOD         lod  ops = Ops (Op.MinLOD         lod  (UnOps ops))
-pattern Grad         gx gy  ops = Ops (Op.Grad         gx gy  (UnOps ops))
-pattern ConstOffsetBy  off  ops = Ops (Op.ConstOffsetBy  off  (UnOps ops))
-pattern OffsetBy       off  ops = Ops (Op.OffsetBy       off  (UnOps ops))
-pattern ConstOffsetsBy offs ops = Ops (Op.ConstOffsetsBy offs (UnOps ops))
-pattern SampleNo       no   ops = Ops (Op.SampleNo       no   (UnOps ops))
+pattern Done                  = Ops  Op.Done
+pattern Proj              ops = Ops (Op.Proj              (UnOps ops))
+pattern Dref         dref ops = Ops (Op.Dref         dref (UnOps ops))
+pattern Bias            b ops = Ops (Op.Bias            b (UnOps ops))
+pattern LOD           lod ops = Ops (Op.LOD           lod (UnOps ops))
+pattern MinLOD        lod ops = Ops (Op.MinLOD        lod (UnOps ops))
+pattern Grad         grad ops = Ops (Op.Grad         grad (UnOps ops))
+pattern ConstOffsetBy off ops = Ops (Op.ConstOffsetBy off (UnOps ops))
+pattern OffsetBy      off ops = Ops (Op.OffsetBy      off (UnOps ops))
+pattern Gather       info ops = Ops (Op.Gather       info (UnOps ops))
+pattern SampleNo       no ops = Ops (Op.SampleNo       no (UnOps ops))
+
+-- shorthands
+pattern NoOperands = Done
+pattern DepthTestOffsets offs ops = Gather (DepthWithOffsets offs) ops
+pattern GatherComponentWithOffsets component offs ops
+  = Gather (ComponentWithOffsets component offs) ops
 
 
 pattern UnOps :: AST (ImageOperands props ops) -> ImageOperands props ops

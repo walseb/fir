@@ -311,7 +311,7 @@ msCapabilities _                  = [ ]
 lodCapabilities :: Word32 -> [ Capability ]
 lodCapabilities bm
   -- uses the LOD operand
-  | testBit bm 9  = [ Kernel, ImageBasic, ImageMipmap ]
+  | bm `testBit` 9  = [ Kernel, ImageBasic, ImageMipmap ]
   -- uses the MinLOD opeand
-  | testBit bm 15 = [ Shader, MinLod ]
-  | otherwise     = [ ]
+  | bm `testBit` 15 = [ Shader, MinLod ]
+  | otherwise       = [ ]

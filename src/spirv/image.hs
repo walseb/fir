@@ -264,16 +264,19 @@ instance ( Known Component comp
 
 type family RequiredFormatUsage ( fmt :: ImageFormat Nat ) :: Maybe ImageUsage where
   RequiredFormatUsage ('ImageFormat _                       '[8,8,8,8]) = Nothing
-  RequiredFormatUsage ('ImageFormat ('Integer Normalised _) '[i,i,i,i]) = Just Storage
-  RequiredFormatUsage ('ImageFormat _                       '[i,i,i,i]) = Nothing
+  RequiredFormatUsage ('ImageFormat ('Integer Normalised _) '[_,_,_,_]) = Just Storage
+  RequiredFormatUsage ('ImageFormat _                       '[i,_,_,i]) = Nothing
   RequiredFormatUsage ('ImageFormat _                       '[32]     ) = Just Storage
+  RequiredFormatUsage ('ImageFormat _                       '[_ ]     ) = Nothing
   RequiredFormatUsage _                                                 = Just Storage
 
 requiredFormatUsage :: ImageFormat Word32 -> Maybe ImageUsage
 requiredFormatUsage (ImageFormat _                      [8,8,8,8]) = Nothing
 requiredFormatUsage (ImageFormat (Integer Normalised _) [_,_,_,_]) = Just Storage
-requiredFormatUsage (ImageFormat _                      [i,_,_,l]) = if i == l then Nothing else Just Storage
+requiredFormatUsage (ImageFormat _                      [i,_,_,l])
+                                                      | i == l     = Nothing
 requiredFormatUsage (ImageFormat _                      [32]     ) = Just Storage
+requiredFormatUsage (ImageFormat _                      [_ ]     ) = Nothing
 requiredFormatUsage _                                              = Just Storage
 
 

@@ -25,6 +25,8 @@ module FIR.Prim.Image
 
   -- * Image operands
   , OperandName(..), ImageOperands(..)
+  -- ** Specific data type for gathering operations
+  , GatherInfo(..)
 
   -- * Compute the coordinate and texel type of an image
   , ImageCoordinates, ImageData
@@ -101,6 +103,10 @@ data ImageProperties where
     -> ImageUsage     -- ^ Is the image sampled or a storage image?
     -> Maybe (ImageFormat Nat) -- ^ 'SPIRV.Image.ImageFormat' of the image.
     -> ImageProperties
+
+-- Access the component type.
+type family ImageComponent ( props :: ImageProperties ) :: Type where
+  ImageComponent ( Properties a _ _ _ _ _ _ _ ) = a
 
 -- | Abstract handle to an image.
 -- 
@@ -198,11 +204,11 @@ data OperandName
 --
 -- Consider for instance the image operands:
 --
---    @ Grad grad_x grad_y Proj @
+--    @ Grad grad $ Proj $ Done @
 --
 -- These can loosely be thought of as a list of operands
 --
---    @ [ Grad grad_x grad_y , Proj ] @
+--    @ Grad grad : Proj : [] @
 --
 -- This means we are specifying explicit derivatives,
 -- and using projective coordinates.
@@ -221,10 +227,18 @@ data ImageOperands
   -- | End of list.
   Done :: ImageOperands props '[ ]
   -- | Use projective coordinates.
-  Proj :: ImageOperands props '[ ProjectiveCoords ]
+  --
+  -- Must be provided after all other operands,
+  -- except possibly 'Dref'.
+  Proj :: ( CanAddProj ops )
+       => ImageOperands props ops
+       -> ImageOperands props (ProjectiveCoords ': ops)
   -- | Provide a depth-comparison reference value.
-  Dref :: ( NoDuplicate DepthComparison ops ) 
-       => AST a
+  --
+  -- Must be provided after all other operands,
+  -- except possibly 'Proj'.
+  Dref :: ( CanAddDref ops )
+       => AST (ImageComponent props) -- ^ Reference value used to perform the depth comparison.
        -> ImageOperands props ops
        -> ImageOperands props (DepthComparison ': ops)
   -- | Add a bias to the implicit level of detail.
@@ -233,7 +247,7 @@ data ImageOperands
           , NoDuplicate (BaseOperand ('LODOperand SPIRV.Bias)) ops
           , NoLODOps "Bias" '[SPIRV.LOD, SPIRV.Grad] ops
           )
-       => AST Float
+       => AST (ImageComponent props) -- ^ Bias.
        -> ImageOperands props ops 
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Bias) ': ops)
   -- | Provide an explicit level of detail.
@@ -242,7 +256,7 @@ data ImageOperands
           , NoDuplicate (BaseOperand ('LODOperand SPIRV.LOD)) ops
           , NoLODOps "LOD" '[SPIRV.Bias, SPIRV.Grad, SPIRV.MinLOD] ops
           )
-       => AST a
+       => AST (ImageComponent props) -- ^ LOD.
        -> ImageOperands props ops
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.LOD ) ': ops)
   -- | Specify the minimum level of detail to use
@@ -252,7 +266,7 @@ data ImageOperands
             , NoDuplicate (BaseOperand ('LODOperand SPIRV.MinLOD)) ops
             , NoLODOps "MinLOD" '[SPIRV.LOD, SPIRV.Bias] ops
             )
-         => AST a
+         => AST (ImageComponent props) -- ^ Minimum LOD.
          -> ImageOperands props ops
          -> ImageOperands props (BaseOperand ('LODOperand SPIRV.MinLOD ) ': ops)
   -- | Provide explicit derivatives.
@@ -261,8 +275,7 @@ data ImageOperands
           , NoDuplicate (BaseOperand ('LODOperand SPIRV.Grad)) ops
           , NoLODOps "Grad" '[ SPIRV.Bias, SPIRV.LOD ] ops
           )
-       => AST vec -- df/dx
-       -> AST vec -- df/dy
+       => ( AST vec, AST vec ) -- ^ Gradient: ( df/dx, df/dy ).
        -> ImageOperands props ops
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Grad) ': ops)
   -- | Add a constant offset to the coordinates.
@@ -272,7 +285,7 @@ data ImageOperands
        , NoDuplicate (BaseOperand SPIRV.ConstOffset) ops
        , NotCubeDim "ConstOffsetBy" props
        )
-    => vec
+    => vec -- Offset (a Haskell constant).
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.ConstOffset ': ops)
   -- | Add an offset to the coordinates.
@@ -282,16 +295,21 @@ data ImageOperands
        , NoDuplicate (BaseOperand SPIRV.Offset) ops
        , NotCubeDim "OffsetBy" props
        )
-    => AST vec
+    => AST vec -- Offset.
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.Offset ': ops)
   -- | Specify which 4 offsets to use for a 'gather' operation,
   -- which reads 4 texels at a time.
-  ConstOffsetsBy
-    :: ( NotCubeDim "ConstOffsetsBy" props
+  --
+  -- If not performing a depth test, an additional
+  -- index must be provided to specify which component to access.
+  Gather
+    :: ( NotCubeDim "Gather" props
        , NoDuplicate (BaseOperand SPIRV.ConstOffsets) ops
+       , NoLODOps "Gather" '[ SPIRV.LOD, SPIRV.Grad, SPIRV.Bias, SPIRV.MinLOD ] ops
+       , UsesAffineCoords ops
        )
-    => Array 4 (V 2 Int32)
+    => GatherInfo (WhichGather ops)
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops)
   -- | Specify which sample number to use in a multi-sampled image.
@@ -299,9 +317,37 @@ data ImageOperands
     :: ( CanMultiSample props
        , NoDuplicate (BaseOperand SPIRV.Sample) ops
        )
-    => AST Word32
+    => AST Word32  -- ^ Sample number.
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.Sample ': ops)
+
+-----------------------------------------------------------
+-- data type for gather image operand
+
+data Gather
+  = ComponentGather
+  | DrefGather
+  deriving ( Show, Eq, Ord, Bounded, Enum )
+
+-- | Information hat needs to be provided to the 'Gather' image operand.
+--
+-- This consists of 4 offsets, together with the information
+-- of which image component (0,1,2,3) to gather
+-- in the case that a depth test is /not/ being performed.
+data GatherInfo :: Gather -> Type where
+  ComponentWithOffsets
+    :: AST Word32 -> Array 4 (V 2 Int32) -> GatherInfo ComponentGather
+  DepthWithOffsets
+            ::       Array 4 (V 2 Int32) -> GatherInfo DrefGather
+
+-- Computes whether a component index needs to be provided to the
+-- 'Gather' image operand.
+type family WhichGather (ops :: [OperandName]) :: Gather where
+  WhichGather ops
+    = If
+        ( DepthComparison `Elem` ops  )
+        DrefGather
+        ComponentGather
 
 ----------------------------------------------------------
 
@@ -394,7 +440,6 @@ type family OffsetCoordinates
         ( ImageCoordinatesType Int32 dim NonArrayed Projective )
         ( ImageCoordinatesType Int32 dim NonArrayed Affine     )
 
-
 -----------------------------------------------------------
 -- helper type families to ensure image operands are valid
 
@@ -430,6 +475,28 @@ type family NotCubeDim (opName :: Symbol) (props :: ImageProperties) :: Constrai
         :$$: Text "Image dimensionality must not be 'Cube'."
         )
   NotCubeDim _ _ = ()
+
+type family CanAddProj (ops :: [OperandName]) :: Constraint where
+  CanAddProj '[] = ()
+  CanAddProj ( ProjectiveCoords ': _ )
+    = TypeError ( Text "'Proj' operand already supplied." )
+  CanAddProj ( DepthComparison ': ops ) = CanAddProj ops
+  CanAddProj ( op ': _ )
+    = TypeError ( Text "'Proj' operand must be provided after " :<>: ShowType op )
+
+type family CanAddDref (ops :: [OperandName]) :: Constraint where
+  CanAddDref '[] = ()
+  CanAddDref ( DepthComparison ': _ )
+    = TypeError ( Text "'Dref' operand already supplied." )
+  CanAddDref ( ProjectiveCoords ': ops ) = CanAddDref ops
+  CanAddDref ( op ': _ )
+    = TypeError ( Text "'Dref' operand must be provided after " :<>: ShowType op )
+
+type family UsesAffineCoords (ops :: [OperandName]) :: Constraint where
+  UsesAffineCoords '[] = ()
+  UsesAffineCoords ( ProjectiveCoords ': _ )
+    = TypeError ( Text "'Gather': unexpected 'Proj' operand; cannot use projective coordinates." )
+  UsesAffineCoords ( _ ': ops ) = UsesAffineCoords ops
 
 type NoDuplicate op ops = NoDuplicateFromElem op (op `Elem` ops)
 
