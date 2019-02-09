@@ -5,6 +5,8 @@
 module SPIRV.Capability where
 
 -- base
+import Data.Bits
+  ( Bits(testBit) )
 import Data.Word
   ( Word32 )
 
@@ -285,11 +287,31 @@ primTyCapabilities _                                          = [ ]
 
 formatCapabilities :: Image.ImageFormat Word32 -> [ Capability ]
 formatCapabilities format
-  = case Image.fromFormat format of
-      Nothing -> []
-      Just 0  -> []
-      Just w
-        | w >  5 && w < 21 -> [ StorageImageExtendedFormats ]
-        | w > 24 && w < 30 -> [ StorageImageExtendedFormats ]
-        | w > 33           -> [ StorageImageExtendedFormats ]
-        | otherwise        -> [ Shader ]
+  = case Image.requiredFormatUsage format of
+      Just Image.Storage   -> [ Shader, StorageImageExtendedFormats ]
+      _                    -> [ Shader ]
+
+dimCapabilities :: Bool -> Image.Dimensionality -> Image.Arrayness -> [ Capability ]
+dimCapabilities True  Image.Rect        _             = [ Shader, SampledRect ]
+dimCapabilities False Image.Rect        _             = [ Shader, SampledRect, ImageRect ]
+dimCapabilities _     Image.SubpassData _             = [ Shader, InputAttachment ]
+dimCapabilities False Image.OneD        _             = [ Sampled1D ]
+dimCapabilities True  Image.OneD        _             = [ Sampled1D, Image1D ]
+dimCapabilities True  Image.Cube        Image.Arrayed = [ SampledCubeArray ]
+dimCapabilities True  Image.Buffer      _             = [ SampledBuffer ]
+dimCapabilities False Image.Buffer      _             = [ SampledBuffer, ImageBuffer ]
+dimCapabilities _     _                 _             = [ ]
+
+msCapabilities :: Image.MultiSampling -> [ Capability ]
+msCapabilities Image.MultiSampled = [ ImageMSArray ]
+msCapabilities _                  = [ ]
+
+-- lod capability from image operand bitmask
+-- (note that the bitmask is shifted up one byte from what SPIR-V uses)
+lodCapabilities :: Word32 -> [ Capability ]
+lodCapabilities bm
+  -- uses the LOD operand
+  | testBit bm 9  = [ Kernel, ImageBasic, ImageMipmap ]
+  -- uses the MinLOD opeand
+  | testBit bm 15 = [ Shader, MinLod ]
+  | otherwise     = [ ]

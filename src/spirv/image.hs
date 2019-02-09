@@ -262,6 +262,21 @@ instance ( Known Component comp
   known = ImageFormat (knownValue @comp) (knownValue @sizes)
 
 
+type family RequiredFormatUsage ( fmt :: ImageFormat Nat ) :: Maybe ImageUsage where
+  RequiredFormatUsage ('ImageFormat _                       '[8,8,8,8]) = Nothing
+  RequiredFormatUsage ('ImageFormat ('Integer Normalised _) '[i,i,i,i]) = Just Storage
+  RequiredFormatUsage ('ImageFormat _                       '[i,i,i,i]) = Nothing
+  RequiredFormatUsage ('ImageFormat _                       '[32]     ) = Just Storage
+  RequiredFormatUsage _                                                 = Just Storage
+
+requiredFormatUsage :: ImageFormat Word32 -> Maybe ImageUsage
+requiredFormatUsage (ImageFormat _                      [8,8,8,8]) = Nothing
+requiredFormatUsage (ImageFormat (Integer Normalised _) [_,_,_,_]) = Just Storage
+requiredFormatUsage (ImageFormat _                      [i,_,_,l]) = if i == l then Nothing else Just Storage
+requiredFormatUsage (ImageFormat _                      [32]     ) = Just Storage
+requiredFormatUsage _                                              = Just Storage
+
+
 fromFormat :: ImageFormat Word32 -> Maybe Word32
 fromFormat ( RGBA32    F     ) = Just  1
 fromFormat ( RGBA16    F     ) = Just  2
@@ -403,20 +418,3 @@ operandBit Offset               = 0x10
 operandBit ConstOffsets         = 0x20
 operandBit Sample               = 0x40
 operandBit (LODOperand MinLOD ) = 0x80
-
-data SamplingMethod
-  = Method
-      DepthTesting
-      Projection
-  deriving ( Show, Eq, Ord )
-
-instance Demotable SamplingMethod where
-  type Demote SamplingMethod = SamplingMethod
-instance ( Known DepthTesting depth
-         , Known Projection   proj
-         )
-      => Known SamplingMethod (Method depth proj)
-      where
-  known = Method
-            ( knownValue @depth   )
-            ( knownValue @proj    )

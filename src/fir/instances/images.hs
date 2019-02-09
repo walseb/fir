@@ -45,7 +45,7 @@ The return type of this operation depends on:
 
 These properties are specified either at the type level,
 with a top-level type annotation declaring the image properties,
-or by the image operands @imageOperands@ (optional
+or by the 'FIR.Prim.Image.ImageOperands' @imageOperands@ (optional
 unless a depth-comparison value is required, but can be used
 e.g. to set an explicit level of detail).
 

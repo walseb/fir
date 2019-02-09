@@ -16,6 +16,8 @@ import Control.Arrow
   ( (&&&) )
 import Data.Bits
   ( Bits((.|.), shiftR, testBit) )
+import Data.Functor.Compose
+  ( Compose(Compose) )
 import Data.List
   ( insertBy )
 import Data.Ord
@@ -48,25 +50,34 @@ import CodeGen.Monad
   ( CGMonad, liftPut
   , MonadFresh(fresh)
   )
+import CodeGen.State
+  ( addCapabilities )
 import Data.Type.Known
   ( Known )
 import FIR.Prim.Image
   ( ImageProperties
   , ImageOperands(..)
   , knownImage
-  , knownImageReturnComponent
+  , knownImageComponent
+  )
+import qualified SPIRV.Capability as SPIRV
+  ( formatCapabilities
+  , dimCapabilities
+  , msCapabilities
+  , lodCapabilities
   )
 import SPIRV.Image
   ( DepthTesting(..), Projection(..) )
-import qualified SPIRV.Image     as SPIRV
-  ( Image(component) )
-import qualified SPIRV.Operation as SPIRV
+import qualified SPIRV.Image      as SPIRV
+import qualified SPIRV.Image
+  ( Image(Image) )
+import qualified SPIRV.Operation  as SPIRV
   ( Operation )
-import qualified SPIRV.Operation as SPIRV.Op
-import qualified SPIRV.PrimTy    as SPIRV
+import qualified SPIRV.Operation  as SPIRV.Op
+import qualified SPIRV.PrimTy     as SPIRV
 import qualified SPIRV.PrimTy
   ( PrimTy(Image, SampledImage) )
-import qualified SPIRV.ScalarTy  as SPIRV
+import qualified SPIRV.ScalarTy
   ( ScalarTy(Integer, Floating) )
 
 --------------------------------------------------------------------------
@@ -85,16 +96,24 @@ imageTexel (imgID, imgTy) ops coords
       let lod    = lodMethod    bm
           proj   = projection   bm
           dtest  = depthTesting bm
-          imgResCompTy = knownImageReturnComponent @props
+          imgCompTy = knownImageComponent @props
           imgResTy = case dtest of
-              DepthTest -> imgResCompTy
-              _         -> SPIRV.Vector 4 imgResCompTy
+              DepthTest -> imgCompTy
+              _         -> SPIRV.Vector 4 imgCompTy
       resTyID <- typeID imgResTy
       v <- fresh
-      
-      case SPIRV.component (knownImage @props) of
+
+      let SPIRV.Image.Image
+            { SPIRV.component      = component
+            , SPIRV.dimensionality = dim
+            , SPIRV.arrayness      = arrayness
+            , SPIRV.multiSampling  = ms
+            , SPIRV.imageFormat    = mbFmt
+            } = knownImage @props
+
+      sampling <- case component of
         -- must be using a sampler (accessing with floating-point coordinates)
-        SPIRV.Floating _
+        SPIRV.ScalarTy.Floating _
           -> do sampledImgID
                   <- case imgTy of
                         SPIRV.PrimTy.SampledImage _
@@ -117,8 +136,9 @@ imageTexel (imgID, imgTy) ops coords
                                 $ Arg coords
                                 $ operandsArgs
                     }
+                pure True
         -- reading from image directly (using integral coordinates)
-        SPIRV.Integer _ _
+        SPIRV.ScalarTy.Integer _ _
           -> do plainImgID
                   <- case imgTy of
                         SPIRV.PrimTy.Image _
@@ -138,11 +158,17 @@ imageTexel (imgID, imgTy) ops coords
                                 $ Arg coords
                                 $ operandsArgs
                     }
+                pure False
+
+      -- declare capabilities
+      addImageCapabilities sampling bm dim arrayness ms mbFmt
+      
       -- return the result ID
       pure (v, imgResTy)
 
 
-writeTexel :: ( Known ImageProperties props )
+writeTexel :: forall props ops.
+              ( Known ImageProperties props )
            => (ID, SPIRV.PrimTy)
            -> ImageOperands props ops
            -> ID
@@ -150,6 +176,13 @@ writeTexel :: ( Known ImageProperties props )
            -> CGMonad ()
 writeTexel (imgID, imgTy) ops coords texel
   = do
+      let SPIRV.Image.Image
+            { SPIRV.dimensionality = dim
+            , SPIRV.arrayness      = arrayness
+            , SPIRV.multiSampling  = ms
+            , SPIRV.imageFormat    = mbFmt
+            } = knownImage @props
+
       ( _, operandsArgs ) <- operandsToArgs ops
       plainImgID
         <- case imgTy of
@@ -171,12 +204,17 @@ writeTexel (imgID, imgTy) ops coords texel
                       $ Arg texel
                       $ operandsArgs
           }
+
+      -- declare capabilities
+      addImageCapabilities False 0 dim arrayness ms mbFmt
+      
+      -- return the result ID
       pure ()
-{-
 
 --------------------------------------------------------------------------
 -- add/remove sampler
 
+{-
 addSampler :: (ID, SPIRV.Image.Image) -> ID -> CGMonad (ID, SPIRV.PrimTy)
 addSampler (imgID, imgTy) samplerID
   = do
@@ -241,6 +279,25 @@ sampleOperation ImplicitLOD NoDepthTest Projective = SPIRV.Op.ImageSampleProjImp
 sampleOperation ExplicitLOD NoDepthTest Projective = SPIRV.Op.ImageSampleProjExplicitLod
 sampleOperation ImplicitLOD DepthTest   Projective = SPIRV.Op.ImageSampleProjDrefImplicitLod
 sampleOperation ExplicitLOD DepthTest   Projective = SPIRV.Op.ImageSampleProjDrefExplicitLod
+
+--------------------------------------------------------------------------
+-- capabilities
+
+addImageCapabilities
+  :: Bool
+  -> Word32
+  -> SPIRV.Dimensionality
+  -> SPIRV.Arrayness
+  -> SPIRV.MultiSampling
+  -> Maybe (SPIRV.ImageFormat Word32)
+  -> CGMonad ()
+addImageCapabilities sampling bm dim arrayness ms mbFmt
+  = do
+      ( addCapabilities . Compose )
+        ( SPIRV.formatCapabilities <$> mbFmt )
+      addCapabilities ( SPIRV.msCapabilities ms )
+      addCapabilities ( SPIRV.lodCapabilities bm )
+      addCapabilities ( SPIRV.dimCapabilities sampling dim arrayness )
 
 --------------------------------------------------------------------------
 -- dealing with operands
@@ -321,30 +378,6 @@ operands (MinLOD lod ops)
            , insertBy (comparing snd) (i, opBit) nxt
            )
 
-
-{-
-operand :: ImageOperand a dim proj ms op -> CGMonad [ID]
-operand (Dref    dref) = (:[]) . fst <$> codeGen dref
-operand (Bias    b   ) = (:[]) . fst <$> codeGen b
-operand (LOD     lod ) = (:[]) . fst <$> codeGen lod
-operand (MinLOD  lod ) = (:[]) . fst <$> codeGen lod
-operand (SampleNo nb ) = (:[]) . fst <$> codeGen nb
-operand (Grad gx gy) = traverse ( (fst <$>) . codeGen) [gx, gy]
-operand (ConstOffsetBy  off ) = (:[])       <$> constID off
-operand (OffsetBy       off ) = (:[]) . fst <$> codeGen off
-operand (ConstOffsetsBy offs) = (:[])       <$> constID offs
-
-operands :: ImageOperandList a dim proj ms ops -> CGMonad (Word32, [(ID, Word32)])
-operands Done = pure (0, [])
-operands (op `Op` ops)
-  = do
-      opIDs        <- operand op
-      (bm, opsIDs) <- operands ops
-      let opBit = operandBit op
-      pure $ ( bm .|. opBit
-             , stableSplice ( opIDs, opBit ) opsIDs
-             )
--}
 
 opArgs :: Word32 -> [(ID, Word32)] -> Args
 opArgs _  [] = EndArgs

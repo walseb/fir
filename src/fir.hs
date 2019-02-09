@@ -49,13 +49,15 @@ fragment =
 
 Note the lens-like operations:
 
-  - @get \@"in_pos"@ – equivalent to @use \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
+  - @'FIR.Instances.Codensity.get' \@"in_pos"@ – equivalent to
+    @'FIR.Instances.Codensity.use' \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
     This operation is similar to @get@ in a state monad, except that an additional binding name
     is provided via a type application.
-  - @use \@(ImageTexel "image") NoOperands pos@ samples the provided image
+  - @'FIR.Instances.Codensity.use' \@(ImageTexel "image") NoOperands pos@ samples the provided image
     at coordinates @pos@. Additional operands can be provided for this sampling operation,
     such as an explicit level of detail or whether to use projective coordinates.
-  - @put \@"out_col" col@ – equivalent to @assign \@(Name "out_col") col@ –
+  - @'FIR.Instances.Codensity.put' \@"out_col" col@ – equivalent to
+    @'FIR.Instances.Codensity.assign' \@(Name "out_col") col@ –
     sets the output value of the shader.
 
 

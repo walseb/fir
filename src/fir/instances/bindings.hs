@@ -38,6 +38,8 @@ import Data.Kind
   ( Type, Constraint )
 import Data.Type.Bool
   ( If )
+import Data.Type.Equality
+  ( type (==) )
 import GHC.TypeLits
   ( Symbol
   , TypeError
@@ -68,7 +70,7 @@ import FIR.Prim.Singletons
   ( Integrality )
 import SPIRV.Image
   ( ImageUsage(Sampled, Storage)
-  , ImageFormat(ImageFormat)
+  , ImageFormat(ImageFormat), RequiredFormatUsage
   , Normalisation(..)
   , HasDepth(..)
   , MultiSampling(..)
@@ -364,7 +366,7 @@ type family ValidImageRead
       = ( AllowedIndexing (Integrality coords) ms usage
         , CheckDepthTest (DepthComparison `Elem` ops) (Integrality coords) depth
         , CheckLODOperands (Integrality coords) ops
-        , CompatibleFormat (Integrality res) fmt
+        , CompatibleFormat (Integrality res) usage fmt
         )
 
 -- | Check that we can write to an image.
@@ -391,16 +393,16 @@ type family ValidImageWrite
       = TypeError ( Text "Cannot write to a depth image." )
 
   ValidImageWrite
-    ( Properties coords res _ _ _ _ _ fmt )
+    ( Properties coords res _ _ _ _ usage fmt )
     ops
       = ( IntegralIndexing (Integrality coords)
-        , CompatibleFormat (Integrality res) fmt
+        , CompatibleFormat (Integrality res) usage fmt
         )
 
 type family IntegralIndexing (inty :: SPIRV.ScalarTy) :: Constraint where
   IntegralIndexing (SPIRV.Floating _)
     = TypeError ( Text "Cannot write to an image using floating-point coordinates." )
-  IntegralIndexing _ = ()   
+  IntegralIndexing _ = ()
 
 -- Check whether floating-point coordinates are allowed.
 type family AllowedIndexing
@@ -445,23 +447,34 @@ type family CheckLODOperands
   CheckLODOperands inty ( op ': ops ) = CheckLODOperands inty ops
 
 type family CompatibleFormat
-                ( inty :: SPIRV.ScalarTy          )
-                ( fmt  :: Maybe (ImageFormat Nat) )
+                ( inty  :: SPIRV.ScalarTy          )
+                ( usage :: ImageUsage              )
+                ( fmt   :: Maybe (ImageFormat Nat) )
               :: Constraint
               where
-  CompatibleFormat (SPIRV.Integer _ _) (Just ('ImageFormat (Image.Integer Normalised _) _))
+  CompatibleFormat (SPIRV.Integer _ _) _ (Just ('ImageFormat (Image.Integer Normalised _) _))
     = TypeError
        (    Text "Expected a floating-point type, but provided an integer type."
        :$$: Text "Image uses a normalised integer format, resulting in floating-point texel data."
        )
-  CompatibleFormat (SPIRV.Integer _ _) (Just ('ImageFormat Image.Floating _))
+  CompatibleFormat (SPIRV.Integer _ _) _ (Just ('ImageFormat Image.Floating _))
     = TypeError
        (    Text "Expected a floating-point type, but provided an integer type."
        :$$: Text "Image uses a floating-point format."
        )
-  CompatibleFormat (SPIRV.Floating _) (Just ('ImageFormat (Image.Integer Unnormalised _) _))
+  CompatibleFormat (SPIRV.Floating _) _ (Just ('ImageFormat (Image.Integer Unnormalised _) _))
     = TypeError
        (    Text "Expected an integral type, but provided a floating-point type."
        :$$: Text "Image uses unnormalised integers, resulting in integral texel data."
        )
-  CompatibleFormat _ _ = ()
+  CompatibleFormat _ Storage _
+    = ()
+  CompatibleFormat _ Sampled (Just fmt)
+    = If
+        ( RequiredFormatUsage fmt == Just Storage )
+        ( TypeError
+           (     Text "Image format " :<>: ShowType fmt
+            :<>: Text " can only be used with storage images."
+            )
+        )
+        ( () :: Constraint )

@@ -321,8 +321,9 @@ _debugMode = lens debugMode ( \c v -> c { debugMode = v } )
 -----------------------------------------------------------------------------
 -- various utility functions to update state
 
-addCapabilities :: ( MonadState CGState m, Traversable t)
-                    => t SPIRV.Capability -> m ()
+addCapabilities :: forall t m.
+                  ( Traversable t, MonadState CGState m )
+                => t SPIRV.Capability -> m ()
 addCapabilities
   = traverse_ ( \cap -> assign ( _neededCapability cap ) (Just ()) )
 

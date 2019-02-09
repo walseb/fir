@@ -12,7 +12,24 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module FIR.Prim.Image where
+module FIR.Prim.Image
+  ( -- * Images
+    -- ** Image properties
+    ImageProperties(Properties)
+  -- ** Opaque image data type
+  , Image
+  -- ** Type reflection of image properties
+  -- $reflection
+  , knownImageComponent
+  , knownImage
+
+  -- * Image operands
+  , OperandName(..), ImageOperands(..)
+
+  -- * Compute the coordinate and texel type of an image
+  , ImageCoordinates, ImageData
+  )
+  where
 
 -- base
 import Prelude
@@ -59,7 +76,6 @@ import SPIRV.Image
   , MultiSampling(..)
   , Operand(LODOperand)
   , Projection(..)
-  , SamplingMethod(..)
   )
 import qualified SPIRV.Image  as SPIRV
   ( Image(..), Operand(..), LODOperand(..) )
@@ -68,20 +84,30 @@ import qualified SPIRV.PrimTy as SPIRV
 
 --------------------------------------------------
 
--- | Abstract handle to an image.
-data Image (props :: ImageProperties) where
-
+-- | Properties of an image, used as a data kind
+-- to describe the properties of an image at the type-level.
+--
+-- This allows type-checking that the image properties
+-- comply with the @SPIR-V@ specification, as well
+-- as check that operations done with the image are valid.
 data ImageProperties where
   Properties
-    :: Type -- component type for accessing image data
-    -> Type -- result component type
-    -> Dimensionality
-    -> Maybe HasDepth
-    -> Arrayness
-    -> MultiSampling
-    -> ImageUsage
-    -> Maybe (ImageFormat Nat)
+    :: Type -- ^ Component type of image coordinates.
+    -> Type -- ^ Texel component type.
+    -> Dimensionality -- ^ Dimensionality of the image (1D, 2D, 3D, cubemap, ...).
+    -> Maybe HasDepth -- ^ Whether the image is a depth image.
+    -> Arrayness      -- ^ Whether the image has an extra array component.
+    -> MultiSampling  -- ^ Whether the image is multisampled.
+    -> ImageUsage     -- ^ Is the image sampled or a storage image?
+    -> Maybe (ImageFormat Nat) -- ^ 'SPIRV.Image.ImageFormat' of the image.
     -> ImageProperties
+
+-- | Abstract handle to an image.
+-- 
+-- This type is uninhabited, but is tagged
+-- with a type describing its properties.
+data Image (props :: ImageProperties) where
+
 
 -- newtype to retain injectivity of 'Demote' type family
 newtype ImageAndComponent
@@ -122,34 +148,86 @@ instance ( ScalarTy                        component
         , primTy @result
         )
 
-knownImageReturnComponent :: forall props. Known ImageProperties props
+
+-- $reflection
+--
+-- As image properties are provided at the type level,
+-- we use the 'Data.Type.Known.Known' mechanism to reflect
+-- this type-level information to the value level.
+
+-- | Provided image properties at the type-level,
+-- return the component type of the image's texels.
+knownImageComponent :: forall props. Known ImageProperties props
                           => SPIRV.PrimTy
-knownImageReturnComponent
+knownImageComponent
   = case knownValue @props of
       ImageAndComponent (_, comp) -> comp
 
+-- | Return the 'SPIRV.Image.Image' type with the given properties.
 knownImage :: forall props. Known ImageProperties props => SPIRV.Image
 knownImage
   = case knownValue @props of
       ImageAndComponent (img, _) -> img
 
+--------------------------------------------------
+-- Image operands
+
+-- | Names of image operands.
+--
+-- These are used to keep track at the type level of the operands
+-- which have been provided.
+--
+-- This is necessary so that we can type check their usage,
+-- and know which types are being used in conjunction with the image.
+--
+-- For instance, if a depth-comparison is being performed,
+-- the return of an image sampling operation is a scalar,
+-- whereas otherwise it is a 4-vector.
 data OperandName
-  = DepthComparison
-  | ProjectiveCoords
-  | BaseOperand SPIRV.Image.Operand
+  = DepthComparison  -- ^ Whether a depth-comparison is being performed.
+  | ProjectiveCoords -- ^ Whether to use projective coordinates.
+  | BaseOperand SPIRV.Image.Operand -- A @SPIR-V@ image "SPIRV.Image.Operand".
   deriving ( Show, Eq, Ord )
 
+-- | Image operands.
+--
+-- This is essentially a linked list of operands, with a /twist/:
+--
+--   - the type of an image operand in the list can depend
+--     on which operands appear further down in the list.
+--
+-- Consider for instance the image operands:
+--
+--    @ Grad grad_x grad_y Proj @
+--
+-- These can loosely be thought of as a list of operands
+--
+--    @ [ Grad grad_x grad_y , Proj ] @
+--
+-- This means we are specifying explicit derivatives,
+-- and using projective coordinates.
+--
+-- However, the fact that we are using projective coordinates
+-- means that the explicit derivatives require an extra
+-- component (the projective coordinate).
+--
+-- In this way, the type of the head of the list
+-- depends on the operands appearing in the tail.
 data ImageOperands
        ( props :: ImageProperties )
        ( ops   :: [OperandName]   )
      :: Type
      where
+  -- | End of list.
   Done :: ImageOperands props '[ ]
+  -- | Use projective coordinates.
   Proj :: ImageOperands props '[ ProjectiveCoords ]
-  Dref :: ( NoDuplicate DepthComparison ops )
+  -- | Provide a depth-comparison reference value.
+  Dref :: ( NoDuplicate DepthComparison ops ) 
        => AST a
        -> ImageOperands props ops
        -> ImageOperands props (DepthComparison ': ops)
+  -- | Add a bias to the implicit level of detail.
   Bias :: ( BasicDim "Bias" props
           , NoMS "Bias" props
           , NoDuplicate (BaseOperand ('LODOperand SPIRV.Bias)) ops
@@ -158,6 +236,7 @@ data ImageOperands
        => AST Float
        -> ImageOperands props ops 
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Bias) ': ops)
+  -- | Provide an explicit level of detail.
   LOD  :: ( BasicDim "LOD" props
           , NoMS "LOD" props
           , NoDuplicate (BaseOperand ('LODOperand SPIRV.LOD)) ops
@@ -166,6 +245,8 @@ data ImageOperands
        => AST a
        -> ImageOperands props ops
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.LOD ) ': ops)
+  -- | Specify the minimum level of detail to use
+  -- when sampling the image.
   MinLOD :: ( BasicDim "MinLOD" props
             , NoMS "MinLOD" props
             , NoDuplicate (BaseOperand ('LODOperand SPIRV.MinLOD)) ops
@@ -174,83 +255,60 @@ data ImageOperands
          => AST a
          -> ImageOperands props ops
          -> ImageOperands props (BaseOperand ('LODOperand SPIRV.MinLOD ) ': ops)
+  -- | Provide explicit derivatives.
   Grad :: ( vec ~ GradCoordinates props ops
           , NoMS "Grad" props
+          , NoDuplicate (BaseOperand ('LODOperand SPIRV.Grad)) ops
           , NoLODOps "Grad" '[ SPIRV.Bias, SPIRV.LOD ] ops
           )
        => AST vec -- df/dx
        -> AST vec -- df/dy
        -> ImageOperands props ops
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Grad) ': ops)
+  -- | Add a constant offset to the coordinates.
   ConstOffsetBy
     :: ( PrimTy vec
        , vec ~ OffsetCoordinates props ops
+       , NoDuplicate (BaseOperand SPIRV.ConstOffset) ops
        , NotCubeDim "ConstOffsetBy" props
        )
     => vec
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.ConstOffset ': ops)
+  -- | Add an offset to the coordinates.
   OffsetBy
     :: ( PrimTy vec
        , vec ~ OffsetCoordinates props ops
+       , NoDuplicate (BaseOperand SPIRV.Offset) ops
        , NotCubeDim "OffsetBy" props
        )
     => AST vec
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.Offset ': ops)
+  -- | Specify which 4 offsets to use for a 'gather' operation,
+  -- which reads 4 texels at a time.
   ConstOffsetsBy
-    :: ( NotCubeDim "ConstOffsetsBy" props )
+    :: ( NotCubeDim "ConstOffsetsBy" props
+       , NoDuplicate (BaseOperand SPIRV.ConstOffsets) ops
+       )
     => Array 4 (V 2 Int32)
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops)
+  -- | Specify which sample number to use in a multi-sampled image.
   SampleNo
-    :: ( CanMultiSample props )
+    :: ( CanMultiSample props
+       , NoDuplicate (BaseOperand SPIRV.Sample) ops
+       )
     => AST Word32
     -> ImageOperands props ops
     -> ImageOperands props (BaseOperand SPIRV.Sample ': ops)
 
+----------------------------------------------------------
 
-type family GradCoordinates
-              ( props :: ImageProperties )
-              ( ops   :: [OperandName]   )
-            :: Type where
-  GradCoordinates
-    ( Properties a _ dim _ arr _ _ _ )
-    ops
-      = If
-          ( ProjectiveCoords `Elem` ops )
-          ( ImageCoordinatesType a dim arr Projective )
-          ( ImageCoordinatesType a dim arr Affine     )
-
-type family OffsetCoordinates
-              ( props :: ImageProperties )
-              ( ops   :: [OperandName]   )
-            :: Type where
-  OffsetCoordinates
-    ( Properties _ _ dim _ _ _ _ _ )
-    ops
-    = If
-        ( ProjectiveCoords `Elem` ops )
-        ( ImageCoordinatesType Int32 dim NonArrayed Projective )
-        ( ImageCoordinatesType Int32 dim NonArrayed Affine     )
-
-
-type family ValidProj
-              ( meth :: Maybe SamplingMethod )
-              ( proj :: Projection           )
-            :: Constraint
-            where
-  ValidProj Nothing Projective
-    = TypeError ( Text "Cannot use projective coordinates without a sampler." )
-  ValidProj _ _ = ()
-
-type family SupportsDepthTest ( props :: ImageProperties ) :: Constraint where
-  SupportsDepthTest (Properties _ _ _ (Just NotDepthImage) _ _ _ _)
-    = TypeError ( Text "Cannot do a depth comparison: image is not a depth image." )
-  SupportsDepthTest _ = ()
-
------------------------------------------------------------
-
+-- | Type of coordinates used by an image
+--
+-- This is the type of the value to be provided to sample an image,
+-- e.g. a 2-vector for a 2D texture (using affine coordinates).
 type family ImageCoordinates
               ( props :: ImageProperties )
               ( ops   :: [OperandName]   )
@@ -262,6 +320,21 @@ type family ImageCoordinates
           ( ProjectiveCoords `Elem` ops )
           ( ImageCoordinatesType a dim arr Projective )
           ( ImageCoordinatesType a dim arr Affine )
+
+-- | Texel type of an image.
+--
+-- This is what is returned from an image sampling operation,
+-- or needs to be provided for an image write operation.
+type family ImageData
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
+            :: Type
+            where
+  ImageData ( Properties _ r _ _ _ _ _ _ ) ops
+    = If
+        ( DepthComparison `Elem` ops )
+        r
+        (V 4 r)
 
 type family ImageCoordinatesType
               ( a    :: Type           )
@@ -295,17 +368,33 @@ type family ImageCoordinatesType
   ImageCoordinatesType _ dim         Arrayed    Projective
     = TypeError ( Text "Cannot use projective coordinates with an arrayed image." )
 
-type family ImageData
+-- which coordinates to use to provide explicit derivatives
+type family GradCoordinates
               ( props :: ImageProperties )
               ( ops   :: [OperandName]   )
-            :: Type
-            where
-  ImageData ( Properties _ r _ _ _ _ _ _ ) ops
+            :: Type where
+  GradCoordinates
+    ( Properties a _ dim _ arr _ _ _ )
+    ops
+      = If
+          ( ProjectiveCoords `Elem` ops )
+          ( ImageCoordinatesType a dim arr Projective )
+          ( ImageCoordinatesType a dim arr Affine     )
+
+-- which coordinates to use to provide an offset
+type family OffsetCoordinates
+              ( props :: ImageProperties )
+              ( ops   :: [OperandName]   )
+            :: Type where
+  OffsetCoordinates
+    ( Properties _ _ dim _ _ _ _ _ )
+    ops
     = If
-        ( DepthComparison `Elem` ops )
-        r
-        (V 4 r)
-      
+        ( ProjectiveCoords `Elem` ops )
+        ( ImageCoordinatesType Int32 dim NonArrayed Projective )
+        ( ImageCoordinatesType Int32 dim NonArrayed Affine     )
+
+
 -----------------------------------------------------------
 -- helper type families to ensure image operands are valid
 
@@ -359,8 +448,6 @@ type family CanMultiSample (ms :: ImageProperties) :: Constraint where
   CanMultiSample (Properties _ _ _ _ _ SingleSampled _ _)
     = TypeError ( Text "Cannot multi-sample this single-sampled image." )
   CanMultiSample _ = ()
-  -- TODO: can only multisample when not using a sampler!!
-
 
 type family NoLODOps
               ( name  :: Symbol       )
@@ -379,3 +466,8 @@ type family NoLODOps
         )
         ( NoLODOps name excl ops )
   NoLODOps name excl ( _ ': ops ) = NoLODOps name excl ops
+
+type family SupportsDepthTest ( props :: ImageProperties ) :: Constraint where
+  SupportsDepthTest (Properties _ _ _ (Just NotDepthImage) _ _ _ _)
+    = TypeError ( Text "Cannot do a depth comparison: image is not a depth image." )
+  SupportsDepthTest _ = ()
