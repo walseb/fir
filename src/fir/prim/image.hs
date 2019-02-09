@@ -43,7 +43,7 @@ import Data.Kind
 import Data.Word
   ( Word32 )
 import Data.Type.Bool
-  ( If )
+  ( If, type (&&), Not )
 import GHC.TypeLits
   ( Symbol
   , TypeError, ErrorMessage(..)
@@ -275,7 +275,7 @@ data ImageOperands
           , NoDuplicate (BaseOperand ('LODOperand SPIRV.Grad)) ops
           , NoLODOps "Grad" '[ SPIRV.Bias, SPIRV.LOD ] ops
           )
-       => ( AST vec, AST vec ) -- ^ Gradient: ( df/dx, df/dy ).
+       => ( AST vec, AST vec ) -- ^ Gradient: ( df\/dx, df\/dy ).
        -> ImageOperands props ops
        -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Grad) ': ops)
   -- | Add a constant offset to the coordinates.
@@ -378,7 +378,9 @@ type family ImageData
             where
   ImageData ( Properties _ r _ _ _ _ _ _ ) ops
     = If
-        ( DepthComparison `Elem` ops )
+        (    DepthComparison `Elem` ops
+          && Not ( (BaseOperand SPIRV.ConstOffsets) `Elem` ops)
+        )
         r
         (V 4 r)
 
@@ -420,12 +422,12 @@ type family GradCoordinates
               ( ops   :: [OperandName]   )
             :: Type where
   GradCoordinates
-    ( Properties a _ dim _ arr _ _ _ )
+    ( Properties a _ dim _ _ _ _ _ )
     ops
       = If
           ( ProjectiveCoords `Elem` ops )
-          ( ImageCoordinatesType a dim arr Projective )
-          ( ImageCoordinatesType a dim arr Affine     )
+          ( ImageCoordinatesType a dim NonArrayed Projective )
+          ( ImageCoordinatesType a dim NonArrayed Affine     )
 
 -- which coordinates to use to provide an offset
 type family OffsetCoordinates

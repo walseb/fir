@@ -77,7 +77,9 @@ import SPIRV.Image
   , Operand(LODOperand)
   )
 import qualified SPIRV.Image    as Image
-  ( Component(Integer, Floating) )
+  ( Component(Integer, Floating)
+  , Operand(..)
+  )
 import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy(Integer, Floating) )
 import SPIRV.Stage
@@ -86,10 +88,10 @@ import SPIRV.Stage
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.use'
 
--- | Compute the type of a binding with a given name.
+-- | Compute the type of a variable bound by a given name.
 --
--- Returns a type error if no binding by that name exists,
--- or if the binding is not readable.
+-- Throws a type error if no variable by that name exists,
+-- or if the variable is not readable.
 type Get (k :: Symbol) (i :: BindingsMap) = ( GetBinding k i (Lookup k i) :: Type )
 
 type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :: Type where
@@ -120,10 +122,10 @@ type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.put' and 'FIR.Instances.Codensity.assign'
 
--- | Compute the type of a binding with a given name.
+-- | Compute the type of a variable bound by a given name.
 --
--- Returns a type error if no binding by that name exists,
--- or if the binding is not readable.
+-- Throws a type error if no variable is bound by that name,
+-- or if the variable is not writable.
 type Put (k :: Symbol) (i :: BindingsMap) = ( PutBinding k i (Lookup k i) :: Type )
 
 type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding) :: Type where
@@ -160,9 +162,9 @@ type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.def'
 
--- | Check that it is valid to define a new binding with given name.
+-- | Check that it is valid to define a new variable with given name.
 --
--- Returns a type error if a binding by this name already exists.
+-- Throws a type error if a binding by this name already exists.
 type ValidDef (k :: Symbol) (i :: BindingsMap)
   = ( NotAlreadyDefined k i (Lookup k i) :: Constraint )
 
@@ -179,7 +181,7 @@ type family NotAlreadyDefined (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe 
 
 -- | Check that a function definition is valid.
 --
--- Returns a type error if:
+-- Throws a type error if:
 -- 
 --   * function name is already in use,
 --   * one of the function's arguments is itself a function,
@@ -260,7 +262,7 @@ type family NoFunctionNameConflict
 
 -- | Check that an entry point definition is valid.
 --
--- Returns a type error if:
+-- Throws a type error if:
 --
 --   * a function is defined within the entry point,
 --   * the name of a builtin for this entry point is already in use.
@@ -351,7 +353,7 @@ type family ImagePropertiesFromLookup
 -- Depending on the coordinate type, this is either a sampling operation
 -- or a direct image read operation.
 --
--- Returns a type error if the operation is incompatible with the given
+-- Throws a type error if the operation is incompatible with the given
 -- image properties. For instance, if the image is a depth image,
 -- a depth-comparison reference value must be provided.
 --
@@ -371,12 +373,13 @@ type family ValidImageRead
 
 -- | Check that we can write to an image.
 --
--- Returns a type error if:
+-- Throws a type error if:
 --
 --   * the image is not a storage image,
 --   * the image is a depth image,
 --   * the coordinate type is not an integral type,
---   * the operands are incompatible with the given image properties.
+--   * an operand is incompatible with the given image properties,
+--   * an operand doesn't make sense for write operations.
 --
 -- Refer to the @SPIR-V@ specification for what operations are allowed.
 type family ValidImageWrite
@@ -397,6 +400,7 @@ type family ValidImageWrite
     ops
       = ( IntegralIndexing (Integrality coords)
         , CompatibleFormat (Integrality res) usage fmt
+        , AllowedWriteOps ops
         )
 
 type family IntegralIndexing (inty :: SPIRV.ScalarTy) :: Constraint where
@@ -478,3 +482,15 @@ type family CompatibleFormat
             )
         )
         ( () :: Constraint )
+
+-- Only 'Sample' and 'Offset'/'ConstOffset' image operands allowed.
+type family AllowedWriteOps (ops :: [OperandName]) :: Constraint where
+  AllowedWriteOps '[] = ()
+  AllowedWriteOps (BaseOperand Image.Sample      ': ops) = AllowedWriteOps ops
+  AllowedWriteOps (BaseOperand Image.ConstOffset ': ops) = AllowedWriteOps ops
+  AllowedWriteOps (BaseOperand Image.Offset      ': ops) = AllowedWriteOps ops
+  AllowedWriteOps (op                            ': _  )
+    = TypeError (     Text "Image operand " :<>: ShowType op
+                 :<>: Text " cannot be used in conjunction \
+                           \with an image write operation."
+                )
