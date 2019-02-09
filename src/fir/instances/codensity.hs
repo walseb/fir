@@ -125,6 +125,7 @@ import FIR.Instances.Bindings
   ( ValidDef, ValidFunDef, ValidEntryPoint
   , LookupImageProperties
   , ValidImageRead, ValidImageWrite
+  , DefiniteState, ProvidedSymbol, ProvidedOptic
   )
 import FIR.Instances.Images
   ( ImageTexel )
@@ -272,7 +273,7 @@ entryPoint :: forall k s l i.
              ( GHC.Stack.HasCallStack
              , KnownSymbol k
              , Known Stage s
-             , ValidEntryPoint s i l
+             , ValidEntryPoint k s i l
              )
            => Codensity AST (AST () := l) (Union i (StageBuiltins s)) -- ^ Entry point body.
            -> Codensity AST (AST () := Insert k (EntryPoint s) i) i
@@ -284,8 +285,8 @@ entryPoint :: forall k s l i.
 -- Like @use@ from the lens library, except the optic needs to be passed with a type application.
 use :: forall optic.
              ( GHC.Stack.HasCallStack
-             , KnownOptic optic
-             , Gettable optic
+             , KnownOptic optic, ProvidedOptic optic
+             , Gettable optic, DefiniteState (Whole optic)
              , Syntactic (CodUser optic)
              , Internal (CodUser optic) ~ User optic
              )
@@ -296,8 +297,8 @@ use :: forall optic.
 -- Like @assign@ from the lens library, except the optic needs to be passed with a type application.
 assign :: forall optic.
              ( GHC.Stack.HasCallStack
-             , KnownOptic optic
-             , Settable optic
+             , KnownOptic optic, ProvidedOptic optic
+             , Settable optic, DefiniteState (Whole optic)
              , Syntactic (CodAssigner optic)
              , Internal (CodAssigner optic) ~ Assigner optic
              )
@@ -316,7 +317,10 @@ assign     = fromAST ( Assign @optic          sLength opticSing )
 --
 -- Synonym for @use \@(Name k)@.
 get :: forall (k :: Symbol) a (i :: BindingsMap).
-       ( KnownSymbol k, Gettable (Name k :: Optic '[] i a) )
+       ( KnownSymbol k, ProvidedSymbol k
+       , DefiniteState i
+       , Gettable (Name k :: Optic '[] i a)
+       )
     => Codensity AST (AST a := i) i
 get = use @(Name k :: Optic '[] i a)
 
@@ -325,7 +329,10 @@ get = use @(Name k :: Optic '[] i a)
 --
 -- Synonym for @assign \@(Name k)@.
 put :: forall (k :: Symbol) a (i :: BindingsMap).
-       ( KnownSymbol k, Settable (Name k :: Optic '[] i a) )
+       ( KnownSymbol k, ProvidedSymbol k
+       , DefiniteState i
+       , Settable (Name k :: Optic '[] i a)
+       )
     => AST a -> Codensity AST (AST () := i) i
 put = assign @(Name k :: Optic '[] i a)
 
@@ -334,7 +341,8 @@ put = assign @(Name k :: Optic '[] i a)
 --
 -- Synonym for @modifying \@(Name k)@.
 modify :: forall (k :: Symbol) a (i :: BindingsMap).
-          ( KnownSymbol k
+          ( KnownSymbol k, ProvidedSymbol k
+          , DefiniteState i
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)
           )
@@ -355,7 +363,8 @@ modify = modifying @(Name k :: Optic '[] i a)
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
 imageRead :: forall k props (i :: BindingsMap).
-            ( KnownSymbol k
+            ( KnownSymbol k, ProvidedSymbol k
+            , DefiniteState i
             , Gettable (ImageTexel k)
             , LookupImageProperties k i ~ props
             , Known ImageProperties props
@@ -376,7 +385,8 @@ imageRead = use @(ImageTexel k) NoOperands
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
 imageWrite :: forall k props (i :: BindingsMap).
-             ( KnownSymbol k
+             ( KnownSymbol k, ProvidedSymbol k
+             , DefiniteState i
              , Gettable (ImageTexel k)
              , LookupImageProperties k i ~ props
              , Known ImageProperties props
@@ -396,7 +406,7 @@ type family ListVariadicCod
               ( a  :: Type        )
             = ( r  :: Type        )
             | r -> is s a where
-  ListVariadicCod '[]        s a = Codensity AST (AST a := s) s
+  ListVariadicCod '[]         s a = Codensity AST (AST a := s) s
   ListVariadicCod ( i ': is ) s a = AST i -> ListVariadicCod is s a
 
 
@@ -428,7 +438,8 @@ type CodModifier (optic :: Optic is s a) = VariadicCodModifier is s a
 modifying
     :: forall optic.
        ( GHC.Stack.HasCallStack
-       , KnownOptic optic
+       , KnownOptic optic, ProvidedOptic optic
+       , DefiniteState (Whole optic)
        , Settable optic
        , Gettable optic
        , Syntactic (CodUser optic)

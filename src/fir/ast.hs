@@ -146,7 +146,7 @@ data AST :: Type -> Type where
            ( GHC.Stack.HasCallStack
            , KnownSymbol k
            , Known SPIRV.Stage s
-           , ValidEntryPoint s i l
+           , ValidEntryPoint k s i l
            )
          => Proxy k -- ^ Entry point name.
          -> Proxy s -- ^ Entry point stage.

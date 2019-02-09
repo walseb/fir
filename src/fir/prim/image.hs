@@ -195,9 +195,15 @@ data OperandName
   | BaseOperand SPIRV.Image.Operand -- A @SPIR-V@ image "SPIRV.Image.Operand".
   deriving ( Show, Eq, Ord )
 
--- | Image operands.
+-- | == Image operands.
 --
--- This is essentially a linked list of operands, with a /twist/:
+-- __Warning__  Users of the library should use the pattern synonyms
+-- defined in "FIR.Synonyms" to provide image operands.
+-- (Those synonyms, but not the constructors provided here,
+-- are exported by default by this library.)
+--
+-- === Overview
+-- Image operands behave like a linked list of operands, with a /twist/:
 --
 --   - the type of an image operand in the list can depend
 --     on which operands appear further down in the list.

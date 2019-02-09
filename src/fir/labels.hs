@@ -72,7 +72,9 @@ import FIR.AST
 import FIR.Binding
   ( BindingsMap, Var, R, RW )
 import FIR.Instances.Bindings
-  ( ValidDef,Get, Put )
+  ( ValidDef,Get, Put
+  , DefiniteState, ProvidedSymbol
+  )
 import FIR.Instances.Codensity
   ( def, use, assign, modifying )
 import FIR.Prim.Singletons
@@ -108,6 +110,7 @@ instance ( KnownSymbol k
 -- in the context of an indexed state monad.
 instance ( KnownSymbol k, PrimTy a
          , a ~ Get k i
+         , ProvidedSymbol k, DefiniteState i
          , r ~ (AST a := i)
          , usage ~ 'Use k i
          )
@@ -148,8 +151,8 @@ _ #=! a = def @k @R a
 -- | Set the value of a variable with given label.
 (.=) :: forall a k i.
         ( GHC.Stack.HasCallStack
-        , KnownSymbol k
-        , a ~ Put k i
+        , KnownSymbol k, ProvidedSymbol k
+        , a ~ Put k i, DefiniteState i
         , PrimTy a
         )
      => Label k a
@@ -160,7 +163,8 @@ _ .= a = assign @(Name k :: Optic '[] i a) a
 -- | Modify a variable with given label using a function.
 (%=) :: forall a k i.
         ( GHC.Stack.HasCallStack
-        , KnownSymbol k
+        , KnownSymbol k, ProvidedSymbol k
+        , DefiniteState i
         , a ~ Put k i
         , a ~ Get k i
         )

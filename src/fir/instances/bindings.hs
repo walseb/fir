@@ -20,14 +20,15 @@ or accessing a binding that does not exist.
 -}
 
 module FIR.Instances.Bindings
-  ( Get
-  , Put
+  ( Get, Put
   , ValidDef
   , ValidFunDef
   , ValidEntryPoint
   , LookupImageProperties
   , ValidImageRead
   , ValidImageWrite
+  , DefiniteState
+  , ProvidedSymbol, ProvidedStage, ProvidedOptic
   )
   where
 
@@ -40,6 +41,8 @@ import Data.Type.Bool
   ( If )
 import Data.Type.Equality
   ( type (==) )
+import GHC.Exts
+  ( Any )
 import GHC.TypeLits
   ( Symbol
   , TypeError
@@ -49,6 +52,8 @@ import GHC.TypeNats
   ( Nat )
 
 -- fir
+import Control.Type.Optic
+  ( Optic(Index_) ) -- dummy optic for ambiguous type variable checking
 import Data.Type.List
   ( Elem )
 import Data.Type.Map
@@ -83,7 +88,7 @@ import qualified SPIRV.Image    as Image
 import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy(Integer, Floating) )
 import SPIRV.Stage
-  ( Stage )
+  ( Stage(Fragment, Vertex) )  -- dummy shader stages for ambiguous type variable checking
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.use'
@@ -92,30 +97,28 @@ import SPIRV.Stage
 --
 -- Throws a type error if no variable by that name exists,
 -- or if the variable is not readable.
-type Get (k :: Symbol) (i :: BindingsMap) = ( GetBinding k i (Lookup k i) :: Type )
+type family Get (k :: Symbol) (i :: BindingsMap) :: Type where
+  Get k i = ( AssertDefiniteState i ( AssertProvidedSymbol k (GetBinding k (Lookup k i) )))
 
-type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :: Type where
-  GetBinding k i 'Nothing
+type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
+  GetBinding k 'Nothing
    = TypeError
-      (      Text "'get': no binding named " :<>: ShowType k :<>: Text " is in scope."
-        :$$: Text "In-scope bindings are:"
-        :$$: ShowType i
-      )
-  PutBinding k _ ('Just (Var _ (Image _)))
+      (  Text "'get'/'use': no binding named " :<>: ShowType k :<>: Text " is in scope." )
+  PutBinding k ('Just (Var _ (Image _)))
     = TypeError 
-          (     Text "'get': variable named " :<>: ShowType k :<>: Text " refers to an image."
+          (     Text "'get'/'use': variable named " :<>: ShowType k :<>: Text " refers to an image."
            :$$: Text "To access image data, use the 'ImageTexel' optic or the 'imageRead' function."
           )
-  GetBinding k _ ('Just (Var perms a))
+  GetBinding k ('Just (Var perms a))
     = If 
         ( Elem 'Read perms )
         a
         ( TypeError
-          ( Text "'get': variable named " :<>: ShowType k :<>: Text " is not readable." )
+          ( Text "'get'/'use': variable named " :<>: ShowType k :<>: Text " is not readable." )
         )
-  GetBinding _ _ ('Just (Fun as b)) = FunctionType as b
-  GetBinding k _ ('Just ('EntryPoint _))
-    = TypeError (     Text "'get': Entry point bound by name " :<>: ShowType k :<>: Text "."
+  GetBinding _ ('Just (Fun as b)) = FunctionType as b
+  GetBinding k ('Just ('EntryPoint _))
+    = TypeError (     Text "'get'/'use': an entry point is bound by name " :<>: ShowType k :<>: Text "."
                  :$$: Text "Entry points cannot be called, only defined."
                 )
 
@@ -126,35 +129,34 @@ type family GetBinding (k :: Symbol) (i :: BindingsMap) (mbd :: Maybe Binding) :
 --
 -- Throws a type error if no variable is bound by that name,
 -- or if the variable is not writable.
-type Put (k :: Symbol) (i :: BindingsMap) = ( PutBinding k i (Lookup k i) :: Type )
+type family Put (k :: Symbol) (i :: BindingsMap) :: Type where
+  Put k i = ( AssertDefiniteState i ( AssertProvidedSymbol k (PutBinding k (Lookup k i) ) ) )
 
-type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding) :: Type where
-  PutBinding k i 'Nothing = TypeError
-    (      Text "'put': no binding named " :<>: ShowType k :<>: Text " is in scope."
+type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
+  PutBinding k 'Nothing = TypeError
+    (      Text "'put'/'assign': no binding named " :<>: ShowType k :<>: Text " is in scope."
       :$$: Text "To bind a new variable, use 'def'."
-      :$$: Text "In-scope bindings are:"
-      :$$: ShowType i
     )
-  PutBinding k _ ('Just (Fun as b)) = TypeError
-    (      Text "'put': function bound at name "
+  PutBinding k ('Just (Fun as b)) = TypeError
+    (      Text "'put'/'assign': function bound at name "
       :<>: ShowType k :<>: Text ": "
       :<>: ShowType (Fun as b) :<>: Text "."
       :$$: Text "Use 'fundef' to define a function."
     )
-  PutBinding k _ ('Just (Var _ (Image _)))
+  PutBinding k ('Just (Var _ (Image _)))
     = TypeError 
-          (     Text "'put': image bound by name " :<>: ShowType k :<>: Text "."
+          (     Text "'put'/'assign': image bound by name " :<>: ShowType k :<>: Text "."
            :$$: Text "To write to a storage image, assign with the 'ImageTexel' optic or use 'imageWrite'."
           )
-  PutBinding k _ ('Just (Var perms a))
+  PutBinding k ('Just (Var perms a))
     = If
         (Elem 'Write perms)
         a
         ( TypeError 
-          ( Text "'put': variable " :<>: ShowType k :<>: Text " is not writable." )
+          ( Text "'put'/'assign': variable " :<>: ShowType k :<>: Text " is not writable." )
         )
-  PutBinding k _ ('Just ('EntryPoint _)) = TypeError
-    (      Text "'put': entry point bound at name "
+  PutBinding k ('Just ('EntryPoint _)) = TypeError
+    (      Text "'put'/'assign': entry point bound at name "
       :<>: ShowType k :<>: Text ". "
       :$$: Text "Use 'entryPoint' to define a new entry point."
     )
@@ -165,16 +167,17 @@ type family PutBinding (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding
 -- | Check that it is valid to define a new variable with given name.
 --
 -- Throws a type error if a binding by this name already exists.
-type ValidDef (k :: Symbol) (i :: BindingsMap)
-  = ( NotAlreadyDefined k i (Lookup k i) :: Constraint )
+type family ValidDef (k :: Symbol) (i :: BindingsMap) :: Constraint where
+  ValidDef k i
+    = ( ProvidedSymbol k
+      , DefiniteState i
+      , NotAlreadyDefined k (Lookup k i)
+      )
 
-type family NotAlreadyDefined (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe Binding) :: Constraint where
-  NotAlreadyDefined _ _ 'Nothing  = ()
-  NotAlreadyDefined k i ('Just _) = TypeError
-    (      Text "'def': a binding by the name " :<>: ShowType k :<>: Text " already exists."
-      :$$: Text "In scope bindings are:"
-      :$$: ShowType i
-    )
+type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
+  NotAlreadyDefined _ 'Nothing  = ()
+  NotAlreadyDefined k ('Just _) = TypeError
+    ( Text "'def': a binding by the name " :<>: ShowType k :<>: Text " already exists." )
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.fundef'
@@ -186,20 +189,24 @@ type family NotAlreadyDefined (k :: Symbol) (i :: BindingsMap) (lookup :: Maybe 
 --   * function name is already in use,
 --   * one of the function's arguments is itself a function,
 --   * another function is defined inside the function.
-type ValidFunDef 
+type family ValidFunDef 
       ( k  :: Symbol      )  -- name of function to be defined
       ( as :: BindingsMap )  -- function arguments
       ( i  :: BindingsMap )  -- variables in scope
       ( l  :: BindingsMap )  -- @l@ contains the above three sets, together with the function's local variables
-                             -- ( it is the total state at the end of the function definition )  
- = ( ( NoFunctionNameConflict k as i ( Lookup k i ) -- check that function name is not already in use
-     ,            ValidArguments k as (Remove i (Remove as l)) 
-     ) :: Constraint ) -- ╱           └━━━━━━┬━━━━━┘
-               --       ╱                         │
-               --       │                          │
-               --       │     local variables ├━━┘
-               --       │
-               --       └━━┤ check that none of the function arguments or local variables are themselves functions or images
+    :: Constraint where      -- ( it is the total state at the end of the function definition )  
+  ValidFunDef k as i l
+    = ( ProvidedSymbol k
+      , DefiniteState i
+      , DefiniteState l
+      , NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
+      , ValidArguments k as (Remove i (Remove as l))
+      ) --     │             └━━━━━━┬━━━━━┘
+        --     │                         │
+        --     │                         │
+        --     │    local variables ├━━┘
+        --     │
+        --     └━━┤ check that none of the function arguments or local variables are themselves functions or images
 
 
 type ValidArguments (k :: Symbol) (as :: BindingsMap) (l :: BindingsMap)
@@ -244,18 +251,13 @@ type family ValidArguments'
 
 type family NoFunctionNameConflict
       ( k     :: Symbol        )
-      ( as    :: BindingsMap   )
-      ( i     :: BindingsMap   )
       ( mb_bd :: Maybe Binding ) -- conflict with in-scope variables?
       :: Constraint where
-  NoFunctionNameConflict k as i ('Just _) = TypeError
-    (     Text "'fundef': cannot define a new function with name " :<>: ShowType k :<>: Text ";"
-     :$$: Text "that name is already in scope. In scope bindings are:"
-     :$$: ShowType i
-     :$$: Text "Locally bound variables are:"
-     :$$: ShowType as
+  NoFunctionNameConflict k ('Just _) = TypeError
+    (     Text "'fundef': cannot define a new function with name " :<>: ShowType k :<>: Text "."
+     :$$: Text "that name is already in scope."
     )
-  NoFunctionNameConflict _ _ _ 'Nothing = ()
+  NoFunctionNameConflict _ 'Nothing = ()
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.entryPoint'
@@ -266,14 +268,31 @@ type family NoFunctionNameConflict
 --
 --   * a function is defined within the entry point,
 --   * the name of a builtin for this entry point is already in use.
-type ValidEntryPoint
+type family ValidEntryPoint
+              ( k :: Symbol      )
               ( s :: Stage       )
               ( i :: BindingsMap )
               ( l :: BindingsMap ) 
-  = ( ( ValidLocalBehaviour s (Remove i l)
+            :: Constraint where
+  ValidEntryPoint k s i l
+    = ( ProvidedSymbol k
+      , DefiniteState i
+      , DefiniteState l
+      , NoEntryPointNameConflict k (Lookup k i)
+      , ProvidedStage s
+      , ValidLocalBehaviour s (Remove i l)
       , BuiltinsDoNotAppearBefore s ( StageBuiltins s ) i
-      ) :: Constraint
+      )
+
+type family NoEntryPointNameConflict
+               ( k     :: Symbol        )
+               ( mb_bd :: Maybe Binding )
+               :: Constraint where
+  NoEntryPointNameConflict k ('Just _) = TypeError
+    (     Text "'entryPoint': cannot define a new entry point with name " :<>: ShowType k :<>: Text "."
+     :$$: Text "That name is already in scope."
     )
+  NoEntryPointNameConflict _ 'Nothing = ()
 
 type ValidLocalBehaviour (s :: Stage) ( l :: BindingsMap)
   = ( ValidLocalBehaviour' s l l :: Constraint )
@@ -494,3 +513,96 @@ type family AllowedWriteOps (ops :: [OperandName]) :: Constraint where
                  :<>: Text " cannot be used in conjunction \
                            \with an image write operation."
                 )
+
+-------------------------------------------------
+-- * Checking for ambiguous type variables.
+
+type family Assert (unmatchableDummy :: k) ( err :: Constraint ) (ambig :: k) (x :: l) :: l where
+  Assert dum _ dum _ = Any
+  Assert _   _  _  l = l
+
+type family Assert2 (one :: k) (twoNotOne :: k) ( err :: Constraint) (ambig :: k) (x :: l) :: l where
+  Assert2 one two err one x = Assert two err one x
+  Assert2 _   _   _   _   x = x
+
+-- | Check that monadic state is not ambiguous.
+type DefiniteState i = AssertDefiniteState i ( () :: Constraint )
+
+type family AssertDefiniteState ( i :: BindingsMap ) (x :: l) :: l where
+  AssertDefiniteState i x =
+    AssertProvidedBindings
+      ( TypeError
+          (    Text "Ambiguous state in indexed monad."
+          :$$: Text "Potential causes:"
+          :$$: Text "  - lack of a type signature indicating the starting monadic state,"
+          :$$: Text "  - an earlier overly general value (such as 'undefined') resulting in an ambiguous state."
+          :$$: Text " "
+          :$$: Text "If you are not expecting a specific state"
+          :$$: Text "    ( for instance if you are writing a function which is polymorphic over monadic state )"
+          :$$: Text "add the constraint 'DefiniteState " :<>: ShowType i :<>: Text "' "
+          :<>: Text "to defer this error message to the use-site."
+         )
+      )
+      i
+      x
+
+data Dummy
+
+type family AssertProvidedBindings ( err :: Constraint ) ( i :: BindingsMap ) (x :: l) :: l where
+  AssertProvidedBindings _   ( ("dummy" ':-> Var '[] Dummy) ': nxt) x = Any
+  AssertProvidedBindings err ( _                            ': nxt) x = AssertProvidedBindings err nxt x
+  AssertProvidedBindings _ _ x = x
+
+-- | Check that a type-level symbol is not ambiguous.
+type ProvidedSymbol k = AssertProvidedSymbol k ( () :: Constraint )
+type family AssertProvidedSymbol ( k :: Symbol ) (x :: l) :: l where
+  AssertProvidedSymbol k x =
+    Assert2 "one" "two"
+      ( TypeError
+          (      Text "Ambiguous type-level symbol."
+            :$$: Text "Suggestion: provide a specific name using a type application."
+            :$$: Text " "
+            :$$: Text "If you intend for " :<>: ShowType k :<>: Text " to remain un-instantiated,"
+            :$$: Text "add the constraint 'ProvidedSymbol " :<>: ShowType k :<>: Text "' "
+            :<>: Text "to defer this error message to the use-site."
+          )
+       )
+      k
+      x
+
+-- | Check that a shader stage is not ambiguous.
+type family ProvidedStage ( s :: Stage ) :: Constraint where
+  ProvidedStage s =
+    Assert2 Vertex Fragment
+      ( TypeError
+          (      Text "Ambiguous entry point stage."
+            :$$: Text "Suggestion: specify the stage using a type application."
+            :$$: Text " "
+            :$$: Text "If you intend for " :<>: ShowType s :<>: Text " to remain un-instantiated,"
+            :$$: Text "add the constraint 'ProvidedStage " :<>: ShowType s :<>: Text "' "
+            :<>: Text "to defer this error message to the use-site."
+          )
+       )
+      s
+      ( () :: Constraint )
+
+-- | Check that an optic is not ambiguous.
+type family ProvidedOptic ( optic :: Optic is s a ) :: Constraint where
+  ProvidedOptic (optic :: Optic is s a) =
+    Assert2 (Index_ 0) (Index_ 1)
+      ( TypeError
+          (     Text "Ambiguous type-level optic."
+           :$$: Text "Suggestion: provide a specific optic using a type application."
+           :$$: Text "Expecting an optic:"
+           :$$: Text "  - with run-time indices of types: " :<>: ShowType is
+           :$$: Text "  - focusing within an object of type " :<>: ShowType s
+           :$$: Text "  - onto an object of type " :<>: ShowType a
+           :$$: Text " "
+           :$$: Text "If " :<>: ShowType optic :<>: Text " is not intended to be a specific optic,"
+           :$$: Text "for instance if you are writing an optic-polymorphic function,"
+           :$$: Text "add the constraint 'ProvidedOptic " :<>: ShowType optic :<>: Text "' "
+           :<>: Text "to defer this error message to the use-site."
+          )
+       )
+      optic
+      ( () :: Constraint )
