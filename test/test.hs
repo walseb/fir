@@ -55,7 +55,9 @@ import FIR
 --------------------------------------------------
 
 tests :: [ (FilePath, Test) ]
-tests = [ ( "control" </> "loop"         , Validate  )
+tests = [ ( "bits"    </> "bits"         , Validate  )
+        , ( "bits"    </> "zipbits"      , Validate  )
+        , ( "control" </> "loop"         , Validate  )
         , ( "functor" </> "applicative"  , Validate  )
         , ( "functor" </> "functor"      , Validate  )
         , ( "images"  </> "gather"       , Validate  )

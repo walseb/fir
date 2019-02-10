@@ -3,6 +3,7 @@
 module SPIRV.PrimOp
   ( PrimOp(..)
   , BoolPrimOp(..), EqPrimOp(..), OrdPrimOp(..)
+  , BitPrimOp(..)
   , NumPrimOp(..), FloatPrimOp(..)
   , VecPrimOp(..), MatPrimOp(..)
   , ConvPrimOp(..)
@@ -30,7 +31,8 @@ import SPIRV.ScalarTy
 data PrimOp where
   BoolOp  :: BoolPrimOp                                  -> PrimOp
   EqOp    :: EqPrimOp                        -> PrimTy   -> PrimOp
-  OrdOp   :: OrdPrimOp                       -> PrimTy   -> PrimOp
+  OrdOp   :: OrdPrimOp                       -> ScalarTy -> PrimOp
+  BitOp   :: BitPrimOp                       -> ScalarTy -> PrimOp
   NumOp   :: NumPrimOp                       -> ScalarTy -> PrimOp
   FloatOp :: FloatPrimOp                     -> ScalarTy -> PrimOp
   VecOp   :: VecPrimOp   -> Word32           -> ScalarTy -> PrimOp
@@ -39,9 +41,9 @@ data PrimOp where
   deriving Show
 
 data BoolPrimOp
-  = Or
-  | And
-  | Not
+  = BoolOr
+  | BoolAnd
+  | BoolNot
   deriving Show
 
 data EqPrimOp
@@ -56,6 +58,16 @@ data OrdPrimOp
   | LTE
   | Min
   | Max
+  deriving Show
+
+data BitPrimOp
+  = BitAnd
+  | BitOr
+  | BitXor
+  | BitNot
+  | BitShiftRightLogical
+  | BitShiftRightArithmetic
+  | BitShiftLeft
   deriving Show
 
 data NumPrimOp
@@ -104,6 +116,7 @@ data VecPrimOp
   | DotV
   | VMulK
   | CrossV
+  | NormaliseV
   deriving Show
 
 data MatPrimOp
@@ -136,6 +149,8 @@ opAndReturnType (EqOp eqOp s)
     )
 opAndReturnType (OrdOp ordOp s)
   = orderOp ordOp s
+opAndReturnType (BitOp bitOp s)
+  = bitwiseOp bitOp s
 opAndReturnType (NumOp numOp s)
   = second Scalar (numericOp numOp s)
 opAndReturnType (FloatOp flOp s)
@@ -153,9 +168,9 @@ op :: PrimOp -> Operation
 op = fst . opAndReturnType
 
 booleanOp :: BoolPrimOp -> Operation
-booleanOp Or  = LogicalOr
-booleanOp And = LogicalAnd
-booleanOp Not = LogicalNot
+booleanOp BoolOr  = LogicalOr
+booleanOp BoolAnd = LogicalAnd
+booleanOp BoolNot = LogicalNot
 
 equalityOp :: EqPrimOp -> PrimTy -> Operation
 equalityOp Equal    (Scalar (Floating  _)) = FOrdEqual -- not reflexive!
@@ -166,26 +181,34 @@ equalityOp NotEqual (Scalar (Integer _ _)) = INotEqual
 equalityOp NotEqual Boolean                = LogicalNotEqual
 equalityOp primOp ty = error $ "unsupported type " ++ show ty ++ " with equality operation " ++ show primOp
 
-orderOp :: OrdPrimOp -> PrimTy -> (Operation, PrimTy)
-orderOp GT  (Scalar (Integer Unsigned _)) = ( UGreaterThan        , Boolean )
-orderOp GT  (Scalar (Integer Signed   _)) = ( SGreaterThan        , Boolean )
-orderOp GT  (Scalar (Floating         _)) = ( FOrdGreaterThan     , Boolean )
-orderOp GTE (Scalar (Integer Unsigned _)) = ( UGreaterThanEqual   , Boolean )
-orderOp GTE (Scalar (Integer Signed   _)) = ( SGreaterThanEqual   , Boolean )
-orderOp GTE (Scalar (Floating         _)) = ( FOrdGreaterThanEqual, Boolean )
-orderOp LT  (Scalar (Integer Unsigned _)) = ( ULessThan           , Boolean )
-orderOp LT  (Scalar (Integer Signed   _)) = ( SLessThan           , Boolean )
-orderOp LT  (Scalar (Floating         _)) = ( FOrdLessThan        , Boolean )
-orderOp LTE (Scalar (Integer Unsigned _)) = ( ULessThanEqual      , Boolean )
-orderOp LTE (Scalar (Integer Signed   _)) = ( SLessThanEqual      , Boolean )
-orderOp LTE (Scalar (Floating         _)) = ( FOrdLessThanEqual   , Boolean )
-orderOp Min (Scalar (Integer Unsigned w)) = ( UMin , Scalar (Integer Unsigned w) )
-orderOp Min (Scalar (Integer Signed   w)) = ( SMin , Scalar (Integer Signed   w) )
-orderOp Min (Scalar (Floating         w)) = ( FMin , Scalar (Floating         w) )
-orderOp Max (Scalar (Integer Unsigned w)) = ( UMax , Scalar (Integer Unsigned w) )
-orderOp Max (Scalar (Integer Signed   w)) = ( SMax , Scalar (Integer Signed   w) )
-orderOp Max (Scalar (Floating         w)) = ( FMax , Scalar (Floating         w) )
-orderOp primOp ty = error $ "unsupported type " ++ show ty ++ " with order operation " ++ show primOp
+orderOp :: OrdPrimOp -> ScalarTy -> (Operation, PrimTy)
+orderOp GT  (Integer Unsigned _) = ( UGreaterThan        , Boolean )
+orderOp GT  (Integer Signed   _) = ( SGreaterThan        , Boolean )
+orderOp GT  (Floating         _) = ( FOrdGreaterThan     , Boolean )
+orderOp GTE (Integer Unsigned _) = ( UGreaterThanEqual   , Boolean )
+orderOp GTE (Integer Signed   _) = ( SGreaterThanEqual   , Boolean )
+orderOp GTE (Floating         _) = ( FOrdGreaterThanEqual, Boolean )
+orderOp LT  (Integer Unsigned _) = ( ULessThan           , Boolean )
+orderOp LT  (Integer Signed   _) = ( SLessThan           , Boolean )
+orderOp LT  (Floating         _) = ( FOrdLessThan        , Boolean )
+orderOp LTE (Integer Unsigned _) = ( ULessThanEqual      , Boolean )
+orderOp LTE (Integer Signed   _) = ( SLessThanEqual      , Boolean )
+orderOp LTE (Floating         _) = ( FOrdLessThanEqual   , Boolean )
+orderOp Min (Integer Unsigned w) = ( UMin , Scalar (Integer Unsigned w) )
+orderOp Min (Integer Signed   w) = ( SMin , Scalar (Integer Signed   w) )
+orderOp Min (Floating         w) = ( FMin , Scalar (Floating         w) )
+orderOp Max (Integer Unsigned w) = ( UMax , Scalar (Integer Unsigned w) )
+orderOp Max (Integer Signed   w) = ( SMax , Scalar (Integer Signed   w) )
+orderOp Max (Floating         w) = ( FMax , Scalar (Floating         w) )
+
+bitwiseOp :: BitPrimOp -> ScalarTy -> (Operation, PrimTy)
+bitwiseOp BitAnd s = (BitwiseAnd, Scalar s)
+bitwiseOp BitOr  s = (BitwiseOr , Scalar s)
+bitwiseOp BitXor s = (BitwiseXor, Scalar s)
+bitwiseOp BitNot s = (Not       , Scalar s)
+bitwiseOp BitShiftRightLogical    s = (ShiftRightLogical   , Scalar s)
+bitwiseOp BitShiftRightArithmetic s = (ShiftRightArithmetic, Scalar s)
+bitwiseOp BitShiftLeft            s = (ShiftLeftLogical    , Scalar s)
 
 numericOp :: NumPrimOp -> ScalarTy -> (Operation, ScalarTy)
 -- additive group
@@ -250,6 +273,8 @@ vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Scalar (Floating
 vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements must be of floating-point type (sorry!)."
 vectorOp CrossV n (Floating w) = ( Cross, Vector n (Scalar (Floating w)) )
 vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
+vectorOp NormaliseV n (Floating w) = ( Normalize, Vector n (Scalar (Floating w)) )
+vectorOp NormaliseV _ _            = error "Normalise: vector elements must be of floating-point type."
 
 matrixOp :: MatPrimOp -> Word32 -> Word32 -> ScalarTy -> (Operation, PrimTy)
 matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )

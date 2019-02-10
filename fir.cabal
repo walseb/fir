@@ -25,7 +25,7 @@ description:
   An overview of the library is include in the __readme__ file.
   .
   See the @fir-examples@ project subdirectory for fleshed out examples,
-  which include using the @vulkan-api@ package for rendering.
+  including using the @vulkan-api@ package for rendering.
   .
   The exposed modules are:
   .
@@ -97,7 +97,7 @@ library
       , Data.Type.List
       , Data.Type.Map
       , Data.Type.Snoc
-      , Deriving.Prelude
+      , Deriving.Base
       , FIR.AST
       , FIR.Binding
       , FIR.Builtin
@@ -115,6 +115,7 @@ library
       , FIR.Synonyms
       , Math.Algebra.Class
       , Math.Algebra.GradedSemigroup
+      , Math.Logic.Bits
       , Math.Logic.Class
       , SPIRV.Builtin
       , SPIRV.Capability

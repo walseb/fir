@@ -359,6 +359,21 @@ pattern FOrdGreaterThanEqual   :: Operation
 pattern FOrdGreaterThanEqual   = Code 190
 pattern FUnordGreaterThanEqual :: Operation
 pattern FUnordGreaterThanEqual = Code 191
+-- bitwise operations
+pattern ShiftRightLogical    :: Operation
+pattern ShiftRightLogical    = Code 194
+pattern ShiftRightArithmetic :: Operation
+pattern ShiftRightArithmetic = Code 195
+pattern ShiftLeftLogical     :: Operation
+pattern ShiftLeftLogical     = Code 196
+pattern BitwiseOr            :: Operation
+pattern BitwiseOr            = Code 197
+pattern BitwiseXor           :: Operation
+pattern BitwiseXor           = Code 198
+pattern BitwiseAnd           :: Operation
+pattern BitwiseAnd           = Code 199
+pattern Not                  :: Operation
+pattern Not                  = Code 200
 -- control flow
 pattern Phi               :: Operation
 pattern Phi               = Code 245
@@ -445,6 +460,8 @@ pattern SMax          :: Operation
 pattern SMax          = ExtCode GLSL 42
 pattern Cross         :: Operation
 pattern Cross         = ExtCode GLSL 68
+pattern Normalize     :: Operation
+pattern Normalize     = ExtCode GLSL 69
 
 showOperation :: Operation -> String
 showOperation Nop = "Nop"
@@ -597,6 +614,13 @@ showOperation FOrdLessThanEqual = "FOrdLessThanEqual"
 showOperation FUnordLessThanEqual = "FUnordLessThanEqual"
 showOperation FOrdGreaterThanEqual = "FOrdGreaterThanEqual"
 showOperation FUnordGreaterThanEqual = "FUnordGreaterThanEqual"
+showOperation ShiftRightLogical    = "ShiftRightLogical"
+showOperation ShiftRightArithmetic = "ShiftRightArithmetic"
+showOperation ShiftLeftLogical     = "ShiftLeftLogical"
+showOperation BitwiseOr            = "BitwiseOr"
+showOperation BitwiseXor           = "BitwiseXor"
+showOperation BitwiseAnd           = "BitwiseAnd"
+showOperation Not                  = "Not"
 showOperation Phi = "Phi"
 showOperation LoopMerge = "LoopMerge"
 showOperation SelectionMerge = "SelectionMerge"
@@ -639,5 +663,6 @@ showOperation FMax = "FMax"
 showOperation UMax = "UMax"
 showOperation SMax = "SMax"
 showOperation Cross = "Cross"
+showOperation Normalize = "Normalize"
 showOperation (Code i) = show i
 showOperation (ExtCode _ i) = show i

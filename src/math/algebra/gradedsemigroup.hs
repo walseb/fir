@@ -53,6 +53,7 @@ module Math.Algebra.GradedSemigroup where
 -- base
 import Data.Kind(Type, Constraint)
 
+
 infixl 6 <!>
 infixl 6 :<!>:
 
@@ -69,11 +70,11 @@ infixl 6 :<!>:
 class GradedSemigroup g k | g -> k where
   -- | For extra flexibility, instead of specifying a type-level function \( G \colon I \to \textrm{Type} \)
   -- to define the grading (which is often too restrictive), we use an associated /injective/ type family.
-  type Apply k g (i :: k) = (r :: Type) | r -> k g i
+  type Grade k g (i :: k) = (r :: Type) | r -> k g i
   -- | Type-level semigroup operation on indices.
   type (i :: k) :<!>: (j :: k) :: k
   -- | Value-level graded semigroup operation.
-  (<!>) :: Apply k g i -> Apply k g j -> Apply k g (i :<!>: j)
+  (<!>) :: Grade k g i -> Grade k g j -> Grade k g (i :<!>: j)
 
 -- ** Presentation of a graded semigroup
 
@@ -93,7 +94,7 @@ class GradedSemigroup g k => GeneratedGradedSemigroup g k d | g -> k d where
   -- | Degree of homogeneous generators.
   type GenDeg k g d (l :: d) = (r :: k) | r -> k d l
   -- | Inject generators into the semigroup.
-  generator :: GenType g d l -> Apply k g (GenDeg k g d l)
+  generator :: GenType g d l -> Grade k g (GenDeg k g d l)
 
 -- | Utility type synonym for the degree of a homogeneous generator,
 -- to avoid manually specifying the kind of the labelling parameter.
@@ -139,10 +140,10 @@ class GeneratedGradedSemigroup g k d => FreeGradedSemigroup g k d | g -> k d whe
   -- returns the unique pair \( g_i \in G_i \), \( g_j \in G_j \)
   -- such that \( g = g_i \cdot g_j \).
   (>!<) :: (ValidDegree g i, ValidDegree g j)
-        => Apply k g (i :<!>: j) -> ( Apply k g i, Apply k g j )
+        => Grade k g (i :<!>: j) -> ( Grade k g i, Grade k g j )
   -- | In appropriate degrees, all elements of the semigroup
   -- should be images of generators.
-  generated :: Apply k g (GenDeg k g d l) -> GenType g d l
+  generated :: Grade k g (GenDeg k g d l) -> GenType g d l
 
 -- $freeness
 -- The above type class can be understood as a freeness property of the graded semigroup operation,

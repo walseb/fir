@@ -672,7 +672,7 @@ type family Combine
               = ( r :: Type )
                 where
   Combine (o1 :: Optic is s a) (o2 :: Optic js t b) b1 b2
-    = Apply
+    = Grade
         ( WhichKind b1 b2 (DegreeKind s) (DegreeKind a) (DegreeKind t) (DegreeKind b) )
         ( ProductContainer o1 o2 b1 b2 )
         ( ProductDegree o1 o2 b1 b2 )
@@ -721,17 +721,17 @@ class MultiplyGetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
 instance ( Contained c
          , GradedSemigroup (Container c) (DegreeKind c)
          , a ~ ListVariadic '[] a
-         , a ~ Apply
+         , a ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf a `WithKind` DegreeKind c)
          , b ~ ListVariadic '[] b
-         , b ~ Apply
+         , b ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf b `WithKind` DegreeKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (       (DegreeOf a `WithKind` DegreeKind c)
@@ -747,7 +747,7 @@ instance ( Contained c
          , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , a ~ ListVariadic '[] a
-         , a ~ Apply
+         , a ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf a `WithKind` DegreeKind c)
@@ -759,7 +759,7 @@ instance ( Contained c
                     (LabelKind c)
                     (lb `WithKind` LabelKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   ((DegreeOf a `WithKind` DegreeKind c) :<!>: hdb)
@@ -781,7 +781,7 @@ instance ( Contained c
          , a ~ ListVariadic '[] a
          , a ~ GenType (Container c) (LabelKind c) (la `WithKind` LabelKind c)
          , b ~ ListVariadic '[] b
-         , b ~ Apply
+         , b ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf b `WithKind` DegreeKind c)
@@ -791,7 +791,7 @@ instance ( Contained c
                     (LabelKind c)
                     (la `WithKind` LabelKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (hda :<!>: (DegreeOf b `WithKind` DegreeKind c))
@@ -825,7 +825,7 @@ instance ( Contained c
                     (LabelKind c)
                     (lb `WithKind` LabelKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (hda :<!>: hdb)
@@ -890,16 +890,16 @@ class MultiplySetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
 instance ( Contained c
          , GradedSemigroup (Container c) (DegreeKind c)
          , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , a ~ Apply
+         , a ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf a `WithKind` DegreeKind c)
-         , b ~ Apply
+         , b ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf b `WithKind` DegreeKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (      (DegreeOf a `WithKind` DegreeKind c)
@@ -917,7 +917,7 @@ instance ( Contained c
          , GradedSemigroup (Container c) (DegreeKind c)
          , GeneratedGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
          , FreeGradedSemigroup (Container c) (DegreeKind c) (LabelKind c)
-         , a ~ Apply
+         , a ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf a `WithKind` DegreeKind c)
@@ -928,7 +928,7 @@ instance ( Contained c
                     (LabelKind c)
                     (lb `WithKind` LabelKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   ((DegreeOf a `WithKind` DegreeKind c) :<!>: hdb)
@@ -951,12 +951,12 @@ instance ( Contained c
                     (Container c)
                     (LabelKind c)
                     (la `WithKind` LabelKind c)
-         , b ~ Apply
+         , b ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (DegreeOf b `WithKind` DegreeKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (hda :<!>: (DegreeOf b `WithKind` DegreeKind c))
@@ -986,7 +986,7 @@ instance ( Contained c
                     (LabelKind c)
                     (lb `WithKind` LabelKind c)
          , c ~ ListVariadic '[] c
-         , c ~ Apply
+         , c ~ Grade
                   (DegreeKind c)
                   (Container c)
                   (hda :<!>: hdb)

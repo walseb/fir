@@ -87,7 +87,7 @@ instance PrimTyMap as => Show (Struct as) where
   show s = "{ " ++ display s ++ " }" 
 
 instance GradedSemigroup Struct [Symbol :-> Type] where
-  type Apply [Symbol :-> Type] Struct as = Struct as
+  type Grade [Symbol :-> Type] Struct as = Struct as
   type as :<!>: bs = as :++: bs
   (<!>) :: Struct as -> Struct bs -> Struct (as :++: bs)
   End <!> t = t

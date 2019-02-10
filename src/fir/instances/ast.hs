@@ -120,6 +120,8 @@ import Math.Linear
   , dfoldrV, buildV
   , pattern V2, pattern V3, pattern V4
   )
+import Math.Logic.Bits
+  ( Bits(..), BitShift(..) )
 import Math.Logic.Class
   ( Eq(..), Boolean(..)
   , Choose(..), Triple
@@ -142,9 +144,9 @@ import qualified SPIRV.PrimOp as SPIRV
 instance Boolean (AST Bool) where
   true  = Lit True
   false = Lit False
-  (&&)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.And) (&&)
-  (||)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Or ) (||)
-  not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.Not) not
+  (&&)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.BoolAnd) (&&)
+  (||)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.BoolOr ) (||)
+  not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.BoolNot) not
 
 instance PrimTy a => Choose (AST Bool) (Triple (AST a)) where
   choose = fromAST If
@@ -155,16 +157,39 @@ instance ( PrimTy a, Eq a, Logic a ~ Bool )
   (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (primTy @a)) ((==) @a)
   (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) ((/=) @a)
 
-instance ( PrimTy a, Ord a, Logic a ~ Bool ) 
+instance ( ScalarTy a, Ord a, Logic a ~ Bool ) 
   => Ord (AST a) where
   type Ordering (AST a) = AST Word16
   compare = error "todo"
-  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (primTy @a)) ((<=) @a)
-  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (primTy @a)) ((>=) @a)
-  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (primTy @a)) ((<)  @a)
-  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (primTy @a)) ((>)  @a)
-  min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (primTy @a)) min
-  max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (primTy @a)) max
+  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (scalarTy @a)) ((<=) @a)
+  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (scalarTy @a)) ((>=) @a)
+  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (scalarTy @a)) ((<)  @a)
+  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (scalarTy @a)) ((>)  @a)
+  min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (scalarTy @a)) min
+  max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (scalarTy @a)) max
+
+-- * Bitwise operations
+--
+-- $bitwise
+-- Instances for:
+--
+-- 'Bits', 'BitShift' (note: not 'Data.Bits.Bits').
+
+instance (ScalarTy a, Bits a) => Bits (AST a) where
+  (.&.) = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitAnd (scalarTy @a)) ( (.&.) @a)
+  (.|.) = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitOr  (scalarTy @a)) ( (.|.) @a)
+  xor   = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitXor (scalarTy @a)) ( xor   @a)
+  complement = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitNot (scalarTy @a)) ( complement @a )
+  zeroBits   = Lit ( zeroBits @a )
+
+instance (ScalarTy a, ScalarTy s, BitShift '(a,s))
+  => BitShift '(AST a, AST s) where
+  shiftL  = fromAST $ PrimOp
+                        ( SPIRV.BitOp SPIRV.BitShiftLeft (scalarTy @a) )
+                        ( shiftL @('(a,s)) )
+  shiftR = fromAST $ PrimOp
+                        ( SPIRV.BitOp SPIRV.BitShiftRightArithmetic (scalarTy @a) )
+                        ( shiftR @('(a,s)) )
 
 -- * Numeric operations
 -- 
@@ -516,8 +541,11 @@ instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
         => AST (V n a) -> AST (V n a) -> AST (V n a)
   (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV   (val @n) (scalarTy @a)) (^-^)
 
-instance (ScalarTy a, Semiring a) => Inner (AST (V 0 a)) where
+instance (ScalarTy a, Floating a) => Inner (AST (V 0 a)) where
   (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV   (val @0) (scalarTy @a)) (^.^)
+  normalise = fromAST $ PrimOp
+                           ( SPIRV.VecOp SPIRV.NormaliseV (val @0) (scalarTy @a) )
+                           normalise
 
 instance (ScalarTy a, Floating a) => Cross (AST (V 0 a)) where
   cross = fromAST $ PrimOp (SPIRV.VecOp SPIRV.CrossV (val @3) (scalarTy @a)) cross

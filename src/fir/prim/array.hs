@@ -59,7 +59,7 @@ deriving instance Foldable    (Array n)
 deriving instance Traversable (Array n)
 
 instance GradedSemigroup (Array 0 a) Nat where
-  type Apply Nat (Array 0 a) l = Array l a
+  type Grade Nat (Array 0 a) l = Array l a
   type l1 :<!>: l2 = l1 + l2
   (<!>) :: forall l1 l2. Array l1 a -> Array l2 a -> Array (l1+l2) a
   MkArray v1 <!> MkArray v2 = MkArray @(l1+l2) (v1 Array.++ v2)
@@ -90,11 +90,11 @@ deriving instance Foldable    RuntimeArray
 deriving instance Traversable RuntimeArray
 
 instance GradedSemigroup (RuntimeArray a) () where
-  type Apply () (RuntimeArray a) '() = RuntimeArray a
+  type Grade () (RuntimeArray a) '() = RuntimeArray a
   type l1 :<!>: l2 = '()
-  (<!>) :: Apply () (RuntimeArray a) unit1
-        -> Apply () (RuntimeArray a) unit2
-        -> Apply () (RuntimeArray a) unit3
+  (<!>) :: Grade () (RuntimeArray a) unit1
+        -> Grade () (RuntimeArray a) unit2
+        -> Grade () (RuntimeArray a) unit3
   arr1 <!> arr2 = unsafeCoerce (MkRuntimeArray (v1 Array.++ v2))
     where v1, v2 :: Array.Vector a
           MkRuntimeArray v1 = unsafeCoerce arr1
@@ -103,7 +103,7 @@ instance GradedSemigroup (RuntimeArray a) () where
 instance GeneratedGradedSemigroup (RuntimeArray a) () () where
   type GenType   (RuntimeArray a) () _ = a
   type GenDeg () (RuntimeArray a) () '() = '()
-  generator :: a -> Apply () (RuntimeArray a) (GenDeg () (RuntimeArray a) () unit)
+  generator :: a -> Grade () (RuntimeArray a) (GenDeg () (RuntimeArray a) () unit)
   generator a = unsafeCoerce ( MkRuntimeArray (Array.singleton a) )
 
 

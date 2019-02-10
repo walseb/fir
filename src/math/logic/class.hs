@@ -22,19 +22,26 @@ import Prelude
   , flip
   )
 import qualified Prelude
-import Data.Coerce(Coercible, coerce)
-import Data.Int(Int8,Int16,Int32,Int64)
-import Data.Kind(Type)
-import Data.Word(Word8,Word16,Word32,Word64)
+import Data.Coerce
+  ( Coercible, coerce )
+import Data.Int
+  ( Int8,Int16,Int32,Int64 )
+import Data.Kind
+  ( Type )
+import Data.Word
+  ( Word8,Word16,Word32,Word64 )
 import Foreign.C.Types
 import qualified GHC.Stack
 
 -- half
-import Numeric.Half(Half)
+import Numeric.Half
+  ( Half )
 
 -- fir
-import Deriving.Prelude(Prelude(..)) -- newtype for deriving Prelude instances
+import Deriving.Base
+  ( Base(..) ) -- newtype for deriving via base instances
 
+----------------------------------------------------------------------
 
 infixr 3 &&
 infixr 2 ||
@@ -78,40 +85,40 @@ class Boolean (Logic a) => Eq a where
   (/=) :: a -> a -> Logic a
   a /= b = not (a == b)
 
-instance Prelude.Eq a => Eq (Prelude a) where
-  type Logic (Prelude a) = Bool
+instance Prelude.Eq a => Eq (Base a) where
+  type Logic (Base a) = Bool
   (==) = coerce ( (Prelude.==) :: a -> a -> Bool )
   (/=) = coerce ( (Prelude./=) :: a -> a -> Bool )
 
-deriving via Prelude ()     instance Eq ()
-deriving via Prelude Bool   instance Eq Bool
-deriving via Prelude Word8  instance Eq Word8
-deriving via Prelude Word16 instance Eq Word16
-deriving via Prelude Word32 instance Eq Word32
-deriving via Prelude Word64 instance Eq Word64
-deriving via Prelude Word   instance Eq Word
-deriving via Prelude Int8   instance Eq Int8
-deriving via Prelude Int16  instance Eq Int16
-deriving via Prelude Int32  instance Eq Int32
-deriving via Prelude Int64  instance Eq Int64
-deriving via Prelude Int    instance Eq Int
-deriving via Prelude Half   instance Eq Half
-deriving via Prelude Float  instance Eq Float
-deriving via Prelude Double instance Eq Double
+deriving via Base ()     instance Eq ()
+deriving via Base Bool   instance Eq Bool
+deriving via Base Word8  instance Eq Word8
+deriving via Base Word16 instance Eq Word16
+deriving via Base Word32 instance Eq Word32
+deriving via Base Word64 instance Eq Word64
+deriving via Base Word   instance Eq Word
+deriving via Base Int8   instance Eq Int8
+deriving via Base Int16  instance Eq Int16
+deriving via Base Int32  instance Eq Int32
+deriving via Base Int64  instance Eq Int64
+deriving via Base Int    instance Eq Int
+deriving via Base Half   instance Eq Half
+deriving via Base Float  instance Eq Float
+deriving via Base Double instance Eq Double
 
-deriving via Prelude CChar   instance Eq CChar
-deriving via Prelude CSChar  instance Eq CSChar
-deriving via Prelude CUChar  instance Eq CUChar
-deriving via Prelude CShort  instance Eq CShort
-deriving via Prelude CUShort instance Eq CUShort
-deriving via Prelude CInt    instance Eq CInt
-deriving via Prelude CUInt   instance Eq CUInt
-deriving via Prelude CLong   instance Eq CLong
-deriving via Prelude CULong  instance Eq CULong
-deriving via Prelude CLLong  instance Eq CLLong
-deriving via Prelude CULLong instance Eq CULLong
-deriving via Prelude CFloat  instance Eq CFloat
-deriving via Prelude CDouble instance Eq CDouble
+deriving via Base CChar   instance Eq CChar
+deriving via Base CSChar  instance Eq CSChar
+deriving via Base CUChar  instance Eq CUChar
+deriving via Base CShort  instance Eq CShort
+deriving via Base CUShort instance Eq CUShort
+deriving via Base CInt    instance Eq CInt
+deriving via Base CUInt   instance Eq CUInt
+deriving via Base CLong   instance Eq CLong
+deriving via Base CULong  instance Eq CULong
+deriving via Base CLLong  instance Eq CLLong
+deriving via Base CULLong instance Eq CULLong
+deriving via Base CFloat  instance Eq CFloat
+deriving via Base CDouble instance Eq CDouble
 
 
 newtype All b = All { getAll :: b }
@@ -163,8 +170,8 @@ class Eq a => Ord a where
   (>)  = flip (<)
 
 
-instance Prelude.Ord a => Ord (Prelude a) where
-  type Ordering (Prelude a) = Prelude.Ordering
+instance Prelude.Ord a => Ord (Base a) where
+  type Ordering (Base a) = Prelude.Ordering
   compare = coerce ( Prelude.compare :: a -> a -> Prelude.Ordering )
   (<=)    = coerce ( (Prelude.<=)    :: a -> a -> Bool )
   (>=)    = coerce ( (Prelude.>=)    :: a -> a -> Bool )
@@ -173,32 +180,32 @@ instance Prelude.Ord a => Ord (Prelude a) where
   max     = coerce ( Prelude.max     :: a -> a -> a )
   min     = coerce ( Prelude.min     :: a -> a -> a )
 
-deriving via Prelude ()     instance Ord ()
-deriving via Prelude Bool   instance Ord Bool
-deriving via Prelude Word8  instance Ord Word8
-deriving via Prelude Word16 instance Ord Word16
-deriving via Prelude Word32 instance Ord Word32
-deriving via Prelude Word64 instance Ord Word64
-deriving via Prelude Word   instance Ord Word
-deriving via Prelude Int8   instance Ord Int8
-deriving via Prelude Int16  instance Ord Int16
-deriving via Prelude Int32  instance Ord Int32
-deriving via Prelude Int64  instance Ord Int64
-deriving via Prelude Int    instance Ord Int
-deriving via Prelude Half   instance Ord Half
-deriving via Prelude Float  instance Ord Float
-deriving via Prelude Double instance Ord Double
+deriving via Base ()     instance Ord ()
+deriving via Base Bool   instance Ord Bool
+deriving via Base Word8  instance Ord Word8
+deriving via Base Word16 instance Ord Word16
+deriving via Base Word32 instance Ord Word32
+deriving via Base Word64 instance Ord Word64
+deriving via Base Word   instance Ord Word
+deriving via Base Int8   instance Ord Int8
+deriving via Base Int16  instance Ord Int16
+deriving via Base Int32  instance Ord Int32
+deriving via Base Int64  instance Ord Int64
+deriving via Base Int    instance Ord Int
+deriving via Base Half   instance Ord Half
+deriving via Base Float  instance Ord Float
+deriving via Base Double instance Ord Double
 
-deriving via Prelude CChar   instance Ord CChar
-deriving via Prelude CSChar  instance Ord CSChar
-deriving via Prelude CUChar  instance Ord CUChar
-deriving via Prelude CShort  instance Ord CShort
-deriving via Prelude CUShort instance Ord CUShort
-deriving via Prelude CInt    instance Ord CInt
-deriving via Prelude CUInt   instance Ord CUInt
-deriving via Prelude CLong   instance Ord CLong
-deriving via Prelude CULong  instance Ord CULong
-deriving via Prelude CLLong  instance Ord CLLong
-deriving via Prelude CULLong instance Ord CULLong
-deriving via Prelude CFloat  instance Ord CFloat
-deriving via Prelude CDouble instance Ord CDouble
+deriving via Base CChar   instance Ord CChar
+deriving via Base CSChar  instance Ord CSChar
+deriving via Base CUChar  instance Ord CUChar
+deriving via Base CShort  instance Ord CShort
+deriving via Base CUShort instance Ord CUShort
+deriving via Base CInt    instance Ord CInt
+deriving via Base CUInt   instance Ord CUInt
+deriving via Base CLong   instance Ord CLong
+deriving via Base CULong  instance Ord CULong
+deriving via Base CLLong  instance Ord CLLong
+deriving via Base CULLong instance Ord CULLong
+deriving via Base CFloat  instance Ord CFloat
+deriving via Base CDouble instance Ord CDouble

@@ -151,6 +151,8 @@ import Math.Linear
   , Matrix(..)
   , V, M
   )
+import Math.Logic.Bits
+  ( Bits(..), BitShift(..) )
 import Math.Logic.Class
   ( Eq(..), Boolean(..)
   , Choose(..), ifThenElse
@@ -505,7 +507,7 @@ instance ( PrimTy a, Eq a, Logic a ~ Bool
   (==) = ixLiftA2 (==)
   (/=) = ixLiftA2 (/=)
 
-instance ( PrimTy a, Ord a, Logic a ~ Bool
+instance ( ScalarTy a, Ord a, Logic a ~ Bool
          , x ~ (AST a := i)
          )
   => Ord (Codensity AST x i) where
@@ -517,6 +519,41 @@ instance ( PrimTy a, Ord a, Logic a ~ Bool
   (>)  = ixLiftA2 (>)
   min  = ixLiftA2 min
   max  = ixLiftA2 max
+
+-- * Bitwise operations
+--
+-- $bitwise
+-- Instances for:
+--
+-- 'Bits', 'BitShift' (note: not 'Data.Bits.Bits').
+
+instance ( ScalarTy a
+         , x ~ (AST a := i)
+         , Bits a
+         ) => Bits (Codensity AST x i) where
+  (.&.) = ixLiftA2 (.&.)
+  (.|.) = ixLiftA2 (.|.)
+  xor   = ixLiftA2 xor
+  complement = ixFmap complement
+  zeroBits   = ixPure zeroBits
+
+instance ( ScalarTy a, ScalarTy s
+         , BitShift '(a,s)
+         , x ~ (AST a := i)
+         , t ~ (AST s := i)
+         )
+  => BitShift '(Codensity AST x i, Codensity AST t i) where
+  shiftL = ixLiftA2 shiftL
+  shiftR = ixLiftA2 shiftR
+
+instance ( ScalarTy a, ScalarTy s
+         , BitShift '(a,s)
+         , x ~ (AST a := i)
+         )
+  => BitShift '(Codensity AST x i, AST s) where
+  shiftL a s = shiftL @('(Codensity AST x i, Codensity AST (AST s := i) i)) a (ixPure s)
+  shiftR a s = shiftR @('(Codensity AST x i, Codensity AST (AST s := i) i)) a (ixPure s)
+
 
 -- Numeric operations
 
@@ -603,8 +640,9 @@ instance (ScalarTy a, Semiring a, j ~ i) => Semimodule (Codensity AST (AST (V 0 
 instance (ScalarTy a, Ring a, j ~ i) => Module (Codensity AST (AST (V 0 a) := j) i) where
   (^-^) = ixLiftA2 (^-^)
 
-instance (ScalarTy a, Semiring a, j ~ i) => Inner (Codensity AST (AST (V 0 a) := j) i) where
+instance (ScalarTy a, Floating a, j ~ i) => Inner (Codensity AST (AST (V 0 a) := j) i) where
   (^.^) = ixLiftA2 (^.^)
+  normalise = ixFmap normalise
 
 instance (ScalarTy a, Floating a, j ~ i) => Cross (Codensity AST (AST (V 0 a) := j) i) where
   cross = ixLiftA2 cross

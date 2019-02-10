@@ -49,7 +49,6 @@ module Math.Linear
   , angle, norm, squaredNorm
   , quadrance, distance
   , along
-  , normalise
   , reflect, reflect'
   , proj, projC
   , isOrthogonal, gramSchmidt
@@ -116,7 +115,7 @@ import Math.Algebra.GradedSemigroup
   )
 import Math.Logic.Class
   ( Boolean(..), Eq(Logic,(==))
-  , Choose(choose), ifThenElse, Triple
+  , Choose(choose)
   , (#.)
   , Ord(..)
   )
@@ -350,7 +349,7 @@ pattern V4 x y z w = x :. y :. z :. w :. Nil
 -- graded semigroup for vectors
 
 instance GradedSemigroup (V 0 a) Nat where
-  type Apply Nat (V 0 a) i = V i a
+  type Grade Nat (V 0 a) i = V i a
   type i :<!>: j = i + j
   (<!>) :: V i a -> V j a -> V (i+j) a
   (<!>) Nil      v = v
@@ -426,6 +425,7 @@ class (Ring (Scalar v), Semimodule v) => Module v where
 class Semimodule v => Inner v where
   (^.^), dot :: KnownNat n => OfDim v n -> OfDim v n -> Scalar v
   dot = (^.^)
+  normalise :: KnownNat n => OfDim v n -> OfDim v n
 
 -- | Module with a cross product.
 --
@@ -434,17 +434,6 @@ class Semimodule v => Inner v where
 class Module v => Cross v where
   (^×^), cross :: OfDim v 3 -> OfDim v 3 -> OfDim v 3
   (^×^) = cross
-
-class    ( Semimodule v, KnownNat n
-         , Eq (Scalar v)
-         , Choose (Logic (Scalar v)) (Triple (Scalar v))
-         , Choose (Logic (Scalar v)) (Triple (OfDim v n))
-         ) => HasEquality v n
-instance ( Semimodule v, KnownNat n
-         , Eq (Scalar v)
-         , Choose (Logic (Scalar v)) (Triple (Scalar v))
-         , Choose (Logic (Scalar v)) (Triple (OfDim v n))
-         ) => HasEquality v n
 
 ------------------------------------------------------------------
 -- instances for plain vectors
@@ -458,8 +447,9 @@ instance Semiring a => Semimodule (V 0 a) where
 instance Ring a => Module (V 0 a) where
   (^-^) = liftA2 (-)  
 
-instance Semiring a => Inner (V 0 a) where
+instance (Semiring a, Floating a) => Inner (V 0 a) where
   (^.^) = (sum .) . liftA2 (*)
+  normalise v = invSqrt (dot v v) *^ v
 
 instance Ring a => Cross (V 0 a) where
   cross (V3 x y z) (V3 x' y' z') = V3 a b c
@@ -471,7 +461,7 @@ instance Ring a => Cross (V 0 a) where
 -- derived operations
 
 -- | Angle between two vectors, computed using the inner product structure.
-angle :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n)
+angle :: (Floating (Scalar v), KnownNat n, Inner v)
       => OfDim v n -> OfDim v n -> Scalar v
 angle x y = acos $ dot (normalise x) (normalise y)
 
@@ -503,18 +493,9 @@ along :: (KnownNat n, Module v)
       -> OfDim v n
 along t x y = (1-t) *^ x ^+^ t *^ y
 
--- | Normalises a vector to have unit norm.
-normalise :: (Floating (Scalar v), KnownNat n, Inner v, HasEquality v n)
-          => OfDim v n -> OfDim v n
-normalise v =
-  let nm = norm v in
-  if nm == 0
-     then 0 *^ v
-     else (1 / nm ) *^ v
-
 -- | Reflects a vector along a hyperplane, specified by a normal vector.
 -- /Computes the normalisation of the normal vector in the process./
-reflect :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n)
+reflect :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
         => OfDim v n -- ^ Vector to be reflected.
         -> OfDim v n -- ^ A normal vector of the reflecting hyperplane.
         -> OfDim v n
@@ -529,18 +510,14 @@ reflect' :: (KnownNat n, Module v, Inner v)
 reflect' v n = v ^-^ (2 * dot v n) *^ n
 
 -- | Projects the first argument onto the second.
-proj :: (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n)
+proj :: (DivisionRing (Scalar v), KnownNat n, Inner v)
      => OfDim v n -> OfDim v n -> OfDim v n
 proj x y = projC x y *^ y
 
 -- | Projection constant: how far along the projection of the first vector lands along the second vector.
-projC :: forall n v. (DivisionRing (Scalar v), KnownNat n, Inner v, HasEquality v n)
+projC :: forall n v. (DivisionRing (Scalar v), KnownNat n, Inner v)
       => OfDim v n -> OfDim v n -> Scalar v
-projC x y =
-  let sqNm = dot y y
-  in if sqNm == 0
-     then 0 :: Scalar v
-     else dot x y / sqNm
+projC x y = dot x y / dot y y
 
 -- | Orthogonality test.
 --
@@ -550,7 +527,7 @@ isOrthogonal :: (KnownNat n, Module v, Inner v, Eq (Scalar v))
 isOrthogonal v w = dot v w == 0
 
 -- | Gram-Schmidt algorithm.
-gramSchmidt :: (Floating (Scalar v), KnownNat n, Module v, Inner v, HasEquality v n)
+gramSchmidt :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
             => [OfDim v n] -> [OfDim v n]
 gramSchmidt []     = []
 gramSchmidt (x:xs) = x' : gramSchmidt (map (\v -> v ^-^ proj v x') xs)
@@ -629,7 +606,7 @@ deriving via '(V m (V n x), V m (V n y), V m (V n z))
 -- graded semigroup for matrices
 
 instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
-  type Apply Nat (M m 0 a) i = M m i a
+  type Grade Nat (M m 0 a) i = M m i a
   type i :<!>: j = i + j
   (<!>) :: M m i a -> M m j a -> M m (i+j) a
   (M m1) <!> (M m2) = M (liftA2 (<!>) m1 m2)

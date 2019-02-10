@@ -113,6 +113,7 @@ module FIR
   , module FIR.Synonyms
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup
+  , module Math.Logic.Bits
   , module Math.Logic.Class
   , SPIRV.Decoration.Decoration(..)
   , SPIRV.ExecutionMode.ExecutionMode(..)
@@ -208,6 +209,7 @@ import FIR.Program
 import FIR.Synonyms
 import Math.Algebra.Class
 import Math.Algebra.GradedSemigroup
+import Math.Logic.Bits
 import Math.Logic.Class
 import SPIRV.Decoration
 import SPIRV.ExecutionMode
