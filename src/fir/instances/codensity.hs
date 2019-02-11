@@ -1,18 +1,20 @@
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE InstanceSigs           #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PatternSynonyms        #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RebindableSyntax       #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE AllowAmbiguousTypes     #-}
+{-# LANGUAGE DataKinds               #-}
+{-# LANGUAGE FlexibleContexts        #-}
+{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE FunctionalDependencies  #-}
+{-# LANGUAGE InstanceSigs            #-}
+{-# LANGUAGE MultiParamTypeClasses   #-}
+{-# LANGUAGE PatternSynonyms         #-}
+{-# LANGUAGE PolyKinds               #-}
+{-# LANGUAGE RebindableSyntax        #-}
+{-# LANGUAGE ScopedTypeVariables     #-}
+{-# LANGUAGE TypeApplications        #-}
+{-# LANGUAGE TypeFamilies            #-}
+{-# LANGUAGE TypeFamilyDependencies  #-}
+{-# LANGUAGE TypeOperators           #-}
+{-# LANGUAGE UndecidableInstances    #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 {-|
 Module: FIR.Instances.Codensity
@@ -32,8 +34,15 @@ module FIR.Instances.Codensity
     when, unless, locally, while
 
     -- * Stateful operations (with indexed monadic state)
-    -- ** Defining variables and functions
-  , def, fundef, entryPoint
+    -- ** Defining new objects
+    -- *** Functions
+  , fundef
+    -- *** Entry points
+  , entryPoint
+    -- *** Constants, variables
+    -- $vardef
+  , CanDefine(def)
+
     -- ** Optics
     -- *** General functions: use, assign, modifying
   , use, assign, modifying
@@ -125,7 +134,7 @@ import FIR.Instances.Bindings
   ( ValidDef, ValidFunDef, ValidEntryPoint
   , LookupImageProperties
   , ValidImageRead, ValidImageWrite
-  , DefiniteState, ProvidedSymbol, ProvidedOptic
+  , ProvidedSymbol, ProvidedOptic
   )
 import FIR.Instances.Images
   ( ImageTexel )
@@ -208,25 +217,7 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 --------------------------------------------------------------------------
 -- Stateful operations (with indexed monadic state)
 
--- Defining variables and functions.
-
--- | Define a new variable.
---
--- Type-level arguments:
---
--- *@k@: name to use for definition,
--- *@ps@: 'FIR.Binding.Permission's (readable, writable, ...),
--- *@a@: type of definition,
--- *@i@: state at start of definition (usually inferred).
-def :: forall k ps a i.
-       ( GHC.Stack.HasCallStack
-       , KnownSymbol k
-       , Known [Permission] ps
-       , PrimTy a
-       , ValidDef k i
-       )
-    => AST a -- ^ Initial value.
-    -> Codensity AST (AST a := Insert k (Var ps a) i) i
+-- Defining functions and variables.
 
 fundef' :: forall k as b l i.
           ( GHC.Stack.HasCallStack
@@ -237,6 +228,7 @@ fundef' :: forall k as b l i.
           )
        => Codensity AST (AST b := l) (Union i as)
        -> Codensity AST (AST (FunctionType as b) := Insert k (Fun as b) i) i
+fundef' = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
 
 -- | Define a new function.
 --
@@ -261,6 +253,7 @@ fundef :: forall k as b l i r.
         -> Codensity AST ( r := Insert k (Fun as b) i) i
 fundef = fromAST . toAST . fundef' @k @as @b @l @i
 
+
 -- | Define a new entry point (or shader stage).
 --
 -- Builtin variables for the relevant shader stage are made available in the entry point body.
@@ -279,6 +272,56 @@ entryPoint :: forall k s l i.
              )
            => Codensity AST (AST () := l) (Union i (StageBuiltins s)) -- ^ Entry point body.
            -> Codensity AST (AST () := Insert k (EntryPoint s) i) i
+entryPoint = fromAST ( Entry @k @s @l @i Proxy Proxy ) . toAST
+
+-- $vardef
+-- For defining constants/variables, we want an extra layer of flexiblity:
+--
+--  - declare a new variable with a given pure value,
+--  - declare a new variable with a given monadic value.
+--
+-- This allows for convenient syntax to avoid excessive inlining, e.g.
+--
+--     @ a <- def \@"a" \@R ( get \@"x" - get \@"y" ) @
+--
+-- This ensures that the expression @ get \@"x" - get \@"y" @
+-- does not get inlined into each use-site of @a@.
+
+-- | Typeclass to provide sufficiently overloaded variable definition.
+--
+-- Type-level arguments:
+--
+-- *@k@: name to use for definition,
+-- *@ps@: 'FIR.Binding.Permission's (readable, writable, ...),
+-- *@a@: underlying type of the variable (inferred if the provided value is monomorphic),
+-- *@i@: state at start of definition (usually inferred).
+class ( KnownSymbol k
+      , Known [Permission] ps
+      , PrimTy a
+      , ValidDef k i
+      )
+   => CanDefine k ps a i ma | ma -> a where
+  def :: GHC.Stack.HasCallStack => ma -> Codensity AST ( AST a := Insert k (Var ps a) i ) i
+
+instance ( KnownSymbol k
+         , Known [Permission] ps
+         , PrimTy a
+         , ValidDef k i
+         , i' ~ i, i'' ~ i
+         )
+      => CanDefine k ps a i (Codensity AST (AST a := i') i'') where
+  def :: GHC.Stack.HasCallStack
+      => Codensity AST ( AST a := i ) i
+      -> Codensity AST ( AST a := Insert k (Var ps a) i ) i
+  def = fromAST ( Def @k @ps @a @i Proxy Proxy ) . toAST
+
+instance ( KnownSymbol k
+         , Known [Permission] ps
+         , PrimTy a
+         , ValidDef k i
+         )
+      => CanDefine k ps a i (AST a) where
+  def = def @k @ps @a @i @(Codensity AST (AST a := i) i) . ixPure
 
 -- Optics.
 
@@ -288,11 +331,12 @@ entryPoint :: forall k s l i.
 use :: forall optic.
              ( GHC.Stack.HasCallStack
              , KnownOptic optic, ProvidedOptic optic
-             , Gettable optic, DefiniteState (Whole optic)
+             , Gettable optic
              , Syntactic (CodUser optic)
              , Internal (CodUser optic) ~ User optic
              )
            => CodUser optic
+use = fromAST ( Use @optic sLength opticSing )
 
 -- | Assign a new value with an optic.
 --
@@ -300,17 +344,12 @@ use :: forall optic.
 assign :: forall optic.
              ( GHC.Stack.HasCallStack
              , KnownOptic optic, ProvidedOptic optic
-             , Settable optic, DefiniteState (Whole optic)
+             , Settable optic
              , Syntactic (CodAssigner optic)
              , Internal (CodAssigner optic) ~ Assigner optic
              )
            => CodAssigner optic
-
-def        = fromAST ( Def    @k @ps @a    @i Proxy Proxy       ) . toAST
-fundef'    = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
-entryPoint = fromAST ( Entry  @k     @s @l @i Proxy Proxy       ) . toAST
-use        = fromAST ( Use    @optic          sLength opticSing )
-assign     = fromAST ( Assign @optic          sLength opticSing )
+assign = fromAST ( Assign @optic sLength opticSing )
 
 -- *** Get, put, modify.
 
@@ -319,8 +358,7 @@ assign     = fromAST ( Assign @optic          sLength opticSing )
 --
 -- Synonym for @use \@(Name k)@.
 get :: forall (k :: Symbol) a (i :: BindingsMap).
-       ( KnownSymbol k, ProvidedSymbol k
-       , DefiniteState i
+       ( KnownSymbol k
        , Gettable (Name k :: Optic '[] i a)
        )
     => Codensity AST (AST a := i) i
@@ -331,8 +369,7 @@ get = use @(Name k :: Optic '[] i a)
 --
 -- Synonym for @assign \@(Name k)@.
 put :: forall (k :: Symbol) a (i :: BindingsMap).
-       ( KnownSymbol k, ProvidedSymbol k
-       , DefiniteState i
+       ( KnownSymbol k
        , Settable (Name k :: Optic '[] i a)
        )
     => AST a -> Codensity AST (AST () := i) i
@@ -343,8 +380,7 @@ put = assign @(Name k :: Optic '[] i a)
 --
 -- Synonym for @modifying \@(Name k)@.
 modify :: forall (k :: Symbol) a (i :: BindingsMap).
-          ( KnownSymbol k, ProvidedSymbol k
-          , DefiniteState i
+          ( KnownSymbol k
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)
           )
@@ -366,7 +402,6 @@ modify = modifying @(Name k :: Optic '[] i a)
 -- * @i@: monadic state (usually inferred).
 imageRead :: forall k props (i :: BindingsMap).
             ( KnownSymbol k, ProvidedSymbol k
-            , DefiniteState i
             , Gettable (ImageTexel k)
             , LookupImageProperties k i ~ props
             , Known ImageProperties props
@@ -388,7 +423,6 @@ imageRead = use @(ImageTexel k) NoOperands
 -- * @i@: monadic state (usually inferred).
 imageWrite :: forall k props (i :: BindingsMap).
              ( KnownSymbol k, ProvidedSymbol k
-             , DefiniteState i
              , Gettable (ImageTexel k)
              , LookupImageProperties k i ~ props
              , Known ImageProperties props
@@ -441,7 +475,6 @@ modifying
     :: forall optic.
        ( GHC.Stack.HasCallStack
        , KnownOptic optic, ProvidedOptic optic
-       , DefiniteState (Whole optic)
        , Settable optic
        , Gettable optic
        , Syntactic (CodUser optic)

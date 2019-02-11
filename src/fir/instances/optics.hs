@@ -233,7 +233,7 @@ instance ( ValidAnIndexOptic is s a, is ~ '[ix], IntegralTy ix, PrimTy s, PrimTy
 
 -- binding + image texel optic... the two parts must always occur together
 instance {-# OVERLAPPING #-}
-    ( KnownSymbol k
+    ( KnownSymbol k, Binding.ProvidedSymbol k
     , Known ImageProperties props
     , empty ~ '[]
     , is ~ '[ ImageOperands props ops, ImageCoordinates props ops ]

@@ -72,11 +72,9 @@ import FIR.AST
 import FIR.Binding
   ( BindingsMap, Var, R, RW )
 import FIR.Instances.Bindings
-  ( ValidDef,Get, Put
-  , DefiniteState, ProvidedSymbol
-  )
+  ( ValidDef,Get, Put )
 import FIR.Instances.Codensity
-  ( def, use, assign, modifying )
+  ( CanDefine(def), use, assign, modifying )
 import FIR.Prim.Singletons
   ( PrimTy )
 
@@ -108,9 +106,9 @@ instance ( KnownSymbol k
 --
 -- That is, @#foo@ stands for the value bound at @"foo"@
 -- in the context of an indexed state monad.
-instance ( KnownSymbol k, PrimTy a
+instance ( KnownSymbol k
+         , PrimTy a
          , a ~ Get k i
-         , ProvidedSymbol k, DefiniteState i
          , r ~ (AST a := i)
          , usage ~ 'Use k i
          )
@@ -130,6 +128,7 @@ infixr 4 .=
         , KnownSymbol k
         , PrimTy a
         , ValidDef k i
+        , CanDefine k RW a i (AST a)
         )
      => Label k a
      -> AST a
@@ -142,6 +141,7 @@ _ #= a = def @k @RW a
         , KnownSymbol k
         , PrimTy a
         , ValidDef k i
+        , CanDefine k R a i (AST a)
         )
      => Label k a
      -> AST a
@@ -151,8 +151,8 @@ _ #=! a = def @k @R a
 -- | Set the value of a variable with given label.
 (.=) :: forall a k i.
         ( GHC.Stack.HasCallStack
-        , KnownSymbol k, ProvidedSymbol k
-        , a ~ Put k i, DefiniteState i
+        , KnownSymbol k
+        , a ~ Put k i
         , PrimTy a
         )
      => Label k a
@@ -163,8 +163,7 @@ _ .= a = assign @(Name k :: Optic '[] i a) a
 -- | Modify a variable with given label using a function.
 (%=) :: forall a k i.
         ( GHC.Stack.HasCallStack
-        , KnownSymbol k, ProvidedSymbol k
-        , DefiniteState i
+        , KnownSymbol k
         , a ~ Put k i
         , a ~ Get k i
         )

@@ -121,7 +121,7 @@ data AST :: Type -> Type where
         )
       => Proxy k  -- ^ Variable name.
       -> Proxy ps -- ^ Permissions (read,write,...).
-      -> AST (    a
+      -> AST (    (a := i) i
                -> (a := Insert k (Var ps a) i) i
              )
   -- | Defining a new function.

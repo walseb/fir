@@ -11,7 +11,6 @@ module Tests.Bits.Bits where
 
 -- fir
 import FIR
-import FIR.Labels
 
 ------------------------------------------------
 -- program
@@ -27,11 +26,8 @@ type Defs = '[ "x"    ':-> Input  '[] Word32
 program :: Program Defs ()
 program = Program $ entryPoint @"main" @Vertex do
 
-    a <- #x .&. #y
+    a <- get @"x" .&. get @"y"
     
-    z <- #z
-    w <- #w
-    
-    b <- def @"b" @R (z .|. w)
+    b <- def @"b" @R (get @"z" .|. get @"w")
 
-    #out .= (a `shiftL` (3 :: AST Word32)) `xor` (a `shiftR` b) `xor` (complement b)
+    put @"out" $ (a `shiftL` (3 :: AST Word32)) `xor` (a `shiftR` b) `xor` (complement b)

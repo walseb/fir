@@ -41,8 +41,6 @@ import Data.Type.Bool
   ( If )
 import Data.Type.Equality
   ( type (==) )
-import GHC.Exts
-  ( Any )
 import GHC.TypeLits
   ( Symbol
   , TypeError
@@ -53,7 +51,7 @@ import GHC.TypeNats
 
 -- fir
 import Control.Type.Optic
-  ( Optic(Index_) ) -- dummy optic for ambiguous type variable checking
+  ( Optic )
 import Data.Type.List
   ( Elem )
 import Data.Type.Map
@@ -88,7 +86,7 @@ import qualified SPIRV.Image    as Image
 import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy(Integer, Floating) )
 import SPIRV.Stage
-  ( Stage(Fragment, Vertex) )  -- dummy shader stages for ambiguous type variable checking
+  ( Stage )
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.use'
@@ -98,7 +96,7 @@ import SPIRV.Stage
 -- Throws a type error if no variable by that name exists,
 -- or if the variable is not readable.
 type family Get (k :: Symbol) (i :: BindingsMap) :: Type where
-  Get k i = ( AssertDefiniteState i ( AssertProvidedSymbol k (GetBinding k (Lookup k i) )))
+  Get k i = ( AssertProvidedSymbol k (GetBinding k (Lookup k i) ) )
 
 type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   GetBinding k 'Nothing
@@ -130,7 +128,7 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
 -- Throws a type error if no variable is bound by that name,
 -- or if the variable is not writable.
 type family Put (k :: Symbol) (i :: BindingsMap) :: Type where
-  Put k i = ( AssertDefiniteState i ( AssertProvidedSymbol k (PutBinding k (Lookup k i) ) ) )
+  Put k i = ( AssertProvidedSymbol k (PutBinding k (Lookup k i) ) )
 
 type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
   PutBinding k 'Nothing = TypeError
@@ -170,7 +168,6 @@ type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
 type family ValidDef (k :: Symbol) (i :: BindingsMap) :: Constraint where
   ValidDef k i
     = ( ProvidedSymbol k
-      , DefiniteState i
       , NotAlreadyDefined k (Lookup k i)
       )
 
@@ -197,8 +194,6 @@ type family ValidFunDef
     :: Constraint where      -- ( it is the total state at the end of the function definition )  
   ValidFunDef k as i l
     = ( ProvidedSymbol k
-      , DefiniteState i
-      , DefiniteState l
       , NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
       , ValidArguments k as (Remove i (Remove as l))
       ) --     │             └━━━━━━┬━━━━━┘
@@ -276,8 +271,6 @@ type family ValidEntryPoint
             :: Constraint where
   ValidEntryPoint k s i l
     = ( ProvidedSymbol k
-      , DefiniteState i
-      , DefiniteState l
       , NoEntryPointNameConflict k (Lookup k i)
       , ProvidedStage s
       , ValidLocalBehaviour s (Remove i l)
@@ -517,13 +510,11 @@ type family AllowedWriteOps (ops :: [OperandName]) :: Constraint where
 -------------------------------------------------
 -- * Checking for ambiguous type variables.
 
-type family Assert (unmatchableDummy :: k) ( err :: Constraint ) (ambig :: k) (x :: l) :: l where
-  Assert dum _ dum _ = Any
-  Assert _   _  _  l = l
+data family Dummy :: k
 
-type family Assert2 (one :: k) (twoNotOne :: k) ( err :: Constraint) (ambig :: k) (x :: l) :: l where
-  Assert2 one two err one x = Assert two err one x
-  Assert2 _   _   _   _   x = x
+type family Assert ( err :: Constraint ) (ambig :: k) (x :: l) :: l where
+  Assert _ Dummy _ = Dummy
+  Assert _  _    l = l
 
 -- | Check that monadic state is not ambiguous.
 type DefiniteState i = AssertDefiniteState i ( () :: Constraint )
@@ -546,10 +537,8 @@ type family AssertDefiniteState ( i :: BindingsMap ) (x :: l) :: l where
       i
       x
 
-data Dummy
-
 type family AssertProvidedBindings ( err :: Constraint ) ( i :: BindingsMap ) (x :: l) :: l where
-  AssertProvidedBindings _   ( ("dummy" ':-> Var '[] Dummy) ': nxt) x = Any
+  AssertProvidedBindings _   ( ("dummy" ':-> Var '[] Dummy) ': nxt) x = Dummy
   AssertProvidedBindings err ( _                            ': nxt) x = AssertProvidedBindings err nxt x
   AssertProvidedBindings _ _ x = x
 
@@ -557,7 +546,7 @@ type family AssertProvidedBindings ( err :: Constraint ) ( i :: BindingsMap ) (x
 type ProvidedSymbol k = AssertProvidedSymbol k ( () :: Constraint )
 type family AssertProvidedSymbol ( k :: Symbol ) (x :: l) :: l where
   AssertProvidedSymbol k x =
-    Assert2 "one" "two"
+    Assert
       ( TypeError
           (      Text "Ambiguous type-level symbol."
             :$$: Text "Suggestion: provide a specific name using a type application."
@@ -573,7 +562,7 @@ type family AssertProvidedSymbol ( k :: Symbol ) (x :: l) :: l where
 -- | Check that a shader stage is not ambiguous.
 type family ProvidedStage ( s :: Stage ) :: Constraint where
   ProvidedStage s =
-    Assert2 Vertex Fragment
+    Assert
       ( TypeError
           (      Text "Ambiguous entry point stage."
             :$$: Text "Suggestion: specify the stage using a type application."
@@ -589,7 +578,7 @@ type family ProvidedStage ( s :: Stage ) :: Constraint where
 -- | Check that an optic is not ambiguous.
 type family ProvidedOptic ( optic :: Optic is s a ) :: Constraint where
   ProvidedOptic (optic :: Optic is s a) =
-    Assert2 (Index_ 0) (Index_ 1)
+    Assert
       ( TypeError
           (     Text "Ambiguous type-level optic."
            :$$: Text "Suggestion: provide a specific optic using a type application."

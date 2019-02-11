@@ -35,7 +35,7 @@ program = Program do
 
   (f :: AST Float -> AST Float) <- fundef @"f" do
     u <- use @(Name "u")
-    t <- def @"t" @RW @Float 11 -- local variable
+    t <- def @"t" @RW ( 11 :: AST Float ) -- local variable
     pure (u + t)
 
   entryPoint @"main" @Vertex do
