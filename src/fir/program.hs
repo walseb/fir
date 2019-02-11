@@ -78,10 +78,10 @@ type UndecoratedProgram
   = ( CodensityProgram (StartBindings defs) (EndBindings defs) a :: Type )
 
 type family CodensityProgram
-    (i :: BindingsMap) -- available data at the start (e.g. uniforms)
-    (j :: BindingsMap) -- everything in 'i', plus top-level functions of the program
-    (a :: Type)        --                      (currently this doesn't include entry points)
-  = (r :: Type)
+    ( i :: BindingsMap ) -- available data at the start (e.g. uniforms)
+    ( j :: BindingsMap ) -- everything in 'i', plus top-level functions and entry-points of the program
+    ( a :: Type        )
+  = ( r :: Type        )
   | r -> i j a where
   CodensityProgram i j a = Codensity AST ( AST a := j ) i
 

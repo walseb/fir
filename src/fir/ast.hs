@@ -105,7 +105,7 @@ data AST :: Type -> Type where
   -- | @SPIR-V@ primitive operations
   PrimOp :: SPIRV.PrimOp -> a -> AST a
 
-  -- = Indexed monadic operations (for the AST itself)
+  -- Indexed monadic operations (for the AST itself)
   -- | Indexed /return/
   Return :: AST (a -> (a := i) i)
   -- | Indexed /angelic bind/
@@ -195,10 +195,10 @@ data AST :: Type -> Type where
   While :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (() := j) i -> (() := i) i )
 
-  -- Encapsulate local state.
+  -- | Encapsulate local state.
   Locally :: AST ( (a := j) i -> (a := i) i )
 
-
+  -- functor/applicative operations
   -- (passing a singleton representing the functor)
   Fmap :: PrimTy a
        => SPrimFunc f -> AST ( (a -> b) -> f a -> f b )
@@ -237,6 +237,17 @@ class Syntactic a where
   type Internal a
   toAST :: a -> AST (Internal a)
   fromAST :: AST (Internal a) -> a
+
+instance Syntactic (AST a) where
+  type Internal (AST a) = a
+  toAST   = id
+  fromAST = id
+
+instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
+  type Internal (a -> b) = Internal a -> Internal b
+  toAST   f = Lam ( toAST . f . fromAST )
+  fromAST (Lam f) a = fromAST ( f  $ toAST a )
+  fromAST f       a = fromAST ( f :$ toAST a )
 
 ------------------------------------------------
 -- display AST for viewing

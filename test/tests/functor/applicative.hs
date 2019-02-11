@@ -34,7 +34,7 @@ program = Program do
     let func :: AST Float -> AST Float {--> AST Float-} -> AST Float
         func x y {-z-} = (2 * x - abs y) {-/ z-}
         func' :: AST Float -> AST (Float {--> Float-} -> Float)
-        func' = fromAST (toAST func)
+        func' x = toAST ( func x )
         position' :: AST (V 3 Float)
         position' = func' <$$> pos <**> pos {-<**> pos-}
 

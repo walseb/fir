@@ -19,8 +19,8 @@ data Operation
   deriving Eq
 
 instance Show Operation where
-  show op@(Code _) = "Op" ++ showOperation op
-  show op@(ExtCode ext _) = "OpExt(" ++ show ext ++")" ++ showOperation op
+  show op@(Code _) = showOperation op
+  show op@(ExtCode ext _) = "Ext(" ++ show ext ++") " ++ showOperation op
 
 --------------------------------------------------
 -- operations

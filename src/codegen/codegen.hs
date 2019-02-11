@@ -419,42 +419,6 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                                )
         (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
 
-{-
--- image operations
-codeGen (Sample (_ :: Proxy k) ops :$ coords)
-  = do  let imgName = knownValue @k
-        bd@(bdID, bdTy) <- bindingID imgName
-        img
-          <- case bdTy of
-                SPIRV.Pointer storage imgTy
-                  -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
-                _ -> pure bd
-        (cdID, _) <- codeGen coords
-        sample img ops cdID
-codeGen (ImageRead (_ :: Proxy k) ops :$ coords)
-  = do  (cdID, _) <- codeGen coords
-        let imgName= knownValue @k
-        bd@(bdID, bdTy) <- bindingID imgName
-        img
-          <- case bdTy of
-                SPIRV.Pointer storage imgTy
-                  -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
-                _ -> pure bd
-        imageRead img ops cdID
-codeGen (ImageWrite (_ :: Proxy k) ops :$ coords :$ writee)
-  = do  (cdID    , _) <- codeGen coords
-        (writeeID, _) <- codeGen writee
-        let imgName = knownValue @k
-        bd@(bdID, bdTy) <- bindingID imgName
-        img
-          <- case bdTy of
-                SPIRV.Pointer storage imgTy
-                  -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
-                _ -> pure bd
-        imageWrite img ops cdID writeeID
-        pure (ID 0, SPIRV.Unit) -- ID should never be used
--}
-
 -- functor / applicative operations
 codeGen (Fmap functorSing :$ f :$ a)
   = case functorSing of
@@ -528,7 +492,7 @@ codeGen (Ap functorSing (_ :: Proxy ty) :$ f :$ a)
                -> let t =   fromAST @(AST _ -> AST _ -> AST _) g
                         <$> fromAST @(V _ (AST _)) b
                         <*> fromAST @(V _ (AST _)) a
-                  in do ids <- traverse codeGen t                    
+                  in do ids <- traverse codeGen t
                         compositeConstruct
                           ( SPIRV.Vector (knownValue @n) (primTyVal @ty) )
                           ( map fst (toList ids) )

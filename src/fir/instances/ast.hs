@@ -60,7 +60,7 @@ import Prelude hiding
   , Fractional(..), fromRational
   , Floating(..)
   , RealFloat(..)
-  , Functor(..)
+  , Functor(..), (<$>)
   , Applicative(..)
   )
 import qualified Prelude
@@ -440,7 +440,7 @@ instance (KnownNat m, KnownNat n) => ASTApplicative (M m n) where
 instance 
   TypeError (     Text "The AST datatype does not have a Functor instance:"
              :$$: Text "    cannot map Haskell functions over internal types."
-             :$$: Text "To map an internal function over an internal type, use 'fmapAST'."
+             :$$: Text "To map an internal function over an internal type, use 'fmapAST'/'<$$>'."
             ) => Prelude.Functor AST where
   fmap = error "unreachable"
 
@@ -450,14 +450,9 @@ instance
 -- $syntactic
 -- Instances for 'Syntactic'.
 
-instance Syntactic (AST a) where
-  type Internal (AST a) = a
-  toAST   = id
-  fromAST = id
-
 instance Syntactic () where
   type Internal () = ()
-  toAST   = Lit
+  toAST   = const ( Lit () )
   fromAST = const ()
 
 {-
@@ -468,11 +463,6 @@ instance (Syntactic a, Syntactic b) => Syntactic (a,b) where
   toAST (a,b) = a :& b :& End
   fromAST (a :& b :& End) = (a,b)
 -}
-
-instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
-  type Internal (a -> b) = Internal a -> Internal b
-  toAST   f = Lam ( toAST . f . fromAST )
-  fromAST f = \a -> fromAST ( f :$ toAST a )
 
 -- utility type for the following instance declaration
 newtype B n a b i = B { unB :: AST (NatVariadic (n-i) a b) }
@@ -487,7 +477,11 @@ instance  ( KnownNat n
 
   toAST :: V n a -> AST (V n (Internal a))
   toAST v = res'
-    where f :: forall i. (KnownNat i, (n-(i+1)) ~ ((n-i)-1), (1 <= (n-i)))
+    where f :: forall i.
+              ( KnownNat i
+              , (1 <= (n-i))
+              , (n-(i+1)) ~ ((n-i)-1) -- help inference along
+              )
             => a
             -> B n (Internal a) (V n (Internal a)) i
             -> B n (Internal a) (V n (Internal a)) (i+1)
@@ -496,7 +490,8 @@ instance  ( KnownNat n
           a0 = B ( MkVector (Proxy @n) (Proxy @(Internal a)) )
           res :: B n (Internal a) (V n (Internal a)) n
           res = dfoldrV f a0 v
-          res' :: ((n-n) ~ 0) => AST (NatVariadic 0 (Internal a) (V n (Internal a)))
+          res' :: ((n-n) ~ 0) -- ditto
+               => AST (NatVariadic 0 (Internal a) (V n (Internal a)))
           res' = unB res
 
   fromAST :: AST (V n (Internal a)) -> V n a
@@ -600,13 +595,13 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
   (!+!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !+! y = Mat :$ ( vecAdd <$$> (UnMat :$ x) <**> (UnMat :$ y) )
-    where vecAdd :: AST (V j a) -> AST(V j a -> V j a)
+    where vecAdd :: AST (V j a) -> AST (V j a -> V j a)
           vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (val @i) (scalarTy @a)) (^+^)
 
   (!-!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !-! y = Mat :$ ( vecSub <$$> (UnMat :$ x) <**> (UnMat :$ y) )
-    where vecSub :: AST (V j a) -> AST(V j a -> V j a)
+    where vecSub :: AST (V j a) -> AST (V j a -> V j a)
           vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (val @i) (scalarTy @a)) (^-^)
 
   (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
@@ -624,6 +619,7 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
   (!*) :: forall i j. (KnownNat i, KnownNat j)
        => AST (M i j a) -> AST a -> AST (M i j a)
   (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK  (val @i) (val @j) (scalarTy @a)) (!*)
+
 
 -- *** Bidirectional pattern synonyms
 

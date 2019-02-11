@@ -13,7 +13,6 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE ViewPatterns           #-}
 
 {-|
 Module: FIR.Instances.Images 

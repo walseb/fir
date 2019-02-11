@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -225,6 +226,8 @@ import SPIRV.Stage
 class DrawableProgram prog where
   draw :: prog -> IO ()
 
+instance DrawableProgram (AST a) where
+  draw = drawTree . toTree
 instance DrawableProgram (Codensity AST (AST a := j) i) where
   draw = drawTree . toTree . toAST
 instance ( DrawableProgram
