@@ -82,32 +82,49 @@ import Prelude hiding
   , Ordering(..)
   )
 import qualified Prelude
-import Control.Applicative(liftA2)
-import Control.Arrow(second)
-import Data.Foldable(traverse_)
-import Data.Kind(Type)
-import Data.Type.Equality((:~:)(Refl))
-import Data.Proxy(Proxy(Proxy))
-import Foreign.Ptr(Ptr, castPtr)
-import Foreign.Storable(Storable(alignment, sizeOf, peek, poke, peekElemOff, pokeElemOff))
-import GHC.Base(Int#, Int(I#), (+#))
-import GHC.TypeLits.Compare((:<=?)(LE,NLE), (%<=?))
+import Control.Applicative
+  ( liftA2 )
+import Control.Arrow
+  ( second )
+import Data.Foldable
+  ( traverse_ )
+import Data.Functor.Compose
+  ( Compose(..) )
+import Data.Kind
+  ( Type )
+import Data.Type.Equality
+  ( (:~:)(Refl) )
+import Data.Proxy
+  ( Proxy(Proxy) )
+import Foreign.Ptr
+  ( Ptr, castPtr )
+import Foreign.Storable
+  ( Storable(alignment, sizeOf, peek, poke, peekElemOff, pokeElemOff) )
+import GHC.Base
+  ( Int#, Int(I#), (+#) )
+import GHC.TypeLits.Compare
+  ( (:<=?)(LE,NLE), (%<=?) )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal
   , type (+), type (-)
   , CmpNat, type (<=), type (<=?)
   )
-import Numeric.Natural(Natural)
-import Unsafe.Coerce(unsafeCoerce)
+import Numeric.Natural
+  ( Natural )
+import Unsafe.Coerce
+  ( unsafeCoerce )
 
 -- binary
-import Data.Binary(Binary(put,get))
+import Data.Binary
+  ( Binary(put,get) )
 
 -- distributive
-import Data.Distributive(Distributive(..))
+import Data.Distributive
+  ( Distributive(..) )
 
 -- fir
-import Control.Arrow.Strength(strong)
+import Control.Arrow.Strength
+  ( strong )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
@@ -593,7 +610,9 @@ deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n 
 deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
 deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
-deriving instance Functor (M m n)
+deriving instance Functor     (M m n)
+deriving via ( (V m) `Compose` (V n) )
+         instance ( KnownNat m, KnownNat n) => Applicative (M m n)
 deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
 deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
 deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)

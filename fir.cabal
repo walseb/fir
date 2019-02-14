@@ -70,7 +70,8 @@ library
       , Math.Linear
 
     other-modules:
-        CodeGen.Binary
+        CodeGen.Applicative
+      , CodeGen.Binary
       , CodeGen.CFG
       , CodeGen.CodeGen
       , CodeGen.Composite

@@ -101,7 +101,7 @@ import FIR.Instances.Optics
 import FIR.Prim.Singletons
   ( PrimTy, primTy
   , ScalarTy, scalarTy
-  , SPrimFunc(SFuncVector, SFuncMatrix)
+  , SPrimFunc(..), PrimFunc(..)
   )
 import Math.Algebra.Class
   ( AdditiveGroup(..)
@@ -414,28 +414,45 @@ infixl 4 <$$>
 infixl 4 <**>
 
 class ASTFunctor f where
-  fmapAST :: PrimTy a => (AST a -> AST b) -> AST (f a) -> AST (f b)
+  fmapAST :: ( Syntactic x
+             , Internal x ~ (a -> b)
+             , Syntactic r
+             , Internal r ~ ( (f a) -> (f b) )
+             , PrimTy a
+             )
+          => x -> r
 
 class ASTApplicative f where
   pureAST :: AST a -> AST (f a)
-  (<**>)  :: PrimTy a => AST ( f (a -> b) ) -> AST ( f a ) -> AST ( f b )
+  (<**>)  :: ( Syntactic r
+             , Internal r ~ ( (f a) -> (f b) )
+             , PrimTy a
+             )
+           => AST ( f (a -> b) ) -> r
 
-(<$$>) :: (ASTFunctor f, PrimTy a) => (AST a -> AST b) -> AST (f a) -> AST (f b)
+(<$$>) :: ( ASTFunctor f
+          , Syntactic x
+          , Internal x ~ (a -> b)
+          , Syntactic r
+          , Internal r ~ ( (f a) -> (f b) )
+          , PrimTy a
+          )
+        => x -> r
 (<$$>) = fmapAST
 
 instance KnownNat n => ASTFunctor (V n) where
-  fmapAST = fromAST $ Fmap (SFuncVector (Proxy @n))
+  fmapAST = fromAST $ Fmap @(V n)
 
 instance (KnownNat m, KnownNat n) => ASTFunctor (M m n) where
-  fmapAST = fromAST $ Fmap (SFuncMatrix (Proxy @m) (Proxy @n))
+  fmapAST = fromAST $ Fmap @(M m n)
 
 instance KnownNat n => ASTApplicative (V n) where
-  pureAST = fromAST $ Pure (SFuncVector (Proxy @n))
-  (<**>)  = fromAST $ Ap   (SFuncVector (Proxy @n)) Proxy
+  pureAST = fromAST $ Pure @(V n)
+  (<**>)  = fromAST $ Ap   @(V n)
 
 instance (KnownNat m, KnownNat n) => ASTApplicative (M m n) where
-  pureAST = fromAST $ Pure (SFuncMatrix (Proxy @m) (Proxy @n))
-  (<**>)  = fromAST $ Ap   (SFuncMatrix (Proxy @m) (Proxy @n)) Proxy
+  pureAST = fromAST $ Pure @(M m n)
+  (<**>)  = fromAST $ Ap   @(M m n)
 
 instance 
   TypeError (     Text "The AST datatype does not have a Functor instance:"
@@ -443,6 +460,16 @@ instance
              :$$: Text "To map an internal function over an internal type, use 'fmapAST'/'<$$>'."
             ) => Prelude.Functor AST where
   fmap = error "unreachable"
+
+-----------------------------------------------
+-- * Internal functors
+
+instance KnownNat n => PrimFunc (V n) where
+  primFuncSing = SFuncVector @n
+  distributeAST = fromAST
+instance ( KnownNat m, KnownNat n ) => PrimFunc (M m n) where
+  primFuncSing = SFuncMatrix @m @n
+  distributeAST = error "distributeAST: todo for matrices"
 
 -----------------------------------------------
 -- * Syntactic instances
@@ -595,13 +622,13 @@ instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
   (!+!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !+! y = Mat :$ ( vecAdd <$$> (UnMat :$ x) <**> (UnMat :$ y) )
-    where vecAdd :: AST (V j a) -> AST (V j a -> V j a)
+    where vecAdd :: AST (V j a) -> AST (V j a) -> AST (V j a)
           vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (val @i) (scalarTy @a)) (^+^)
 
   (!-!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !-! y = Mat :$ ( vecSub <$$> (UnMat :$ x) <**> (UnMat :$ y) )
-    where vecSub :: AST (V j a) -> AST (V j a -> V j a)
+    where vecSub :: AST (V j a) -> AST (V j a) -> AST (V j a)
           vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (val @i) (scalarTy @a)) (^-^)
 
   (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)

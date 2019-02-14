@@ -70,10 +70,6 @@ module FIR.Instances.Codensity
     -- ** Matrices
     -- $matrices
 
-    -- ** Functor functionality
-  , CodensityASTFunctor(fmapCodAST), (<$$$>)
-  , CodensityASTApplicative(pureCodAST, (<***>))
-
     -- + orphan instances
   )
   where
@@ -100,8 +96,6 @@ import GHC.TypeLits
   ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(..)
   )
-import GHC.TypeNats
-  ( KnownNat )
 
 -- fir
 import Control.Monad.Indexed
@@ -250,13 +244,13 @@ fundef :: forall k as b l i r.
            , ValidFunDef k as i l
            )
         => Codensity AST (AST b := l) (Union i as) -- ^ Function body code.
-        -> Codensity AST ( r := Insert k (Fun as b) i) i
+        -> Codensity AST (r := Insert k (Fun as b) i) i
 fundef = fromAST . toAST . fundef' @k @as @b @l @i
 
 
 -- | Define a new entry point (or shader stage).
 --
--- Builtin variables for the relevant shader stage are made available in the entry point body.
+-- Built-in variables for the relevant shader stage are made available in the entry point body.
 --
 -- Type-level arguments:
 --
@@ -703,31 +697,6 @@ instance (ScalarTy a, Ring a, j ~ i) => Matrix (Codensity AST (AST (M 0 0 a) := 
   (!*^) = ixLiftA2 (!*^)
   (!*)  = ixLiftA2 (!*)
 
-
--- Functor functionality
-
-infixl 4 <$$$>
-infixl 4 <***>
-
-class CodensityASTFunctor f where
-  fmapCodAST :: AST (a -> b) -> Codensity AST (f a := j) i -> Codensity AST (f b := j) i
-
-class CodensityASTApplicative f where
-  pureCodAST :: AST a -> AST (f a)
-  (<***>)  :: AST ( f (a -> b) ) -> AST ( f a ) -> AST ( f b )
-
-(<$$$>) :: CodensityASTFunctor f => AST (a -> b) -> Codensity AST (f a := j) i -> Codensity AST (f b := j) i
-(<$$$>) = fmapCodAST
-
-instance KnownNat n => CodensityASTFunctor (V n) where
-  fmapCodAST = error "fmapCodAST: todo"
-
-instance (KnownNat m, KnownNat n) => CodensityASTFunctor (M m n) where
-  fmapCodAST = error "fmapCodAST: todo"
-
-instance KnownNat n => CodensityASTApplicative (V n) where
-  pureCodAST = error "pureCodAST: todo"
-  (<***>)  = error "pureCodAST: todo"
 
 instance TypeError (     Text "Failable pattern detected in 'do' block, but only unfailable patterns are supported."
                     :$$: Text ""

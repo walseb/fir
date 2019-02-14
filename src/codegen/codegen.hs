@@ -13,12 +13,12 @@ module CodeGen.CodeGen
   where
 
 -- base
+import Prelude
+  hiding ( Monad(..) )
 import Control.Arrow
   ( second )
 import Control.Monad
   ( when )
-import Data.Foldable
-  ( toList )
 import Data.Maybe
   ( maybe, fromMaybe )
 import Data.Proxy
@@ -26,8 +26,6 @@ import Data.Proxy
 import Data.Word
   ( Word32 )
 import qualified GHC.Stack
-import Prelude
-  hiding ( Monad(..) )
 
 -- binary
 import qualified Data.Binary.Put as Binary
@@ -60,12 +58,14 @@ import Data.Text
 import qualified Data.Text as Text
 
 -- fir
+import CodeGen.Applicative
+  ( idiomatic, pattern Idiomatic )
 import CodeGen.Binary
   ( putInstruction )
 import CodeGen.CFG
   ( block, branch, branchConditional )
 import CodeGen.Composite
-  ( compositeConstruct, compositeExtract )
+  ( compositeConstruct )
 import CodeGen.Debug
   ( debug, putSrcInfo )
 import CodeGen.Functions
@@ -134,11 +134,8 @@ import FIR.Instances.Optics
   ( SOptic(..), showSOptic )
 import FIR.Prim.Singletons
   ( primTyVal
-  , SPrimFunc(..)
   , KnownVars(knownVars)
   )
-import Math.Linear
-  ( V )
 import qualified SPIRV.FunctionControl as SPIRV
 import qualified SPIRV.Operation       as SPIRV.Op
 import qualified SPIRV.PrimTy          as SPIRV
@@ -152,7 +149,7 @@ runCodeGen context = putASM context . codeGen
 
 codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
-codeGen (Applied (MkID ident@(_,ty)) as)
+codeGen (Applied (MkID ident@(i,ty)) as)
   = case as of
       NilUAST -> pure ident
       _       ->
@@ -163,20 +160,21 @@ codeGen (Applied (MkID ident@(_,ty)) as)
                in case compare totalArgs givenArgs of
                     EQ -> do retTyID <- typeID y
                              declareFunctionCall (retTyID, y) ident =<< codeGenUASTs as
-                    GT -> throwError "codeGen: partial application not yet supported"
+                    GT -> throwError $
+                            "codeGen: partial application not supported \
+                            \(function " <> Text.pack (show i) <> ")"
                     LT -> throwError 
-                        $ "codeGen: function of " <> Text.pack (show totalArgs)
+                        $ "codeGen: function " <> Text.pack (show i) <> " of " <> Text.pack (show totalArgs)
                           <> " arguments applied to "
                           <> Text.pack (show givenArgs)
                           <> " arguments"
-          _ -> throwError $ "codeGen: type " <> Text.pack (show ty) <> " used as a function"
+          _ -> throwError $ "codeGen: type " <> Text.pack (show ty) <> " used as a function ("<> Text.pack (show i) <> ")"
 -- constants
 codeGen (Lit (a :: ty)) = ( , primTyVal @ty) <$> constID a
 -- perform substitution when possible
 codeGen (Lam f :$ a)
   = do cg <- codeGen a
        codeGen $ f (MkID cg)
--- ((  _:$ _ ) :$ (Lam _ ))
 codeGen (Bind :$ a :$ f)
   = do cg <- codeGen a
        codeGen $ (fromAST f) (MkID cg)
@@ -253,7 +251,7 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
                     ops <- case astOps of
                               Ops rawOps -> pure rawOps
                               _ -> throwError
-                                      "codeGen: image operands not of the expected form."
+                                      "codeGen: image operands not of the expected form"
                     imageTexel img ops cdID
 
       SComposeO _ (SBinding (_ :: Proxy name )) getter ->
@@ -284,7 +282,7 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
                     ops <- case astOps of
                               Ops rawOps -> pure rawOps
                               _ -> throwError
-                                      "codeGen: image operands not of the expected form."
+                                      "codeGen: image operands not of the expected form"
                     -- end of copy-paste
                     texel <- imageTexel img ops cdID
                     extractUsingGetter texel getter nextindices
@@ -418,96 +416,11 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                                <> Text.pack ( show x )
                                )
         (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
-
 -- functor / applicative operations
-codeGen (Fmap functorSing :$ f :$ a)
-  = case functorSing of
-      SFuncVector (_ :: Proxy n)
-        -> do vec@(_,vecTy) <- codeGen a
-              constituentTy 
-                <- case vecTy of
-                      SPIRV.Vector _ ty
-                        -> pure ty
-                      _ -> throwError ( "codeGen: vector fmap used over non-vector-type "
-                                       <> Text.pack (show vecTy)
-                                      )
-              elems <- traverse
-                         ( \i -> compositeExtract constituentTy [i] vec )
-                         [ 0 .. knownValue @n - 1 ]
-              fmapped <- traverse ( codeGen . (f :$) . MkID ) elems
-              compositeConstruct vecTy (map fst . toList $ fmapped)
-      SFuncMatrix (m_px :: Proxy m) (_ :: Proxy n)
-        -> do mat@(_, matTy) <- codeGen a
-              constituentTy 
-                <- case matTy of
-                      SPIRV.Matrix _ _ ty
-                         -> pure ty
-                      ty -> throwError ( "codeGen: matrix fmap used over non-matrix-type "
-                                        <> Text.pack (show ty)
-                                       )
-              let colDim = knownValue @m
-              cols <- traverse
-                         (\i -> compositeExtract
-                                  ( SPIRV.Vector colDim (SPIRV.Scalar constituentTy) )
-                                  [i]
-                                  mat
-                         )
-                         [ 0 .. knownValue @n - 1 ]
-              fmapped <- traverse
-                           ( \ x -> fst <$> codeGen (Fmap (SFuncVector m_px) :$ f :$ MkID x) )
-                           cols
-              compositeConstruct matTy (toList fmapped)
-codeGen (Pure functorSing :$ a)
-  = case functorSing of
-      SFuncVector (_ :: Proxy n)
-        -> do (eltID, eltTy) <- codeGen a
-              let n :: Num a => a
-                  n = fromIntegral (knownValue @n)
-              compositeConstruct
-                 ( SPIRV.Vector n eltTy )
-                 ( replicate n eltID )
-      SFuncMatrix (m_px :: Proxy m) (_ :: Proxy n)
-        -> do elt@(_,eltTy) <- codeGen a
-              constituentTy
-                <- case eltTy of
-                      SPIRV.Scalar ty
-                         -> pure ty
-                      ty -> throwError ( "codeGen: matrix contains non-scalars of type "
-                                        <> Text.pack (show ty)
-                                       )
-              let colDim :: Word32
-                  colDim = knownValue @m
-                  rowDim :: Num a => a
-                  rowDim = fromIntegral (knownValue @n)
-              col <- fst <$> codeGen (Pure (SFuncVector m_px) :$ MkID elt)
-              compositeConstruct
-                ( SPIRV.Matrix colDim rowDim constituentTy )
-                ( replicate rowDim col )
-codeGen (Ap functorSing (_ :: Proxy ty) :$ f :$ a)
-  = case functorSing of
-      SFuncVector (_ :: Proxy n)
-        -> case f of
-            -- base case
-            (Fmap _ :$ g :$ b)
-               -> let t =   fromAST @(AST _ -> AST _ -> AST _) g
-                        <$> fromAST @(V _ (AST _)) b
-                        <*> fromAST @(V _ (AST _)) a
-                  in do ids <- traverse codeGen t
-                        compositeConstruct
-                          ( SPIRV.Vector (knownValue @n) (primTyVal @ty) )
-                          ( map fst (toList ids) )
-            -- inductive case
-            (Ap _ _ :$ _ :$ _)
-              -> throwError "codeGen: applicative support WIP"
-
-            _ -> throwError
-                    "codeGen: support for applicatives is very limited, sorry...\n\
-                    \only expressions of the form f <$$> a_1 <**> ... <**> a_n are supported"
-
-      SFuncMatrix _ _ -> throwError "codeGen: applicative operations not yet supported on matrices"
-
--- newtype wrapping
-codeGen (Mat :$ m)   = codeGen m
+codeGen (Idiomatic idiom)
+  = idiomatic idiom
+-- newtype wrapping/unwrapping
+codeGen (Mat   :$ m) = codeGen m
 codeGen (UnMat :$ m) = codeGen m
 -- control flow
 codeGen (Locally :$ a)

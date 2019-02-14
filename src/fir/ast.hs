@@ -81,7 +81,9 @@ import FIR.Instances.Optics
 import FIR.Prim.Image
   ( ImageOperands )
 import FIR.Prim.Singletons
-  ( PrimTy, primTyVal, SPrimFunc, primFuncName, KnownVars )
+  ( PrimTy, primTyVal, KnownVars
+  , PrimFunc, primFuncName
+  )
 import Math.Linear
   ( V, M )
 import qualified SPIRV.PrimOp as SPIRV
@@ -90,6 +92,8 @@ import qualified SPIRV.Stage  as SPIRV
 
 ------------------------------------------------------------
 -- main AST data type
+
+infixl 9 :$
 
 -- | AST representation of the EDSL.
 data AST :: Type -> Type where
@@ -200,13 +204,12 @@ data AST :: Type -> Type where
 
   -- functor/applicative operations
   -- (passing a singleton representing the functor)
-  Fmap :: PrimTy a
-       => SPrimFunc f -> AST ( (a -> b) -> f a -> f b )
-  Pure :: SPrimFunc f -> AST ( a -> f a )
-  Ap   :: PrimTy a
-       => SPrimFunc f
-       -> Proxy a
-       -> AST ( f (a -> b) -> f a -> f b )
+  Fmap :: forall f a b. ( PrimTy a, PrimFunc f )
+       => AST ( (a -> b) -> f a -> f b )
+  Pure :: forall f a. ( PrimFunc f )
+       => AST ( a -> f a )
+  Ap   :: forall f a b. ( PrimTy a, PrimFunc f )
+       => AST ( f (a -> b) -> f a -> f b )
 
   MkVector :: (KnownNat n, PrimTy a)
            => Proxy n
@@ -245,9 +248,9 @@ instance Syntactic (AST a) where
 
 instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   type Internal (a -> b) = Internal a -> Internal b
-  toAST   f = Lam ( toAST . f . fromAST )
+  toAST        f    = Lam ( toAST . f . fromAST )
   fromAST (Lam f) a = fromAST ( f  $ toAST a )
-  fromAST f       a = fromAST ( f :$ toAST a )
+  fromAST      f  a = fromAST ( f :$ toAST a )
 
 ------------------------------------------------
 -- display AST for viewing
@@ -286,13 +289,22 @@ toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")
 toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
-toTreeArgs (Fmap   f      ) as = return (Node ("Fmap @("   ++ primFuncName f ++ ") ") as)
-toTreeArgs (Pure   f      ) as = return (Node ("Pure @("   ++ primFuncName f ++ ") ") as)
-toTreeArgs (Ap     f _    ) as = return (Node ("Ap @("     ++ primFuncName f ++ ") ") as)
 toTreeArgs (Entry  _ (_ :: Proxy stage) ) as
   = return (Node ("Entry @" ++ show (knownValue @stage)) as)
 toTreeArgs (Lit (a :: ty)) as
   = return (Node ("Lit @(" ++ show (primTyVal @ty) ++ ") " ++ show a ) as)
+toTreeArgs fm@Fmap as
+  = case fm of
+      ( _ :: AST ( (x -> y) -> f x -> f y ) )
+        -> return (Node ("Fmap @(" ++ primFuncName @f ++ ") ") as)
+toTreeArgs pur@Pure as
+  = case pur of
+      ( _ :: AST ( x -> f x ) )
+        -> return (Node ("Pure @(" ++ primFuncName @f ++ ") ") as)
+toTreeArgs app@Ap as
+  = case app of
+      ( _ :: AST ( f (x -> y) -> f x -> f y ) )
+        -> return (Node ("Ap @("   ++ primFuncName @f ++ ") ") as)
 
 toTree :: AST a -> Tree String
 toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )

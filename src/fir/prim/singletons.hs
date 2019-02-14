@@ -21,7 +21,7 @@ import Data.Int
 import Data.Kind
   ( Type )
 import Data.Proxy
-  ( Proxy )
+  ( Proxy(Proxy) )
 import Data.Type.Equality
   ( (:~:)(Refl) )
 import Data.Typeable
@@ -51,6 +51,8 @@ import Data.Type.Known
   ( Known, knownValue )
 import Data.Type.Map
   ( (:->)((:->)) )
+import {-# SOURCE #-} FIR.AST
+  ( AST )
 import FIR.Binding
   ( Binding, BindingsMap, Var
   , Permission(Read,Write)
@@ -403,18 +405,26 @@ instance (KnownInterfaceBinding bd, KnownInterface bds)
 -- functors
 
 data SPrimFunc :: (Type -> Type) -> Type where
-  SFuncVector :: KnownNat n
-              => Proxy n -> SPrimFunc (V n)
-  SFuncMatrix :: (KnownNat m, KnownNat n)
-              => Proxy m -> Proxy n -> SPrimFunc (M m n)
+  SFuncVector :: KnownNat n => SPrimFunc (V n)
+  SFuncMatrix :: (KnownNat m, KnownNat n) => SPrimFunc (M m n)
 
-primFuncName :: SPrimFunc f -> String
-primFuncName (SFuncVector n) 
-  = "V " ++ show (natVal n)
-primFuncName (SFuncMatrix m n)
-  = "M " ++ show (natVal m)
-         ++ " "
-         ++ show (natVal n)
+class Applicative f => PrimFunc f where
+  primFuncSing :: SPrimFunc f
+  distributeAST :: PrimTy a => AST (f a) -> f (AST a)
+
+primFuncName :: forall f. PrimFunc f => String
+primFuncName
+  = case primFuncSing @f of
+      sFuncVector@SFuncVector
+        -> case sFuncVector of
+            ( _ :: SPrimFunc (V n) )
+              -> "V " ++ show (natVal (Proxy @n))
+      sFuncMatrix@SFuncMatrix
+        -> case sFuncMatrix of
+            ( _ :: SPrimFunc (M m n) )
+              -> "M " ++ show (natVal (Proxy @m))
+                      ++ " "
+                      ++ show (natVal (Proxy @n))
 
 ------------------------------------------------------------
 -- dependent pair

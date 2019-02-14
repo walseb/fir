@@ -14,30 +14,31 @@ module Tests.Functor.Applicative where
 
 -- fir
 import FIR
-import FIR.Labels
 import Math.Linear
 
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Input      '[] (V 3 Float)
-             , "main"     ':-> EntryPoint '[] Vertex
+type Defs = '[ "in_col1" ':-> Input      '[] (V 3 Float)
+             , "in_col2" ':-> Input      '[] (V 3 Float)
+             , "in_col3" ':-> Input      '[] (V 3 Float)
+             , "out_col" ':-> Output     '[] (V 3 Float)
+             , "main"    ':-> EntryPoint '[] Fragment
              ]
+
+func :: AST Float -> AST Float -> AST Float -> AST Float
+func x y z = (2 * z - y + abs x )
 
 program :: Program Defs ()
 program = Program do
 
-  entryPoint @"main" @Vertex do
+  entryPoint @"main" @Fragment do
 
-    pos <- get @"position"
+    in_col1 <- get @"in_col1"
+    in_col2 <- get @"in_col2"
+    in_col3 <- get @"in_col3"
 
-    let func :: AST Float -> AST Float {--> AST Float-} -> AST Float
-        func x y {-z-} = (2 * x - abs y) {-/ z-}
-        func' :: AST Float -> AST (Float {--> Float-} -> Float)
-        func' x = toAST ( func x )
-        position' :: AST (V 3 Float)
-        position' = func' <$$> pos <**> pos {-<**> pos-}
+    let out_col :: AST (V 3 Float)
+        out_col = func <$$> in_col1 <**> in_col2 <**> in_col3
 
-    ~(Vec3 x y z) <- def @"pos" @RW ( position' )
-
-    #gl_Position .= Vec4 x z y 10
+    put @"out_col" out_col

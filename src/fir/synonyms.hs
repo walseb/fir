@@ -128,7 +128,7 @@ pattern GatherComponentWithOffsets component offs ops
 pattern UnOps :: AST (ImageOperands props ops) -> ImageOperands props ops
 pattern UnOps astOps <- ( Ops -> astOps )
   where UnOps (Ops ops) = ops
-        UnOps _ = error "weird image operands"
+        UnOps _ = error "image operands not of the expected form"
 
 -----------------------------------------------------
 -- helper type family for choosing image texel type
