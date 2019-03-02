@@ -69,13 +69,13 @@ import Data.Proxy
 import Data.Type.Equality
   ( (:~:)(Refl), testEquality )
 import Data.Word
-  ( Word16, Word32 )
+  ( Word16 )
 import GHC.TypeLits
   ( KnownSymbol
   , TypeError, ErrorMessage(..)
   )
 import GHC.TypeNats
-  ( KnownNat, natVal
+  ( KnownNat
   , type (+), type (-)
   , type (<=), CmpNat
   )
@@ -94,18 +94,21 @@ import Data.Type.List
   ( KnownLength(sLength) )
 import FIR.AST
   ( AST(..)
-  , Syntactic(Internal,toAST,fromAST)
+  , Syntactic(Internal, toAST, fromAST)
+  , primOp
   )
 import FIR.Instances.Optics
   ( KnownOptic(opticSing) )
+import FIR.Prim.Op
+  ( Vectorise(Vectorise) )
 import FIR.Prim.Singletons
-  ( PrimTy, primTy
-  , ScalarTy, scalarTy
+  ( PrimTy
+  , ScalarTy
   , SPrimFunc(..), PrimFunc(..)
   )
 import Math.Algebra.Class
-  ( AdditiveGroup(..)
-  , Semiring(..), Ring(..)
+  ( AdditiveMonoid(..), AdditiveGroup(..)
+  , Semiring(..), Ring
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
   , Floating(..), RealFloat(..)
@@ -144,9 +147,9 @@ import qualified SPIRV.PrimOp as SPIRV
 instance Boolean (AST Bool) where
   true  = Lit True
   false = Lit False
-  (&&)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.BoolAnd) (&&)
-  (||)  = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.BoolOr ) (||)
-  not   = fromAST $ PrimOp (SPIRV.BoolOp SPIRV.BoolNot) not
+  (&&)  = primOp @Bool @SPIRV.BoolAnd
+  (||)  = primOp @Bool @SPIRV.BoolOr
+  not   = primOp @Bool @SPIRV.BoolNot
 
 instance PrimTy a => Choose (AST Bool) (Triple (AST a)) where
   choose = fromAST If
@@ -154,19 +157,19 @@ instance PrimTy a => Choose (AST Bool) (Triple (AST a)) where
 instance ( PrimTy a, Eq a, Logic a ~ Bool )
   => Eq (AST a) where
   type Logic (AST a) = AST Bool
-  (==) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.Equal    (primTy @a)) ((==) @a)
-  (/=) = fromAST $ PrimOp (SPIRV.EqOp SPIRV.NotEqual (primTy @a)) ((/=) @a)
+  (==) = primOp @a @SPIRV.Equal
+  (/=) = primOp @a @SPIRV.NotEqual
 
 instance ( ScalarTy a, Ord a, Logic a ~ Bool ) 
   => Ord (AST a) where
   type Ordering (AST a) = AST Word16
   compare = error "todo"
-  (<=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LTE (scalarTy @a)) ((<=) @a)
-  (>=) = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GTE (scalarTy @a)) ((>=) @a)
-  (<)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.LT  (scalarTy @a)) ((<)  @a)
-  (>)  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.GT  (scalarTy @a)) ((>)  @a)
-  min  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Min (scalarTy @a)) min
-  max  = fromAST $ PrimOp (SPIRV.OrdOp SPIRV.Max (scalarTy @a)) max
+  (<=) = primOp @a @SPIRV.LTE
+  (>=) = primOp @a @SPIRV.GTE
+  (<)  = primOp @a @SPIRV.LT
+  (>)  = primOp @a @SPIRV.GT
+  min  = primOp @a @SPIRV.Min
+  max  = primOp @a @SPIRV.Max
 
 -- * Bitwise operations
 --
@@ -176,76 +179,74 @@ instance ( ScalarTy a, Ord a, Logic a ~ Bool )
 -- 'Bits', 'BitShift' (note: not 'Data.Bits.Bits').
 
 instance (ScalarTy a, Bits a) => Bits (AST a) where
-  (.&.) = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitAnd (scalarTy @a)) ( (.&.) @a)
-  (.|.) = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitOr  (scalarTy @a)) ( (.|.) @a)
-  xor   = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitXor (scalarTy @a)) ( xor   @a)
-  complement = fromAST $ PrimOp (SPIRV.BitOp SPIRV.BitNot (scalarTy @a)) ( complement @a )
+  (.&.)      = primOp @a @SPIRV.BitAnd
+  (.|.)      = primOp @a @SPIRV.BitOr
+  xor        = primOp @a @SPIRV.BitXor
+  complement = primOp @a @SPIRV.BitNot
   zeroBits   = Lit ( zeroBits @a )
 
 instance (ScalarTy a, ScalarTy s, BitShift '(a,s))
   => BitShift '(AST a, AST s) where
-  shiftL  = fromAST $ PrimOp
-                        ( SPIRV.BitOp SPIRV.BitShiftLeft (scalarTy @a) )
-                        ( shiftL @('(a,s)) )
-  shiftR = fromAST $ PrimOp
-                        ( SPIRV.BitOp SPIRV.BitShiftRightArithmetic (scalarTy @a) )
-                        ( shiftR @('(a,s)) )
+  shiftL = primOp @'(a,s) @SPIRV.BitShiftLeft
+  shiftR = primOp @'(a,s) @SPIRV.BitShiftRightArithmetic
 
 -- * Numeric operations
 -- 
 -- $numeric
 -- Instances for:
 --
--- 'AdditiveGroup', 'Semiring', 'Ring', 'Signed',
+-- 'AdditiveMonoid', 'AdditiveGroup', 'Signed',
+--
+-- 'Semiring', 'Ring', 
 --
 -- 'DivisionRing', 'Archimedean' (Archimedean ordered group),
 --
 -- 'Floating', 'RealFloat' (note: not the "Prelude" type classes).
 
-instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
-  (+)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Add  (scalarTy @a)) (+)
+instance (ScalarTy a, AdditiveMonoid a) => AdditiveMonoid (AST a) where
+  (+)    = primOp @a @SPIRV.Add
   zero   = Lit (zero :: a)
   fromInteger = Lit . fromInteger
 instance (ScalarTy a, Semiring a) => Semiring (AST a) where
-  (*)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mul  (scalarTy @a)) (*)
-instance (ScalarTy a, Ring a) => Ring (AST a) where
-  (-)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sub  (scalarTy @a)) (-)
-  negate = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Neg  (scalarTy @a)) negate  
+  (*)    = primOp @a @SPIRV.Mul
+instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (AST a) where
+  (-)    = primOp @a @SPIRV.Sub
+  negate = primOp @a @SPIRV.Neg
 instance (ScalarTy a, Signed a) => Signed (AST a) where
-  abs    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Abs  (scalarTy @a)) abs
-  signum = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Sign (scalarTy @a)) signum
+  abs    = primOp @a @SPIRV.Abs
+  signum = primOp @a @SPIRV.Sign
 instance (ScalarTy a, DivisionRing a) => DivisionRing (AST a) where
-  (/)    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Div  (scalarTy @a)) (/)
+  (/)    = primOp @a @SPIRV.Div
   fromRational = Lit . fromRational
 instance ( ScalarTy a
          , Archimedean a
          , Logic a ~ Bool
          ) => Archimedean (AST a) where
-  mod    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Mod  (scalarTy @a)) mod
-  rem    = fromAST $ PrimOp (SPIRV.NumOp SPIRV.Rem  (scalarTy @a)) rem
+  mod    = primOp @a @SPIRV.Mod
+  rem    = primOp @a @SPIRV.Rem
 
 instance (ScalarTy a, Floating a) => Floating (AST a) where
   pi      = Lit pi
-  exp     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FExp     (scalarTy @a)) exp
-  log     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FLog     (scalarTy @a)) log
-  sqrt    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FSqrt    (scalarTy @a)) sqrt
-  invSqrt = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FInvsqrt (scalarTy @a)) invSqrt
-  sin     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FSin     (scalarTy @a)) sin
-  cos     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FCos     (scalarTy @a)) cos
-  tan     = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FTan     (scalarTy @a)) tan
-  asin    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAsin    (scalarTy @a)) asin
-  acos    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAcos    (scalarTy @a)) acos
-  atan    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtan    (scalarTy @a)) atan
-  sinh    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FSinh    (scalarTy @a)) sinh
-  cosh    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FCosh    (scalarTy @a)) cosh
-  tanh    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FTanh    (scalarTy @a)) tanh
-  asinh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAsinh   (scalarTy @a)) asinh
-  acosh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAcosh   (scalarTy @a)) acosh
-  atanh   = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtanh   (scalarTy @a)) atanh
-  (**)    = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FPow     (scalarTy @a)) (**)
+  exp     = primOp @a @SPIRV.FExp
+  log     = primOp @a @SPIRV.FLog
+  sqrt    = primOp @a @SPIRV.FSqrt
+  invSqrt = primOp @a @SPIRV.FInvsqrt
+  sin     = primOp @a @SPIRV.FSin
+  cos     = primOp @a @SPIRV.FCos
+  tan     = primOp @a @SPIRV.FTan
+  asin    = primOp @a @SPIRV.FAsin
+  acos    = primOp @a @SPIRV.FAcos
+  atan    = primOp @a @SPIRV.FAtan
+  sinh    = primOp @a @SPIRV.FSinh
+  cosh    = primOp @a @SPIRV.FCosh
+  tanh    = primOp @a @SPIRV.FTanh
+  asinh   = primOp @a @SPIRV.FAsinh
+  acosh   = primOp @a @SPIRV.FAcosh
+  atanh   = primOp @a @SPIRV.FAtanh
+  (**)    = primOp @a @SPIRV.FPow
 
 instance (ScalarTy a, RealFloat a) => RealFloat (AST a) where
-  atan2 = fromAST $ PrimOp (SPIRV.FloatOp SPIRV.FAtan2 (scalarTy @a)) atan2
+  atan2   = primOp @a @SPIRV.FAtan2
 
 
 -- * Numeric conversions
@@ -256,7 +257,7 @@ instance (ScalarTy a, ScalarTy b, Convert '(a,b))
          => Convert '(AST a, AST b) where
   convert = case testEquality (typeRep @a) (typeRep @b) of
     Just Refl -> id
-    _         -> fromAST $ PrimOp (SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)) convert
+    _         -> primOp @'(a,b) @SPIRV.Convert
 
 -- TODO: there should be a way to do this more efficiently,
 -- without using type reflection machinery.
@@ -537,9 +538,6 @@ deriving instance
 -----------------------------------------------
 -- * Vectors and matrices
 
-val :: forall n. KnownNat n => Word32
-val = fromIntegral ( natVal (Proxy @n))
-
 -- ** Vectors
 --
 -- $vectors
@@ -547,30 +545,35 @@ val = fromIntegral ( natVal (Proxy @n))
 --
 -- 'Semimodule', 'Module', 'Inner', 'Cross'.
 instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
-  type Scalar (AST (V 0 a))   = AST      a
-  type OfDim  (AST (V 0 a)) n = AST (V n a)
+  type Scalar (AST (V 0 a))  = AST      a
+  type AST (V 0 a) `OfDim` n = AST (V n a)
 
   (^+^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^+^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV   (val @n) (scalarTy @a)) (^+^)
+  (^+^) = primOp @(V n a) @('Vectorise SPIRV.Add)
 
   (^*) :: forall n. KnownNat n
         => AST (V n a) -> AST a -> AST (V n a)
-  (^*)  = fromAST $ PrimOp (SPIRV.VecOp SPIRV.VMulK  (val @n) (scalarTy @a)) (^*)
+  (^*)  = primOp @(V n a) @SPIRV.VMulK
 
 instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
   (^-^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
-  (^-^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV   (val @n) (scalarTy @a)) (^-^)
+  (^-^) = primOp @(V n a) @('Vectorise SPIRV.Sub)
+
+  (-^) :: forall n. KnownNat n => AST (V n a) -> AST (V n a)
+  (-^) = primOp @(V n a) @('Vectorise SPIRV.Neg)
 
 instance (ScalarTy a, Floating a) => Inner (AST (V 0 a)) where
-  (^.^) = fromAST $ PrimOp (SPIRV.VecOp SPIRV.DotV   (val @0) (scalarTy @a)) (^.^)
-  normalise = fromAST $ PrimOp
-                           ( SPIRV.VecOp SPIRV.NormaliseV (val @0) (scalarTy @a) )
-                           normalise
+  (^.^) :: forall n. KnownNat n
+        => AST (V n a) -> AST (V n a) -> AST a
+  (^.^) = primOp @(V n a) @SPIRV.DotV
+
+  normalise :: forall n. KnownNat n => AST (V n a) -> AST (V n a)
+  normalise = primOp @(V n a) @SPIRV.NormaliseV
 
 instance (ScalarTy a, Floating a) => Cross (AST (V 0 a)) where
-  cross = fromAST $ PrimOp (SPIRV.VecOp SPIRV.CrossV (val @3) (scalarTy @a)) cross
+  cross = primOp @(V 3 a) @SPIRV.CrossV
 
 -- *** Bidirectional pattern synonyms
 
@@ -599,53 +602,52 @@ pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 -- $matrices
 -- Instance for 'Matrix'.
 
-instance (ScalarTy a, Ring a) => Matrix (AST (M 0 0 a)) where
-  type Vector (AST (M 0 0 a))     = AST (V 0   a)
-  type OfDims (AST (M 0 0 a)) m n = AST (M m n a)
+instance (ScalarTy a, Floating a) => Matrix (AST (M 0 0 a)) where
+  type Vector (AST (M 0 0 a))        = AST (V 0   a)
+  type AST (M 0 0 a) `OfDims` '(m,n) = AST (M m n a)
 
   diag    = error "todo"
   konst a = Mat :$ pureAST (pureAST a)
 
   transpose :: forall n m. (KnownNat n, KnownNat m)
             => AST (M n m a) -> AST (M m n a)
-  transpose   = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Transp (val @m) (val @n) (scalarTy @a)) transpose
+  transpose = primOp @'(a,n,m) @SPIRV.Transp
 
   inverse :: forall n. KnownNat n
-            => AST (M n n a) -> AST (M n n a)
-  inverse     = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Inv    (val @n) (val @n) (scalarTy @a)) inverse
+          => AST (M n n a) -> AST (M n n a)
+  inverse = primOp @'(a,n) @SPIRV.Inv
   
   determinant :: forall n. KnownNat n
               => AST (M n n a) -> AST a
-  determinant = fromAST $ PrimOp (SPIRV.MatOp SPIRV.Det    (val @0) (val @0) (scalarTy @a)) determinant
+  determinant = primOp @'(a,n) @SPIRV.Det
 
   -- no built-in matrix addition and subtraction, so we use the vector operations
   (!+!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !+! y = Mat :$ ( vecAdd <$$> (UnMat :$ x) <**> (UnMat :$ y) )
     where vecAdd :: AST (V j a) -> AST (V j a) -> AST (V j a)
-          vecAdd = fromAST $ PrimOp (SPIRV.VecOp SPIRV.AddV (val @i) (scalarTy @a)) (^+^)
-
+          vecAdd = primOp @(V j a) @('Vectorise SPIRV.Add)
   (!-!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (M i j a) -> AST (M i j a)
   x !-! y = Mat :$ ( vecSub <$$> (UnMat :$ x) <**> (UnMat :$ y) )
     where vecSub :: AST (V j a) -> AST (V j a) -> AST (V j a)
-          vecSub = fromAST $ PrimOp (SPIRV.VecOp SPIRV.SubV (val @i) (scalarTy @a)) (^-^)
+          vecSub = primOp @(V j a) @('Vectorise SPIRV.Sub)
 
   (!*!) :: forall i j k. (KnownNat i, KnownNat j, KnownNat k)
         => AST (M i j a) -> AST (M j k a) -> AST (M i k a)
-  (!*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulM (val @i) (val @k) (scalarTy @a)) (!*!)
+  (!*!) = primOp @'(a,i,j,k) @SPIRV.MMulM
 
   (^*!) :: forall i j. (KnownNat i, KnownNat j)
         => AST (V i a) -> AST (M i j a) -> AST (V j a)
-  (^*!) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.VMulM (val @j) (val @0) (scalarTy @a)) (^*!)
+  (^*!) = primOp @'(a,i,j) @SPIRV.VMulM
 
   (!*^) :: forall i j. (KnownNat i, KnownNat j)
         => AST (M i j a) -> AST (V j a) -> AST (V i a)
-  (!*^) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulV (val @i) (val @0) (scalarTy @a)) (!*^)
+  (!*^) = primOp @'(a,i,j) @SPIRV.MMulV
 
   (!*) :: forall i j. (KnownNat i, KnownNat j)
        => AST (M i j a) -> AST a -> AST (M i j a)
-  (!*) = fromAST $ PrimOp (SPIRV.MatOp SPIRV.MMulK  (val @i) (val @j) (scalarTy @a)) (!*)
+  (!*) = primOp @'(a,i,j) @SPIRV.MMulK
 
 
 -- *** Bidirectional pattern synonyms

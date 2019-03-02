@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
@@ -25,6 +26,7 @@ module FIR.AST
     AST(..)
     -- * Syntactic type class
   , Syntactic(Internal, toAST, fromAST)
+  , primOp
     -- * Displaying ASTs graphically
   , toTree
   )
@@ -34,7 +36,7 @@ module FIR.AST
 import Data.Kind
   ( Type )
 import Data.Proxy
-  ( Proxy )
+  ( Proxy(Proxy) )
 import qualified GHC.Stack
 import GHC.TypeLits
   ( KnownSymbol, symbolVal )
@@ -80,6 +82,8 @@ import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
 import FIR.Prim.Image
   ( ImageOperands )
+import FIR.Prim.Op
+  ( PrimOp(PrimOpType, PrimOpConstraint, opName) )
 import FIR.Prim.Singletons
   ( PrimTy, primTyVal, KnownVars
   , PrimFunc, primFuncName
@@ -107,7 +111,8 @@ data AST :: Type -> Type where
   -- | Haskell-level constants can be embedded into the AST.
   Lit :: PrimTy a => a -> AST a
   -- | @SPIR-V@ primitive operations
-  PrimOp :: SPIRV.PrimOp -> a -> AST a
+  PrimOp :: (PrimOp op a, PrimOpConstraint op a)
+         => Proxy a -> Proxy op -> AST (PrimOpType op a)
 
   -- Indexed monadic operations (for the AST itself)
   -- | Indexed /return/
@@ -203,7 +208,6 @@ data AST :: Type -> Type where
   Locally :: AST ( (a := j) i -> (a := i) i )
 
   -- functor/applicative operations
-  -- (passing a singleton representing the functor)
   Fmap :: forall f a b. ( PrimTy a, PrimFunc f )
        => AST ( (a -> b) -> f a -> f b )
   Pure :: forall f a. ( PrimFunc f )
@@ -220,6 +224,7 @@ data AST :: Type -> Type where
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
   Ops   :: ImageOperands props ops -> AST ( ImageOperands props ops )
+  Coerce :: forall a b. AST (a -> b)
 
   -- | Internal pair data type.
   --
@@ -252,10 +257,17 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   fromAST (Lam f) a = fromAST ( f  $ toAST a )
   fromAST      f  a = fromAST ( f :$ toAST a )
 
+-- | Utility function for defining primops.
+primOp :: forall a op r. ( PrimOp op a, PrimOpConstraint op a
+                         , Syntactic r, Internal r ~ PrimOpType op a
+                         )
+       => r 
+primOp = fromAST $ PrimOp @op @a Proxy Proxy
+
 ------------------------------------------------
 -- display AST for viewing
 
-toTreeArgs :: forall m a. MonadFresh ID m => AST a -> [Tree String] -> m (Tree String)
+toTreeArgs :: forall m ast. MonadFresh ID m => AST ast -> [Tree String] -> m (Tree String)
 toTreeArgs (f :$ a) as = do
   at <- toTreeArgs a []
   toTreeArgs f (at:as)
@@ -266,9 +278,8 @@ toTreeArgs (Lam f) as = do
   return $ case as of
     [] -> Node ("Lam " ++ show v) [body]
     _  -> Node  ":$"              (body : as)
-toTreeArgs (PrimOp op _ ) as 
-  = return (Node ("PrimOp " ++ opName ) as)
-    where opName = show ( SPIRV.op op )
+toTreeArgs (PrimOp (_ :: Proxy a) (_ :: Proxy op) ) as 
+  = return (Node ("PrimOp " ++ show ( SPIRV.op ( opName @_ @_ @op @a ) ) ) as)
 toTreeArgs If       as = return (Node "If"       as)
 toTreeArgs IfM      as = return (Node "IfM"      as)
 toTreeArgs While    as = return (Node "While"    as)
@@ -278,6 +289,7 @@ toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
 toTreeArgs UnMat    as = return (Node "UnMat"    as)
 toTreeArgs (Ops _ ) as = return (Node "ImageOperands" as)
+toTreeArgs Coerce   as = return (Node "Coerce"   as)
 toTreeArgs Pair     as = return (Node "Pair"     as)
 toTreeArgs Fst      as = return (Node "Fst"      as)
 toTreeArgs Snd      as = return (Node "Snd"      as)
@@ -306,8 +318,8 @@ toTreeArgs app@Ap as
       ( _ :: AST ( f (x -> y) -> f x -> f y ) )
         -> return (Node ("Ap @("   ++ primFuncName @f ++ ") ") as)
 
-toTree :: AST a -> Tree String
+toTree :: AST ast -> Tree String
 toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )
 
-instance Show (AST a) where
+instance Show (AST ast) where
   show = showTree . toTree

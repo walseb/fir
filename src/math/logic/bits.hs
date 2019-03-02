@@ -95,14 +95,15 @@ class BitShift (bs :: (Type,Type)) where
   --
   -- Ignores the sign of the shift argument (second argument).
   --
-  -- This is an arithmetic shift: most-significant bits are filled
-  -- with the sign of the first argument.
+  -- This is a logical shift: least-significant bits are set to 0.
   shiftL :: Shift bs -- b -> s -> b
   -- | Shift the first argument right by the specified number of bits.
   --
   -- Ignores the sign of the shift argument (second argument).
   --
-  -- This is a logical shift: least-significant bits are set to 0.
+  -- This is an arithmetic shift: most-significant bits are filled
+  -- with the sign of the first argument.
+
   shiftR :: Shift bs -- b -> s -> b
 
 instance (Base.Bits a, Prelude.Integral i)

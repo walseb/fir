@@ -141,8 +141,8 @@ import FIR.Prim.Singletons
 import FIR.Synonyms
   ( pattern NoOperands )
 import Math.Algebra.Class
-  ( AdditiveGroup(..)
-  , Semiring(..), Ring(..)
+  ( AdditiveMonoid(..), AdditiveGroup(..)
+  , Semiring(..), Ring
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
   , Floating(..), RealFloat(..)
@@ -587,18 +587,20 @@ instance ( ScalarTy a, ScalarTy s
 -- $numeric
 -- Instances for:
 --
--- 'AdditiveGroup', 'Semiring', 'Ring', 'Signed',
+-- 'AdditiveMonoid', 'AdditiveGroup', 'Signed',
+--
+-- 'Semiring', 'Ring', 
 --
 -- 'DivisionRing', 'Archimedean' (Archimedean ordered group),
 --
 -- 'Floating', 'RealFloat' (note: not the "Prelude" type classes).
-instance (ScalarTy a, AdditiveGroup a, j ~ i) => AdditiveGroup (Codensity AST (AST a := j) i) where
+instance (ScalarTy a, AdditiveMonoid a, j ~ i) => AdditiveMonoid (Codensity AST (AST a := j) i) where
   (+)    = ixLiftA2 (+)
   zero   = ixPure zero
   fromInteger = ixPure . fromInteger
 instance (ScalarTy a, Semiring a, j ~ i) => Semiring (Codensity AST (AST a := j) i) where
   (*)    = ixLiftA2 (*)
-instance (ScalarTy a, Ring a, j ~ i) => Ring (Codensity AST (AST a := j) i) where
+instance (ScalarTy a, AdditiveGroup a, j ~ i) => AdditiveGroup (Codensity AST (AST a := j) i) where
   (-)    = ixLiftA2 (-)
   negate = ixFmap negate  
 instance (ScalarTy a, Signed a, j ~ i) => Signed (Codensity AST (AST a := j) i) where
@@ -679,9 +681,9 @@ instance (ScalarTy a, Floating a, j ~ i) => Cross (Codensity AST (AST (V 0 a) :=
 -- $matrices
 -- Instance for 'Matrix'.
 
-instance (ScalarTy a, Ring a, j ~ i) => Matrix (Codensity AST (AST (M 0 0 a) := j) i) where
-  type Vector (Codensity AST (AST (M 0 0 a) := j) i)     = Codensity AST (AST (V 0   a) := j) i
-  type OfDims (Codensity AST (AST (M 0 0 a) := j) i) m n = Codensity AST (AST (M m n a) := j) i
+instance (ScalarTy a, Floating a, j ~ i) => Matrix (Codensity AST (AST (M 0 0 a) := j) i) where
+  type Vector (Codensity AST (AST (M 0 0 a) := j) i)        = Codensity AST (AST (V 0   a) := j) i
+  type OfDims (Codensity AST (AST (M 0 0 a) := j) i) '(m,n) = Codensity AST (AST (M m n a) := j) i
 
   diag  = ixFmap diag
   konst = ixFmap konst

@@ -1,13 +1,20 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE PatternSynonyms       #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE ViewPatterns          #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE InstanceSigs           #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PatternSynonyms        #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE ViewPatterns           #-}
 
 module CodeGen.Applicative
   ( idiomatic
@@ -16,12 +23,25 @@ module CodeGen.Applicative
   where
 
 -- base
+import Prelude
+  hiding ( Num(..), Integral(..)
+         , Fractional(..), Floating(..), RealFloat(..)
+         )
+import qualified Prelude
+import Control.Applicative
+  ( liftA2 )
 import Data.Foldable
   ( toList )
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy )
 import Data.Word
   ( Word32 )
+import GHC.TypeNats
+  ( Nat, KnownNat )
+import Unsafe.Coerce
+  ( unsafeCoerce )
 
 -- mtl
 import Control.Monad.Except
@@ -39,23 +59,35 @@ import CodeGen.Instruction
   ( ID )
 import CodeGen.Monad
   ( CGMonad )
+import CodeGen.Untyped
+  ( pattern Applied
+  , UAST(..), UASTs(..)
+  )
 import Data.Type.Known
   ( knownValue )
 import Data.Type.List
   ( Snoc )
 import FIR.AST
-  ( AST((:$), Fmap, Pure, Ap, MkID)
+  ( AST(..)
   , Syntactic(fromAST)
+  , primOp
   )
 import FIR.Instances.AST
   ( ) -- 'PrimFunc' instances
+import FIR.Prim.Op
+  ( PrimOp(..), SPrimOp(..)
+  , Vectorise(Vectorise)
+  )
 import FIR.Prim.Singletons
   ( PrimTy
   , PrimFunc(distributeAST, primFuncSing)
   , SPrimFunc(..)
   )
+import Math.Algebra.Class
+  ( Semiring((*)) )
 import Math.Linear
-  ( V, M )
+  ( V, M, Semimodule((*^)) )
+import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 
 ----------------------------------------------------------------------------
@@ -73,6 +105,8 @@ deriving instance Show (AnIdiom f b)
 
 data ASTF where
   ASTF :: (Applicative f, PrimFunc f) => AST (f a) -> ASTF
+
+deriving instance Show ASTF
 
 anIdiom :: (Applicative f, PrimFunc f) => AST (f b) -> AnIdiom f b
 anIdiom ( Pure :$ a )
@@ -115,8 +149,8 @@ idiom (PureIdiom b)
         sFuncVector@SFuncVector
           -> case sFuncVector of
               ( _ :: SPrimFunc (V n) )
-                -> let n :: Num a => a
-                       n = fromIntegral (knownValue @n)
+                -> let n :: Prelude.Num a => a
+                       n = Prelude.fromIntegral (knownValue @n)
                    in compositeConstruct
                         ( SPIRV.Vector n eltTy )
                         ( replicate n eltID )
@@ -133,30 +167,34 @@ idiom (PureIdiom b)
                                       )
                       let colDim :: Word32
                           colDim = knownValue @m
-                          rowDim :: Num a => a
-                          rowDim = fromIntegral (knownValue @n)
+                          rowDim :: Prelude.Num a => a
+                          rowDim = Prelude.fromIntegral (knownValue @n)
                       col <- fst <$> idiom (PureIdiom @(V m) (MkID elt) )
                       compositeConstruct
                         ( SPIRV.Matrix colDim rowDim constituentTy )
                         ( replicate rowDim col )
 idiom (ApIdiom i a) =
-  let b :: f (AST b)
-      b = applyIdiom i a
-  in case primFuncSing @f of
-        sFuncVector@SFuncVector
-          -> case sFuncVector of
-              ( _ :: SPrimFunc (V n) )
-                -> do ids <- toList <$> traverse codeGen b
+  case primFuncSing @f of
+    sFuncVector@SFuncVector
+      -> case sFuncVector of
+          ( _ :: SPrimFunc (V n) )
+            -> case applyIdiomV @n (ApIdiom i a) of
+                  -- attempt to directly vectorise operation if possible
+                  Just (UAST uast) -> codeGen uast
+                  -- otherwise, revert to doing it component by component
+                  _ ->
+                    do 
+                      ids <- toList <$> traverse codeGen (applyIdiom i a)
                       eltTy <- case ids of
                           ((_, ty) : _) -> pure ty
                           _             -> throwError "codeGen: empty vector"
                       compositeConstruct
                         ( SPIRV.Vector (knownValue @n) eltTy )
                         ( map fst ids )
-        sFuncMatrix@SFuncMatrix
-          -> case sFuncMatrix of
-              ( _ :: SPrimFunc (M m n) )
-                -> throwError "codeGen: TODO, applicative support for matrices WIP"
+    sFuncMatrix@SFuncMatrix
+      -> case sFuncMatrix of
+          ( _ :: SPrimFunc (M m n) )
+            -> throwError "codeGen: TODO, applicative support for matrices WIP"
 
 
 applyIdiom :: forall f as a b.
@@ -173,3 +211,132 @@ applyIdiom (ApIdiom f a') a
   = let f' :: f ( AST a -> AST b )
         f' = fromAST <$> applyIdiom f a'
     in  f' <*> distributeAST a
+
+---------------------------------------------------------------------------------------
+-- awful hacks to use native SPIR-V vectorised instructions if possible
+
+newtype FakeVector n a = FakeVector (V n a)
+  deriving Show
+newtype FakeScalar n a = FakeScalar a
+  deriving Show
+
+type family Vectorisation (n :: Nat) (a :: Type) = (r :: Type) | r -> n a where
+  Vectorisation n (a -> b) = FakeScalar n a -> Vectorisation n b
+  Vectorisation n b        = FakeVector n b
+
+applyIdiomV :: forall n as b. KnownNat n
+            => Idiom (V n) as b -> Maybe UAST
+applyIdiomV i = sanitiseVectorisation @n @b . unsafeVectorise $ i
+
+sanitiseVectorisation :: forall n b. KnownNat n
+                      => AST (Vectorisation n b) -> Maybe UAST
+sanitiseVectorisation v = sanitiseVectorisation' @n (unsafeCoerce v :: AST b)
+
+sanitiseVectorisation' :: forall n ast. KnownNat n
+                       => AST ast -> Maybe UAST
+sanitiseVectorisation'
+-- special case for 'vector times scalar' optimisation
+  ( PrimOp (_ :: Proxy a) (_ :: Proxy op) :$ v1 :$ v2)
+    | Just SMul <- opSing @_ @_ @op @a
+    = case ( sanitiseVectorisation' @n v1, sanitiseVectorisation' @n v2 ) of
+        ( Just (UAST (Pure :$ b1)), Just (UAST (Pure :$ b2)) )
+          -> let b1' :: AST a
+                 b1' = unsafeCoerce b1
+                 b2' :: AST a
+                 b2' = unsafeCoerce b2
+              in Just . UAST $ Pure @(V n) :$ (b1' * b2')
+        ( Just (UAST (Pure :$ b1)), _ )
+          -> let b1' :: AST a
+                 b1' = unsafeCoerce b1
+                 v2' :: AST (V n a)
+                 v2' = unsafeCoerce v2
+             in Just . UAST $ b1' *^ v2'
+        ( _, Just (UAST (Pure :$ b2)) )
+          -> let v1' :: AST (V n a)
+                 v1' = unsafeCoerce v1
+                 b2' :: AST a
+                 b2' = unsafeCoerce b2
+             in Just . UAST $ b2' *^ v1'
+        _ -> liftA2 applyvPrimOp
+                ( vectorisePrimOp @n @a @op )
+                ( sanitiseUASTs   @n (NilUAST `SnocUAST` v1 `SnocUAST` v2) )
+sanitiseVectorisation'
+  ( Applied ( PrimOp (_ :: Proxy a) (_ :: Proxy op) ) as )
+    = liftA2 applyvPrimOp
+        ( vectorisePrimOp @n @a @op )
+        ( sanitiseUASTs   @n as     )
+sanitiseVectorisation'
+  ( Applied ( MkID _ ) (_ `SnocUAST` _ ) )
+    = Nothing -- cannot vectorise opaque functions (e.g. native function calls)
+sanitiseVectorisation' ast@(Applied (MkVector _ _) _) = Just . UAST $ ast
+sanitiseVectorisation' (Coerce :$ v) = Just . UAST $ v
+sanitiseVectorisation' ast = Just . UAST $ Pure @(V n) :$ ast
+
+sanitiseUASTs :: forall n. KnownNat n => UASTs -> Maybe UASTs
+sanitiseUASTs NilUAST = Just NilUAST
+sanitiseUASTs (as `SnocUAST` a)
+  = liftA2 (\xs (UAST y) -> SnocUAST xs y)
+      ( sanitiseUASTs @n as )
+      ( sanitiseVectorisation' @n a )
+
+applyvPrimOp :: UAST -> UASTs -> UAST
+applyvPrimOp vPrimOp NilUAST = vPrimOp
+applyvPrimOp vPrimOp (vs `SnocUAST` v)
+  = case applyvPrimOp vPrimOp vs of
+      UAST r -> UAST (unsafeCoerce r :$ v) -- should be able to eliminate this 'unsafeCoerce'
+
+unsafeVectorise :: forall n as b. Idiom (V n) as b -> AST (Vectorisation n b)
+unsafeVectorise (Val       b) = unsafeCoerce b
+unsafeVectorise (PureIdiom b) = unsafeCoerce b
+unsafeVectorise (ApIdiom f (v :: AST (V n a)))
+  = fromAST
+      ( unsafeVectorise f )
+      ( Coerce @(V n a) @(FakeScalar n a) :$ v )
+
+vectorisePrimOp :: forall n a op. (KnownNat n, PrimOp op a, PrimOpConstraint op a)
+                => Maybe UAST
+vectorisePrimOp = case opSing @_ @_ @op @a of
+  Just SAdd     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Add     )
+  Just SSub     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Sub     )
+  Just SNeg     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Neg     )
+  Just SMul     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Mul     )
+  Just SAbs     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Abs     )
+  Just SSign    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Sign    )
+  Just SDiv     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Div     )
+  Just SMod     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Mod     )
+  Just SRem     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Rem     )
+  Just SSin     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FSin    ) 
+  Just SCos     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FCos    )
+  Just STan     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FTan    )
+  Just SAsin    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAsin   )
+  Just SAcos    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAcos   )
+  Just SAtan    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAtan   )
+  Just SSinh    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FSinh   )
+  Just SCosh    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FCosh   )
+  Just STanh    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FTanh   )
+  Just SAsinh   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAsinh  )
+  Just SAcosh   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAcosh  )
+  Just SAtanh   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAtanh  )
+  Just SAtan2   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAtan2  )
+  Just SPow     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FPow    )
+  Just SExp     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FExp    )
+  Just SLog     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FLog    )
+  Just SSqrt    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FSqrt   )
+  Just SInvsqrt -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FInvsqrt)
+  Just SBitAnd  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitAnd  )
+  Just SBitOr   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitOr   )
+  Just SBitXor  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitXor  )
+  Just SBitNot  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitNot  )
+  Just bsr@SBitShiftRightArithmetic -> 
+    case bsr of
+        (_ :: SPrimOp '(b,s) SPIRV.BitShiftRightArithmetic)
+          -> Just . UAST $ primOp @'(V n b, V n s) @('Vectorise SPIRV.BitShiftRightArithmetic)
+  Just bsl@SBitShiftLeft -> 
+    case bsl of
+        (_ :: SPrimOp '(b,s) SPIRV.BitShiftLeft)
+          -> Just . UAST $ primOp @'(V n b, V n s) @('Vectorise SPIRV.BitShiftLeft)
+  Just conv@SConvert -> 
+    case conv of
+        (_ :: SPrimOp '(x,y) SPIRV.Convert)
+          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.Convert)
+  _ -> Nothing

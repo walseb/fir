@@ -7,6 +7,7 @@
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module Math.Algebra.Class where
 
@@ -42,49 +43,47 @@ import Math.Logic.Class
   ( ifThenElse, Eq(Logic,(==)), Ord )
 
 
-
-class AdditiveGroup a where
+class AdditiveMonoid a where
   (+)  :: a -> a -> a
   zero :: a
   fromInteger :: Integer -> a
   -- technically should be a method of "Ring"
   -- but there is no rebindable syntax for "fromNatural"
 
-instance Prelude.Num a => AdditiveGroup (Base a) where
+instance Prelude.Num a => AdditiveMonoid (Base a) where
   (+)  = coerce ( (Prelude.+) :: a -> a -> a )
   zero = coerce ( 0 :: a )
   fromInteger = (coerce :: a -> Base a) . Prelude.fromInteger
 
-deriving via Base Word8  instance AdditiveGroup Word8
-deriving via Base Word16 instance AdditiveGroup Word16
-deriving via Base Word32 instance AdditiveGroup Word32
-deriving via Base Word64 instance AdditiveGroup Word64
-deriving via Base Word   instance AdditiveGroup Word
-deriving via Base Int8   instance AdditiveGroup Int8
-deriving via Base Int16  instance AdditiveGroup Int16
-deriving via Base Int32  instance AdditiveGroup Int32
-deriving via Base Int64  instance AdditiveGroup Int64
-deriving via Base Int    instance AdditiveGroup Int
-deriving via Base Half   instance AdditiveGroup Half
-deriving via Base Float  instance AdditiveGroup Float
-deriving via Base Double instance AdditiveGroup Double
+deriving via Base Word8  instance AdditiveMonoid Word8
+deriving via Base Word16 instance AdditiveMonoid Word16
+deriving via Base Word32 instance AdditiveMonoid Word32
+deriving via Base Word64 instance AdditiveMonoid Word64
+deriving via Base Word   instance AdditiveMonoid Word
+deriving via Base Int8   instance AdditiveMonoid Int8
+deriving via Base Int16  instance AdditiveMonoid Int16
+deriving via Base Int32  instance AdditiveMonoid Int32
+deriving via Base Int64  instance AdditiveMonoid Int64
+deriving via Base Int    instance AdditiveMonoid Int
+deriving via Base Half   instance AdditiveMonoid Half
+deriving via Base Float  instance AdditiveMonoid Float
+deriving via Base Double instance AdditiveMonoid Double
 
-deriving via Base CChar   instance AdditiveGroup CChar
-deriving via Base CSChar  instance AdditiveGroup CSChar
-deriving via Base CUChar  instance AdditiveGroup CUChar
-deriving via Base CShort  instance AdditiveGroup CShort
-deriving via Base CUShort instance AdditiveGroup CUShort
-deriving via Base CInt    instance AdditiveGroup CInt
-deriving via Base CUInt   instance AdditiveGroup CUInt
-deriving via Base CLong   instance AdditiveGroup CLong
-deriving via Base CULong  instance AdditiveGroup CULong
-deriving via Base CLLong  instance AdditiveGroup CLLong
-deriving via Base CULLong instance AdditiveGroup CULLong
-deriving via Base CFloat  instance AdditiveGroup CFloat
-deriving via Base CDouble instance AdditiveGroup CDouble
+deriving via Base CChar   instance AdditiveMonoid CChar
+deriving via Base CSChar  instance AdditiveMonoid CSChar
+deriving via Base CUChar  instance AdditiveMonoid CUChar
+deriving via Base CShort  instance AdditiveMonoid CShort
+deriving via Base CUShort instance AdditiveMonoid CUShort
+deriving via Base CInt    instance AdditiveMonoid CInt
+deriving via Base CUInt   instance AdditiveMonoid CUInt
+deriving via Base CLong   instance AdditiveMonoid CLong
+deriving via Base CULong  instance AdditiveMonoid CULong
+deriving via Base CLLong  instance AdditiveMonoid CLLong
+deriving via Base CULLong instance AdditiveMonoid CULLong
+deriving via Base CFloat  instance AdditiveMonoid CFloat
+deriving via Base CDouble instance AdditiveMonoid CDouble
 
-
-class AdditiveGroup a => Semiring a where
+class AdditiveMonoid a => Semiring a where
   (*) :: a -> a -> a
 
 instance Prelude.Num a => Semiring (Base a) where
@@ -118,34 +117,33 @@ deriving via Base CULLong instance Semiring CULLong
 deriving via Base CFloat  instance Semiring CFloat
 deriving via Base CDouble instance Semiring CDouble
 
+class AdditiveMonoid a => AdditiveGroup a where
+  (-)    :: a -> a -> a
+  negate :: a -> a
 
-class Semiring a => Ring a where
-  (-)         :: a -> a -> a
-  negate      :: a -> a
+instance Prelude.Num a => AdditiveGroup (Base a) where
+  (-)    = coerce ( (Prelude.-)    :: a -> a -> a )
+  negate = coerce ( Prelude.negate :: a -> a )
 
-instance Prelude.Num a => Ring (Base a) where
-  (-)         = coerce ( (Prelude.-)    :: a -> a -> a )
-  negate      = coerce ( Prelude.negate :: a -> a )
+deriving via Base Int8   instance AdditiveGroup Int8
+deriving via Base Int16  instance AdditiveGroup Int16
+deriving via Base Int32  instance AdditiveGroup Int32
+deriving via Base Int64  instance AdditiveGroup Int64
+deriving via Base Int    instance AdditiveGroup Int
+deriving via Base Half   instance AdditiveGroup Half
+deriving via Base Float  instance AdditiveGroup Float
+deriving via Base Double instance AdditiveGroup Double
 
-deriving via Base Int8   instance Ring Int8
-deriving via Base Int16  instance Ring Int16
-deriving via Base Int32  instance Ring Int32
-deriving via Base Int64  instance Ring Int64
-deriving via Base Int    instance Ring Int
-deriving via Base Half   instance Ring Half
-deriving via Base Float  instance Ring Float
-deriving via Base Double instance Ring Double
+deriving via Base CChar   instance AdditiveGroup CChar
+deriving via Base CSChar  instance AdditiveGroup CSChar
+deriving via Base CShort  instance AdditiveGroup CShort
+deriving via Base CInt    instance AdditiveGroup CInt
+deriving via Base CLong   instance AdditiveGroup CLong
+deriving via Base CLLong  instance AdditiveGroup CLLong
+deriving via Base CFloat  instance AdditiveGroup CFloat
+deriving via Base CDouble instance AdditiveGroup CDouble
 
-deriving via Base CChar   instance Ring CChar
-deriving via Base CSChar  instance Ring CSChar
-deriving via Base CShort  instance Ring CShort
-deriving via Base CInt    instance Ring CInt
-deriving via Base CLong   instance Ring CLong
-deriving via Base CLLong  instance Ring CLLong
-deriving via Base CFloat  instance Ring CFloat
-deriving via Base CDouble instance Ring CDouble
-
-class Ring a => Signed a where
+class AdditiveGroup a => Signed a where
   abs    :: a -> a
   signum :: a -> a
 
@@ -171,6 +169,8 @@ deriving via Base CLLong  instance Signed CLLong
 deriving via Base CFloat  instance Signed CFloat
 deriving via Base CDouble instance Signed CDouble
 
+class    (Semiring a, AdditiveGroup a) => Ring a where
+instance (Semiring a, AdditiveGroup a) => Ring a where
 
 class Ring a => DivisionRing a where
   (/)   :: a -> a -> a
@@ -192,12 +192,12 @@ deriving via Base CFloat  instance DivisionRing CFloat
 deriving via Base CDouble instance DivisionRing CDouble
 
 
--- totally ordered archimedean groups
-class (Ord a, AdditiveGroup a) => Archimedean a where
+-- totally ordered archimedean monoids
+class (Ord a, AdditiveMonoid a) => Archimedean a where
   mod :: a -> a -> a
   rem :: a -> a -> a
 
-instance ( Ord a, AdditiveGroup a, Prelude.Integral a ) => Archimedean (Base a) where
+instance ( Ord a, AdditiveMonoid a, Prelude.Integral a ) => Archimedean (Base a) where
   mod = coerce ( Prelude.mod :: a -> a -> a )
   rem = coerce ( Prelude.rem :: a -> a -> a )
 
@@ -225,12 +225,12 @@ deriving via Base CLLong  instance Archimedean CLLong
 deriving via Base CULLong instance Archimedean CULLong
 
 newtype Fixed a = Fixed { runFixed :: a }
-deriving via a instance Eq            a => Eq            (Fixed a)
-deriving via a instance Ord           a => Ord           (Fixed a)
-deriving via a instance AdditiveGroup a => AdditiveGroup (Fixed a)
-deriving via a instance Semiring      a => Semiring      (Fixed a)
-deriving via a instance Ring          a => Ring          (Fixed a)
-deriving via a instance Signed        a => Signed        (Fixed a)
+deriving via a instance Eq             a => Eq             (Fixed a)
+deriving via a instance Ord            a => Ord            (Fixed a)
+deriving via a instance AdditiveMonoid a => AdditiveMonoid (Fixed a)
+deriving via a instance AdditiveGroup  a => AdditiveGroup  (Fixed a)
+deriving via a instance Semiring       a => Semiring       (Fixed a)
+deriving via a instance Signed         a => Signed         (Fixed a)
 
 instance ( Eq a, Logic a ~ Bool
          , Ord a

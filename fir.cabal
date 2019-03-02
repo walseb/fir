@@ -112,6 +112,7 @@ library
       , FIR.Prim.Image
       , FIR.Prim.Singletons
       , FIR.Prim.Struct
+      , FIR.Prim.Op
       , FIR.Program
       , FIR.Synonyms
       , Math.Algebra.Class

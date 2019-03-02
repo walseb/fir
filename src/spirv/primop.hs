@@ -26,7 +26,7 @@ import SPIRV.ScalarTy
   ( ScalarTy(..), Signedness(..) )
 
 -------------------------------------------------------------------------------
--- primitive operations
+-- names of primitive operations
 
 data PrimOp where
   BoolOp  :: BoolPrimOp                                  -> PrimOp
@@ -71,11 +71,11 @@ data BitPrimOp
   deriving Show
 
 data NumPrimOp
-  -- additive group
+  -- additive monoid
   = Add
   -- semiring
   | Mul
-  -- ring
+  -- additive group
   | Sub
   | Neg
   -- signed
@@ -110,9 +110,7 @@ data FloatPrimOp
   deriving Show
 
 data VecPrimOp
-  = AddV
-  | SubV
-  | NegV
+  = Vectorise PrimOp
   | DotV
   | VMulK
   | CrossV
@@ -211,13 +209,13 @@ bitwiseOp BitShiftRightArithmetic s = (ShiftRightArithmetic, Scalar s)
 bitwiseOp BitShiftLeft            s = (ShiftLeftLogical    , Scalar s)
 
 numericOp :: NumPrimOp -> ScalarTy -> (Operation, ScalarTy)
--- additive group
+-- additive monoid
 numericOp Add  (Floating         w) = ( FAdd   , Floating         w )
 numericOp Add  (Integer s        w) = ( IAdd   , Integer s        w )
 -- semiring
 numericOp Mul  (Floating         w) = ( FMul   , Floating         w )
 numericOp Mul  (Integer s        w) = ( IMul   , Integer s        w )
--- ring
+-- additive group
 numericOp Sub  (Floating         w) = ( FSub   , Floating         w )
 numericOp Sub  (Integer s        w) = ( ISub   , Integer s        w ) -- technically can call subtraction on unsigned integer types
 numericOp Neg  (Floating         w) = ( FNegate, Floating         w )
@@ -263,10 +261,7 @@ floatingOp FSqrt    = Sqrt
 floatingOp FInvsqrt = Invsqrt
 
 vectorOp :: VecPrimOp -> Word32 -> ScalarTy -> (Operation, PrimTy)
--- re-use numeric operations on vectors
-vectorOp AddV   n s = ( fst $ numericOp Add s, Vector n (Scalar s) )
-vectorOp SubV   n s = ( fst $ numericOp Sub s, Vector n (Scalar s) )
-vectorOp NegV   n s = ( fst $ numericOp Neg s, Vector n (Scalar s) )
+vectorOp (Vectorise prim) n s  = ( op prim, Vector n (Scalar s) )
 vectorOp DotV   _ (Floating w) = ( Dot, Scalar (Floating w) )
 vectorOp DotV   _ _            = error "Dot product: vector elements must be of floating-point type."
 vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Scalar (Floating w)) )

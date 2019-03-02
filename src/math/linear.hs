@@ -137,7 +137,8 @@ import Math.Logic.Class
   , Ord(..)
   )
 import Math.Algebra.Class
-  ( AdditiveGroup(..), Semiring(..), Ring(..)
+  ( AdditiveMonoid(..), AdditiveGroup(..)
+  , Semiring(..), Ring
   , DivisionRing(..), Floating(..)
   )
 
@@ -417,10 +418,10 @@ infix  8 ^*, *^
 -- This is crucial for the class methods for matrices (see the 'Matrix' type class)
 class Semiring (Scalar v) => Semimodule v where
   type Scalar v :: Type
-  type OfDim v (n :: Nat) = r | r -> v n
-  (^+^) :: KnownNat n => OfDim v n -> OfDim v n -> OfDim v n
-  (*^)  :: KnownNat n => Scalar v  -> OfDim v n -> OfDim v n
-  (^*)  :: KnownNat n => OfDim v n -> Scalar v  -> OfDim v n
+  type v `OfDim` (n :: Nat) = r | r -> v n
+  (^+^) :: KnownNat n => v `OfDim` n -> v `OfDim` n -> v `OfDim` n
+  (*^)  :: KnownNat n => Scalar v    -> v `OfDim` n -> v `OfDim` n
+  (^*)  :: KnownNat n => v `OfDim` n -> Scalar v    -> v `OfDim` n
   (*^) = flip (^*) -- SPIRV defines VectorTimesScalar not ScalarTimesVector...
 
 -- | A module M over a ring R consists of:
@@ -430,8 +431,10 @@ class Semiring (Scalar v) => Semimodule v where
 --
 -- That is, we simply add additive inverses to the previous definition.
 class (Ring (Scalar v), Semimodule v) => Module v where
-  (^-^) :: KnownNat n => OfDim v n -> OfDim v n -> OfDim v n
-  (^-^) x y = x ^+^ ((-1) *^ y)
+  (^-^) :: KnownNat n => v `OfDim` n -> v `OfDim` n -> v `OfDim` n
+  (^-^) x y = x ^+^ ((-^) y)
+  (-^) :: KnownNat n => v `OfDim` n -> v `OfDim` n
+  (-^) x = (-1) *^ x
 
 -- | Semimodule with an inner product.
 --
@@ -440,16 +443,16 @@ class (Ring (Scalar v), Semimodule v) => Module v where
 -- Other axioms might be more relevant depending on the underlying ring.
 -- For instance, one instead insists on sesquilinearity over the field of complex numbers.
 class Semimodule v => Inner v where
-  (^.^), dot :: KnownNat n => OfDim v n -> OfDim v n -> Scalar v
+  (^.^), dot :: KnownNat n => v `OfDim` n -> v `OfDim` n -> Scalar v
   dot = (^.^)
-  normalise :: KnownNat n => OfDim v n -> OfDim v n
+  normalise :: KnownNat n => v `OfDim` n -> v `OfDim` n
 
 -- | Module with a cross product.
 --
 -- This usually consists of a non-degenerate skew-symmetric bilinear multiplication satisfying the Jacobi identity.
 -- Over the real numbers, this implies the dimension is 3.
 class Module v => Cross v where
-  (^×^), cross :: OfDim v 3 -> OfDim v 3 -> OfDim v 3
+  (^×^), cross :: v `OfDim` 3 -> v `OfDim` 3 -> v `OfDim` 3
   (^×^) = cross
 
 ------------------------------------------------------------------
@@ -457,7 +460,7 @@ class Module v => Cross v where
 
 instance Semiring a => Semimodule (V 0 a) where
   type Scalar (V 0 a) = a
-  type OfDim (V 0 a) n = V n a
+  type V 0 a `OfDim` n = V n a
   (^+^) = liftA2 (+)
   v ^* k = fmap (*k) v
 
@@ -479,83 +482,83 @@ instance Ring a => Cross (V 0 a) where
 
 -- | Angle between two vectors, computed using the inner product structure.
 angle :: (Floating (Scalar v), KnownNat n, Inner v)
-      => OfDim v n -> OfDim v n -> Scalar v
+      => v `OfDim` n -> v `OfDim` n -> Scalar v
 angle x y = acos $ dot (normalise x) (normalise y)
 
 -- | Norm of a vector, computed using the inner product.
 norm :: (Floating (Scalar v), KnownNat n, Inner v)
-     => OfDim v n -> Scalar v
+     => v `OfDim` n -> Scalar v
 norm v = sqrt $ squaredNorm v
 
 -- | Squared norm of a vector, computed using the inner product.
 squaredNorm :: (KnownNat n, Inner v)
-            => OfDim v n -> Scalar v
+            => v `OfDim` n -> Scalar v
 squaredNorm v = dot v v
 
 -- | Quadrance between two points.
 quadrance :: (KnownNat n, Module v, Inner v)
-       => OfDim v n -> OfDim v n -> Scalar v
+       => v `OfDim` n -> v `OfDim` n -> Scalar v
 quadrance x y = squaredNorm (x ^-^ y)
 
 -- | Distance between two points.
 distance :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
-         => OfDim v n -> OfDim v n -> Scalar v
+         => v `OfDim` n -> v `OfDim` n -> Scalar v
 distance x y = norm (x ^-^ y)
 
 -- | Linear interpolation between two points.
 along :: (KnownNat n, Module v)
       => Scalar v  -- ^ Interpolation factor. 0 = start, 1 = end.
-      -> OfDim v n -- ^ Start.
-      -> OfDim v n -- ^ End.
-      -> OfDim v n
+      -> v `OfDim` n -- ^ Start.
+      -> v `OfDim` n -- ^ End.
+      -> v `OfDim` n
 along t x y = (1-t) *^ x ^+^ t *^ y
 
 -- | Reflects a vector along a hyperplane, specified by a normal vector.
 -- /Computes the normalisation of the normal vector in the process./
 reflect :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
-        => OfDim v n -- ^ Vector to be reflected.
-        -> OfDim v n -- ^ A normal vector of the reflecting hyperplane.
-        -> OfDim v n
+        => v `OfDim` n -- ^ Vector to be reflected.
+        -> v `OfDim` n -- ^ A normal vector of the reflecting hyperplane.
+        -> v `OfDim` n
 reflect v n = reflect' v (normalise n)
 
 -- | Same as 'reflect': reflects a vector along a hyperplane, specified by a normal vector.
 -- However, /__this function assumes the given normal vector is already normalised__/.
 reflect' :: (KnownNat n, Module v, Inner v)
-         => OfDim v n -- ^ Vector to be reflected.
-         -> OfDim v n -- ^ /__Normalised__/ normal vector of the reflecting hyperplane.
-         -> OfDim v n
+         => v `OfDim` n -- ^ Vector to be reflected.
+         -> v `OfDim` n -- ^ /__Normalised__/ normal vector of the reflecting hyperplane.
+         -> v `OfDim` n
 reflect' v n = v ^-^ (2 * dot v n) *^ n
 
 -- | Projects the first argument onto the second.
 proj :: (DivisionRing (Scalar v), KnownNat n, Inner v)
-     => OfDim v n -> OfDim v n -> OfDim v n
+     => v `OfDim` n -> v `OfDim` n -> v `OfDim` n
 proj x y = projC x y *^ y
 
 -- | Projection constant: how far along the projection of the first vector lands along the second vector.
 projC :: forall n v. (DivisionRing (Scalar v), KnownNat n, Inner v)
-      => OfDim v n -> OfDim v n -> Scalar v
+      => v `OfDim` n -> v `OfDim` n -> Scalar v
 projC x y = dot x y / dot y y
 
 -- | Orthogonality test.
 --
 -- /__Uses a precise equality test, so use at your own risk with floating point numbers.__/
 isOrthogonal :: (KnownNat n, Module v, Inner v, Eq (Scalar v))
-             => OfDim v n -> OfDim v n -> Logic (Scalar v)
+             => v `OfDim` n -> v `OfDim` n -> Logic (Scalar v)
 isOrthogonal v w = dot v w == 0
 
 -- | Gram-Schmidt algorithm.
 gramSchmidt :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
-            => [OfDim v n] -> [OfDim v n]
+            => [v `OfDim` n] -> [v `OfDim` n]
 gramSchmidt []     = []
 gramSchmidt (x:xs) = x' : gramSchmidt (map (\v -> v ^-^ proj v x') xs)
   where x' = normalise x
 
 -- | Rotate a vector around an axis (in dimension 3), using the cross product.
 rotateAroundAxis :: (Cross v, Floating (Scalar v))
-                 => OfDim v 3 -- ^ Axis of rotation.
+                 => v `OfDim` 3 -- ^ Axis of rotation.
                  -> Scalar v  -- ^ Angle of rotation, according to the right hand rule.
-                 -> OfDim v 3 -- ^ Vector to be rotated.
-                 -> OfDim v 3
+                 -> v `OfDim` 3 -- ^ Vector to be rotated.
+                 -> v `OfDim` 3
 rotateAroundAxis n theta v = cos theta *^ v ^+^ sin theta *^ (n ^×^ v)
 
 ------------------------------------------------------------------
@@ -660,28 +663,28 @@ infix  9 *!, !*
 -- The 'OfDims' associated type family allows the type class methods to involve various dimension indices.
 class Module (Vector m) => Matrix m where
   type Vector m
-  type OfDims m (i :: Nat) (j :: Nat) = r | r -> m i j
+  type m `OfDims` (ij :: (Nat,Nat)) = r | r -> m ij
 
-  identity    :: KnownNat i                           => OfDims m i i
-  diag        :: KnownNat i                           => Scalar (Vector m) -> OfDims m i i
-  inverse     :: KnownNat i                           => OfDims m i i -> OfDims m i i
-  determinant :: KnownNat i                           => OfDims m i i -> Scalar (Vector m)
-  transpose   :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDims m j i
-  (!+!)       :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDims m i j -> OfDims m i j
-  (!-!)       :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDims m i j -> OfDims m i j
-  konst       :: (KnownNat i, KnownNat j)             => Scalar (Vector m) -> OfDims m i j
-  (*!)        :: (KnownNat i, KnownNat j)             => Scalar (Vector m) -> OfDims m i j -> OfDims m i j
-  (!*)        :: (KnownNat i, KnownNat j)             => OfDims m i j -> Scalar (Vector m) -> OfDims m i j
-  (!*^)       :: (KnownNat i, KnownNat j)             => OfDims m i j -> OfDim (Vector m) j -> OfDim (Vector m) i
-  (^*!)       :: (KnownNat i, KnownNat j)             => OfDim (Vector m) i -> OfDims m i j -> OfDim (Vector m) j
-  (!*!)       :: (KnownNat i, KnownNat j, KnownNat k) => OfDims m i j -> OfDims m j k -> OfDims m i k
+  identity    :: KnownNat i                           => m `OfDims` '(i,i)
+  diag        :: KnownNat i                           => Scalar (Vector m) -> m `OfDims` '(i,i)
+  inverse     :: KnownNat i                           => m `OfDims` '(i,i) -> m `OfDims` '(i,i)
+  determinant :: KnownNat i                           => m `OfDims` '(i,i) -> Scalar (Vector m)
+  transpose   :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> m `OfDims` '(j,i)
+  (!+!)       :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> m `OfDims` '(i,j) -> m `OfDims` '(i,j)
+  (!-!)       :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> m `OfDims` '(i,j) -> m `OfDims` '(i,j)
+  konst       :: (KnownNat i, KnownNat j)             => Scalar (Vector m) -> m `OfDims` '(i,j)
+  (*!)        :: (KnownNat i, KnownNat j)             => Scalar (Vector m) -> m `OfDims` '(i,j) -> m `OfDims`' (i,j)
+  (!*)        :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> Scalar (Vector m) -> m `OfDims` '(i,j)
+  (!*^)       :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> Vector m `OfDim` j -> Vector m `OfDim` i
+  (^*!)       :: (KnownNat i, KnownNat j)             => Vector m `OfDim` i -> m `OfDims` '(i,j) -> Vector m `OfDim` j
+  (!*!)       :: (KnownNat i, KnownNat j, KnownNat k) => m `OfDims` '(i,j) -> m `OfDims` '(j,k) -> m `OfDims` '(i,k)
 
   identity = diag 1
   (*!) = flip (!*) -- SPIR-V defines MatrixTimesScalar
 
 instance Ring a => Matrix (M 0 0 a) where
   type Vector (M 0 0 a) = V 0 a
-  type OfDims (M 0 0 a) i j = M i j a
+  type M 0 0 a `OfDims` '(i,j) = M i j a
   identity = M identityMat
   diag a = a *! identity
   transpose (M m) = M ( distribute m )

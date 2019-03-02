@@ -1,7 +1,8 @@
 module Control.Arrow.Strength where
 
 -- base
-import Control.Arrow(Arrow(first,second,(&&&)), (>>^))
+import Control.Arrow
+  ( Arrow(first,second,(&&&)), (>>^) )
 
 ---------------------------------------------------
 -- strengths

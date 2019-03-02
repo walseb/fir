@@ -132,6 +132,8 @@ import FIR.Instances.AST
   ( )
 import FIR.Instances.Optics
   ( SOptic(..), showSOptic )
+import FIR.Prim.Op
+  ( PrimOp(opName) )
 import FIR.Prim.Singletons
   ( primTyVal
   , KnownVars(knownVars)
@@ -147,7 +149,7 @@ import qualified SPIRV.Storage         as Storage
 runCodeGen :: CGContext -> AST a -> Either Text ByteString
 runCodeGen context = putASM context . codeGen
 
-codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)
+codeGen :: AST ast -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
 codeGen (Applied (MkID ident@(i,ty)) as)
   = case as of
@@ -172,14 +174,14 @@ codeGen (Applied (MkID ident@(i,ty)) as)
 -- constants
 codeGen (Lit (a :: ty)) = ( , primTyVal @ty) <$> constID a
 -- perform substitution when possible
-codeGen (Lam f :$ a)
+codeGen (Lam f :$ a) -- = codeGen (f a)
   = do cg <- codeGen a
        codeGen $ f (MkID cg)
 codeGen (Bind :$ a :$ f)
   = do cg <- codeGen a
        codeGen $ (fromAST f) (MkID cg)
-codeGen (Applied (PrimOp op _) as)
-  = primOp op =<< codeGenUASTs as
+codeGen (Applied (PrimOp (_ :: Proxy a) (_ :: Proxy op)) as)
+  = primOp (opName @_ @_ @op @a) =<< codeGenUASTs as
 -- stateful operations
 codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
   = do  let name     = knownValue @name
@@ -420,8 +422,9 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
 codeGen (Idiomatic idiom)
   = idiomatic idiom
 -- newtype wrapping/unwrapping
-codeGen (Mat   :$ m) = codeGen m
-codeGen (UnMat :$ m) = codeGen m
+codeGen (Mat    :$ m) = codeGen m
+codeGen (UnMat  :$ m) = codeGen m
+codeGen (Coerce :$ a) = codeGen a
 -- control flow
 codeGen (Locally :$ a)
   = do
