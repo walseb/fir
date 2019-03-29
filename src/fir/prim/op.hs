@@ -394,7 +394,7 @@ instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.Convert '(a,b) where
 
 -- vector operations
 -- doing it by hand because I'm an idiot who doesn't know better
-data Vectorise a = Vectorise a
+newtype Vectorise a = Vectorise a
 
 val :: forall n. KnownNat n => Word32
 val = fromIntegral ( natVal (Proxy @n) )

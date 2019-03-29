@@ -99,13 +99,17 @@ import FIR.AST
   )
 import FIR.Instances.Optics
   ( KnownOptic(opticSing) )
+import FIR.Prim.Array
+  ( Array )
 import FIR.Prim.Op
   ( Vectorise(Vectorise) )
 import FIR.Prim.Singletons
   ( PrimTy
   , ScalarTy
   , SPrimFunc(..), PrimFunc(..)
+  , KnownArity
   )
+
 import Math.Algebra.Class
   ( AdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring
@@ -418,16 +422,20 @@ class ASTFunctor f where
   fmapAST :: ( Syntactic x
              , Internal x ~ (a -> b)
              , Syntactic r
-             , Internal r ~ ( (f a) -> (f b) )
+             , Internal r ~ ( f a -> f b )
              , PrimTy a
+             , KnownArity b
              )
           => x -> r
 
 class ASTApplicative f where
-  pureAST :: AST a -> AST (f a)
+  pureAST :: KnownArity a
+          => AST a
+          -> AST (f a)
   (<**>)  :: ( Syntactic r
-             , Internal r ~ ( (f a) -> (f b) )
+             , Internal r ~ ( f a -> f b )
              , PrimTy a
+             , KnownArity b
              )
            => AST ( f (a -> b) ) -> r
 
@@ -435,8 +443,9 @@ class ASTApplicative f where
           , Syntactic x
           , Internal x ~ (a -> b)
           , Syntactic r
-          , Internal r ~ ( (f a) -> (f b) )
+          , Internal r ~ ( f a -> f b )
           , PrimTy a
+          , KnownArity b
           )
         => x -> r
 (<$$>) = fmapAST
@@ -447,6 +456,9 @@ instance KnownNat n => ASTFunctor (V n) where
 instance (KnownNat m, KnownNat n) => ASTFunctor (M m n) where
   fmapAST = fromAST $ Fmap @(M m n)
 
+instance KnownNat n => ASTFunctor (Array n) where
+  fmapAST = fromAST $ Fmap @(Array n)
+
 instance KnownNat n => ASTApplicative (V n) where
   pureAST = fromAST $ Pure @(V n)
   (<**>)  = fromAST $ Ap   @(V n)
@@ -454,6 +466,10 @@ instance KnownNat n => ASTApplicative (V n) where
 instance (KnownNat m, KnownNat n) => ASTApplicative (M m n) where
   pureAST = fromAST $ Pure @(M m n)
   (<**>)  = fromAST $ Ap   @(M m n)
+
+instance KnownNat n => ASTApplicative (Array n) where
+  pureAST = fromAST $ Pure @(Array n)
+  (<**>)  = fromAST $ Ap   @(Array n)
 
 instance 
   TypeError (     Text "The AST datatype does not have a Functor instance:"
@@ -464,6 +480,9 @@ instance
 
 -----------------------------------------------
 -- * Internal functors
+--
+-- $internalfunctors
+-- Instances for vectors, matrices and arrays.
 
 instance KnownNat n => PrimFunc (V n) where
   primFuncSing = SFuncVector @n
@@ -471,6 +490,9 @@ instance KnownNat n => PrimFunc (V n) where
 instance ( KnownNat m, KnownNat n ) => PrimFunc (M m n) where
   primFuncSing = SFuncMatrix @m @n
   distributeAST = error "distributeAST: todo for matrices"
+instance KnownNat n => PrimFunc (Array n) where
+  primFuncSing = SFuncArray @n
+  distributeAST = error "distributeAST: no distribute for arrays"
 
 -----------------------------------------------
 -- * Syntactic instances

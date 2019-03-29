@@ -250,12 +250,12 @@ instance {-# OVERLAPPING #-}
 type family ValidAnIndexOptic (is :: [Type]) (s :: Type) (a :: Type) :: Constraint where
   ValidAnIndexOptic '[] _ _
     = TypeError ( Text "Run-time optic does not specify the type of its run-time indices." )
-  ValidAnIndexOptic _ _ (Image _)
+  ValidAnIndexOptic _ (Image _) _
     = TypeError (    Text "Forbidden standalone image texel optic."
                 :$$: Text "Optics for image texels must be copresent with a binding optic."
                 )
-  ValidAnIndexOptic '[ix] s a = ()
-  ValidAnIndexOptic is s a
+  ValidAnIndexOptic '[ix] _ _ = ()
+  ValidAnIndexOptic is _ _
     = TypeError (    Text "Run-time optic specifies more than one type of index:"
                 :$$: Text "    " :<>: ShowType is
                 )

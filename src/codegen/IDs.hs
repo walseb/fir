@@ -11,23 +11,34 @@
 module CodeGen.IDs where
 
 -- base
-import Control.Arrow(second)
-import Data.Coerce(coerce)
-import Data.Foldable(traverse_)
-import Data.Maybe(fromJust)
-import Data.Semigroup(First(First))
-import Data.Word(Word32)
+import Control.Arrow
+  ( second )
+import Data.Coerce
+  ( coerce )
+import Data.Foldable
+  ( traverse_ )
+import Data.Maybe
+  ( fromJust )
+import Data.Semigroup
+  ( First(First) )
+import Data.Word
+  ( Word32 )
 
 -- lens
-import Control.Lens(Lens', view, use)
+import Control.Lens
+  ( Lens', view, use )
 
 -- mtl
-import Control.Monad.Except(MonadError, throwError)
-import Control.Monad.State(MonadState)
-import Control.Monad.Reader(MonadReader)
+import Control.Monad.Except
+  ( MonadError, throwError )
+import Control.Monad.State
+  ( MonadState )
+import Control.Monad.Reader
+  ( MonadReader )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
 import CodeGen.Instruction
@@ -36,7 +47,7 @@ import CodeGen.Instruction
   )
 import CodeGen.Monad
   ( MonadFresh
-  , create, createRec
+  , createID, createIDRec
   , tryToUse, tryToUseWith
   , note
   )
@@ -55,19 +66,25 @@ import CodeGen.State
   , _userGlobal
   , addCapabilities, addMemberName, addMemberDecoration, addDecorations
   )
-import FIR.Builtin(stageBuiltins)
+import FIR.Builtin
+  ( stageBuiltins )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), primTy
   , SPrimTy(..)
   , aConstant
   )
-import FIR.Prim.Struct(traverseStruct)
-import Math.Linear(M(unM), Matrix(transpose))
-import qualified SPIRV.Builtin    as SPIRV(Builtin(Position,PointSize))
-import qualified SPIRV.Capability as SPIRV(primTyCapabilities)
+import FIR.Prim.Struct
+  ( traverseStruct )
+import Math.Linear
+  ( M(unM), Matrix(transpose) )
+import qualified SPIRV.Builtin    as SPIRV
+  ( Builtin(Position,PointSize) )
+import qualified SPIRV.Capability as SPIRV
+  ( primTyCapabilities )
 import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.Extension  as SPIRV
-import qualified SPIRV.Image      as SPIRV(Image(..))
+import qualified SPIRV.Image      as SPIRV
+  ( Image(..) )
 import qualified SPIRV.Image      as SPIRV.Image
 import qualified SPIRV.Operation  as SPIRV.Op
 import qualified SPIRV.PrimTy     as SPIRV
@@ -109,21 +126,21 @@ typeID ty =
        case ty of
 
         SPIRV.Matrix m n a -> 
-          createRec _knownPrimTy
+          createIDRec _knownPrimTy
             ( typeID (SPIRV.Vector m (SPIRV.Scalar a)) ) -- column type
             ( \ colID 
                   -> mkTyConInstruction ( Arg colID $ Arg n EndArgs )
             )
 
         SPIRV.Vector n a ->
-          createRec _knownPrimTy
+          createIDRec _knownPrimTy
             ( typeID a ) -- element type
             ( \ eltID 
                   -> mkTyConInstruction ( Arg eltID $ Arg n EndArgs )
             )
 
         SPIRV.Function as b ->
-          createRec _knownPrimTy
+          createIDRec _knownPrimTy
             ( do asIDs <- traverse typeID as -- types of function arguments
                  bID   <- typeID b           -- return type of function
                  pure (asIDs, bID)
@@ -133,7 +150,7 @@ typeID ty =
             )
 
         SPIRV.Array l a ->
-          createRec _knownPrimTy
+          createIDRec _knownPrimTy
             ( do lgID  <- constID l -- array size is the result of a constant instruction
                  eltID <- typeID  a --     as opposed to being a literal number
                  pure (eltID, lgID) -- (I suppose this is to do with specialisation constants)
@@ -143,15 +160,15 @@ typeID ty =
             )
 
         SPIRV.RuntimeArray a ->
-          createRec _knownPrimTy
+          createIDRec _knownPrimTy
             ( typeID a )
             ( \eltID -> mkTyConInstruction ( Arg eltID EndArgs ) )
 
-        SPIRV.Unit    -> create _knownPrimTy ( mkTyConInstruction EndArgs )
-        SPIRV.Boolean -> create _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.Unit    -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.Boolean -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
 
         SPIRV.Scalar (SPIRV.Integer s w)
-          -> create _knownPrimTy 
+          -> createID _knownPrimTy
                 ( mkTyConInstruction 
                   ( Arg (SPIRV.width w)
                   $ Arg (SPIRV.signedness s) EndArgs
@@ -159,11 +176,11 @@ typeID ty =
                 )
 
         SPIRV.Scalar (SPIRV.Floating w)
-          -> create _knownPrimTy 
+          -> createID _knownPrimTy
                 ( mkTyConInstruction ( Arg (SPIRV.width w) EndArgs ) )
 
         SPIRV.Struct as
-          -> createRec _knownPrimTy
+          -> createIDRec _knownPrimTy
                 ( traverse (typeID . snd) as ) -- return IDs of struct member types
                 ( \eltIDs structTyID 
                     -> do let labelledElts :: [ (Word32, Text) ]
@@ -211,14 +228,14 @@ typeID ty =
                 )
 
         SPIRV.Pointer storage a ->
-          createRec _knownPrimTy
+          createIDRec _knownPrimTy
             ( typeID a )
             ( \ tyID -> mkTyConInstruction
                           ( Arg storage $ Arg tyID EndArgs )
             )
 
         SPIRV.PrimTy.Image (SPIRV.Image.Image { .. })
-          -> createRec _knownPrimTy
+          -> createIDRec _knownPrimTy
                ( typeID (SPIRV.Scalar component) )  -- get the type ID of the image 'component' type
                ( \componentID
                    -> mkTyConInstruction
@@ -232,10 +249,10 @@ typeID ty =
                         )
                )
 
-        SPIRV.Sampler -> create _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.Sampler -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
 
         SPIRV.SampledImage imageTy
-          -> createRec _knownPrimTy
+          -> createIDRec _knownPrimTy
                ( typeID (SPIRV.PrimTy.Image imageTy) )
                ( \ imgTyID -> mkTyConInstruction (Arg imgTyID EndArgs ) )
 
@@ -278,7 +295,7 @@ constID a =
        case primTySing @a of
 
         SMatrix {} ->
-          createRec _knownAConstant
+          createIDRec _knownAConstant
             ( traverse constID . unM . transpose $ a ) -- get the ID for each column
             ( \ cols -> 
                   mkConstantInstruction 
@@ -287,7 +304,7 @@ constID a =
             )
 
         SVector {} ->
-          createRec _knownAConstant
+          createIDRec _knownAConstant
             ( traverse constID a ) -- get the result ID for each component
             ( \ eltIDs -> 
                   mkConstantInstruction 
@@ -296,7 +313,7 @@ constID a =
             )
 
         SScalar {}
-          -> create _knownAConstant
+          -> createID _knownAConstant
               ( mkConstantInstruction
                   SPIRV.Op.Constant
                   ( Arg a EndArgs )
@@ -318,7 +335,7 @@ constID a =
               -}
 
         SBool -> 
-          create _knownAConstant
+          createID _knownAConstant
             ( mkConstantInstruction
                 ( if a
                   then SPIRV.Op.ConstantTrue
@@ -333,7 +350,7 @@ constID a =
               \Runtime arrays are only available through uniforms."
         
         SArray {} ->
-          createRec _knownAConstant
+          createIDRec _knownAConstant
             ( traverse constID a )
             ( \ eltIDs ->
                   mkConstantInstruction
@@ -342,7 +359,7 @@ constID a =
             )
         
         SStruct {} ->
-          createRec _knownAConstant
+          createIDRec _knownAConstant
             ( traverseStruct constID a :: m [ID] )
             ( \ eltIDs ->
                   mkConstantInstruction
@@ -405,6 +422,8 @@ bindingID varName
                   -- return the binding ID
                   pure bd
 
+-- get the ID for a global variable,
+-- adding this global to the list of 'used' global variables if it isn't already there
 globalID :: ( MonadState CGState m
             , MonadReader CGContext m
             , MonadFresh ID m

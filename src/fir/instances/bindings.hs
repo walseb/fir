@@ -96,7 +96,7 @@ import SPIRV.Stage
 -- Throws a type error if no variable by that name exists,
 -- or if the variable is not readable.
 type family Get (k :: Symbol) (i :: BindingsMap) :: Type where
-  Get k i = ( AssertProvidedSymbol k (GetBinding k (Lookup k i) ) )
+  Get k i = GetBinding k (Lookup k i)
 
 type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   GetBinding k 'Nothing
@@ -128,7 +128,7 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
 -- Throws a type error if no variable is bound by that name,
 -- or if the variable is not writable.
 type family Put (k :: Symbol) (i :: BindingsMap) :: Type where
-  Put k i = ( AssertProvidedSymbol k (PutBinding k (Lookup k i) ) )
+  Put k i = PutBinding k (Lookup k i)
 
 type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
   PutBinding k 'Nothing = TypeError
@@ -166,10 +166,7 @@ type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
 --
 -- Throws a type error if a binding by this name already exists.
 type family ValidDef (k :: Symbol) (i :: BindingsMap) :: Constraint where
-  ValidDef k i
-    = ( ProvidedSymbol k
-      , NotAlreadyDefined k (Lookup k i)
-      )
+  ValidDef k i = NotAlreadyDefined k (Lookup k i)
 
 type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
   NotAlreadyDefined _ 'Nothing  = ()
@@ -193,8 +190,7 @@ type family ValidFunDef
       ( l  :: BindingsMap )  -- @l@ contains the above three sets, together with the function's local variables
     :: Constraint where      -- ( it is the total state at the end of the function definition )  
   ValidFunDef k as i l
-    = ( ProvidedSymbol k
-      , NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
+    = ( NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
       , ValidArguments k as (Remove i (Remove as l))
       ) --     │             └━━━━━━┬━━━━━┘
         --     │                         │
@@ -270,9 +266,7 @@ type family ValidEntryPoint
               ( l :: BindingsMap ) 
             :: Constraint where
   ValidEntryPoint k s i l
-    = ( ProvidedSymbol k
-      , NoEntryPointNameConflict k (Lookup k i)
-      , ProvidedStage s
+    = ( NoEntryPointNameConflict k (Lookup k i)
       , ValidLocalBehaviour s (Remove i l)
       , BuiltinsDoNotAppearBefore s ( StageBuiltins s ) i
       )

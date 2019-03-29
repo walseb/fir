@@ -4,10 +4,12 @@ module CodeGen.CFG where
 import qualified Data.Map.Strict as Map
 
 -- lens
-import Control.Lens(assign)
+import Control.Lens
+  ( assign )
 
 -- fir
-import CodeGen.Binary(putInstruction)
+import CodeGen.Binary
+  ( putInstruction )
 import CodeGen.Instruction
   ( Args(Arg, EndArgs)
   , ID, Instruction(..)

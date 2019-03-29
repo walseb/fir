@@ -5,26 +5,34 @@ module CodeGen.Phi
   where
 
 -- base
-import Data.List(foldl1')
+import Data.List
+  ( foldl1' )
 
 -- containers
-import Data.Map(Map)
+import Data.Map
+  ( Map )
 
 -- lens
-import Control.Lens(assign)
+import Control.Lens
+  ( assign )
 
 -- text-utf8
-import Data.Text(Text)
-import qualified Data.Map.Strict as Map
+import Data.Text
+  ( Text )
+import qualified Data.Map.Strict       as Map
 import qualified Data.Map.Merge.Strict as Map
 
 -- fir
-import CodeGen.Binary(putInstruction)
-import CodeGen.IDs(typeID)
-import CodeGen.Instruction(ID, Pairs(Pairs), Instruction(..), toArgs)
-import CodeGen.Monad(CGMonad, MonadFresh(fresh), liftPut)
-import CodeGen.State( _localBinding )
-import Data.Map.Traverse(traverseWithKey_)
+import CodeGen.Binary
+  ( putInstruction )
+import CodeGen.IDs
+  ( typeID )
+import CodeGen.Instruction
+  ( ID, Pairs(Pairs), Instruction(..), toArgs )
+import CodeGen.Monad
+  ( CGMonad, MonadFresh(fresh), liftPut )
+import CodeGen.State
+  ( _localBinding )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 
@@ -63,9 +71,9 @@ phiInstruction (v, ty) bdAndBlockIDs
           , args      = toArgs bdAndBlockIDs
           }
 
-phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text (ID, SPIRV.PrimTy) ] -> CGMonad ()
+phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text (ID, SPIRV.PrimTy) ] -> CGMonad (Map Text ID)
 phiInstructions isRelevant blocks bindings 
-  = traverseWithKey_
+  = Map.traverseMaybeWithKey
       ( \ name idsAndTys ->
         case idsAndTys of
           (_,ty) : _
@@ -79,6 +87,7 @@ phiInstructions isRelevant blocks bindings
                   v <- fresh
                   phiInstruction (v,ty) bdAndBlockIDs
                   assign ( _localBinding name ) (Just (v, ty))
-          _ -> pure ()
+                  pure (Just v)
+          _ -> pure Nothing
       )
       ( conflicts isRelevant bindings )

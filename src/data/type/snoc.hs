@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}

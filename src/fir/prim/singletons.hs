@@ -130,11 +130,27 @@ data SPrimTyMap :: [Symbol :-> Type] -> Type where
         => SPrimTyMap ((k ':-> a) ': as)
 
 ------------------------------------------------
+-- function arity
+
+data Arity a where
+  ZeroArity :: PrimTy a => Arity a
+  SuccArity :: Arity b -> Arity (a -> b)
+
+class KnownArity a where
+  arity :: Arity a
+
+instance {-# OVERLAPPABLE #-} PrimTy a => KnownArity a where
+  arity = ZeroArity
+
+instance {-# OVERLAPPING #-} KnownArity b => KnownArity (a -> b) where
+  arity = SuccArity (arity @b)
+
+------------------------------------------------
 
 class HasField (k :: Symbol) (as :: [ Symbol :-> Type ]) where
   fieldIndex :: Word32
 
-instance HasField k ( (k ':-> v) ': as) where
+instance HasField k ( (k ':-> v) ': as ) where
   fieldIndex = 0
 
 instance {-# OVERLAPPABLE #-} HasField k as
@@ -253,7 +269,7 @@ instance ( TypeError
 
 
 instance ( PrimTy a
-         , KnownNat n--, 2 <= n, n <= 4
+         , KnownNat n
          ) => PrimTy (V n a) where
   primTySing = SVector
 
@@ -405,8 +421,9 @@ instance (KnownInterfaceBinding bd, KnownInterface bds)
 -- functors
 
 data SPrimFunc :: (Type -> Type) -> Type where
-  SFuncVector :: KnownNat n => SPrimFunc (V n)
-  SFuncMatrix :: (KnownNat m, KnownNat n) => SPrimFunc (M m n)
+  SFuncVector  :: KnownNat n => SPrimFunc (V n)
+  SFuncMatrix  :: (KnownNat m, KnownNat n) => SPrimFunc (M m n)
+  SFuncArray   :: KnownNat n => SPrimFunc (Array n)
 
 class Applicative f => PrimFunc f where
   primFuncSing :: SPrimFunc f
@@ -425,6 +442,10 @@ primFuncName
               -> "M " ++ show (natVal (Proxy @m))
                       ++ " "
                       ++ show (natVal (Proxy @n))
+      sFuncArray@SFuncArray
+        -> case sFuncArray of
+            ( _ :: SPrimFunc (Array n) )
+              -> "Array " ++ show (natVal (Proxy @n))
 
 ------------------------------------------------------------
 -- dependent pair

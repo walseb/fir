@@ -9,14 +9,17 @@
 module CodeGen.Instruction where
 
 -- base
-import Control.Category((>>>))
-import Data.Word(Word32)
+import Control.Category
+  ( (>>>) )
+import Data.Word
+  ( Word32 )
 
 -- binary
 import qualified Data.Binary.Put as Binary
 
 -- fir
-import Data.Binary.Class.Put(Put(put, sizeOf))
+import Data.Binary.Class.Put
+  ( Put(put, sizeOf) )
 import qualified SPIRV.Operation as SPIRV
 
 ----------------------------------------------------------------------------

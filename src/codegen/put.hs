@@ -6,14 +6,18 @@ module CodeGen.Put where
 import qualified Data.Binary.Put as Binary
 
 -- bytestring
-import Data.ByteString.Lazy(ByteString)
+import Data.ByteString.Lazy
+  ( ByteString )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- transformers
-import Control.Monad.Except(ExceptT)
-import Control.Monad.Trans.Class(lift)
+import Control.Monad.Except
+  ( ExceptT )
+import Control.Monad.Trans.Class
+  ( lift )
 
 -- fir
 import CodeGen.Binary
@@ -31,9 +35,12 @@ import CodeGen.Binary
   , putTypesAndConstants
   , putGlobals
   )
-import CodeGen.Instruction (ID(..))
-import CodeGen.Monad(CGMonad, runCGMonad, runExceptTPutM)
-import CodeGen.State(CGState(..), CGContext(..), initialState)
+import CodeGen.Instruction
+  ( ID(..) )
+import CodeGen.Monad
+  ( CGMonad, runCGMonad, runExceptTPutM )
+import CodeGen.State
+  ( CGState(..), CGContext(..), initialState )
 
 ----------------------------------------------------------------------------
 -- emit SPIR-V assembly (after code generation)

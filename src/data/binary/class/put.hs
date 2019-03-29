@@ -26,9 +26,12 @@ module Data.Binary.Class.Put
   ) where
 
 -- base
-import Data.Int(Int8,Int16,Int32,Int64)
-import Data.Semigroup(stimes)
-import Data.Word(Word8,Word16,Word32,Word64)
+import Data.Int
+  ( Int8,Int16,Int32,Int64 )
+import Data.Semigroup
+  ( stimes )
+import Data.Word
+  ( Word8,Word16,Word32,Word64 )
 
 -- binary
 import qualified Data.Binary as Binary
@@ -41,11 +44,13 @@ import qualified Data.ByteString as ByteString
 import qualified Data.Binary.IEEE754 as Binary.IEEE754
 
 -- half
-import Numeric.Half(Half)
+import Numeric.Half
+  ( Half )
 import qualified Numeric.Half as Half
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 import qualified Data.Text.Encoding as Text
 
 ----------------------------------------------------------------------------

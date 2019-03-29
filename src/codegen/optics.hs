@@ -28,6 +28,8 @@ module CodeGen.Optics
 -- base
 import Control.Arrow
   ( first )
+import Control.Monad
+  ( unless )
 import Data.Kind
   ( Type )
 
@@ -55,11 +57,13 @@ import CodeGen.Monad
 import CodeGen.Pointers
   ( Safeness(Unsafe)
   , Indices(RTInds, CTInds)
-  , newVariable, accessChain
+  , temporaryVariable, accessChain
   , loadInstruction, storeInstruction
   )
 import CodeGen.State
-  ( _localBinding )
+  ( PointerState(Fresh, Modified)
+  , _localBinding, _temporaryPointer
+  )
 import CodeGen.Untyped
   ( UAST(UAST) )
 import Control.Type.Optic
@@ -285,8 +289,13 @@ extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _ _) `Then` _ )
   -- run-time indices: revert to loading through pointers
   = do
       let ptrTy = SPIRV.PointerTy Storage.Function baseTy
-      basePtrID <- newVariable ptrTy
-      storeInstruction basePtrID baseID
+      (basePtrID, basePtrState) <- temporaryVariable baseID ptrTy
+      unless
+        ( basePtrState == Fresh )
+        ( do storeInstruction basePtrID baseID
+             -- reset temporary pointer to "fresh" as we just loaded the baseID into it
+             assign ( _temporaryPointer baseID ) ( Just (basePtrID, Fresh) )
+        )
       loadThroughAccessChain' (basePtrID, ptrTy) ops
 extractUsingGetter' _ ( Join `Then` _)
   = throwError "extractUsingGetter': unexpected 'Joint' optic used as a getter"
@@ -319,8 +328,14 @@ insertUsingSetter' varName base (valID, _) ( Access _ (CTInds is) `Then` Done )
 insertUsingSetter' varName (baseID, baseTy) val ops
   = do
       let ptrTy = SPIRV.PointerTy Storage.Function baseTy
-      basePtrID <- newVariable ptrTy
-      storeInstruction basePtrID baseID
+      (basePtrID, basePtrState) <- temporaryVariable baseID ptrTy
+      unless
+        ( basePtrState == Fresh )
+        ( do storeInstruction basePtrID baseID
+             -- set the temporary pointer state to "modified"
+             -- as we are about to store something into it
+             assign ( _temporaryPointer baseID ) ( Just (basePtrID, Modified) )
+        )
       storeThroughAccessChain' (basePtrID, ptrTy) val ops
       assign ( _localBinding varName ) . Just
         =<< loadInstruction baseTy basePtrID
@@ -338,7 +353,13 @@ setUsingSetter' base (valID, _) ( Access _ (CTInds is) `Then` Done )
 setUsingSetter' (baseID, baseTy) val ops
   = do
       let ptrTy = SPIRV.PointerTy Storage.Function baseTy
-      basePtrID <- newVariable ptrTy
-      storeInstruction basePtrID baseID
+      (basePtrID, basePtrState) <- temporaryVariable baseID ptrTy
+      unless
+        ( basePtrState == Fresh )
+        ( do storeInstruction basePtrID baseID
+             -- set the temporary pointer state to "modified"
+             -- as we are about to store something into it
+             assign ( _temporaryPointer baseID ) ( Just (basePtrID, Modified) )
+        )
       storeThroughAccessChain' (basePtrID, ptrTy) val ops
       loadInstruction baseTy basePtrID

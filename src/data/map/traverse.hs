@@ -1,8 +1,10 @@
 module Data.Map.Traverse where
 
 -- containers
-import Data.Map(Map)
-import qualified Data.Map.Strict as Map(foldrWithKey)
+import Data.Map
+  ( Map )
+import qualified Data.Map.Strict as Map
+  ( foldrWithKey )
 
 ----------------------------------------------------------------------------
 

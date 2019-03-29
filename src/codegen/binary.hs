@@ -7,10 +7,14 @@
 module CodeGen.Binary where
 
 -- base
-import Data.Maybe(maybe)
-import Data.List(sortOn)
-import Data.Foldable(traverse_)
-import Data.Word(Word32)
+import Data.Maybe
+  ( maybe )
+import Data.List
+  ( sortOn)
+import Data.Foldable
+  ( traverse_)
+import Data.Word
+  ( Word32 )
 import qualified Data.Bits as Bits
 
 -- binary
@@ -18,18 +22,23 @@ import qualified Data.Binary as Binary
 import qualified Data.Binary.Put as Binary
 
 -- containers
-import Data.Map.Strict(Map)
+import Data.Map.Strict
+  ( Map )
 import qualified Data.Map.Strict as Map
-import Data.Set(Set)
+import Data.Set
+  ( Set )
 import qualified Data.Set as Set
 
 -- text
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 import qualified Data.Text as Text
 
 -- transformers
-import Control.Monad.Except(ExceptT)
-import Control.Monad.Trans.Class(lift)
+import Control.Monad.Except
+  ( ExceptT )
+import Control.Monad.Trans.Class
+  ( lift )
 
 -- fir
 import CodeGen.Instruction
@@ -37,9 +46,12 @@ import CodeGen.Instruction
   , ID(..), Instruction(..)
   , wordCount
   )
-import CodeGen.Monad(note)
-import Data.Binary.Class.Put(Put(put))
-import Data.Map.Traverse(traverseWithKey_)
+import CodeGen.Monad
+  ( note )
+import Data.Binary.Class.Put
+  ( Put(put) )
+import Data.Map.Traverse
+  ( traverseWithKey_ )
 import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.Decoration    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV

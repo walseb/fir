@@ -9,13 +9,18 @@
 module CodeGen.Untyped where
 
 -- base
-import Control.Arrow(second)
+import Control.Arrow
+  ( second )
 
 -- fir
-import {-# SOURCE #-} CodeGen.CodeGen(codeGen)
-import CodeGen.Instruction(ID)
-import CodeGen.Monad(CGMonad)
-import FIR.AST(AST((:$)))
+import {-# SOURCE #-} CodeGen.CodeGen
+  ( codeGen )
+import CodeGen.Instruction
+  ( ID )
+import CodeGen.Monad
+  ( CGMonad )
+import FIR.AST
+  ( AST((:$)) )
 import qualified SPIRV.PrimTy as SPIRV
 
 ----------------------------------------------------------------------------

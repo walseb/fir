@@ -71,6 +71,7 @@ library
 
     other-modules:
         CodeGen.Applicative
+      , CodeGen.Array
       , CodeGen.Binary
       , CodeGen.CFG
       , CodeGen.CodeGen
@@ -115,6 +116,7 @@ library
       , FIR.Prim.Op
       , FIR.Program
       , FIR.Synonyms
+      , FIR.Temp
       , Math.Algebra.Class
       , Math.Algebra.GradedSemigroup
       , Math.Logic.Bits
@@ -154,6 +156,8 @@ library
           >= 4.16
       , distributive
           >= 0.6
+      , constraints
+          >= 0.10
       , typelits-witnesses
           >= 0.2.3
       , ghc-typelits-knownnat 

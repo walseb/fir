@@ -87,6 +87,7 @@ import FIR.Prim.Op
 import FIR.Prim.Singletons
   ( PrimTy, primTyVal, KnownVars
   , PrimFunc, primFuncName
+  , KnownArity
   )
 import Math.Linear
   ( V, M )
@@ -109,7 +110,7 @@ data AST :: Type -> Type where
   (:$) :: AST (a -> b) -> AST a -> AST b
 
   -- | Haskell-level constants can be embedded into the AST.
-  Lit :: PrimTy a => a -> AST a
+  Lit :: ( PrimTy a, KnownArity a ) => a -> AST a
   -- | @SPIR-V@ primitive operations
   PrimOp :: (PrimOp op a, PrimOpConstraint op a)
          => Proxy a -> Proxy op -> AST (PrimOpType op a)
@@ -208,11 +209,11 @@ data AST :: Type -> Type where
   Locally :: AST ( (a := j) i -> (a := i) i )
 
   -- functor/applicative operations
-  Fmap :: forall f a b. ( PrimTy a, PrimFunc f )
+  Fmap :: forall f a b. ( PrimFunc f, PrimTy a, KnownArity b )
        => AST ( (a -> b) -> f a -> f b )
-  Pure :: forall f a. ( PrimFunc f )
+  Pure :: forall f a. ( PrimFunc f, KnownArity a )
        => AST ( a -> f a )
-  Ap   :: forall f a b. ( PrimTy a, PrimFunc f )
+  Ap   :: forall f a b. ( PrimFunc f, PrimTy a, KnownArity b )
        => AST ( f (a -> b) -> f a -> f b )
 
   MkVector :: (KnownNat n, PrimTy a)

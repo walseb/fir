@@ -5,7 +5,8 @@ module CodeGen.Composite
   where
 
 -- base
-import Data.Word(Word32)
+import Data.Word
+  ( Word32 )
 
 -- containers
 import qualified Data.Map.Strict as Map

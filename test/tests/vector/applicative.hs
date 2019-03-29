@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Tests.Functor.Applicative where
+module Tests.Vector.Applicative where
 
 -- fir
 import FIR

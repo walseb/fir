@@ -7,16 +7,20 @@
 module CodeGen.Monad where
 
 -- base
-import Control.Arrow(right)
-import Control.Category((>>>))
+import Control.Arrow
+  ( right )
+import Control.Category
+  ( (>>>) )
 
 -- binary
-import Data.Binary(Binary)
+import Data.Binary
+  ( Binary )
 import qualified Data.Binary as Binary
 import qualified Data.Binary.Put as Binary
 
 -- bytestring
-import Data.ByteString.Lazy(ByteString)
+import Data.ByteString.Lazy
+  ( ByteString )
 
 -- lens
 import Control.Lens
@@ -25,22 +29,30 @@ import Control.Lens
   )
 
 -- mtl
-import Control.Monad.Except(MonadError , ExceptT, runExceptT, throwError)
-import Control.Monad.Reader(MonadReader, ReaderT, runReaderT)
-import Control.Monad.State (MonadState , StateT , runStateT )
+import Control.Monad.Except
+  ( MonadError , ExceptT, runExceptT, throwError )
+import Control.Monad.Reader
+  ( MonadReader, ReaderT, runReaderT )
+import Control.Monad.State
+  ( MonadState , StateT , runStateT )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- transformers
-import Control.Monad.Trans.Class(MonadTrans, lift)
+import Control.Monad.Trans.Class
+  ( MonadTrans, lift )
 
 -- fir
-import Control.Arrow.Strength(leftStrength)
-import CodeGen.Instruction(ID)
-import CodeGen.State( CGState, CGContext
-                    , _currentID
-                    )
+import Control.Arrow.Strength
+  ( leftStrength )
+import CodeGen.Instruction
+  ( ID )
+import CodeGen.State
+  ( CGState, CGContext
+  , _currentID
+  )
 
 ----------------------------------------------------------------------------
 -- monad for code generation
@@ -94,30 +106,38 @@ instance (MonadState s m, HasSupply v s, Enum v) => MonadFresh v (FreshSuccT s m
   fresh = supply <<%= succ -- <<%= means: "modify, and return the _old_ value"
 
 create :: ( MonadFresh v m, MonadState s m )
-       => Lens' s (Maybe a) -> (v -> m a) -> m v
+       => Lens' s (Maybe a) -> (v -> m a) -> m (v, a)
 create _key mk
   = do v <- fresh
        a <- mk v
        assign _key ( Just a )
-       pure v
+       pure (v, a)
+
+createID :: ( MonadFresh v m, MonadState s m )
+         => Lens' s (Maybe a) -> (v -> m a) -> m v
+createID _key mk = fst <$> create _key mk
 
 createRec :: ( MonadFresh v m, MonadState s m )
-          => Lens' s (Maybe a) -> m b -> (b -> v -> m a) -> m v
+          => Lens' s (Maybe a) -> m b -> (b -> v -> m a) -> m (v, a)
 createRec _key before mk
   = do b <- before
        v <- fresh
        a <- mk b v
        assign _key ( Just a )
-       pure v
+       pure (v, a)
 
-tryToUseWith :: ( MonadFresh v m, MonadState s m )
-             => Lens' s (Maybe a) -> (a -> v) -> m v -> m v
+createIDRec :: ( MonadFresh v m, MonadState s m )
+          => Lens' s (Maybe a) -> m b -> (b -> v -> m a) -> m v
+createIDRec _key before mk = fst <$> createRec _key before mk
+
+tryToUseWith :: ( MonadState s m )
+             => Lens' s (Maybe a) -> (a -> b) -> m b -> m b
 tryToUseWith _key f creation =
   use _key >>= maybe creation (pure . f)
 
 tryToUse :: ( MonadFresh v m, MonadState s m )
-         => Lens' s (Maybe a) -> (a -> v) -> (v -> m a) -> m v
-tryToUse _key f mk = tryToUseWith _key f (create _key mk)
+         => Lens' s (Maybe a) -> (a -> b) -> (v -> m a) -> m b
+tryToUse _key f mk = tryToUseWith _key f ( f . snd <$> create _key mk )
 
 ----------------------------------------------------------------------------
 -- running the code generation monad

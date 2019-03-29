@@ -62,22 +62,36 @@ import qualified SPIRV.Stage           as SPIRV
 -- for instance which types have been declared
 data CGState
   = CGState
+    -- current ID number (increases by 1 each time a new ID is needed)
       { currentID           :: ID
+    -- ID of the current block in the CFG (if inside a block)
       , currentBlock        :: Maybe ID
       , functionContext     :: FunctionContext
       , neededCapabilities  :: Set                     SPIRV.Capability
       , knownExtInsts       :: Map SPIRV.ExtInst       Instruction
       , knownStringLits     :: Map Text                ID
-      , names               :: Set                     ( ID, Either Text (Word32, Text) )
+      , names               :: Set                     (ID, Either Text (Word32, Text))
+      -- entry-point interfaces, keeping track of which global variables are used
       , interfaces          :: Map (SPIRV.Stage, Text) (Map Text ID)
       , executionModes      :: Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32))
       , decorations         :: Map ID                  (Set (SPIRV.Decoration    Word32))
       , memberDecorations   :: Map (ID, Word32)        (Set (SPIRV.Decoration    Word32))
+      -- map of all types used
       , knownTypes          :: Map SPIRV.PrimTy        Instruction
+      -- map of all constants used
       , knownConstants      :: Map AConstant           Instruction
+      -- which top-level global (input/output) variables have been used
       , usedGlobals         :: Map Text                (ID, SPIRV.PointerTy)
+      -- top-level bindings available, such as input/output variables and top-level functions
       , knownBindings       :: Map Text                (ID, SPIRV.PrimTy   )
+      -- variables declared by the user in the program
       , localBindings       :: Map Text                (ID, SPIRV.PrimTy   )
+      -- IDs of locally declared variables (floated to the top of the function definition)
+      , localVariables      :: Map ID                  SPIRV.PointerTy
+      -- pointer ID associated to a given ID
+      -- used to keep track of auxiliary temporary pointers
+      -- (e.g. a pointer created for a runtime access chain operation)
+      , temporaryPointers   :: Map ID                  (ID, PointerState)
       }
   deriving Show
 
@@ -85,6 +99,11 @@ data FunctionContext
   = TopLevel
   | Function [(Text, SPIRV.PrimTy)] -- argument names & types
   | EntryPoint SPIRV.Stage Text     -- stage, and stage name
+  deriving ( Eq, Show )
+
+data PointerState
+  = Fresh
+  | Modified
   deriving ( Eq, Show )
 
 initialState :: CGState
@@ -106,6 +125,8 @@ initialState
       , usedGlobals         = Map.empty
       , knownBindings       = Map.empty
       , localBindings       = Map.empty
+      , localVariables      = Map.empty
+      , temporaryPointers   = Map.empty
       }
 
 data CGContext
@@ -275,6 +296,17 @@ _localBindings = lens localBindings ( \s v -> s { localBindings = v } )
 _localBinding :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _localBinding binding = _localBindings . at binding
 
+_localVariables :: Lens' CGState (Map ID SPIRV.PointerTy)
+_localVariables = lens localVariables ( \s v -> s { localVariables = v } )
+
+_localVariable :: ID -> Lens' CGState (Maybe SPIRV.PointerTy)
+_localVariable v = _localVariables . at v
+
+_temporaryPointers :: Lens' CGState (Map ID (ID, PointerState))
+_temporaryPointers = lens temporaryPointers ( \s v -> s { temporaryPointers = v } )
+
+_temporaryPointer :: ID -> Lens' CGState (Maybe (ID, PointerState))
+_temporaryPointer v = _temporaryPointers . at v
 
 
 _userGlobals
@@ -316,7 +348,6 @@ _userImage image = _userImages . at image
 
 _debugMode :: Lens' CGContext Bool
 _debugMode = lens debugMode ( \c v -> c { debugMode = v } )
-
 
 -----------------------------------------------------------------------------
 -- various utility functions to update state

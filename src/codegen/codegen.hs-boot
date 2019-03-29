@@ -1,9 +1,12 @@
 module CodeGen.CodeGen(codeGen) where
 
 -- fir
-import CodeGen.Instruction(ID)
-import CodeGen.Monad(CGMonad)
-import FIR.AST(AST)
+import CodeGen.Instruction
+  ( ID )
+import CodeGen.Monad
+  ( CGMonad )
+import FIR.AST
+  ( AST )
 import qualified SPIRV.PrimTy as SPIRV
 
 ----------------------------------------------------------------------------

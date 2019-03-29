@@ -2,16 +2,13 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE ViewPatterns           #-}
@@ -30,6 +27,8 @@ import Prelude
 import qualified Prelude
 import Control.Applicative
   ( liftA2 )
+import Control.Arrow
+  ( second )
 import Data.Foldable
   ( toList )
 import Data.Kind
@@ -43,6 +42,10 @@ import GHC.TypeNats
 import Unsafe.Coerce
   ( unsafeCoerce )
 
+-- lens
+import Control.Lens
+  ( assign )
+
 -- mtl
 import Control.Monad.Except
   ( throwError )
@@ -51,6 +54,8 @@ import Control.Monad.Except
 import qualified Data.Text as Text
 
 -- fir
+import CodeGen.Array
+  ( createArray )
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.Composite
@@ -59,10 +64,20 @@ import CodeGen.Instruction
   ( ID )
 import CodeGen.Monad
   ( CGMonad )
+import CodeGen.Pointers
+  ( temporaryVariable )
+import CodeGen.State
+  ( _localBinding )
 import CodeGen.Untyped
   ( pattern Applied
   , UAST(..), UASTs(..)
   )
+import Control.Type.Optic
+  ( AnIndex
+  , ReifiedGetter(view)
+  )
+import Data.Function.Variadic
+  ( ListVariadic )
 import Data.Type.Known
   ( knownValue )
 import Data.Type.List
@@ -74,21 +89,26 @@ import FIR.AST
   )
 import FIR.Instances.AST
   ( ) -- 'PrimFunc' instances
+import FIR.Prim.Array
+  ( Array )
 import FIR.Prim.Op
   ( PrimOp(..), SPrimOp(..)
   , Vectorise(Vectorise)
   )
 import FIR.Prim.Singletons
-  ( PrimTy
+  ( PrimTy, primTy
+  , IntegralTy
   , PrimFunc(distributeAST, primFuncSing)
   , SPrimFunc(..)
+  , Arity(ZeroArity,SuccArity), KnownArity(arity)
   )
 import Math.Algebra.Class
-  ( Semiring((*)) )
+  ( Semiring((*)), Integral )
 import Math.Linear
   ( V, M, Semimodule((*^)) )
-import qualified SPIRV.PrimOp as SPIRV
-import qualified SPIRV.PrimTy as SPIRV
+import qualified SPIRV.PrimOp  as SPIRV
+import qualified SPIRV.PrimTy  as SPIRV
+import qualified SPIRV.Storage as Storage
 
 ----------------------------------------------------------------------------
 -- code generation for functor and applicative operations
@@ -96,7 +116,7 @@ import qualified SPIRV.PrimTy as SPIRV
 data Idiom (f :: Type -> Type) (as :: [Type]) (b :: Type) where
   Val       :: AST (f b) -> Idiom f '[] b -- 'b' should never be a function type in this case
   PureIdiom :: forall f b. AST b -> Idiom f '[] b
-  ApIdiom   :: PrimTy a => Idiom f as (a -> b) -> AST (f a) -> Idiom f (as `Snoc` a) b
+  ApIdiom   :: (PrimTy a, KnownArity b) => Idiom f as (a -> b) -> AST (f a) -> Idiom f (as `Snoc` a) b
 deriving instance Show (Idiom f as b)
 
 data AnIdiom (f :: Type -> Type) (b :: Type) where
@@ -104,11 +124,11 @@ data AnIdiom (f :: Type -> Type) (b :: Type) where
 deriving instance Show (AnIdiom f b)
 
 data ASTF where
-  ASTF :: (Applicative f, PrimFunc f) => AST (f a) -> ASTF
+  ASTF :: (Applicative f, PrimFunc f, KnownArity a) => AST (f a) -> ASTF
 
 deriving instance Show ASTF
 
-anIdiom :: (Applicative f, PrimFunc f) => AST (f b) -> AnIdiom f b
+anIdiom :: (Applicative f, PrimFunc f, KnownArity b) => AST (f b) -> AnIdiom f b
 anIdiom ( Pure :$ a )
   = AnIdiom $ PureIdiom a
 anIdiom ( Fmap :$ f :$ ( Pure :$ a ) )
@@ -125,13 +145,14 @@ anIdiom ( Ap :$ f :$ a )
 anIdiom fb = AnIdiom $ Val fb
 
 recogniseIdiom :: AST ast -> Maybe ASTF
-recogniseIdiom ast@(Pure :$ _     ) = Just $ ASTF ast
+recogniseIdiom ast@(Pure :$ _ )     = Just $ ASTF ast
 recogniseIdiom ast@(Fmap :$ _ :$ _) = Just $ ASTF ast
 recogniseIdiom ast@(Ap   :$ _ :$ _) = Just $ ASTF ast
 recogniseIdiom _                    = Nothing
 
-pattern Idiomatic :: ASTF -> AST a
+pattern Idiomatic :: ASTF -> AST ast
 pattern Idiomatic astf <- ( recogniseIdiom -> Just astf )
+
 
 idiomatic :: ASTF -> CGMonad (ID, SPIRV.PrimTy)
 idiomatic ( ASTF astf )
@@ -173,18 +194,27 @@ idiom (PureIdiom b)
                       compositeConstruct
                         ( SPIRV.Matrix colDim rowDim constituentTy )
                         ( replicate rowDim col )
-idiom (ApIdiom i a) =
+        sFuncArray@SFuncArray
+          -> case sFuncArray of
+              ( _ :: SPrimFunc (Array n) )
+                -> let n :: Prelude.Num a => a
+                       n = Prelude.fromIntegral (knownValue @n)
+                   in compositeConstruct
+                        ( SPIRV.Array n eltTy )
+                        ( replicate n eltID )
+
+idiom (ApIdiom idi a) =
   case primFuncSing @f of
     sFuncVector@SFuncVector
       -> case sFuncVector of
           ( _ :: SPrimFunc (V n) )
-            -> case applyIdiomV @n (ApIdiom i a) of
+            -> case applyIdiomV @n (ApIdiom idi a) of
                   -- attempt to directly vectorise operation if possible
                   Just (UAST uast) -> codeGen uast
                   -- otherwise, revert to doing it component by component
                   _ ->
                     do 
-                      ids <- toList <$> traverse codeGen (applyIdiom i a)
+                      ids <- toList <$> traverse codeGen (applyIdiom idi a)
                       eltTy <- case ids of
                           ((_, ty) : _) -> pure ty
                           _             -> throwError "codeGen: empty vector"
@@ -195,6 +225,24 @@ idiom (ApIdiom i a) =
       -> case sFuncMatrix of
           ( _ :: SPrimFunc (M m n) )
             -> throwError "codeGen: TODO, applicative support for matrices WIP"
+    sFuncArray@SFuncArray
+      -> case sFuncArray of
+          ( _ :: SPrimFunc (Array n) )
+            -> case arity @b of
+                  SuccArity _ -> throwError "codeGen: partially applied applicative operation"
+                  ZeroArity ->
+                    let arrayFunction = applyIdiomArray @n @Word32 idi a
+                        arrayLg = knownValue @n
+                        eltTy = primTy @b
+                    in do
+                      let resArrPtrTy = SPIRV.PointerTy Storage.Function (SPIRV.Array arrayLg eltTy)
+                      arrID <- fst <$> codeGen a
+                      resArrPtrID <- fst <$> temporaryVariable arrID resArrPtrTy
+                      let resArr = (resArrPtrID, resArrPtrTy)
+
+                      assign ( _localBinding "__tmp_array" ) ( Just $ second SPIRV.pointerTy resArr )
+
+                      codeGen ( createArray @n @"__tmp_array" @"__tmp_arrayIndex" @b arrayFunction )
 
 
 applyIdiom :: forall f as a b.
@@ -212,6 +260,22 @@ applyIdiom (ApIdiom f a') a
         f' = fromAST <$> applyIdiom f a'
     in  f' <*> distributeAST a
 
+applyIdiomArray :: forall n ix as a b.
+                  ( KnownNat n
+                  , Integral ix, IntegralTy ix
+                  , PrimTy a
+                  , ListVariadic '[] a ~ a
+                  )
+                => Idiom (Array n) as (a -> b) -> AST (Array n a) -> (AST ix -> AST b)
+applyIdiomArray (Val _) _ _
+  = error "applyIdiomArray: unexpected value used as a function"
+applyIdiomArray (PureIdiom f) arr i
+  = fromAST f (view @(AnIndex (AST ix)) i arr)
+applyIdiomArray (ApIdiom f arr') arr i
+  = let f' :: AST a -> AST b
+        f' = fromAST ( applyIdiomArray f arr' i )
+    in f' (view @(AnIndex (AST ix)) i arr)
+
 ---------------------------------------------------------------------------------------
 -- awful hacks to use native SPIR-V vectorised instructions if possible
 
@@ -226,7 +290,7 @@ type family Vectorisation (n :: Nat) (a :: Type) = (r :: Type) | r -> n a where
 
 applyIdiomV :: forall n as b. KnownNat n
             => Idiom (V n) as b -> Maybe UAST
-applyIdiomV i = sanitiseVectorisation @n @b . unsafeVectorise $ i
+applyIdiomV = sanitiseVectorisation @n @b . unsafeVectorise
 
 sanitiseVectorisation :: forall n b. KnownNat n
                       => AST (Vectorisation n b) -> Maybe UAST
@@ -239,12 +303,13 @@ sanitiseVectorisation'
   ( PrimOp (_ :: Proxy a) (_ :: Proxy op) :$ v1 :$ v2)
     | Just SMul <- opSing @_ @_ @op @a
     = case ( sanitiseVectorisation' @n v1, sanitiseVectorisation' @n v2 ) of
-        ( Just (UAST (Pure :$ b1)), Just (UAST (Pure :$ b2)) )
-          -> let b1' :: AST a
-                 b1' = unsafeCoerce b1
-                 b2' :: AST a
-                 b2' = unsafeCoerce b2
-              in Just . UAST $ Pure @(V n) :$ (b1' * b2')
+        ( Just (UAST (Pure :$ (b1 :: AST b1))), Just (UAST (Pure :$ (b2 :: AST b2))) )
+          -> let b1b2 :: AST a
+                 b1b2 = unsafeCoerce b1 * unsafeCoerce b2
+                 b1b2' :: AST b1
+                 b1b2' = unsafeCoerce b1b2
+             in Just . UAST $ unsafeCoerce @(AST (V n b1)) @(AST (V n a))
+                                ( Pure @(V n) :$ b1b2' )
         ( Just (UAST (Pure :$ b1)), _ )
           -> let b1' :: AST a
                  b1' = unsafeCoerce b1
@@ -270,7 +335,8 @@ sanitiseVectorisation'
     = Nothing -- cannot vectorise opaque functions (e.g. native function calls)
 sanitiseVectorisation' ast@(Applied (MkVector _ _) _) = Just . UAST $ ast
 sanitiseVectorisation' (Coerce :$ v) = Just . UAST $ v
-sanitiseVectorisation' ast = Just . UAST $ Pure @(V n) :$ ast
+sanitiseVectorisation' (Lit a) = Just . UAST $ Pure @(V n) :$ Lit a
+sanitiseVectorisation' _ = Nothing -- Just . UAST $ Pure @(V n) :$ ast
 
 sanitiseUASTs :: forall n. KnownNat n => UASTs -> Maybe UASTs
 sanitiseUASTs NilUAST = Just NilUAST

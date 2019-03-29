@@ -42,8 +42,10 @@ module Control.Monad.Indexed
   where
 
 -- base
-import Data.Kind(Type)
-import Prelude hiding ( Functor(..), Applicative(..), Monad(..), (=<<) )
+import Data.Kind
+  ( Type )
+import Prelude
+  hiding ( Functor(..), Applicative(..), Monad(..), (=<<) )
 
 ------------------------------------------------
 -- indexed monads (à la McBride)

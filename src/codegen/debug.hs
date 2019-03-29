@@ -6,8 +6,10 @@ module CodeGen.Debug
   where
 
 -- base
-import Control.Monad(when)
-import Data.Word(Word32)
+import Control.Monad
+  ( when )
+import Data.Word
+  ( Word32 )
 import qualified GHC.Stack
 import qualified GHC.Stack.Types as GHC.Stack
 
@@ -15,13 +17,16 @@ import qualified GHC.Stack.Types as GHC.Stack
 import qualified Data.Map.Strict as Map
 
 -- lens
-import Control.Lens(view)
+import Control.Lens
+  ( view )
 
 -- mtl
-import Control.Monad.Reader(MonadReader)
+import Control.Monad.Reader
+  ( MonadReader )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 import qualified Data.Text as Text
 
 -- fir

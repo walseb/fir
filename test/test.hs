@@ -55,11 +55,10 @@ import FIR
 --------------------------------------------------
 
 tests :: [ (FilePath, Test) ]
-tests = [ ( "bits"    </> "bits"         , Validate  )
+tests = [ ( "array"   </> "applicative"  , Validate  )
+        , ( "bits"    </> "bits"         , Validate  )
         , ( "bits"    </> "zipbits"      , Validate  )
         , ( "control" </> "loop"         , Validate  )
-        , ( "functor" </> "applicative"  , Validate  )
-        , ( "functor" </> "functor"      , Validate  )
         , ( "images"  </> "gather"       , Validate  )
         , ( "images"  </> "sample"       , Validate  )
         , ( "optics"  </> "good"         , Validate  )
@@ -71,6 +70,8 @@ tests = [ ( "bits"    </> "bits"         , Validate  )
         , ( "optics"  </> "novectorindex", TypeCheck )
         , ( "optics"  </> "overlapping"  , TypeCheck )
         , ( "optics"  </> "pureproducts" , TypeCheck )
+        , ( "vector"  </> "applicative"  , Validate  )
+        , ( "vector"  </> "functor"      , Validate  )
         ]
 
 runTests :: IO [ (FilePath, Test, TestOutput) ]
@@ -109,10 +110,10 @@ data TestOutput
   deriving ( Eq, Show )
 
 ghc :: FilePath
-ghc = "C:\\" </> "ghc" </> "ghc-8.6.2" </> "bin" </> "ghc" <.> "exe"
+ghc = "C:\\" </> "ghc" </> "ghc-8.6.4" </> "bin" </> "ghc" <.> "exe"
 
 ghci :: FilePath
-ghci = "C:\\" </> "ghc" </> "ghc-8.6.2" </> "bin" </> "ghci" <.> "exe"
+ghci = "C:\\" </> "ghc" </> "ghc-8.6.4" </> "bin" </> "ghci" <.> "exe"
 
 validator :: FilePath
 validator = "spirv-val"

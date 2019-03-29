@@ -5,25 +5,30 @@
 module CodeGen.Pointers
   ( Safeness(Safe, Unsafe)
   , Indices(RTInds, CTInds)
-  , newVariable, accessChain
+  , newVariable, temporaryVariable, declareVariable
+  , accessChain
   , load, loadInstruction
   , store, storeInstruction
   ) where
 
 -- base
-import Data.Word(Word32)
+import Data.Word
+  ( Word32 )
 
 -- containers
 import qualified Data.Map.Strict as Map
 
 -- mtl
-import Control.Monad.Except(throwError)
+import Control.Monad.Except
+  ( throwError )
 
 -- lens
-import Control.Lens(use, assign)
+import Control.Lens
+  ( use, assign )
 
 -- text-utf8
-import Data.Text(Text)
+import Data.Text
+  ( Text )
 
 -- fir
 import CodeGen.Binary
@@ -38,11 +43,15 @@ import CodeGen.Monad
   ( CGMonad
   , MonadFresh(fresh)
   , liftPut
+  , tryToUse
   )
 import CodeGen.State
   ( FunctionContext(TopLevel, EntryPoint)
+  , PointerState(Fresh)
   , _functionContext
   , _interfaceBinding
+  , _localVariable
+  , _temporaryPointer
   )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
@@ -69,9 +78,26 @@ data Indices
 -- creating pointers
 
 newVariable :: SPIRV.PointerTy -> CGMonad ID
-newVariable ptrTy@(SPIRV.PointerTy storage _)
+newVariable ptrTy
+  = do
+      v <- fresh
+      assign ( _localVariable v ) (Just ptrTy)
+      pure v
+
+temporaryVariable :: ID -> SPIRV.PointerTy -> CGMonad (ID, PointerState)
+temporaryVariable baseID ptrTy
+  = tryToUse ( _temporaryPointer baseID )
+      id
+      ( \v ->
+          do
+            assign ( _localVariable v ) (Just ptrTy)
+            storeInstruction v baseID
+            pure (v, Fresh)
+      )
+
+declareVariable :: ID -> SPIRV.PointerTy -> CGMonad ()
+declareVariable v ptrTy@(SPIRV.PointerTy storage _)
   = do  ptrTyID <- typeID (SPIRV.pointerTy ptrTy)
-        v <- fresh
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Variable
@@ -79,7 +105,6 @@ newVariable ptrTy@(SPIRV.PointerTy storage _)
             , resID     = Just v
             , args      = Arg storage EndArgs
             }
-        pure v
 
 indicesIDs :: Indices -> CGMonad ( Safeness, [ID] )
 indicesIDs (CTInds ws)

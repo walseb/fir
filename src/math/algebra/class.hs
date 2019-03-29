@@ -5,7 +5,6 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
@@ -33,7 +32,8 @@ import Foreign.C.Types
 import qualified GHC.Float as Float
 
 -- half
-import Numeric.Half(Half)
+import Numeric.Half
+  ( Half )
 import qualified Numeric.Half as Half
 
 -- fir

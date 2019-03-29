@@ -16,7 +16,7 @@ module CodeGen.CodeGen
 import Prelude
   hiding ( Monad(..) )
 import Control.Arrow
-  ( second )
+  ( first, second )
 import Control.Monad
   ( when )
 import Data.Maybe
@@ -26,9 +26,6 @@ import Data.Proxy
 import Data.Word
   ( Word32 )
 import qualified GHC.Stack
-
--- binary
-import qualified Data.Binary.Put as Binary
 
 -- bytestring
 import Data.ByteString.Lazy
@@ -50,7 +47,7 @@ import Control.Monad.State
 
 -- lens
 import Control.Lens
-  ( view, use, assign )
+  ( view, use, assign, modifying )
 
 -- text-utf8
 import Data.Text
@@ -105,10 +102,9 @@ import CodeGen.Optics
 import CodeGen.Put
   ( putASM )
 import CodeGen.State
-  ( CGState(currentBlock, knownBindings, localBindings)
+  ( CGState(currentBlock, localBindings)
   , CGContext
   , _currentBlock
-  , _knownBindings
   , _localBindings, _localBinding
   , _userFunction
   , _userEntryPoint
@@ -193,7 +189,7 @@ codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
         let makeMutable
               = case a_ty of
                   SPIRV.Array        {} -> writable
-                  SPIRV.RuntimeArray {} -> writable
+                  SPIRV.RuntimeArray {} -> writable -- should never happen, user cannot define runtime arrays
                   SPIRV.Struct       {} -> writable
                   _                     -> False
 
@@ -326,13 +322,13 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
 
       SBinding (_ :: Proxy name) ->
         do  let varName = knownValue @name
-            (a_ID, _)       <- codeGen a
-            bd@(bdID, bdTy) <- bindingID varName
+            a_IDTy@(a_ID, _) <- codeGen a
+            (bdID, bdTy)     <- bindingID varName
 
             case bdTy of
               SPIRV.Pointer storage eltTy
                 -> store (varName, a_ID) bdID (SPIRV.PointerTy storage eltTy)
-              _ -> assign ( _localBinding varName ) (Just bd)
+              _ -> assign ( _localBinding varName ) (Just a_IDTy)
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
@@ -428,8 +424,7 @@ codeGen (Coerce :$ a) = codeGen a
 -- control flow
 codeGen (Locally :$ a)
   = do
-        bindingsBefore <- use _knownBindings
-        bindingsLBefore <- use _localBindings
+        bindingsBefore <- use _localBindings
         localBlock <- fresh
         branch localBlock
 
@@ -439,8 +434,7 @@ codeGen (Locally :$ a)
         branch outsideBlock
 
         block outsideBlock
-        assign _knownBindings bindingsBefore
-        assign _localBindings bindingsLBefore
+        assign _localBindings bindingsBefore
         pure cg
 
 codeGen (If :$ c :$ t :$ f)
@@ -450,7 +444,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
         trueBlock   <- fresh
         falseBlock  <- fresh
         mergeBlock  <- fresh
-        bindingsBefore <- use _knownBindings
+        bindingsBefore <- use _localBindings
         branch headerBlock
         
         -- header block
@@ -468,8 +462,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
         (trueID, trueTy) <- codeGen bodyTrue
         trueEndBlock <- note ( "codeGen: true branch in if statement escaped CFG" )
                             =<< use _currentBlock
-        trueBindings <- use _knownBindings
-        trueLBindings <- use _localBindings
+        trueBindings <- use _localBindings
         branch mergeBlock
 
         -- false block
@@ -477,9 +470,11 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
         (falseID, falseTy) <- codeGen bodyFalse
         falseEndBlock <- note ( "codeGen: false branch in if statement escaped CFG" )
                             =<< use _currentBlock
-        falseBindings <- use _knownBindings
-        falseLBindings <- use _knownBindings
+        falseBindings <- use _localBindings
         branch mergeBlock
+
+        -- reset local bindings to what they were outside the branches
+        assign _localBindings bindingsBefore
 
         -- merge block
         block mergeBlock
@@ -487,10 +482,6 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
           ( \ bd -> bd `Map.member` bindingsBefore )
           [ trueEndBlock, falseEndBlock ]
           [ trueBindings, falseBindings ]
-        phiInstructions
-          ( \ bd -> bd `Map.member` bindingsBefore )
-          [ trueEndBlock , falseEndBlock  ]
-          [ trueLBindings, falseLBindings ]
 
         -- get the value of the conditional
         if trueTy == falseTy
@@ -516,10 +507,8 @@ codeGen (While :$ cond :$ loopBody)
         -- needs to appear after the header block in the CFG.
         ctxt  <- ask
         state <- get
-        let bindingsBefore, bindingsLBefore :: Map Text (ID, SPIRV.PrimTy)
-            bindingsBefore  = knownBindings state
-            bindingsLBefore = localBindings state
-
+        let bindingsBefore :: Map Text (ID, SPIRV.PrimTy)
+            bindingsBefore  = localBindings state
 
             -- The first CGState is the one we pass manually and that we want.
             -- The second CGState has the wrong "currentBlock" information,
@@ -533,13 +522,12 @@ codeGen (While :$ cond :$ loopBody)
                       branch headerBlock
                       pure endState
 
-        (loopEndState, loopBodyASM)
+        (loopEndState, _) -- (loopEndState,loopBodyASM)
           <- case loopGenOutput of
                 Left  err     -> throwError err
                 Right (s,_,a) -> pure (s,a)
-        let mbLoopEndBlock   = currentBlock  loopEndState
-            loopEndBindings  = knownBindings loopEndState
-            loopEndLBindings = localBindings loopEndState
+        let mbLoopEndBlock  = currentBlock  loopEndState
+            loopEndBindings = localBindings loopEndState
         loopEndBlock <- note ( "codeGen: while loop escaped CFG" )
                           mbLoopEndBlock
 
@@ -548,20 +536,23 @@ codeGen (While :$ cond :$ loopBody)
         -- but reset bindings to what they were before the loop block.
         -- This is because all bindings within the loop remain local to it.
         put loopEndState
-        assign _knownBindings bindingsBefore
-        assign _localBindings bindingsLBefore
+        assign _localBindings bindingsBefore
 
         -- header block
         block headerBlock
-        phiInstructions
-          ( const True )
-          [ beforeBlock   , loopEndBlock    ]
-          [ bindingsBefore, loopEndBindings ] -- need loopEndBindings
-        phiInstructions
-          ( const True )
-          [ beforeBlock    , loopEndBlock     ]
-          [ bindingsLBefore, loopEndLBindings ] -- and loopEndLBindings
+        phiLocalBindings <-
+          phiInstructions
+            ( const True )
+            [ beforeBlock   , loopEndBlock    ]
+            [ bindingsBefore, loopEndBindings ] -- need loopEndBindings
+
+        -- update local bindings to refer to the phi instructions
+        Map.traverseWithKey
+          ( \ bdName bdID -> modifying ( _localBinding bdName ) ( fmap $ first (const bdID) ) )
+          phiLocalBindings
+        updatedLocalBindings <- use _localBindings
         (condID, condTy) <- codeGen cond
+        updatedState <- get
         when ( condTy /= SPIRV.Boolean )
              ( throwError
              $  "codeGen: 'while' expected boolean conditional, but got "
@@ -580,7 +571,18 @@ codeGen (While :$ cond :$ loopBody)
         branchConditional condID loopBlock mergeBlock
 
         -- writing the loop block proper
-        liftPut $ Binary.putLazyByteString loopBodyASM
+        {- can't simply use code gen we already did,
+        because the bindings don't refer to the phi instructions as they should
+        -- liftPut $ Binary.putLazyByteString loopBodyASM
+        -}
+        -- do code generation a second time for the loop body,
+        -- but this time with updated local bindings referring to the phi instructions
+        put state
+        assign _localBindings updatedLocalBindings
+        block loopBlock
+        _ <- codeGen loopBody
+        branch headerBlock
+        put updatedState -- account for what happened in the loop header (e.g. IDs of phi instructions)
 
         -- merge block (first block after the loop)
         block mergeBlock

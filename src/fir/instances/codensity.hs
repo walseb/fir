@@ -4,13 +4,11 @@
 {-# LANGUAGE FlexibleInstances       #-}
 {-# LANGUAGE FunctionalDependencies  #-}
 {-# LANGUAGE InstanceSigs            #-}
-{-# LANGUAGE MultiParamTypeClasses   #-}
 {-# LANGUAGE PatternSynonyms         #-}
 {-# LANGUAGE PolyKinds               #-}
 {-# LANGUAGE RebindableSyntax        #-}
 {-# LANGUAGE ScopedTypeVariables     #-}
 {-# LANGUAGE TypeApplications        #-}
-{-# LANGUAGE TypeFamilies            #-}
 {-# LANGUAGE TypeFamilyDependencies  #-}
 {-# LANGUAGE TypeOperators           #-}
 {-# LANGUAGE UndecidableInstances    #-}
@@ -179,7 +177,7 @@ unless b action
     then ixPure (Lit ()) :: Codensity AST (AST () := i) i
     else action
 
-locally :: Codensity AST (AST a := j) i -> Codensity AST (AST a := i) i
+locally :: forall i j a. Codensity AST (AST a := j) i -> Codensity AST (AST a := i) i
 locally = fromAST Locally
 
 while :: ( GHC.Stack.HasCallStack
@@ -490,7 +488,7 @@ class Modifier is s a where
 
 instance Modifier '[] s a where
   modifier used assigned f
-    = (ixFmap f used) Indexed.>>= assigned
+    = ixFmap f used Indexed.>>= assigned
 
 instance Modifier is s a => Modifier (i ': is) s a where
   modifier used assigned i
@@ -578,8 +576,8 @@ instance ( ScalarTy a, ScalarTy s
          , x ~ (AST a := i)
          )
   => BitShift '(Codensity AST x i, AST s) where
-  shiftL a s = shiftL @('(Codensity AST x i, Codensity AST (AST s := i) i)) a (ixPure s)
-  shiftR a s = shiftR @('(Codensity AST x i, Codensity AST (AST s := i) i)) a (ixPure s)
+  shiftL a s = shiftL @'(Codensity AST x i, Codensity AST (AST s := i) i) a (ixPure s)
+  shiftR a s = shiftR @'(Codensity AST x i, Codensity AST (AST s := i) i) a (ixPure s)
 
 
 -- Numeric operations

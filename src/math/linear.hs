@@ -20,7 +20,6 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeFamilyDependencies     #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
@@ -614,7 +613,7 @@ deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
 deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
 deriving instance Functor     (M m n)
-deriving via ( (V m) `Compose` (V n) )
+deriving via ( V m `Compose` V n )
          instance ( KnownNat m, KnownNat n) => Applicative (M m n)
 deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
 deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)

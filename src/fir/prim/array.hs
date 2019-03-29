@@ -57,6 +57,9 @@ deriving instance Show a => Show (Array l a)
 deriving instance Functor     (Array n)
 deriving instance Foldable    (Array n)
 deriving instance Traversable (Array n)
+instance KnownNat n => Applicative (Array n) where
+  pure = MkArray @n . Array.replicate (fromIntegral . natVal $ Proxy @n)
+  (MkArray f) <*> (MkArray a) = MkArray @n (f <*> a)
 
 instance GradedSemigroup (Array 0 a) Nat where
   type Grade Nat (Array 0 a) l = Array l a

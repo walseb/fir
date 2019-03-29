@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
@@ -7,19 +6,28 @@
 module Data.Function.Variadic where
 
 -- base
-import Data.Int(Int8,Int16,Int32,Int64)
-import Data.Kind(Type)
-import Data.Word(Word8,Word16,Word32,Word64)
-import GHC.TypeNats(Nat, type (-), type (<=?))
+import Data.Int
+  ( Int8,Int16,Int32,Int64 )
+import Data.Kind
+  ( Type )
+import Data.Word
+  ( Word8,Word16,Word32,Word64 )
+import GHC.TypeNats
+  ( Nat, type (-), type (<=?) )
 
 -- half
-import Numeric.Half(Half)
+import Numeric.Half
+  ( Half )
 
 -- fir
-import {-# SOURCE #-} FIR.AST(AST)
-import FIR.Prim.Array(Array,RuntimeArray)
-import {-# SOURCE #-} FIR.Prim.Struct(Struct)
-import Math.Linear(V,M)
+import {-# SOURCE #-} FIR.AST
+  ( AST )
+import FIR.Prim.Array
+  ( Array,RuntimeArray )
+import {-# SOURCE #-} FIR.Prim.Struct
+  ( Struct )
+import Math.Linear
+  ( V,M )
 
 ------------------------------------------------------------
 
