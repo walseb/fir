@@ -8,6 +8,7 @@
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
 
@@ -32,6 +33,8 @@ import Control.Monad
   ( unless )
 import Data.Kind
   ( Type )
+import Unsafe.Coerce
+  ( unsafeCoerce )
 
 -- lens
 import Control.Lens
@@ -65,7 +68,7 @@ import CodeGen.State
   , _localBinding, _temporaryPointer
   )
 import CodeGen.Untyped
-  ( UAST(UAST) )
+  ( UAST(UAST), UASTs(NilUAST, SnocUAST), pattern Applied )
 import Control.Type.Optic
   ( Optic )
 import Data.Type.List
@@ -82,6 +85,28 @@ import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 
 ----------------------------------------------------------------------------
+-- list of ASTs
+
+infixr 5 `ConsAST`
+
+data ASTs (is :: [Type]) :: Type where
+  NilAST  :: ASTs '[]
+  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
+
+-- unfortunate workaround to obtain optic indices using untyped machinery
+unsafeRetypeUASTs :: forall as. SLength as -> UASTs -> Maybe (ASTs as)
+unsafeRetypeUASTs lg as
+  | correctLength lg as = Just ( unsafeRetypeAcc as NilAST )
+  | otherwise = Nothing
+  where unsafeRetypeAcc :: UASTs -> ASTs bs -> ASTs as
+        unsafeRetypeAcc NilUAST bs = unsafeCoerce bs
+        unsafeRetypeAcc (xs `SnocUAST` x) bs = unsafeRetypeAcc xs (x `ConsAST` bs)
+        correctLength :: SLength xs -> UASTs -> Bool
+        correctLength SZero NilUAST = True
+        correctLength (SSucc l) (xs `SnocUAST` _) = correctLength l xs
+        correctLength _ _ = False
+
+----------------------------------------------------------------------------
 -- pattern synonyms for optics
 
 -- existential type for an optic with all its run-time indices specified
@@ -93,56 +118,40 @@ pattern OpticUse :: IndexedOptic -> AST t
 pattern OpticUse indexedOptic <- ( used -> Just indexedOptic )
 
 used :: AST t -> Maybe IndexedOptic
-used (Use SZero sOptic)
-  = Just $ AnIndexedOptic sOptic NilAST
-used (Use (SSucc SZero) sOptic :$ i1)
-  = Just $ AnIndexedOptic sOptic (i1 `ConsAST` NilAST)
-used ((Use (SSucc (SSucc SZero)) sOptic :$ i1) :$ i2)
-  = Just $ AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` NilAST)
-used (((Use (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3)
-  = Just $ AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` i3 `ConsAST` NilAST)
+used ( Applied (Use lg sOptic) is )
+  = case unsafeRetypeUASTs lg is of
+      Nothing -> Nothing
+      Just is' -> Just ( AnIndexedOptic sOptic is' )
 used _ = Nothing
 
 pattern OpticAssign :: IndexedOptic -> UAST -> AST t
 pattern OpticAssign indexedOptic a <- ( assigned -> Just ( indexedOptic, a ) )
 
 assigned :: AST t -> Maybe (IndexedOptic, UAST)
-assigned (Assign SZero sOptic :$ a)
-  = Just ( AnIndexedOptic sOptic NilAST, UAST a )
-assigned ((Assign (SSucc SZero) sOptic :$ i1) :$ a)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` NilAST), UAST a )
-assigned (((Assign (SSucc (SSucc SZero)) sOptic :$ i1) :$ i2) :$ a)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` NilAST), UAST a )
-assigned ((((Assign (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3) :$ a)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` i3 `ConsAST` NilAST), UAST a )
+assigned ( Applied (Assign lg sOptic) is :$ a )
+  = case unsafeRetypeUASTs lg is of
+      Nothing -> Nothing
+      Just is' -> Just ( AnIndexedOptic sOptic is', UAST a )
 assigned _ = Nothing
 
 pattern OpticView :: IndexedOptic -> UAST -> AST t
 pattern OpticView indexedOptic s <- ( viewed -> Just ( indexedOptic, s ) )
 
 viewed :: AST t -> Maybe (IndexedOptic, UAST)
-viewed (View SZero sOptic :$ s)
-  = Just ( AnIndexedOptic sOptic NilAST, UAST s )
-viewed ((View (SSucc SZero) sOptic :$ i1) :$ s)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` NilAST), UAST s )
-viewed (((View (SSucc (SSucc SZero)) sOptic :$ i1) :$ i2) :$ s)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` NilAST), UAST s )
-viewed ((((View (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3) :$ s)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` i3 `ConsAST` NilAST), UAST s )
+viewed ( Applied (View lg sOptic) is :$ s )
+  = case unsafeRetypeUASTs lg is of
+      Nothing -> Nothing
+      Just is' -> Just ( AnIndexedOptic sOptic is', UAST s )
 viewed _ = Nothing
 
 pattern OpticSet :: IndexedOptic -> UAST -> UAST -> AST t
 pattern OpticSet indexedOptic a s <- ( setted -> Just ( indexedOptic, a, s ) )
 
 setted :: AST t -> Maybe (IndexedOptic, UAST, UAST)
-setted ((Set SZero sOptic :$ a) :$ s)
-  = Just ( AnIndexedOptic sOptic NilAST, UAST a, UAST s )
-setted (((Set (SSucc SZero) sOptic :$ i1) :$ a) :$ s)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` NilAST), UAST a, UAST s )
-setted ((((Set (SSucc (SSucc SZero)) sOptic :$ i1) :$ i2) :$ a) :$ s)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` NilAST), UAST a, UAST s )
-setted (((((Set (SSucc (SSucc (SSucc SZero))) sOptic :$ i1) :$ i2) :$ i3) :$ a) :$ s)
-  = Just ( AnIndexedOptic sOptic (i1 `ConsAST` i2 `ConsAST` i3 `ConsAST` NilAST), UAST a, UAST s )
+setted ( ( Applied (Set lg sOptic) is :$ a ) :$ s )
+  = case unsafeRetypeUASTs lg is of
+    Nothing -> Nothing
+    Just is' -> Just ( AnIndexedOptic sOptic is', UAST a, UAST s )
 setted _ = Nothing
 
 ----------------------------------------------------------------------------
@@ -181,15 +190,6 @@ setUsingSetter
   -> CGMonad (ID, SPIRV.PrimTy)
 setUsingSetter base val sOptic is
   = setUsingSetter' base val =<< operationTree is sOptic
-
-----------------------------------------------------------------------------
--- keeping track of run-time indices
-
-infixr 5 `ConsAST`
-
-data ASTs (is :: [Type]) :: Type where
-  NilAST  :: ASTs '[]
-  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
 
 ----------------------------------------------------------------------------
 -- optical trees
