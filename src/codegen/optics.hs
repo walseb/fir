@@ -1,16 +1,16 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PatternSynonyms        #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE ViewPatterns           #-}
 
 module CodeGen.Optics
   ( IndexedOptic(AnIndexedOptic)
@@ -31,10 +31,6 @@ import Control.Arrow
   ( first )
 import Control.Monad
   ( unless )
-import Data.Kind
-  ( Type )
-import Unsafe.Coerce
-  ( unsafeCoerce )
 
 -- lens
 import Control.Lens
@@ -49,6 +45,12 @@ import Data.Text
   ( Text )
 
 -- fir
+import CodeGen.Application
+  ( UAST(UAST)
+  , ASTs(NilAST, ConsAST)
+  , pattern Applied
+  , unsafeRetypeUASTs
+  )
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.Composite
@@ -67,8 +69,6 @@ import CodeGen.State
   ( PointerState(Fresh, Modified)
   , _localBinding, _temporaryPointer
   )
-import CodeGen.Untyped
-  ( UAST(UAST), UASTs(NilUAST, SnocUAST), pattern Applied )
 import Control.Type.Optic
   ( Optic )
 import Data.Type.List
@@ -83,28 +83,6 @@ import FIR.Prim.Singletons
   ( sPrimTy )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
-
-----------------------------------------------------------------------------
--- list of ASTs
-
-infixr 5 `ConsAST`
-
-data ASTs (is :: [Type]) :: Type where
-  NilAST  :: ASTs '[]
-  ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
-
--- unfortunate workaround to obtain optic indices using untyped machinery
-unsafeRetypeUASTs :: forall as. SLength as -> UASTs -> Maybe (ASTs as)
-unsafeRetypeUASTs lg as
-  | correctLength lg as = Just ( unsafeRetypeAcc as NilAST )
-  | otherwise = Nothing
-  where unsafeRetypeAcc :: UASTs -> ASTs bs -> ASTs as
-        unsafeRetypeAcc NilUAST bs = unsafeCoerce bs
-        unsafeRetypeAcc (xs `SnocUAST` x) bs = unsafeRetypeAcc xs (x `ConsAST` bs)
-        correctLength :: SLength xs -> UASTs -> Bool
-        correctLength SZero NilUAST = True
-        correctLength (SSucc l) (xs `SnocUAST` _) = correctLength l xs
-        correctLength _ _ = False
 
 ----------------------------------------------------------------------------
 -- pattern synonyms for optics

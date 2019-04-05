@@ -55,6 +55,13 @@ import Data.Text
 import qualified Data.Text as Text
 
 -- fir
+import CodeGen.Application
+  ( UAST(UAST)
+  , UASTs(NilUAST)
+  , uastsLength
+  , pattern Applied
+  , codeGenUASTs
+  )
 import CodeGen.Applicative
   ( idiomatic, pattern Idiomatic )
 import CodeGen.Binary
@@ -108,13 +115,6 @@ import CodeGen.State
   , _localBindings, _localBinding
   , _userFunction
   , _userEntryPoint
-  )
-import CodeGen.Untyped
-  ( UAST(UAST)
-  , UASTs(NilUAST)
-  , uastsLength
-  , pattern Applied
-  , codeGenUASTs
   )
 import Data.Type.Known
   ( knownValue )

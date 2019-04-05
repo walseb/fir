@@ -112,7 +112,7 @@ data AST :: Type -> Type where
   -- | Haskell-level constants can be embedded into the AST.
   Lit :: ( PrimTy a, KnownArity a ) => a -> AST a
   -- | @SPIR-V@ primitive operations
-  PrimOp :: (PrimOp op a, PrimOpConstraint op a)
+  PrimOp :: ( PrimOp op a, PrimOpConstraint op a )
          => Proxy a -> Proxy op -> AST (PrimOpType op a)
 
   -- Indexed monadic operations (for the AST itself)

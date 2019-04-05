@@ -54,6 +54,10 @@ import Control.Monad.Except
 import qualified Data.Text as Text
 
 -- fir
+import CodeGen.Application
+  ( pattern Applied
+  , UAST(..), UASTs(..)
+  )
 import CodeGen.Array
   ( createArray )
 import {-# SOURCE #-} CodeGen.CodeGen
@@ -68,16 +72,10 @@ import CodeGen.Pointers
   ( temporaryVariable )
 import CodeGen.State
   ( _localBinding )
-import CodeGen.Untyped
-  ( pattern Applied
-  , UAST(..), UASTs(..)
-  )
 import Control.Type.Optic
   ( AnIndex
   , ReifiedGetter(view)
   )
-import Data.Function.Variadic
-  ( ListVariadic )
 import Data.Type.Known
   ( knownValue )
 import Data.Type.List
@@ -114,7 +112,7 @@ import qualified SPIRV.Storage as Storage
 -- code generation for functor and applicative operations
 
 data Idiom (f :: Type -> Type) (as :: [Type]) (b :: Type) where
-  Val       :: AST (f b) -> Idiom f '[] b -- 'b' should never be a function type in this case
+  Val       :: KnownArity b => AST (f b) -> Idiom f '[] b -- 'b' should never be a function type in this case
   PureIdiom :: forall f b. AST b -> Idiom f '[] b
   ApIdiom   :: (PrimTy a, KnownArity b) => Idiom f as (a -> b) -> AST (f a) -> Idiom f (as `Snoc` a) b
 deriving instance Show (Idiom f as b)
@@ -123,42 +121,45 @@ data AnIdiom (f :: Type -> Type) (b :: Type) where
   AnIdiom :: Idiom f as b -> AnIdiom f b
 deriving instance Show (AnIdiom f b)
 
-data ASTF where
-  ASTF :: (Applicative f, PrimFunc f, KnownArity a) => AST (f a) -> ASTF
+data AnyIdiom :: Type where
+  AnyIdiom :: (Applicative f, PrimFunc f) => AnIdiom f b -> AnyIdiom
+deriving instance Show AnyIdiom
 
-deriving instance Show ASTF
-
-anIdiom :: (Applicative f, PrimFunc f, KnownArity b) => AST (f b) -> AnIdiom f b
+anIdiom :: forall f b. (Applicative f, PrimFunc f, KnownArity b)
+        => AST (f b) -> Maybe (AnIdiom f b)
 anIdiom ( Pure :$ a )
-  = AnIdiom $ PureIdiom a
+  = Just $ AnIdiom $ PureIdiom a
 anIdiom ( Fmap :$ f :$ ( Pure :$ a ) )
-  = AnIdiom $ PureIdiom (fromAST f a)
+  = Just $ AnIdiom $ PureIdiom (fromAST f a)
 anIdiom ( Ap :$ ( Pure :$ f ) :$ ( Pure :$ a ) )
-  = AnIdiom $ PureIdiom (fromAST f a)
+  = Just $ AnIdiom $ PureIdiom (fromAST f a)
 anIdiom ( Fmap :$ f :$ a )
-  = AnIdiom $ ApIdiom (PureIdiom f) a
+  = Just $ AnIdiom $ ApIdiom (PureIdiom f) a
 anIdiom ( Ap :$ ( Pure :$ f ) :$ a )
-  = AnIdiom $ ApIdiom (PureIdiom f) a
+  = Just $ AnIdiom $ ApIdiom (PureIdiom f) a
 anIdiom ( Ap :$ f :$ a )
   = case anIdiom f of
-      AnIdiom i -> AnIdiom (ApIdiom i a)
-anIdiom fb = AnIdiom $ Val fb
+      Just (AnIdiom i) -> Just $ AnIdiom (ApIdiom i a)
+      _                -> Nothing
+anIdiom fb
+  = case arity @b of
+    ZeroArity -> Just (AnIdiom $ Val fb)
+    _         -> Nothing
 
-recogniseIdiom :: AST ast -> Maybe ASTF
-recogniseIdiom ast@(Pure :$ _ )     = Just $ ASTF ast
-recogniseIdiom ast@(Fmap :$ _ :$ _) = Just $ ASTF ast
-recogniseIdiom ast@(Ap   :$ _ :$ _) = Just $ ASTF ast
+recogniseIdiom :: AST ast -> Maybe AnyIdiom
+recogniseIdiom ast@(Pure :$ _ )     = AnyIdiom <$> anIdiom ast
+recogniseIdiom ast@(Fmap :$ _ :$ _) = AnyIdiom <$> anIdiom ast
+recogniseIdiom ast@(Ap   :$ _ :$ _) = AnyIdiom <$> anIdiom ast
 recogniseIdiom _                    = Nothing
 
-pattern Idiomatic :: ASTF -> AST ast
-pattern Idiomatic astf <- ( recogniseIdiom -> Just astf )
+pattern Idiomatic :: AnyIdiom -> AST ast
+pattern Idiomatic idi <- ( recogniseIdiom -> Just idi )
 
+-- codeGen for an existentially wrapped idiom
+idiomatic :: AnyIdiom -> CGMonad (ID, SPIRV.PrimTy)
+idiomatic ( AnyIdiom (AnIdiom idi) ) = idiom idi
 
-idiomatic :: ASTF -> CGMonad (ID, SPIRV.PrimTy)
-idiomatic ( ASTF astf )
-  = case anIdiom astf of
-      AnIdiom i -> idiom i
-
+-- codeGen for an idiom
 idiom :: forall f as b. ( Applicative f, PrimFunc f )
              => Idiom f as b
              -> CGMonad (ID, SPIRV.PrimTy)
@@ -202,8 +203,7 @@ idiom (PureIdiom b)
                    in compositeConstruct
                         ( SPIRV.Array n eltTy )
                         ( replicate n eltID )
-
-idiom (ApIdiom idi a) =
+idiom apIdiom@(ApIdiom idi (a :: AST (f a))) =
   case primFuncSing @f of
     sFuncVector@SFuncVector
       -> case sFuncVector of
@@ -224,7 +224,17 @@ idiom (ApIdiom idi a) =
     sFuncMatrix@SFuncMatrix
       -> case sFuncMatrix of
           ( _ :: SPrimFunc (M m n) )
-            -> throwError "codeGen: TODO, applicative support for matrices WIP"
+            -> let idiom_cols :: V m (Idiom (V n) as b)
+                   idiom_cols = distributeMatrixIdiom apIdiom
+               in do
+                    cols <- toList <$> traverse idiom idiom_cols
+                    eltTy <- case cols of
+                      ((_, SPIRV.Vector _ (SPIRV.Scalar ty)) : _)
+                          -> pure ty
+                      _   -> throwError "codeGen: invalid matrix type, columns are not vectors of scalars"
+                    compositeConstruct
+                      ( SPIRV.Matrix (knownValue @m) (knownValue @n) eltTy )
+                      ( map fst cols )
     sFuncArray@SFuncArray
       -> case sFuncArray of
           ( _ :: SPrimFunc (Array n) )
@@ -244,7 +254,6 @@ idiom (ApIdiom idi a) =
 
                       codeGen ( createArray @n @"__tmp_array" @"__tmp_arrayIndex" @b arrayFunction )
 
-
 applyIdiom :: forall f as a b.
               ( PrimFunc f
               , PrimTy a
@@ -260,11 +269,23 @@ applyIdiom (ApIdiom f a') a
         f' = fromAST <$> applyIdiom f a'
     in  f' <*> distributeAST a
 
+distributeMatrixIdiom
+  :: forall m n as b.
+     ( KnownNat m, KnownNat n, KnownArity b )
+  => Idiom (M m n) as b -> V m (Idiom (V n) as b)
+distributeMatrixIdiom (Val v)
+  = case arity @b of
+      ZeroArity -> fmap Val . distributeAST @(V m) $ ( UnMat :$ v )
+      SuccArity _ -> error "distributeMatrixIdiom: unexpected value used as a function"
+distributeMatrixIdiom (PureIdiom f)
+  = fmap PureIdiom . pure @(V m) $ f
+distributeMatrixIdiom (ApIdiom f a)
+  = ApIdiom <$> distributeMatrixIdiom f <*> distributeAST ( UnMat :$ a )
+
 applyIdiomArray :: forall n ix as a b.
                   ( KnownNat n
                   , Integral ix, IntegralTy ix
                   , PrimTy a
-                  , ListVariadic '[] a ~ a
                   )
                 => Idiom (Array n) as (a -> b) -> AST (Array n a) -> (AST ix -> AST b)
 applyIdiomArray (Val _) _ _
@@ -310,21 +331,23 @@ sanitiseVectorisation'
                  b1b2' = unsafeCoerce b1b2
              in Just . UAST $ unsafeCoerce @(AST (V n b1)) @(AST (V n a))
                                 ( Pure @(V n) :$ b1b2' )
-        ( Just (UAST (Pure :$ b1)), _ )
+        ( Just (UAST (Pure :$ b1)), Just (UAST sv2) )
           -> let b1' :: AST a
                  b1' = unsafeCoerce b1
-                 v2' :: AST (V n a)
-                 v2' = unsafeCoerce v2
-             in Just . UAST $ b1' *^ v2'
-        ( _, Just (UAST (Pure :$ b2)) )
-          -> let v1' :: AST (V n a)
-                 v1' = unsafeCoerce v1
+                 sv2' :: AST (V n a)
+                 sv2' = unsafeCoerce sv2
+             in Just . UAST $ b1' *^ sv2'
+        ( Just (UAST sv1), Just (UAST (Pure :$ b2)) )
+          -> let sv1' :: AST (V n a)
+                 sv1' = unsafeCoerce sv1
                  b2' :: AST a
                  b2' = unsafeCoerce b2
-             in Just . UAST $ b2' *^ v1'
-        _ -> liftA2 applyvPrimOp
+             in Just . UAST $ b2' *^ sv1'
+        (Just (UAST sv1), Just (UAST sv2) )
+           -> liftA2 applyvPrimOp
                 ( vectorisePrimOp @n @a @op )
-                ( sanitiseUASTs   @n (NilUAST `SnocUAST` v1 `SnocUAST` v2) )
+                ( Just ( NilUAST `SnocUAST` sv1 `SnocUAST` sv2 ) )
+        _ -> Nothing
 sanitiseVectorisation'
   ( Applied ( PrimOp (_ :: Proxy a) (_ :: Proxy op) ) as )
     = liftA2 applyvPrimOp

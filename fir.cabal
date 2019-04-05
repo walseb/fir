@@ -70,7 +70,8 @@ library
       , Math.Linear
 
     other-modules:
-        CodeGen.Applicative
+        CodeGen.Application
+      , CodeGen.Applicative
       , CodeGen.Array
       , CodeGen.Binary
       , CodeGen.CFG
@@ -88,7 +89,6 @@ library
       , CodeGen.PrimOps
       , CodeGen.Put
       , CodeGen.State
-      , CodeGen.Untyped
       , Control.Arrow.Strength
       , Control.Monad.Indexed
       , Control.Type.Optic
