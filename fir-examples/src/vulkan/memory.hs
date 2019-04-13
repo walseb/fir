@@ -1,0 +1,114 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE ViewPatterns        #-}
+
+module Vulkan.Memory where
+
+-- base
+import Control.Monad
+  ( (>=>), guard )
+import Control.Monad.IO.Class
+  ( liftIO )
+import Data.Bits
+import Data.Foldable
+  ( for_ )
+import qualified Foreign
+import qualified Foreign.Marshal
+
+-- managed
+import Control.Monad.Managed
+  ( MonadManaged )
+
+-- vulkan-api
+import Graphics.Vulkan.Marshal.Create
+  ( (&*) )
+import qualified Graphics.Vulkan as Vulkan
+import qualified Graphics.Vulkan.Core_1_0 as Vulkan
+import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+
+-- fir-examples
+import Vulkan.Monad
+
+-----------------------------------------------------------------------------------------------------
+
+allocateMemory
+  :: MonadManaged m
+  => Vulkan.VkPhysicalDevice
+  -> Vulkan.VkDevice
+  -> Vulkan.VkMemoryRequirements
+  -> [ Vulkan.VkMemoryPropertyFlags ]
+  -> m Vulkan.VkDeviceMemory
+allocateMemory physicalDevice device memReqs requiredFlags = do
+
+    memoryProperties :: Vulkan.VkPhysicalDeviceMemoryProperties
+      <- allocaAndPeek
+          ( Vulkan.vkGetPhysicalDeviceMemoryProperties physicalDevice )
+
+    let
+      memoryTypeCount :: Vulkan.Word32
+      memoryTypeCount = Vulkan.getField @"memoryTypeCount" memoryProperties
+
+    memoryTypes :: [ Vulkan.VkMemoryType ]
+      <- liftIO $
+        Foreign.Marshal.peekArray @Vulkan.VkMemoryType
+          ( fromIntegral memoryTypeCount )
+          ( Vulkan.unsafePtr memoryProperties
+              `Foreign.plusPtr`
+              Vulkan.fieldOffset @"memoryTypes" @Vulkan.VkPhysicalDeviceMemoryProperties
+          )
+
+    let
+      possibleMemoryTypeIndices :: [ Vulkan.Word32 ]
+      possibleMemoryTypeIndices = do
+
+        ( i, memoryType ) <- zip [ 0 .. ] memoryTypes
+
+        guard
+          ( testBit
+              ( Vulkan.getField @"memoryTypeBits" memReqs )
+              ( fromIntegral i )
+          )
+
+        for_ requiredFlags
+          ( \f ->
+              guard ( Vulkan.getField @"propertyFlags" memoryType .&. f > 0 )
+          )
+
+        pure i
+
+    memoryTypeIndex :: Vulkan.Word32
+      <- case possibleMemoryTypeIndices of
+              [] -> fail $  "No available memory types with requirements:\n"
+                         ++ show memReqs
+                         ++ "\nand with flags:\n"
+                         ++ show requiredFlags
+              ( i : _ ) -> pure i
+
+    let
+      allocateInfo :: Vulkan.VkMemoryAllocateInfo
+      allocateInfo =
+        Vulkan.createVk
+          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
+          &* Vulkan.set @"pNext" Vulkan.VK_NULL
+          &* Vulkan.set @"allocationSize" ( Vulkan.getField @"size" memReqs )
+          &* Vulkan.set @"memoryTypeIndex" memoryTypeIndex
+          )
+
+    manageBracket
+      ( allocaAndPeek
+        ( Vulkan.vkAllocateMemory
+            device
+            ( Vulkan.unsafePtr allocateInfo )
+            Vulkan.VK_NULL_HANDLE
+            >=> throwVkResult
+        )
+      )
+      ( \mem -> Vulkan.vkFreeMemory device mem Vulkan.VK_NULL_HANDLE )

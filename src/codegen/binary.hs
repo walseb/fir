@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports    #-}
 {-# LANGUAGE TypeApplications  #-}
 
 module CodeGen.Binary where
@@ -29,10 +30,10 @@ import Data.Set
   ( Set )
 import qualified Data.Set as Set
 
--- text
-import Data.Text
+-- text-utf8
+import "text-utf8" Data.Text
   ( Text )
-import qualified Data.Text as Text
+import qualified "text-utf8" Data.Text as Text
 
 -- transformers
 import Control.Monad.Except

@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -50,17 +51,15 @@ import Control.Lens
   ( view, use, assign, modifying )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
-import qualified Data.Text as Text
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import CodeGen.Application
   ( UAST(UAST)
-  , UASTs(NilUAST)
-  , uastsLength
+  , traverseASTs, astsLength
   , pattern Applied
-  , codeGenUASTs
   )
 import CodeGen.Applicative
   ( idiomatic, pattern Idiomatic )
@@ -149,15 +148,15 @@ codeGen :: AST ast -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
 codeGen (Applied (MkID ident@(i,ty)) as)
   = case as of
-      NilUAST -> pure ident
-      _       ->
+      NilAST -> pure ident
+      _      ->
         case ty of
           SPIRV.Function xs y
             -> let totalArgs = length xs
-                   givenArgs = uastsLength as
+                   givenArgs = astsLength as
                in case compare totalArgs givenArgs of
                     EQ -> do retTyID <- typeID y
-                             declareFunctionCall (retTyID, y) ident =<< codeGenUASTs as
+                             declareFunctionCall (retTyID, y) ident =<< traverseASTs codeGen as
                     GT -> throwError $
                             "codeGen: partial application not supported \
                             \(function " <> Text.pack (show i) <> ")"
@@ -177,7 +176,7 @@ codeGen (Bind :$ a :$ f)
   = do cg <- codeGen a
        codeGen $ (fromAST f) (MkID cg)
 codeGen (Applied (PrimOp (_ :: Proxy a) (_ :: Proxy op)) as)
-  = primOp (opName @_ @_ @op @a) =<< codeGenUASTs as
+  = primOp (opName @_ @_ @op @a) =<< traverseASTs codeGen as
 -- stateful operations
 codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
   = do  let name     = knownValue @name
@@ -299,7 +298,7 @@ codeGen (Applied (Use sLg singOptic) is)
     where expected :: Text
           expected = Text.pack . show $ sLengthVal sLg
           provided :: Text
-          provided = Text.pack . show $ uastsLength is
+          provided = Text.pack . show $ astsLength is
 
 codeGen (OpticView (AnIndexedOptic getter is) (UAST s))
   = do base <- codeGen s
@@ -313,7 +312,7 @@ codeGen (Applied (View sLg singOptic) is)
     where expected :: Text
           expected = Text.pack . show $ sLengthVal sLg
           provided :: Text
-          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ uastsLength is
+          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ astsLength is
           -- off by one: the last argument is the object being accessed,
           -- which is not a run-time index
 
@@ -383,7 +382,7 @@ codeGen (Applied (Assign sLg singOptic) is)
     where expected :: Text
           expected = Text.pack . show $ sLengthVal sLg
           provided :: Text
-          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ uastsLength is
+          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ astsLength is
           -- off by one: the last argument is the value for the assignment,
           -- which is not a run-time index
 
@@ -400,7 +399,7 @@ codeGen (Applied (Set sLg singOptic) is)
     where expected :: Text
           expected = Text.pack . show $ sLengthVal sLg
           provided :: Text
-          provided = Text.pack . show . (\i -> if i < 2 then 0 else i-2) $ uastsLength is
+          provided = Text.pack . show . (\i -> if i < 2 then 0 else i-2) $ astsLength is
           -- off by two
 codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
   = do  let n = knownValue @n
@@ -413,7 +412,7 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                x -> throwError ( "codeGen: unexpected vector constituent "
                                <> Text.pack ( show x )
                                )
-        (compositeConstruct compositeTy . map fst) =<< codeGenUASTs as
+        (compositeConstruct compositeTy . map fst) =<< traverseASTs codeGen as
 -- functor / applicative operations
 codeGen (Idiomatic idiom)
   = idiomatic idiom

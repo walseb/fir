@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE TypeApplications     #-}
@@ -27,7 +28,7 @@ import Data.Set
 import qualified Data.Set as Set
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir

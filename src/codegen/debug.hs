@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports    #-}
 
 module CodeGen.Debug
   ( debug, putSrcInfo )
@@ -25,9 +26,9 @@ import Control.Monad.Reader
   ( MonadReader )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
-import qualified Data.Text as Text
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import CodeGen.Binary

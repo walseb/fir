@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
 module SPIRV.Extension where
@@ -9,7 +10,7 @@ import Data.Word
   ( Word32 )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir

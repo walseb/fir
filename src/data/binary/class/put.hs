@@ -1,3 +1,4 @@
+{-# LANGUAGE PackageImports   #-}
 {-# LANGUAGE TypeApplications #-}
 
 {-|
@@ -49,9 +50,9 @@ import Numeric.Half
 import qualified Numeric.Half as Half
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
-import qualified Data.Text.Encoding as Text
+import qualified "text-utf8" Data.Text.Encoding as Text
 
 ----------------------------------------------------------------------------
 -- Put type class

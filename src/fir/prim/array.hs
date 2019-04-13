@@ -102,12 +102,15 @@ instance GradedSemigroup (RuntimeArray a) () where
     where v1, v2 :: Array.Vector a
           MkRuntimeArray v1 = unsafeCoerce arr1
           MkRuntimeArray v2 = unsafeCoerce arr2
+  -- GHC cannot deduce that units are '()
+  -- see [GHC trac #7259](https://gitlab.haskell.org/ghc/ghc/issues/7259)
           
 instance GeneratedGradedSemigroup (RuntimeArray a) () () where
   type GenType   (RuntimeArray a) () _ = a
   type GenDeg () (RuntimeArray a) () '() = '()
   generator :: a -> Grade () (RuntimeArray a) (GenDeg () (RuntimeArray a) () unit)
   generator a = unsafeCoerce ( MkRuntimeArray (Array.singleton a) )
+  --               ^^^^^ ditto
 
 
 -- no injective graded semigroup instance for run-time arrays,

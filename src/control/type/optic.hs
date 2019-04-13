@@ -251,7 +251,7 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 -- at the time of writing, GHC does not full support kind coercions, in that
 -- given the context @a ~ b@, GHC is unable to unify a type
 -- of kind @a@ with a type of kind @b@.
--- (See [GHC trac #15710](https://ghc.haskell.org/trac/ghc/ticket/15710).)
+-- (See [GHC trac #15710](https://gitlab.haskell.org/ghc/ghc/issues/15710).)
 --
 -- As a result, the constructors for the 'Optic' data type have overly general types.
 -- Kind-correct type-level smart constructors are instead provided (and their use recommended):

@@ -1,3 +1,4 @@
+{-# LANGUAGE PackageImports  #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module CodeGen.Put where
@@ -10,7 +11,7 @@ import Data.ByteString.Lazy
   ( ByteString )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- transformers

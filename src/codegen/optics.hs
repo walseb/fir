@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -41,20 +42,20 @@ import Control.Monad.Except
   ( throwError )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir
 import CodeGen.Application
   ( UAST(UAST)
   , ASTs(NilAST, ConsAST)
-  , pattern Applied
+  , pattern UApplied
   , unsafeRetypeUASTs
   )
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.Composite
-  ( compositeExtract, compositeInsert )
+  ( compositeConstruct, compositeExtract, compositeInsert )
 import CodeGen.Instruction
   ( ID )
 import CodeGen.Monad
@@ -80,7 +81,7 @@ import FIR.AST
 import FIR.Instances.Optics
   ( SOptic(..) )
 import FIR.Prim.Singletons
-  ( sPrimTy )
+  ( primTy, sPrimTy )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 
@@ -96,9 +97,9 @@ pattern OpticUse :: IndexedOptic -> AST t
 pattern OpticUse indexedOptic <- ( used -> Just indexedOptic )
 
 used :: AST t -> Maybe IndexedOptic
-used ( Applied (Use lg sOptic) is )
+used ( UApplied (Use lg sOptic) is )
   = case unsafeRetypeUASTs lg is of
-      Nothing -> Nothing
+      Nothing  -> Nothing
       Just is' -> Just ( AnIndexedOptic sOptic is' )
 used _ = Nothing
 
@@ -106,9 +107,9 @@ pattern OpticAssign :: IndexedOptic -> UAST -> AST t
 pattern OpticAssign indexedOptic a <- ( assigned -> Just ( indexedOptic, a ) )
 
 assigned :: AST t -> Maybe (IndexedOptic, UAST)
-assigned ( Applied (Assign lg sOptic) is :$ a )
+assigned ( UApplied (Assign lg sOptic) is :$ a )
   = case unsafeRetypeUASTs lg is of
-      Nothing -> Nothing
+      Nothing  -> Nothing
       Just is' -> Just ( AnIndexedOptic sOptic is', UAST a )
 assigned _ = Nothing
 
@@ -116,9 +117,9 @@ pattern OpticView :: IndexedOptic -> UAST -> AST t
 pattern OpticView indexedOptic s <- ( viewed -> Just ( indexedOptic, s ) )
 
 viewed :: AST t -> Maybe (IndexedOptic, UAST)
-viewed ( Applied (View lg sOptic) is :$ s )
+viewed ( UApplied (View lg sOptic) is :$ s )
   = case unsafeRetypeUASTs lg is of
-      Nothing -> Nothing
+      Nothing  -> Nothing
       Just is' -> Just ( AnIndexedOptic sOptic is', UAST s )
 viewed _ = Nothing
 
@@ -126,9 +127,9 @@ pattern OpticSet :: IndexedOptic -> UAST -> UAST -> AST t
 pattern OpticSet indexedOptic a s <- ( setted -> Just ( indexedOptic, a, s ) )
 
 setted :: AST t -> Maybe (IndexedOptic, UAST, UAST)
-setted ( ( Applied (Set lg sOptic) is :$ a ) :$ s )
+setted ( ( UApplied (Set lg sOptic) is :$ a ) :$ s )
   = case unsafeRetypeUASTs lg is of
-    Nothing -> Nothing
+    Nothing  -> Nothing
     Just is' -> Just ( AnIndexedOptic sOptic is', UAST a, UAST s )
 setted _ = Nothing
 
@@ -182,7 +183,8 @@ infixr 5 `Then`
 data OpticalOperationTree where
   Done    :: OpticalOperationTree
   Then    :: OpticalOperation -> OpticalOperationTree -> OpticalOperationTree
-  Combine :: [OpticalOperationTree] -> OpticalOperationTree
+  Combine :: SPIRV.PrimTy -> [OpticalOperationTree] -> OpticalOperationTree
+    --        ^^^^^^ result of combining
 
 
 operationTree :: forall k is (s :: k) a (optic :: Optic is s a).
@@ -202,24 +204,24 @@ operationTree is (SComposeO lg1 opt1 opt2)
           continue ops1 Done = ops1
           -- recurse on first argument
           continue Done ops2 = ops2
-          continue (Combine trees) ops2
-            = Combine $ map (`continue` ops2) trees
+          continue (Combine cb trees) ops2
+            = Combine cb $ map (`continue` ops2) trees
           continue (Access _ (CTInds is1) `Then` Done) (Access a2 (CTInds is2) `Then` ops2)
             = Access a2 (CTInds (is1 ++ is2)) `Then` ops2
           continue (Access _ (RTInds safe1 is1) `Then` Done) (Access a2 (RTInds safe2 is2) `Then` ops2)
             = Access a2 (RTInds (safe1 <> safe2) (is1 ++ is2)) `Then` ops2
           continue (op1 `Then` ops1) ops2 = op1 `Then` continue ops1 ops2
-operationTree is (SProductO lg1 lg2 o1 o2)
+operationTree is (SProductO lg1 lg2 o1 o2 :: SOptic (optic :: Optic is s a))
   = do  let (is1, is2) = combinedIndices lg1 lg2 is
         t1 <- operationTree is1 o1
         t2 <- operationTree is2 o2
         let children
               = case ( t1, t2 ) of
-                  (Combine ts1, Combine ts2) -> ts1 ++ ts2
-                  (Combine ts1, _          ) -> ts1 ++ [t2]
-                  (_          , Combine ts2) -> t1 : ts2
-                  (_          , _          ) -> [t1, t2]
-        pure (Combine children)
+                  (Combine _ ts1, Combine _ ts2) -> ts1 ++ ts2
+                  (Combine _ ts1, _            ) -> ts1 ++ [t2]
+                  (_            , Combine _ ts2) -> t1 : ts2
+                  (_            , _            ) -> [t1, t2]
+        pure (Combine (primTy @a) children)
 operationTree _ (SBinding _)
   = throwError "operationTree: trying to access a binding within a binding"
 operationTree _ (SImageTexel _ _)
@@ -249,10 +251,12 @@ loadThroughAccessChain' basePtr ( Access a is `Then` ops )
   = do
       newBasePtr <- accessChain basePtr a is
       loadThroughAccessChain' newBasePtr ops
+loadThroughAccessChain' basePtr ( Combine cb trees )
+  = do
+      components <- traverse (fmap fst . loadThroughAccessChain' basePtr) trees
+      compositeConstruct cb components
 loadThroughAccessChain' _ ( Join `Then` _ )
   = throwError "loadThroughAccessChain': unexpected 'Joint' optic used as a getter"
-loadThroughAccessChain' _ ( Combine _ )
-  = throwError "loadThroughAccessChain': product getter TODO"
 
 
 extractUsingGetter'
@@ -275,10 +279,12 @@ extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _ _) `Then` _ )
              assign ( _temporaryPointer baseID ) ( Just (basePtrID, Fresh) )
         )
       loadThroughAccessChain' (basePtrID, ptrTy) ops
+extractUsingGetter' base ( Combine cb trees )
+  = do
+      components <- traverse (fmap fst . extractUsingGetter' base) trees
+      compositeConstruct cb components
 extractUsingGetter' _ ( Join `Then` _)
   = throwError "extractUsingGetter': unexpected 'Joint' optic used as a getter"
-extractUsingGetter' _ ( Combine _ )
-  = throwError "extractUsingGetter': product getter TODO"
 
 
 storeThroughAccessChain'
@@ -289,10 +295,11 @@ storeThroughAccessChain' basePtr val ( Access a is `Then` ops)
   = do
       newBasePtr <- accessChain basePtr a is
       storeThroughAccessChain' newBasePtr val ops
-storeThroughAccessChain' _ _ ( Join `Then` _ )
-  = throwError "storeThroughAccessChain': joint setter TODO"
-storeThroughAccessChain' _ _ ( Combine _ )
+storeThroughAccessChain' basePtr (valID, _) ( Combine cb trees )
   = throwError "storeThroughAccessChain': product setter TODO"
+storeThroughAccessChain' basePtr valID ( Join `Then` tree )
+  = throwError "storeThroughAccessChain': joint setter TODO"
+
 
 insertUsingSetter'
   :: Text -> (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad ()

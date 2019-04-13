@@ -5,8 +5,10 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -74,7 +76,8 @@ More meaningful examples can be found in the @fir-examples@ subdirectory of the 
 -}
 
 module FIR 
-  ( DrawableProgram(draw), compile
+  ( compile, runCompilationsTH
+  , DrawableProgram(draw)
   , CompilerFlag(Debug, NoCode)
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
@@ -164,11 +167,16 @@ module FIR
   , Data.Int.Int64
   , Numeric.Half.Half
 
+  -- overloaded strings syntax
+  , Data.String.IsString(..)
+
   ) where
 
 -- base
 import qualified Control.Monad as Monad
   ( unless )
+import Data.String
+  ( IsString(fromString) )
 import Prelude
 import Data.Word
   ( Word8, Word16, Word32, Word64 )
@@ -186,13 +194,19 @@ import Numeric.Half
 import Data.Tree.View
   ( drawTree )
 
+-- template-haskell
+import qualified Language.Haskell.TH        as TH
+import qualified Language.Haskell.TH.Syntax as TH
+
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import CodeGen.CodeGen
 import CodeGen.State
+import Control.Arrow.Strength
 import Control.Monad.Indexed
 import Control.Type.Optic
 import Data.Type.Map
@@ -257,3 +271,21 @@ compile filePath flags (Program program) = case runCodeGen cgContext (toAST prog
               Prelude.pure ( Right "OK" )
   where cgContext :: CGContext
         cgContext = (context @defs) { debugMode = Debug `elem` flags }
+
+instance TH.Lift Text where
+  lift t = [| Text.pack $(TH.lift $ Text.unpack t) |]
+
+runCompilationsTH :: [ ( Text, IO (Either Text Text) ) ] -> TH.Q TH.Exp
+runCompilationsTH namedCompilations
+  = TH.lift Prelude.=<< TH.runIO (combineCompilations namedCompilations)
+    where
+      combineCompilations :: [ ( Text, IO (Either Text Text) ) ] -> IO (Either Text Text)
+      combineCompilations
+        = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right "OK") )
+        . traverse ( uncurry rightStrength )
+
+      combineResult :: Text -> Either Text Text -> Either Text Text -> Either Text Text
+      combineResult _    a           (Right _ ) = a
+      combineResult name (Right _)   (Left err) = Left (name <> ": " <> err)
+      combineResult name (Left errs) (Left err)
+        = Left (errs <> "\n" <> name <> ": " <> err)

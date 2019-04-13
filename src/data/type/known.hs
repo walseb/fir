@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -24,8 +25,9 @@ import GHC.TypeNats
   ( Nat, KnownNat, natVal )
 
 -- text-utf8
-import Data.Text(Text)
-import qualified Data.Text as Text
+import "text-utf8" Data.Text
+  ( Text )
+import qualified "text-utf8" Data.Text as Text
 
 --------------------------------------------------
 

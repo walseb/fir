@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PackageImports   #-}
 {-# LANGUAGE RankNTypes       #-}
 
 module CodeGen.State where
@@ -32,9 +33,9 @@ import Control.Monad.State
   ( MonadState )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
-import qualified Data.Text as Text
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import CodeGen.Instruction

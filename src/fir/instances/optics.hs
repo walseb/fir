@@ -140,7 +140,8 @@ data SOptic (optic :: Optic i s a) :: Type where
 
      -- similar remark applies to products
   SProductO  :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js s b).
-                SLength is -> SLength js -> SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
+                PrimTy (Product o1 o2) -- need to know result for SPIR-V code generation
+             => SLength is -> SLength js -> SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
 
 infixr 9 %:.:
 infixr 3 %:*:
@@ -151,7 +152,7 @@ infixr 3 %:*:
 o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
 
 (%:*:) :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js s b).
-          ( KnownLength is, KnownLength js )
+          ( KnownLength is, KnownLength js, PrimTy (Product o1 o2) )
         => SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
 o1 %:*: o2 = SProductO (sLength @_ @is) (sLength @_ @js) o1 o2
 
@@ -217,6 +218,7 @@ instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
          , KnownLength is
          , KnownLength js
          , KnownLength (Zip is js) -- deduced from the above two in concrete situations
+         , PrimTy c
          )
       => KnownOptic ((o1 `ProductO` o2) :: Optic ks s c) where
   opticSing = (opticSing @o1) %:*: (opticSing @o2)
@@ -1013,7 +1015,8 @@ type instance DegreeKind    (RuntimeArray a) = ()
 type instance LabelKind     (RuntimeArray a) = ()
 
 -- need to separate the above open type family instances before all their uses
--- https://ghc.haskell.org/trac/ghc/ticket/15987#comment:2
+-- needed because of [GHC trac #12088](https://gitlab.haskell.org/ghc/ghc/issues/12088)
+-- see also [GHC trac #15987](https://gitlab.haskell.org/ghc/ghc/issues/15987#note_164461)
 $(pure [])
 
 instance Contained (V n a) where

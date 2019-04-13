@@ -6,9 +6,10 @@ dist-newstyle/
 *.project
 *.tmp
 *.fail
+*.spv
 
 shaders/
-fir-examples/
 haddock-api/
+fir-examples/src/kaleidogen
 
 TODO.txt

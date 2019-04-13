@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -13,7 +14,7 @@ import Data.Word
   ( Word32 )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir

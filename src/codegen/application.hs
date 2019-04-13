@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeOperators       #-}
@@ -10,20 +11,12 @@
 module CodeGen.Application where
 
 -- base
-import Control.Arrow
-  ( second )
 import Data.Kind
   ( Type )
 import Unsafe.Coerce
   ( unsafeCoerce )
 
 -- fir
-import {-# SOURCE #-} CodeGen.CodeGen
-  ( codeGen )
-import CodeGen.Instruction
-  ( ID )
-import CodeGen.Monad
-  ( CGMonad )
 import Data.Function.Variadic
   ( ListVariadic )
 import Data.Type.List
@@ -32,7 +25,6 @@ import Data.Type.List
   )
 import FIR.AST
   ( AST((:$)) )
-import qualified SPIRV.PrimTy as SPIRV
 
 ----------------------------------------------------------------------------
 -- existential data types to emulate untyped AST
@@ -40,7 +32,6 @@ import qualified SPIRV.PrimTy as SPIRV
 -- UAST = Untyped AST
 data UAST where
   UAST :: AST a -> UAST
-
 deriving instance Show UAST
 
 infixl 5 `SnocUAST`
@@ -50,19 +41,8 @@ infixl 5 `SnocUAST`
 data UASTs where
   NilUAST  :: UASTs
   SnocUAST :: UASTs -> AST a -> UASTs
-
 deriving instance Show UASTs
 
-uastsLength :: UASTs -> Int
-uastsLength NilUAST            = 0
-uastsLength (as `SnocUAST` _ ) = 1 + uastsLength as
-
-uastsHeadTail :: UASTs -> Maybe (UAST, UASTs)
-uastsHeadTail NilUAST           = Nothing
-uastsHeadTail (as `SnocUAST` a) = Just (go a as)
-    where go :: AST a -> UASTs -> (UAST, UASTs)
-          go b NilUAST           = (UAST b, NilUAST)
-          go b (cs `SnocUAST` c) = second (`SnocUAST` b) (go c cs)
 
 ----------------------------------------------------------------------------
 -- typed list of ASTs
@@ -72,6 +52,18 @@ infixr 5 `ConsAST`
 data ASTs (is :: [Type]) :: Type where
   NilAST  :: ASTs '[]
   ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
+
+foldrASTs :: (forall a. AST a -> b -> b) -> b -> ASTs as -> b
+foldrASTs _ b0 NilAST           = b0
+foldrASTs f b0 (a `ConsAST` as) = f a ( foldrASTs f b0 as )
+
+astsLength :: ASTs is -> Int
+astsLength = foldrASTs (const succ) 0
+
+traverseASTs :: Applicative f => (forall a. AST a -> f b) -> ASTs as -> f [b]
+traverseASTs _ NilAST           = pure []
+traverseASTs f (a `ConsAST` as) = (:) <$> f a <*> traverseASTs f as
+
 
 -- unfortunate workaround to obtain optic indices using untyped machinery
 unsafeRetypeUASTs :: forall as. SLength as -> UASTs -> Maybe (ASTs as)
@@ -89,43 +81,34 @@ unsafeRetypeUASTs lg as
 ----------------------------------------------------------------------------
 -- pattern for applied function with any number of arguments (untyped)
 
-pattern Applied :: AST a -> UASTs -> AST b
-pattern Applied f as <- (unapply . UAST -> (UAST f,as))
+pattern UApplied :: AST a -> UASTs -> AST b
+pattern UApplied f as <- (unapplyU . UAST -> (UAST f,as))
 
-unapply :: UAST -> (UAST, UASTs)
-unapply (UAST (f :$ a))
-  = case unapply (UAST f) of
+unapplyU :: UAST -> (UAST, UASTs)
+unapplyU (UAST (f :$ a))
+  = case unapplyU (UAST f) of
         (UAST g, as) -> (UAST g, as `SnocUAST` a)
-unapply (UAST f) = (UAST f, NilUAST)
+unapplyU (UAST f) = (UAST f, NilUAST)
 
 ----------------------------------------------------------------------------
--- experimental typed version
+-- typed version
 
-pattern Applied' :: AST (ListVariadic as b) -> ASTs as -> AST b
-pattern Applied' f as <- (unapply' -> AnApplication f as)
+pattern Applied :: AST (ListVariadic as b) -> ASTs as -> AST b
+pattern Applied f as <- (unapply -> AnApplication f as)
 
 data AnApplication b where
   AnApplication :: AST (ListVariadic as b) -> ASTs as -> AnApplication b
 
-unapply' :: AST b -> AnApplication b
-unapply' (f :$ a)
-  = case unapply' f of
+unapply :: AST b -> AnApplication b
+unapply (f :$ a)
+  = case unapply f of
         AnApplication (g :: AST (ListVariadic as (a ->b))) as
           -> AnApplication (unsafeCoerce g :: AST (ListVariadic (as `Snoc` a) b)) (as `snocAST` a)
-unapply' f = AnApplication (unsafeCoerce f :: ListVariadic '[] b) NilAST
+unapply f = AnApplication (unsafeCoerce f :: ListVariadic '[] b) NilAST
 
 snocAST :: ASTs as -> AST a -> ASTs (as `Snoc` a)
 snocAST NilAST           a = a `ConsAST` NilAST
 snocAST (x `ConsAST` xs) a = unsafeCoerce ( x `ConsAST` (xs `snocAST` a) )
+  --                          ^^^^
+  -- should be able to get rid of this @unsafeCoerce@
 
-----------------------------------------------------------------------------
--- code generation for the existential AST data types
-
-codeGenUASTs :: UASTs -> CGMonad [ (ID, SPIRV.PrimTy) ]
-codeGenUASTs = sequence . reverse . go
-    where go :: UASTs -> [ CGMonad (ID, SPIRV.PrimTy) ]
-          go NilUAST           = []
-          go (as `SnocUAST` a) = codeGen a : go as
-
-codeGenUAST :: UAST -> CGMonad (ID, SPIRV.PrimTy)
-codeGenUAST (UAST a) = codeGen a

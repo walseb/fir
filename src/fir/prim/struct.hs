@@ -103,6 +103,7 @@ instance GeneratedGradedSemigroup
   generator :: forall (kv :: Symbol :-> Type). Value kv -> Struct '[ kv ]
   generator a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv] )
                 --   ^^^^   GHC cannot deduce that kv ~ Key kv ':-> Value kv
+                -- see [GHC trac #7259](https://gitlab.haskell.org/ghc/ghc/issues/7259)
 
 instance FreeGradedSemigroup
             Struct

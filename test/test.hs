@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports    #-}
 {-# LANGUAGE TupleSections     #-}
 
 module Test where
@@ -111,10 +112,10 @@ data TestOutput
   deriving ( Eq, Show )
 
 ghc :: FilePath
-ghc = "C:\\" </> "ghc" </> "ghc-8.6.4" </> "bin" </> "ghc" <.> "exe"
+ghc = "C:\\" </> "ghc" </> "ghc-8.6.4.20190406" </> "bin" </> "ghc" <.> "exe"
 
 ghci :: FilePath
-ghci = "C:\\" </> "ghc" </> "ghc-8.6.4" </> "bin" </> "ghci" <.> "exe"
+ghci = "C:\\" </> "ghc" </> "ghc-8.6.4.20190406" </> "bin" </> "ghci" <.> "exe"
 
 validator :: FilePath
 validator = "spirv-val"

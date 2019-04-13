@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE OverloadedStrings      #-}
+{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -51,11 +52,11 @@ import Control.Monad.Except
   ( throwError )
 
 -- text-utf8
-import qualified Data.Text as Text
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import CodeGen.Application
-  ( pattern Applied
+  ( pattern UApplied
   , UAST(..), UASTs(..)
   )
 import CodeGen.Array
@@ -349,14 +350,14 @@ sanitiseVectorisation'
                 ( Just ( NilUAST `SnocUAST` sv1 `SnocUAST` sv2 ) )
         _ -> Nothing
 sanitiseVectorisation'
-  ( Applied ( PrimOp (_ :: Proxy a) (_ :: Proxy op) ) as )
+  ( UApplied ( PrimOp (_ :: Proxy a) (_ :: Proxy op) ) as )
     = liftA2 applyvPrimOp
         ( vectorisePrimOp @n @a @op )
         ( sanitiseUASTs   @n as     )
 sanitiseVectorisation'
-  ( Applied ( MkID _ ) (_ `SnocUAST` _ ) )
+  ( UApplied ( MkID _ ) (_ `SnocUAST` _ ) )
     = Nothing -- cannot vectorise opaque functions (e.g. native function calls)
-sanitiseVectorisation' ast@(Applied (MkVector _ _) _) = Just . UAST $ ast
+sanitiseVectorisation' ast@(UApplied (MkVector _ _) _) = Just . UAST $ ast
 sanitiseVectorisation' (Coerce :$ v) = Just . UAST $ v
 sanitiseVectorisation' (Lit a) = Just . UAST $ Pure @(V n) :$ Lit a
 sanitiseVectorisation' _ = Nothing -- Just . UAST $ Pure @(V n) :$ ast

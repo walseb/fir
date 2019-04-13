@@ -1,3 +1,4 @@
+{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
@@ -36,7 +37,7 @@ import Control.Monad.State
   ( get, put )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir

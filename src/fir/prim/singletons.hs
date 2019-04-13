@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -40,7 +41,7 @@ import Numeric.Half
   ( Half )
 
 -- text-utf8
-import qualified Data.Text as Text
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import Data.Binary.Class.Put

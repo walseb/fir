@@ -1,3 +1,4 @@
+{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module CodeGen.Phi
@@ -11,16 +12,17 @@ import Data.List
 -- containers
 import Data.Map
   ( Map )
+import qualified Data.Map.Strict       as Map
+import qualified Data.Map.Merge.Strict as Map
 
 -- lens
 import Control.Lens
   ( assign )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
-import qualified Data.Map.Strict       as Map
-import qualified Data.Map.Merge.Strict as Map
+
 
 -- fir
 import CodeGen.Binary

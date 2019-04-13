@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -33,7 +34,7 @@ import Data.Set
 import qualified Data.Set as Set
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir
@@ -86,8 +87,8 @@ instance {-# OVERLAPPING #-}
       => Known Definition ('Global storage decs (Image props))
       where
   known = AnnotateGlobal
-    ( SPIRV.PointerTy ( knownValue @storage) imgTy
-    , Set.fromList ( knownValue @decs )
+    ( SPIRV.PointerTy ( knownValue @storage ) imgTy
+    , Set.fromList    ( knownValue @decs )
     )
         where imgTy :: SPIRV.PrimTy
               imgTy = case knownImage @props of
@@ -99,8 +100,8 @@ instance ( PrimTy ty, Known SPIRV.StorageClass storage, Known [SPIRV.Decoration 
       => Known Definition ('Global storage decs ty)
       where
   known = AnnotateGlobal
-    ( SPIRV.PointerTy ( knownValue @storage) (primTy @ty)
-    , Set.fromList ( knownValue @decs )
+    ( SPIRV.PointerTy ( knownValue @storage ) ( primTy @ty )
+    , Set.fromList    ( knownValue @decs )
     )
 
 instance Known SPIRV.FunctionControl control

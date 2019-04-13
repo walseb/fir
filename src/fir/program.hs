@@ -2,6 +2,7 @@
 
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -41,7 +42,7 @@ import Data.Map
 import qualified Data.Map as Map
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir

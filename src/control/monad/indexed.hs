@@ -124,7 +124,7 @@ withKey f (AtKey a) = AtKey (f a)
 -- useful operators & functions for AtKey-style indexing
 
 ixFmap :: FunctorIx m => (a -> b) -> m (a := j) i -> m (b := j) i
-ixFmap f = fmapIx ( withKey f)
+ixFmap f = fmapIx ( withKey f )
 
 infixl 4 <<$>>
 infixl 4 <<$

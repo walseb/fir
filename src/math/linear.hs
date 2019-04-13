@@ -9,12 +9,13 @@
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE MagicHash                  #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RebindableSyntax           #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -42,7 +43,7 @@ module Math.Linear
   -- ** Vectors
   , Semimodule(..), Module(..), Inner(..), Cross(..)
   -- ** Matrices
-  , Matrix(..)
+  , VectorOf, Matrix(..)
 
   -- * General vector operations
   , angle, norm, squaredNorm
@@ -68,7 +69,7 @@ module Math.Linear
   , blockSum
 
   -- * Operations involving the matrix newtype
-  , perspective
+  , perspective, lookAt
   )
 where
 
@@ -90,7 +91,7 @@ import Data.Foldable
 import Data.Functor.Compose
   ( Compose(..) )
 import Data.Kind
-  ( Type )
+  ( Type, Constraint )
 import Data.Type.Equality
   ( (:~:)(Refl) )
 import Data.Proxy
@@ -156,7 +157,12 @@ data V :: Nat -> Type -> Type where
 deriving instance Functor     (V n)
 deriving instance Foldable    (V n)
 deriving instance Traversable (V n)
-deriving instance Show a => Show (V n a)
+
+instance (KnownNat n, Show a) => Show (V n a) where
+  show :: V n a -> String
+  show v = "V" ++ n ++ foldMap ( \a -> " " ++ show a ) v
+    where n :: String
+          n = show (natVal (Proxy @n))
 
 deriving instance Prelude.Eq  a => Prelude.Eq  (V n a)
 deriving instance Prelude.Ord a => Prelude.Ord (V n a)
@@ -377,6 +383,9 @@ instance GeneratedGradedSemigroup (V 0 a) Nat () where
   type GenDeg Nat (V 0 a) () '() = 1
   generator :: a -> V (GenDeg Nat (V 0 a) () unit) a
   generator a = unsafeCoerce (a :. Nil)
+  --              ^^^
+  -- GHC cannot deduce unit ~ '()
+  -- see [GHC trac #7259](https://gitlab.haskell.org/ghc/ghc/issues/7259)
 
 instance FreeGradedSemigroup (V 0 a) Nat () where
   type ValidDegree (V 0 a) n = KnownNat n
@@ -392,6 +401,7 @@ instance FreeGradedSemigroup (V 0 a) Nat () where
          NLE _ _ -> unsafeCoerce ( Nil, a :. as )
   generated :: V (GenDeg Nat (V 0 a) () unit) a -> a
   generated = unsafeCoerce (headV :: V 1 a -> a)
+  --           ^^^^^   ditto
 
 ------------------------------------------------------------------
 
@@ -405,6 +415,7 @@ infixl 6 ^+^, ^-^
 infixl 7 ^.^, `dot`, ^×^, `cross`
 infix  8 ^*, *^
 
+
 -- | A semimodule is to a semiring as a module is to a ring.
 --
 -- That is, a semimodule M over a semiring R consists of
@@ -415,13 +426,16 @@ infix  8 ^*, *^
 -- The associated type family 'OfDim' is used to allow class methods
 -- which involve elements in different dimensions.
 -- This is crucial for the class methods for matrices (see the 'Matrix' type class)
-class Semiring (Scalar v) => Semimodule v where
+class Semiring (Scalar v) => Semimodule d v | v -> d where
   type Scalar v :: Type
-  type v `OfDim` (n :: Nat) = r | r -> v n
-  (^+^) :: KnownNat n => v `OfDim` n -> v `OfDim` n -> v `OfDim` n
-  (*^)  :: KnownNat n => Scalar v    -> v `OfDim` n -> v `OfDim` n
-  (^*)  :: KnownNat n => v `OfDim` n -> Scalar v    -> v `OfDim` n
-  (*^) = flip (^*) -- SPIRV defines VectorTimesScalar not ScalarTimesVector...
+  type OfDim v d (n :: d) = (r :: Type) | r -> v d n
+  type ValidDim v d (n :: d) :: Constraint
+  {-# MINIMAL (^+^), ( (*^) | (^*) ) #-}
+  (^+^) :: ValidDim v d n => OfDim v d n -> OfDim v d n -> OfDim v d n
+  (*^)  :: ValidDim v d n => Scalar v    -> OfDim v d n -> OfDim v d n
+  (^*)  :: ValidDim v d n => OfDim v d n -> Scalar v    -> OfDim v d n
+  (*^) = flip (^*)
+  (^*) = flip (*^)
 
 -- | A module M over a ring R consists of:
 --
@@ -429,10 +443,11 @@ class Semiring (Scalar v) => Semimodule v where
 --     * an action of R on M.
 --
 -- That is, we simply add additive inverses to the previous definition.
-class (Ring (Scalar v), Semimodule v) => Module v where
-  (^-^) :: KnownNat n => v `OfDim` n -> v `OfDim` n -> v `OfDim` n
+class (Ring (Scalar v), Semimodule d v) => Module d v | v -> d where
+  {-# MINIMAL (^-^) | (-^) #-}
+  (^-^) :: ValidDim v d n => OfDim v d n -> OfDim v d n -> OfDim v d n
   (^-^) x y = x ^+^ ((-^) y)
-  (-^) :: KnownNat n => v `OfDim` n -> v `OfDim` n
+  (-^) :: ValidDim v d n => OfDim v d n -> OfDim v d n
   (-^) x = (-1) *^ x
 
 -- | Semimodule with an inner product.
@@ -441,36 +456,43 @@ class (Ring (Scalar v), Semimodule v) => Module v where
 --
 -- Other axioms might be more relevant depending on the underlying ring.
 -- For instance, one instead insists on sesquilinearity over the field of complex numbers.
-class Semimodule v => Inner v where
-  (^.^), dot :: KnownNat n => v `OfDim` n -> v `OfDim` n -> Scalar v
+class Semimodule d v => Inner d v where
+  {-# MINIMAL ( (^.^) | dot ), normalise #-}
+  (^.^), dot :: ValidDim v d n => OfDim v d n -> OfDim v d n -> Scalar v
   dot = (^.^)
-  normalise :: KnownNat n => v `OfDim` n -> v `OfDim` n
+  (^.^) = dot
+  normalise :: ValidDim v d n => OfDim v d n -> OfDim v d n
 
 -- | Module with a cross product.
 --
 -- This usually consists of a non-degenerate skew-symmetric bilinear multiplication satisfying the Jacobi identity.
 -- Over the real numbers, this implies the dimension is 3.
-class Module v => Cross v where
-  (^×^), cross :: v `OfDim` 3 -> v `OfDim` 3 -> v `OfDim` 3
+class Module d v => Cross d v where
+  type CrossDim v d (n :: d) :: Constraint
+  {-# MINIMAL (^×^) | cross #-}
+  (^×^), cross :: (ValidDim v d n, CrossDim v d n) => OfDim v d n -> OfDim v d n -> OfDim v d n
   (^×^) = cross
+  cross = (^×^)
 
 ------------------------------------------------------------------
 -- instances for plain vectors
 
-instance Semiring a => Semimodule (V 0 a) where
+instance Semiring a => Semimodule Nat (V 0 a) where
   type Scalar (V 0 a) = a
-  type V 0 a `OfDim` n = V n a
+  type OfDim (V 0 a) Nat n = V n a
+  type ValidDim (V 0 a) Nat n = KnownNat n
   (^+^) = liftA2 (+)
   v ^* k = fmap (*k) v
 
-instance Ring a => Module (V 0 a) where
+instance Ring a => Module Nat (V 0 a) where
   (^-^) = liftA2 (-)  
 
-instance (Semiring a, Floating a) => Inner (V 0 a) where
+instance (Semiring a, Floating a) => Inner Nat (V 0 a) where
   (^.^) = (sum .) . liftA2 (*)
   normalise v = invSqrt (dot v v) *^ v
 
-instance Ring a => Cross (V 0 a) where
+instance Ring a => Cross Nat (V 0 a) where
+  type CrossDim (V 0 a) Nat n = ( n ~ 3 )
   cross (V3 x y z) (V3 x' y' z') = V3 a b c
     where a = y * z' - z * y'
           b = z * x' - x * z'
@@ -480,84 +502,84 @@ instance Ring a => Cross (V 0 a) where
 -- derived operations
 
 -- | Angle between two vectors, computed using the inner product structure.
-angle :: (Floating (Scalar v), KnownNat n, Inner v)
-      => v `OfDim` n -> v `OfDim` n -> Scalar v
+angle :: (Floating (Scalar v), ValidDim v d n, Inner d v)
+      => OfDim v d n -> OfDim v d n -> Scalar v
 angle x y = acos $ dot (normalise x) (normalise y)
 
 -- | Norm of a vector, computed using the inner product.
-norm :: (Floating (Scalar v), KnownNat n, Inner v)
-     => v `OfDim` n -> Scalar v
+norm :: (Floating (Scalar v), ValidDim v d n, Inner d v)
+     => OfDim v d n -> Scalar v
 norm v = sqrt $ squaredNorm v
 
 -- | Squared norm of a vector, computed using the inner product.
-squaredNorm :: (KnownNat n, Inner v)
-            => v `OfDim` n -> Scalar v
+squaredNorm :: (ValidDim v d n, Inner d v)
+            => OfDim v d n -> Scalar v
 squaredNorm v = dot v v
 
 -- | Quadrance between two points.
-quadrance :: (KnownNat n, Module v, Inner v)
-       => v `OfDim` n -> v `OfDim` n -> Scalar v
+quadrance :: (ValidDim v d n, Module d v, Inner d v)
+       => OfDim v d n -> OfDim v d n -> Scalar v
 quadrance x y = squaredNorm (x ^-^ y)
 
 -- | Distance between two points.
-distance :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
-         => v `OfDim` n -> v `OfDim` n -> Scalar v
+distance :: (Floating (Scalar v), ValidDim v d n, Module d v, Inner d v)
+         => OfDim v d n -> OfDim v d n -> Scalar v
 distance x y = norm (x ^-^ y)
 
 -- | Linear interpolation between two points.
-along :: (KnownNat n, Module v)
-      => Scalar v  -- ^ Interpolation factor. 0 = start, 1 = end.
-      -> v `OfDim` n -- ^ Start.
-      -> v `OfDim` n -- ^ End.
-      -> v `OfDim` n
+along :: (ValidDim v d n, Module d v)
+      => Scalar v    -- ^ Interpolation coefficient. 0 = start, 1 = end.
+      -> OfDim v d n -- ^ Start.
+      -> OfDim v d n -- ^ End.
+      -> OfDim v d n
 along t x y = (1-t) *^ x ^+^ t *^ y
 
 -- | Reflects a vector along a hyperplane, specified by a normal vector.
 -- /Computes the normalisation of the normal vector in the process./
-reflect :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
-        => v `OfDim` n -- ^ Vector to be reflected.
-        -> v `OfDim` n -- ^ A normal vector of the reflecting hyperplane.
-        -> v `OfDim` n
+reflect :: (Floating (Scalar v), ValidDim v d n, Module d v, Inner d v)
+        => OfDim v d n -- ^ Vector to be reflected.
+        -> OfDim v d n -- ^ A normal vector of the reflecting hyperplane.
+        -> OfDim v d n
 reflect v n = reflect' v (normalise n)
 
 -- | Same as 'reflect': reflects a vector along a hyperplane, specified by a normal vector.
 -- However, /__this function assumes the given normal vector is already normalised__/.
-reflect' :: (KnownNat n, Module v, Inner v)
-         => v `OfDim` n -- ^ Vector to be reflected.
-         -> v `OfDim` n -- ^ /__Normalised__/ normal vector of the reflecting hyperplane.
-         -> v `OfDim` n
+reflect' :: (ValidDim v d n, Module d v, Inner d v)
+         => OfDim v d n -- ^ Vector to be reflected.
+         -> OfDim v d n -- ^ /__Normalised__/ normal vector of the reflecting hyperplane.
+         -> OfDim v d n
 reflect' v n = v ^-^ (2 * dot v n) *^ n
 
 -- | Projects the first argument onto the second.
-proj :: (DivisionRing (Scalar v), KnownNat n, Inner v)
-     => v `OfDim` n -> v `OfDim` n -> v `OfDim` n
+proj :: (DivisionRing (Scalar v), ValidDim v d n, Inner d v)
+     => OfDim v d n -> OfDim v d n -> OfDim v d n
 proj x y = projC x y *^ y
 
 -- | Projection constant: how far along the projection of the first vector lands along the second vector.
-projC :: forall n v. (DivisionRing (Scalar v), KnownNat n, Inner v)
-      => v `OfDim` n -> v `OfDim` n -> Scalar v
+projC :: forall v d (n :: d). (DivisionRing (Scalar v), ValidDim v d n, Inner d v)
+      => OfDim v d n -> OfDim v d n -> Scalar v
 projC x y = dot x y / dot y y
 
 -- | Orthogonality test.
 --
 -- /__Uses a precise equality test, so use at your own risk with floating point numbers.__/
-isOrthogonal :: (KnownNat n, Module v, Inner v, Eq (Scalar v))
-             => v `OfDim` n -> v `OfDim` n -> Logic (Scalar v)
+isOrthogonal :: (ValidDim v d n, Module d v, Inner d v, Eq (Scalar v))
+             => OfDim v d n -> OfDim v d n -> Logic (Scalar v)
 isOrthogonal v w = dot v w == 0
 
 -- | Gram-Schmidt algorithm.
-gramSchmidt :: (Floating (Scalar v), KnownNat n, Module v, Inner v)
-            => [v `OfDim` n] -> [v `OfDim` n]
+gramSchmidt :: (Floating (Scalar v), ValidDim v d n, Module d v, Inner d v)
+            => [OfDim v d n] -> [OfDim v d n]
 gramSchmidt []     = []
 gramSchmidt (x:xs) = x' : gramSchmidt (map (\v -> v ^-^ proj v x') xs)
   where x' = normalise x
 
 -- | Rotate a vector around an axis (in dimension 3), using the cross product.
-rotateAroundAxis :: (Cross v, Floating (Scalar v))
-                 => v `OfDim` 3 -- ^ Axis of rotation.
-                 -> Scalar v  -- ^ Angle of rotation, according to the right hand rule.
-                 -> v `OfDim` 3 -- ^ Vector to be rotated.
-                 -> v `OfDim` 3
+rotateAroundAxis :: (Cross d v, Floating (Scalar v), ValidDim v d n, CrossDim v d n)
+                 => OfDim v d n -- ^ Axis of rotation.
+                 -> Scalar v    -- ^ Angle of rotation, according to the right hand rule.
+                 -> OfDim v d n -- ^ Vector to be rotated.
+                 -> OfDim v d n
 rotateAroundAxis n theta v = cos theta *^ v ^+^ sin theta *^ (n ^×^ v)
 
 ------------------------------------------------------------------
@@ -612,9 +634,9 @@ deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n 
 deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
 deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
 deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
-deriving instance Functor     (M m n)
+deriving instance Functor (M m n)
 deriving via ( V m `Compose` V n )
-         instance ( KnownNat m, KnownNat n) => Applicative (M m n)
+         instance (KnownNat m, KnownNat n) => Applicative (M m n)
 deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
 deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
 deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
@@ -637,6 +659,8 @@ instance KnownNat m => GeneratedGradedSemigroup (M m 0 a) Nat () where
   type GenDeg Nat (M m 0 a) () '() = 1
   generator :: V m a -> M m (GenDeg Nat (M m 0 a) () unit) a
   generator = unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a )
+  --          ^^^^
+  -- same comment as for the instance for vectors, GHC cannot deduce @unit ~ '()@
 
 instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
   type ValidDegree (M m 0 a) i = KnownNat i
@@ -648,6 +672,7 @@ instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
       in (M (distribute u), M (distribute v))
   generated :: M m (GenDeg Nat (M m 0 a) () unit) a -> V m a
   generated = unsafeCoerce ( ( \(M m) -> headV (distribute m) ) :: M m 1 a -> V m a )
+  --           ^^^^   ditto
 
 ------------------------------------------------------------------
 -- type classes for matrix operations
@@ -657,33 +682,62 @@ infixl 7 !*!
 infix  8 !*^, ^*!
 infix  9 *!, !*
 
+type family VectorOf m :: Type
+
 -- | Typeclass for matrix operations.
 --
 -- The 'OfDims' associated type family allows the type class methods to involve various dimension indices.
-class Module (Vector m) => Matrix m where
-  type Vector m
-  type m `OfDims` (ij :: (Nat,Nat)) = r | r -> m ij
+class Module d (VectorOf m) => Matrix d m | m -> d where
+  type OfDims m d (ij :: (d, d)) = r | r -> m ij
+  identity    :: ValidDim (VectorOf m) d i => OfDims m d '(i,i)
+  diag        :: ValidDim (VectorOf m) d i => Scalar (VectorOf m) -> OfDims m d '(i,i)
+  inverse     :: ValidDim (VectorOf m) d i => OfDims m d '(i,i) -> OfDims m d '(i,i)
+  determinant :: ValidDim (VectorOf m) d i => OfDims m d '(i,i) -> Scalar (VectorOf m)
+  transpose   :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => OfDims m d '(i,j) -> OfDims m d '(j,i)
 
-  identity    :: KnownNat i                           => m `OfDims` '(i,i)
-  diag        :: KnownNat i                           => Scalar (Vector m) -> m `OfDims` '(i,i)
-  inverse     :: KnownNat i                           => m `OfDims` '(i,i) -> m `OfDims` '(i,i)
-  determinant :: KnownNat i                           => m `OfDims` '(i,i) -> Scalar (Vector m)
-  transpose   :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> m `OfDims` '(j,i)
-  (!+!)       :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> m `OfDims` '(i,j) -> m `OfDims` '(i,j)
-  (!-!)       :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> m `OfDims` '(i,j) -> m `OfDims` '(i,j)
-  konst       :: (KnownNat i, KnownNat j)             => Scalar (Vector m) -> m `OfDims` '(i,j)
-  (*!)        :: (KnownNat i, KnownNat j)             => Scalar (Vector m) -> m `OfDims` '(i,j) -> m `OfDims`' (i,j)
-  (!*)        :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> Scalar (Vector m) -> m `OfDims` '(i,j)
-  (!*^)       :: (KnownNat i, KnownNat j)             => m `OfDims` '(i,j) -> Vector m `OfDim` j -> Vector m `OfDim` i
-  (^*!)       :: (KnownNat i, KnownNat j)             => Vector m `OfDim` i -> m `OfDims` '(i,j) -> Vector m `OfDim` j
-  (!*!)       :: (KnownNat i, KnownNat j, KnownNat k) => m `OfDims` '(i,j) -> m `OfDims` '(j,k) -> m `OfDims` '(i,k)
-
+  (!+!)       :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => OfDims m d '(i,j) -> OfDims m d '(i,j) -> OfDims m d '(i,j)
+  (!-!)       :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => OfDims m d '(i,j) -> OfDims m d '(i,j) -> OfDims m d '(i,j)
+  konst       :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => Scalar (VectorOf m) -> OfDims m d '(i,j)
+  (*!)        :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => Scalar (VectorOf m) -> OfDims m d '(i,j) -> OfDims m d '(i,j)
+  (!*)        :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => OfDims m d '(i,j) -> Scalar (VectorOf m) -> OfDims m d '(i,j)
+  (!*^)       :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => OfDims m d '(i,j) -> OfDim (VectorOf m) d j -> OfDim (VectorOf m) d i
+  (^*!)       :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 )
+              => OfDim (VectorOf m) d i -> OfDims m d '(i,j) -> OfDim (VectorOf m) d j
+  (!*!)       :: ( ValidDim (VectorOf m) d i
+                 , ValidDim (VectorOf m) d j
+                 , ValidDim (VectorOf m) d k
+                 )
+              => OfDims m d '(i,j) -> OfDims m d '(j,k) -> OfDims m d '(i,k)
   identity = diag 1
   (*!) = flip (!*) -- SPIR-V defines MatrixTimesScalar
 
-instance Ring a => Matrix (M 0 0 a) where
-  type Vector (M 0 0 a) = V 0 a
-  type M 0 0 a `OfDims` '(i,j) = M i j a
+type instance VectorOf (M 0 0 a) = V 0 a
+
+instance Ring a => Matrix Nat (M 0 0 a) where
+  type OfDims (M 0 0 a) Nat '(i,j) = M i j a
   identity = M identityMat
   diag a = a *! identity
   transpose (M m) = M ( distribute m )
@@ -726,3 +780,23 @@ perspective fovy aspect near far
         oof = 0.5/far
         z = -fpn/fmn
         w = 1/(oof-oon)
+
+-- | Affine 3D transformation matrix for looking at focus point from a given view point.
+-- (Taken from Edward Kmett's __Linear__ library.)
+lookAt
+  :: Floating a
+  => V 3 a -- ^ Focus point.
+  -> V 3 a -- ^ View point.
+  -> V 3 a -- ^ Up vector.
+  -> M 4 4 a
+lookAt focus viewPoint up
+  = M $ V4 (         xa <!> V1 (-xd) )
+           (         ya <!> V1 (-yd) )
+           ( (-1) *^ za <!> V1 ( zd) )
+           ( V4 0 0 0 1 )
+  where za = normalise (viewPoint ^-^ focus)
+        xa = normalise (za `cross` up)
+        ya = xa `cross` za
+        xd = xa ^.^ focus
+        yd = ya ^.^ focus
+        zd = za ^.^ focus

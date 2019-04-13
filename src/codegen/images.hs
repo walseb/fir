@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -33,7 +34,7 @@ import Control.Monad.Except
   ( throwError )
 
 -- text-utf8
-import qualified Data.Text as Text
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import CodeGen.Binary

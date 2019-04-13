@@ -43,6 +43,12 @@ import Math.Logic.Class
   ( ifThenElse, Eq(Logic,(==)), Ord )
 
 
+infixl 6 +
+infixl 6 -
+infixl 7 *
+infixl 7 /
+infixr 8 **
+
 class AdditiveMonoid a where
   (+)  :: a -> a -> a
   zero :: a
@@ -173,11 +179,13 @@ class    (Semiring a, AdditiveGroup a) => Ring a where
 instance (Semiring a, AdditiveGroup a) => Ring a where
 
 class Ring a => DivisionRing a where
+  {-# MINIMAL ( (/) | recip ), fromRational #-}
   (/)   :: a -> a -> a
   recip :: a -> a
   fromRational :: Rational -> a
 
   recip a = fromInteger 1 / a
+  a / b = a * recip b
 
 instance Prelude.Fractional a => DivisionRing (Base a) where
   (/)   = coerce ( (Prelude./) :: a -> a -> a )

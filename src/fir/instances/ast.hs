@@ -75,7 +75,7 @@ import GHC.TypeLits
   , TypeError, ErrorMessage(..)
   )
 import GHC.TypeNats
-  ( KnownNat
+  ( Nat, KnownNat
   , type (+), type (-)
   , type (<=), CmpNat
   )
@@ -122,7 +122,7 @@ import Math.Algebra.Class
 import Math.Linear
   ( Semimodule(..), Module(..)
   , Inner(..), Cross(..)
-  , Matrix(..)
+  , Matrix(..), VectorOf
   , V, M(..)
   , dfoldrV, buildV
   , pattern V2, pattern V3, pattern V4
@@ -566,19 +566,20 @@ deriving instance
 -- Instances for:
 --
 -- 'Semimodule', 'Module', 'Inner', 'Cross'.
-instance (ScalarTy a, Semiring a) => Semimodule (AST (V 0 a)) where
-  type Scalar (AST (V 0 a))  = AST      a
-  type AST (V 0 a) `OfDim` n = AST (V n a)
+instance (ScalarTy a, Semiring a) => Semimodule Nat (AST (V 0 a)) where
+  type Scalar   (AST (V 0 a))       = AST      a
+  type OfDim    (AST (V 0 a)) Nat n = AST (V n a)
+  type ValidDim (AST (V 0 a)) Nat n = KnownNat n
 
   (^+^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
   (^+^) = primOp @(V n a) @('Vectorise SPIRV.Add)
 
   (^*) :: forall n. KnownNat n
-        => AST (V n a) -> AST a -> AST (V n a)
+       => AST (V n a) -> AST a -> AST (V n a)
   (^*)  = primOp @(V n a) @SPIRV.VMulK
 
-instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
+instance (ScalarTy a, Ring a) => Module Nat (AST (V 0 a)) where
   (^-^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
   (^-^) = primOp @(V n a) @('Vectorise SPIRV.Sub)
@@ -586,7 +587,7 @@ instance (ScalarTy a, Ring a) => Module (AST (V 0 a)) where
   (-^) :: forall n. KnownNat n => AST (V n a) -> AST (V n a)
   (-^) = primOp @(V n a) @('Vectorise SPIRV.Neg)
 
-instance (ScalarTy a, Floating a) => Inner (AST (V 0 a)) where
+instance (ScalarTy a, Floating a) => Inner Nat (AST (V 0 a)) where
   (^.^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST a
   (^.^) = primOp @(V n a) @SPIRV.DotV
@@ -594,7 +595,10 @@ instance (ScalarTy a, Floating a) => Inner (AST (V 0 a)) where
   normalise :: forall n. KnownNat n => AST (V n a) -> AST (V n a)
   normalise = primOp @(V n a) @SPIRV.NormaliseV
 
-instance (ScalarTy a, Floating a) => Cross (AST (V 0 a)) where
+instance (ScalarTy a, Floating a) => Cross Nat (AST (V 0 a)) where
+  type CrossDim (AST (V 0 a)) Nat n = ( n ~ 3 )
+
+  cross :: AST (V 3 a) -> AST (V 3 a) -> AST (V 3 a)
   cross = primOp @(V 3 a) @SPIRV.CrossV
 
 -- *** Bidirectional pattern synonyms
@@ -624,9 +628,10 @@ pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
 -- $matrices
 -- Instance for 'Matrix'.
 
-instance (ScalarTy a, Floating a) => Matrix (AST (M 0 0 a)) where
-  type Vector (AST (M 0 0 a))        = AST (V 0   a)
-  type AST (M 0 0 a) `OfDims` '(m,n) = AST (M m n a)
+type instance VectorOf (AST (M 0 0 a)) = AST (V 0 a)
+
+instance (ScalarTy a, Floating a) => Matrix Nat (AST (M 0 0 a)) where
+  type OfDims (AST (M 0 0 a)) Nat '(m,n) = AST (M m n a)
 
   diag    = error "todo"
   konst a = Mat :$ pureAST (pureAST a)

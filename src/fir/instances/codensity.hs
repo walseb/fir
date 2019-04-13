@@ -94,6 +94,8 @@ import GHC.TypeLits
   ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(..)
   )
+import GHC.TypeNats
+  ( Nat, KnownNat )
 
 -- fir
 import Control.Monad.Indexed
@@ -149,7 +151,7 @@ import Math.Algebra.Class
 import Math.Linear
   ( Semimodule(..), Module(..)
   , Inner(..), Cross(..)
-  , Matrix(..)
+  , Matrix(..), VectorOf
   , V, M
   )
 import Math.Logic.Bits
@@ -657,21 +659,23 @@ instance ( ScalarTy a, ScalarTy b, Convert '(a,b)
 -- Instances for:
 --
 -- 'Semimodule', 'Module', 'Inner', 'Cross'.
-instance (ScalarTy a, Semiring a, j ~ i) => Semimodule (Codensity AST (AST (V 0 a) := j) i) where
-  type Scalar (Codensity AST (AST (V 0 a) := j) i)   = Codensity AST (AST      a  := j) i
-  type OfDim  (Codensity AST (AST (V 0 a) := j) i) n = Codensity AST (AST (V n a) := j) i
+instance (ScalarTy a, Semiring a, j ~ i) => Semimodule Nat (Codensity AST (AST (V 0 a) := j) i) where
+  type Scalar   (Codensity AST (AST (V 0 a) := j) i)       = Codensity AST (AST      a  := j) i
+  type OfDim    (Codensity AST (AST (V 0 a) := j) i) Nat n = Codensity AST (AST (V n a) := j) i
+  type ValidDim (Codensity AST (AST (V 0 a) := j) i) Nat n = KnownNat n
 
   (^+^) = ixLiftA2 (^+^)
   (^*)  = ixLiftA2 (^*)
 
-instance (ScalarTy a, Ring a, j ~ i) => Module (Codensity AST (AST (V 0 a) := j) i) where
+instance (ScalarTy a, Ring a, j ~ i) => Module Nat (Codensity AST (AST (V 0 a) := j) i) where
   (^-^) = ixLiftA2 (^-^)
 
-instance (ScalarTy a, Floating a, j ~ i) => Inner (Codensity AST (AST (V 0 a) := j) i) where
+instance (ScalarTy a, Floating a, j ~ i) => Inner Nat (Codensity AST (AST (V 0 a) := j) i) where
   (^.^) = ixLiftA2 (^.^)
   normalise = ixFmap normalise
 
-instance (ScalarTy a, Floating a, j ~ i) => Cross (Codensity AST (AST (V 0 a) := j) i) where
+instance (ScalarTy a, Floating a, j ~ i) => Cross Nat (Codensity AST (AST (V 0 a) := j) i) where
+  type CrossDim (Codensity AST (AST (V 0 a) := j) i) Nat n = ( n ~ 3 )
   cross = ixLiftA2 cross
 
 -- Matrices
@@ -679,9 +683,10 @@ instance (ScalarTy a, Floating a, j ~ i) => Cross (Codensity AST (AST (V 0 a) :=
 -- $matrices
 -- Instance for 'Matrix'.
 
-instance (ScalarTy a, Floating a, j ~ i) => Matrix (Codensity AST (AST (M 0 0 a) := j) i) where
-  type Vector (Codensity AST (AST (M 0 0 a) := j) i)        = Codensity AST (AST (V 0   a) := j) i
-  type OfDims (Codensity AST (AST (M 0 0 a) := j) i) '(m,n) = Codensity AST (AST (M m n a) := j) i
+type instance VectorOf (Codensity AST (AST (M 0 0 a) := j) i) = (Codensity AST (AST (V 0 a) := j) i)
+
+instance (ScalarTy a, Floating a, j ~ i) => Matrix Nat (Codensity AST (AST (M 0 0 a) := j) i) where
+  type OfDims (Codensity AST (AST (M 0 0 a) := j) i) Nat '(m,n) = Codensity AST (AST (M m n a) := j) i
 
   diag  = ixFmap diag
   konst = ixFmap konst

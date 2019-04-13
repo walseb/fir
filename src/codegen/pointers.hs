@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PackageImports    #-}
 {-# LANGUAGE TupleSections     #-}
 
 module CodeGen.Pointers
@@ -27,7 +28,7 @@ import Control.Lens
   ( use, assign )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir

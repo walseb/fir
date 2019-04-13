@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
 module SPIRV.PrimTy
@@ -17,7 +18,7 @@ import Prelude
   hiding (Integer, Floating)
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- fir
@@ -50,7 +51,7 @@ data PrimTy where
   deriving ( Show, Eq, Ord )
 
 -- newtype to deal with types that are known to be pointers,
--- to avoids spurious error handling in code that deals with pointers
+-- to avoid spurious error handling in code that deals with pointers
 --
 -- (newtype constructor not exported; pattern synonym instead)
 newtype PointerTy = PtrTy { pointerTy :: PrimTy }

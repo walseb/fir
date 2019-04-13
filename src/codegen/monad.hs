@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 
@@ -37,7 +38,7 @@ import Control.Monad.State
   ( MonadState , StateT , runStateT )
 
 -- text-utf8
-import Data.Text
+import "text-utf8" Data.Text
   ( Text )
 
 -- transformers
