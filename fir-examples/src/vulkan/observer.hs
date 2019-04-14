@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RebindableSyntax           #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -20,10 +21,10 @@ module Vulkan.Observer
 -- base
 import Prelude
   hiding ( Num(..), Fractional(..), Floating(..) )
-import Control.Applicative
-  ( liftA2 )
 import Data.Coerce
   ( coerce )
+import Data.Maybe
+  ( fromMaybe )
 import Data.Monoid
   ( Any(..), Sum(..) )
 import Foreign.C
@@ -39,8 +40,9 @@ import Math.Linear
   ( V, M
   , pattern V2, pattern V3
   , norm, normalise
-  , (^+^), (*^)
-  , (!*!), transpose
+  , (^+^), (*^), (-^)
+  , (!*!)
+  , transpose
   , perspective, lookAt
   )
 import Math.Quaternion
@@ -91,7 +93,7 @@ nullInput
 initialObserver :: Observer
 initialObserver
   = Observer
-      { position = V3 0 0 (-12)
+      { position = V3 0 0 (-6)
       , angles   = pure 0
       }
 
@@ -102,14 +104,14 @@ n = (-1)
 strafeDir :: SDL.Scancode -> V 3 Foreign.C.CFloat
 strafeDir SDL.ScancodeW      = V3 0 0 p
 strafeDir SDL.ScancodeS      = V3 0 0 n
-strafeDir SDL.ScancodeA      = V3 p 0 0
-strafeDir SDL.ScancodeD      = V3 n 0 0
+strafeDir SDL.ScancodeA      = V3 n 0 0
+strafeDir SDL.ScancodeD      = V3 p 0 0
 strafeDir SDL.ScancodeLCtrl  = V3 0 p 0
 strafeDir SDL.ScancodeLShift = V3 0 n 0
 strafeDir SDL.ScancodeUp     = V3 0 0 p
 strafeDir SDL.ScancodeDown   = V3 0 0 n
-strafeDir SDL.ScancodeLeft   = V3 p 0 0
-strafeDir SDL.ScancodeRight  = V3 n 0 0
+strafeDir SDL.ScancodeLeft   = V3 n 0 0
+strafeDir SDL.ScancodeRight  = V3 p 0 0
 strafeDir SDL.ScancodeRCtrl  = V3 0 p 0
 strafeDir SDL.ScancodeRShift = V3 0 n 0
 strafeDir _                  = V3 0 0 0
@@ -159,7 +161,7 @@ interpretInput Input { .. } =
                           ( \case { SDL.ScancodeEscape -> Quit; _ -> mempty } )
                           keysPressed
       shouldQuit     = quitEvent <> escape
-      look           = fmap Sum ( liftA2 (*) (V2 (-1) (-1)) mouseRel )
+      look           = fmap Sum . (-^) $ mouseRel
       locate         = SDL.ScancodeSpace `elem` keysDown
       takeScreenshot = SDL.ScancodeF12   `elem` keysPressed
   in Action { .. }
@@ -168,14 +170,19 @@ move :: Observer -> Action -> (Observer, Quaternion Foreign.C.CFloat)
 move  Observer { position = oldPosition, angles = oldAngles }
       Action   { .. }
   = let angles@(V2 x y) = oldAngles ^+^ fmap getSum look
-        orientation = axisAngle (V3 0 1 0) x * axisAngle (V3 1 0 0) y
+        orientation = axisAngle (V3 0 (-1) 0) x * axisAngle (V3 1 0 0) y
         position = oldPosition ^+^ rotate orientation (fmap getSum movement)
     in (Observer { .. }, orientation)
 
-modelViewProjection :: Observer -> Quaternion (Foreign.C.CFloat) -> M 4 4 Foreign.C.CFloat
-modelViewProjection Observer { .. } orientation
-  = let forward = rotate orientation ( V3 0 0 (-1) )
-        up      = rotate orientation ( V3 0 1   0  )
+modelViewProjection :: Observer -> Maybe (Quaternion (Foreign.C.CFloat)) -> M 4 4 Foreign.C.CFloat
+modelViewProjection Observer { angles = V2 x y, position } mbOrientation
+  = let orientation
+          = fromMaybe
+              ( axisAngle (V3 0 (-1) 0) x * axisAngle (V3 1 0 0) y )
+              mbOrientation
+        forward = rotate orientation ( V3 0   0  1 ) -- Vulkan coordinate system
+        up      = rotate orientation ( V3 0 (-1) 0 )
         view    = lookAt ( position ^+^ forward ) position up
-        projection = perspective ( pi / 2 ) ( 4 / 3 ) 0.1 100000
+        projection = perspective ( pi / 2 ) ( 16 / 9 ) 0.1 100000
+                   
     in transpose ( projection !*! view )

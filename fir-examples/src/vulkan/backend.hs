@@ -23,6 +23,8 @@ import Data.Bits
   ( (.&.) )
 import Data.List
   hiding ( transpose )
+import Data.Maybe
+  ( fromMaybe )
 import Data.Ord
   ( Down(..) )
 import Data.Traversable
@@ -325,7 +327,7 @@ createFramebuffer dev renderPass extent attachments =
         &* Vulkan.set @"flags" 0
         &* Vulkan.set @"renderPass" renderPass
         &* Vulkan.setListCountAndRef @"attachmentCount" @"pAttachments" attachments
-        &* Vulkan.set @"width" ( Vulkan.getField @"width" extent )
+        &* Vulkan.set @"width"  ( Vulkan.getField @"width"  extent )
         &* Vulkan.set @"height" ( Vulkan.getField @"height" extent )
         &* Vulkan.set @"layers" 1
         )
@@ -694,9 +696,10 @@ submitCommandBuffer
   => Vulkan.VkQueue
   -> Vulkan.VkCommandBuffer
   -> [ ( Vulkan.VkSemaphore, Vulkan.VkPipelineStageBitmask Vulkan.FlagMask ) ]
-  -> Vulkan.VkSemaphore
+  -> [ Vulkan.VkSemaphore ]
+  -> Maybe Vulkan.VkFence
   -> m ()
-submitCommandBuffer queue commandBuffer wait signal =
+submitCommandBuffer queue commandBuffer wait signal mbFence =
   let
     submitInfo :: Vulkan.VkSubmitInfo
     submitInfo =
@@ -715,11 +718,11 @@ submitCommandBuffer queue commandBuffer wait signal =
         &* Vulkan.setListCountAndRef
            @"signalSemaphoreCount"
            @"pSignalSemaphores"
-           [ signal ]
+           signal
         )
   in liftIO $
       Foreign.Marshal.withArray [ submitInfo ] $ \submits ->
-        Vulkan.vkQueueSubmit queue 1 submits Vulkan.vkNullPtr
+        Vulkan.vkQueueSubmit queue 1 submits (fromMaybe Vulkan.vkNullPtr mbFence)
         >>= throwVkResult
 
 beginCommandBuffer :: MonadIO m => Vulkan.VkCommandBuffer -> m ()

@@ -10,6 +10,7 @@ dist-newstyle/
 
 shaders/
 haddock-api/
+fir-examples/screenshots
 fir-examples/src/kaleidogen
 
 TODO.txt

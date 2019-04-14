@@ -758,7 +758,7 @@ instance Ring a => Matrix Nat (M 0 0 a) where
 -- utility 4x4 matrices for camera viewpoints in 3D
 
 -- | Affine 3D transformation matrix for a perspective view.
--- (Taken from Edward Kmett's __Linear__ library.)
+-- (Adapted from Edward Kmett's __Linear__ library for the Vulkan coordinate system.)
 perspective
   :: Floating a
   => a -- ^ FOV.
@@ -767,22 +767,18 @@ perspective
   -> a -- ^ Far plane.
   -> M 4 4 a
 perspective fovy aspect near far
-  = M $ V4 (V4 x 0 0    0)
-           (V4 0 y 0    0)
-           (V4 0 0 z    w)
-           (V4 0 0 (-1) 0)
+  = M $ V4 (V4 x 0 0 0)
+           (V4 0 y 0 0)
+           (V4 0 0 z w)
+           (V4 0 0 1 0)
   where tanHalfFovy = tan $ fovy / 2
         x = 1 / (aspect * tanHalfFovy)
         y = 1 / tanHalfFovy
-        fpn = far + near
-        fmn = far - near
-        oon = 0.5/near
-        oof = 0.5/far
-        z = -fpn/fmn
-        w = 1/(oof-oon)
+        z = far / (far - near)
+        w = far * near / (near - far)
 
 -- | Affine 3D transformation matrix for looking at focus point from a given view point.
--- (Taken from Edward Kmett's __Linear__ library.)
+-- (Adapted from Edward Kmett's __Linear__ library for the Vulkan coordinate system.)
 lookAt
   :: Floating a
   => V 3 a -- ^ Focus point.
@@ -790,13 +786,13 @@ lookAt
   -> V 3 a -- ^ Up vector.
   -> M 4 4 a
 lookAt focus viewPoint up
-  = M $ V4 (         xa <!> V1 (-xd) )
-           (         ya <!> V1 (-yd) )
-           ( (-1) *^ za <!> V1 ( zd) )
+  = M $ V4 ( xa <!> V1 (-xd) )
+           ( ya <!> V1 (-yd) )
+           ( za <!> V1 (-zd) )
            ( V4 0 0 0 1 )
-  where za = normalise (viewPoint ^-^ focus)
+  where za = normalise (focus ^-^ viewPoint)
         xa = normalise (za `cross` up)
-        ya = xa `cross` za
+        ya = za `cross` xa
         xd = xa ^.^ focus
         yd = ya ^.^ focus
         zd = za ^.^ focus
