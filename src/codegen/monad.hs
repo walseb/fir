@@ -131,14 +131,18 @@ createIDRec :: ( MonadFresh v m, MonadState s m )
           => Lens' s (Maybe a) -> m b -> (b -> v -> m a) -> m v
 createIDRec _key before mk = fst <$> createRec _key before mk
 
+-- | Try to use a given lens to obtain a value.
+--
+-- If using the lens returns Nothing, create the value instead, using 'create'.
+tryToUse :: ( MonadFresh v m, MonadState s m )
+         => Lens' s (Maybe a) -> (a -> b) -> (v -> m a) -> m b
+tryToUse _key f mk = tryToUseWith _key f ( f . snd <$> create _key mk )
+
+-- | Like 'tryToUse', but allowing for a custom creation procedure.
 tryToUseWith :: ( MonadState s m )
              => Lens' s (Maybe a) -> (a -> b) -> m b -> m b
 tryToUseWith _key f creation =
   use _key >>= maybe creation (pure . f)
-
-tryToUse :: ( MonadFresh v m, MonadState s m )
-         => Lens' s (Maybe a) -> (a -> b) -> (v -> m a) -> m b
-tryToUse _key f mk = tryToUseWith _key f ( f . snd <$> create _key mk )
 
 ----------------------------------------------------------------------------
 -- running the code generation monad

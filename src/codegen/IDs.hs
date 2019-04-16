@@ -30,7 +30,7 @@ import qualified Data.Set as Set
 
 -- lens
 import Control.Lens
-  ( Lens', view, use )
+  ( Lens', view, use, assign )
 
 -- mtl
 import Control.Monad.Except
@@ -69,6 +69,7 @@ import CodeGen.State
   , _usedGlobal
   , _userGlobal
   , _entryPointExecutionModes
+  , _interfaceBinding
   , addCapabilities, addMemberName, addMemberDecoration, addDecorations
   )
 import FIR.Builtin
@@ -96,6 +97,7 @@ import qualified SPIRV.PrimTy     as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV.PrimTy
 import qualified SPIRV.ScalarTy   as SPIRV
 import qualified SPIRV.Stage      as SPIRV
+import qualified SPIRV.Storage    as Storage
 
 ----------------------------------------------------------------------------
 -- instructions generated along the way that need to be floated to the top
@@ -397,18 +399,19 @@ bindingID varName
   = do  ctxt <- use _functionContext
 
         -- is this a built-in variable?
-        mbBuiltin :: Maybe ( SPIRV.PointerTy, SPIRV.Stage, Text )
+        (mbBuiltin, mbStage) :: (Maybe SPIRV.PointerTy, Maybe ( SPIRV.Stage, Text ))
           <- case ctxt of
             EntryPoint stage stageName ->
               do
                 modes <- toList . fromMaybe Set.empty <$> use ( _entryPointExecutionModes stage stageName )
                 let mbBuiltinTy = lookup varName (stageBuiltins stage modes)
-                pure ( ( , stage, stageName ) <$> mbBuiltinTy )
+                pure ( mbBuiltinTy, Just ( stage, stageName) )
             _ ->
-              pure Nothing
+              pure (Nothing, Nothing)
 
-        case mbBuiltin of
-          Just (ptrTy, stage, stageName) -> -- yes
+        case (mbBuiltin, mbStage) of
+          (Just ptrTy, Just (stage, stageName)) ->
+            -- this is a built-in variable, use 'builtinID'
             do
               builtin <- builtinID stage stageName varName
               let ptrPrimTy = SPIRV.pointerTy ptrTy
@@ -417,11 +420,11 @@ bindingID varName
               pure (builtin, ptrPrimTy)
 
           _ -> do
-            -- not a built-in variable, obtain the binding ID
+            -- this is not a built-in variable, obtain the binding ID
             mbLoc   <- use ( _localBinding varName )
             mbKnown <- use ( _knownBinding varName )
             mbGlob  <-
-              do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName
+              do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName mbStage
                   -- declare pointer type (if necessary)
                   mapM_ (typeID . snd) glob
                   pure glob
@@ -442,21 +445,26 @@ bindingID varName
 
 -- get the ID for a global variable,
 -- adding this global to the list of 'used' global variables if it isn't already there
+-- adding this global to the stage interface if applicable
 globalID :: ( MonadState CGState m
             , MonadReader CGContext m
             , MonadFresh ID m
             )
-         => Text -> m ( Maybe (ID, SPIRV.PointerTy) )
-globalID globalName
+         => Text -> Maybe (SPIRV.Stage, Text) -> m ( Maybe (ID, SPIRV.PointerTy) )
+globalID globalName mbStage
   = do glob <- view ( _userGlobal globalName )
        case glob of
          Nothing
            -> pure Nothing
          Just (ptrTy, _)
-           -> do ident <- tryToUse ( _usedGlobal globalName )
-                            fst
-                            ( pure . ( , ptrTy ) )
-                 pure ( Just (ident, ptrTy) )
+           -> do
+                ident <- tryToUse ( _usedGlobal globalName ) fst ( pure . ( , ptrTy ) )
+                case (mbStage, ptrTy) of
+                  ( Just (stage, stageName), SPIRV.PointerTy storage _ )
+                    | storage == Storage.Input || storage == Storage.Output
+                      -> assign ( _interfaceBinding stage stageName globalName ) ( Just ident )
+                  _   -> pure ()
+                pure ( Just (ident, ptrTy) )
 
 stringLitID :: (MonadState CGState m, MonadFresh ID m)
           => Text -> m ID

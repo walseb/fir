@@ -7,6 +7,8 @@ dist-newstyle/
 *.tmp
 *.fail
 *.spv
+*.spv-asm
+*.glsl
 
 /shaders/
 haddock-api/
