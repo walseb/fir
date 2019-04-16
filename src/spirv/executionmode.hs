@@ -73,7 +73,12 @@ data ExecutionMode a
   | OutputTriangleStrip
   | VecTypeHint a
   | ContractionOff
+  -- custom information that does not align with the SPIR-V spec
+  | MaxPatchVertices a
   deriving ( Show, Eq, Ord )
+
+type InputVertices i = OutputVertices i
+  -- synonym for providing number of input vertices for a tessellation evaluation shader
 
 instance Put (ExecutionMode Word32) where
   put (Invocations i)         = put @Word32 0 *> put i
@@ -107,13 +112,16 @@ instance Put (ExecutionMode Word32) where
   put OutputTriangleStrip     = put @Word32 29
   put (VecTypeHint i)         = put @Word32 30 *> put i
   put ContractionOff          = put @Word32 31
+  put (MaxPatchVertices _)
+    = error "Cannot put custom 'MaxPatchVertices' execution mode."
 
-  sizeOf Invocations    {} = 2
-  sizeOf LocalSize      {} = 4
-  sizeOf LocalSizeHint  {} = 4
-  sizeOf OutputVertices {} = 2
-  sizeOf VecTypeHint    {} = 2
-  sizeOf _                 = 1
+  sizeOf Invocations      {} = 2
+  sizeOf LocalSize        {} = 4
+  sizeOf LocalSizeHint    {} = 4
+  sizeOf OutputVertices   {} = 2
+  sizeOf VecTypeHint      {} = 2
+  sizeOf MaxPatchVertices {} = error "Cannot compute size of custom 'MaxPatchVertices' execution mode."
+  sizeOf _                   = 1
 
 instance Demotable (ExecutionMode Nat) where
   type Demote (ExecutionMode Nat) = ExecutionMode Word32
@@ -188,6 +196,8 @@ instance Known Nat i => Known (ExecutionMode Nat) (VecTypeHint i) where
   known = VecTypeHint ( knownValue @i )
 instance Known (ExecutionMode Nat) ContractionOff where
   known = ContractionOff
+instance Known Nat i => Known (ExecutionMode Nat) (MaxPatchVertices i) where
+  known = MaxPatchVertices ( knownValue @i )
 
 --------------------------------------------------
 -- validation of execution modes (at the type level)
@@ -223,6 +233,7 @@ type family ValidStagesFor (mode :: ExecutionMode Nat) :: [ Stage ] where
   ValidStagesFor OutputTriangleStrip     = '[ Geometry ]
   ValidStagesFor (VecTypeHint _)         = '[ Kernel ]
   ValidStagesFor ContractionOff          = '[ Kernel ]
+  ValidStagesFor (MaxPatchVertices _)    = '[ TessellationControl ]
   ValidStagesFor _
     -- for the moment, anything else is considered valid (no validity checks)
     = '[ Vertex, TessellationControl, TessellationEvaluation, Geometry, Fragment, GLCompute, Kernel ]
@@ -272,29 +283,27 @@ type family ValidateExecutionModes (k :: Symbol) ( s :: Stage ) ( modes :: [Exec
          VertexInfo
          Unreachable
   ValidateExecutionModes k TessellationControl modes
-    = TypeError ( Text "Tessellation control stage support TODO." )
-    {-
-    -- TODO: either control or evaluation needs to specify these...
-    = If (  HasAtMostOneOf k TessellationControl '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
-         && HasAtMostOneOf k TessellationControl '[ Triangles, Quads, Isolines ] modes
-         && HasAtMostOneOf k TessellationControl '[ VertexOrderCw, VertexOrderCcw ] modes
-         && Has k TessellationControl OutputVertices modes
+  -- require that the tessellation control shader specifies tessellation info
+  -- (will ignore all conflicting info provided by the tessellation evaluation shader)
+    = If (  HasOneOf k TessellationControl '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
+         && HasOneOf k TessellationControl '[ Triangles, Quads, Isolines ] modes
+         && HasOneOf k TessellationControl '[ VertexOrderCw, VertexOrderCcw ] modes
          && PertainTo k TessellationEvaluation modes
          )
-        TessellationControlInfo
+        ( TessellationControlInfo
+            ( TessellationControlMaxPatchVertices k modes )
+            ( TessellationControlOutputSize       k modes )
+        )
         Unreachable
-    -}
   ValidateExecutionModes k TessellationEvaluation modes
-    = TypeError ( Text "Tessellation evaluation stage support TODO." )
-    {-
     = If (  HasAtMostOneOf k TessellationEvaluation '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
          && HasAtMostOneOf k TessellationEvaluation '[ Triangles, Quads, Isolines ] modes
          && HasAtMostOneOf k TessellationEvaluation '[ VertexOrderCw, VertexOrderCcw ] modes
          && PertainTo k TessellationEvaluation modes
          )
-        TessellationEvaluationInfo
+        ( TessellationEvaluationInfo 32 )
+        --        default value  ----^^ 
         Unreachable
-    -}
   ValidateExecutionModes k Geometry modes
     = If ( HasOneOf k Geometry '[ OutputPoints, OutputLineStrip, OutputTriangleStrip ] modes )
         ( GeometryInfo (GeometryInputSize k modes) )
@@ -381,12 +390,33 @@ type family GeometryInputSize ( k :: Symbol ) ( modes :: [ ExecutionMode Nat ] )
   GeometryInputSize k ( _ ': modes )
     = GeometryInputSize k modes
 
+type family TessellationControlOutputSize ( k :: Symbol ) ( modes :: [ ExecutionMode Nat ] ) :: Nat where
+  TessellationControlOutputSize k '[]
+    = TypeError
+      (   Text (Named k TessellationControl) :<>: Text " is under-specified: missing number of output points."
+      :$$: Text "The 'OutputVertices' execution mode must be provided."
+      )
+  TessellationControlOutputSize k ( OutputVertices verts ': modes )
+    = If ( NoOutputVertices k TessellationControl verts modes )
+        verts
+        Unreachable
+  TessellationControlOutputSize k (_ ': modes )
+    = TessellationControlOutputSize k modes
+
+type family TessellationControlMaxPatchVertices ( k :: Symbol ) ( modes :: [ ExecutionMode Nat ] ) :: Nat where
+  TessellationControlMaxPatchVertices k '[] = 32 -- default as used by SPIR-V
+  TessellationControlMaxPatchVertices k ( MaxPatchVertices verts ': _ )
+    = verts
+  TessellationControlMaxPatchVertices k (_ ': modes)
+    = TessellationControlMaxPatchVertices k modes
+
 type family NoSizes
               ( k         :: Symbol                )
               ( stage     :: Stage                 )
               ( givenSize :: ExecutionMode Nat     )
               ( modes     :: [ ExecutionMode Nat ] )
-              :: Bool where
+              :: Bool
+              where
   NoSizes _ _     _     '[]
     = 'True
   NoSizes k stage given (InputPoints ': _ )
@@ -426,3 +456,19 @@ type family NoSizes
         )
   NoSizes k stage given ( _ ': modes )
     = NoSizes k stage given modes
+
+type family NoOutputVertices
+              ( k          :: Symbol                )
+              ( stage      :: Stage                 )
+              ( givenVerts :: Nat                   )
+              ( modes      :: [ ExecutionMode Nat ] )
+            :: Bool
+            where
+  NoOutputVertices _ _     _        '[] = True
+  NoOutputVertices k stage givenVerts ( OutputVertices verts ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting number of output vertices."
+        :$$:  Text "Provided both " :<>: ShowType givenVerts :<>: Text " and " :<>: ShowType verts :<>: Text "."
+        )
+  NoOutputVertices k stage given ( _ ': modes )
+    = NoOutputVertices k stage given modes

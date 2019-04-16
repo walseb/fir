@@ -242,13 +242,14 @@ instance {-# OVERLAPPING #-}
     ( KnownSymbol k, Binding.ProvidedSymbol k
     , Known ImageProperties props
     , empty ~ '[]
-    , is ~ '[ ImageOperands props ops, ImageCoordinates props ops ]
+    , imgOps ~ ImageOperands props ops
+    , imgCds ~ ImageCoordinates props ops
     , r ~ ImageData props ops
     )
   => KnownOptic ( ( ( Name_ k :: Optic empty i (Image props) )
                     `ComposeO`
-                    ( RTOptic_ :: Optic is (Image props) r)
-                  ) :: Optic is (i :: IxState) r
+                    ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) r)
+                  ) :: Optic '[imgOps, imgCds] (i :: IxState) r
                 )
   where
   opticSing = SImageTexel (Proxy @k) (Proxy @props)
@@ -265,6 +266,29 @@ type family ValidAnIndexOptic (is :: [Type]) (s :: Type) (a :: Type) :: Constrai
     = TypeError (    Text "Run-time optic specifies more than one type of index:"
                 :$$: Text "    " :<>: ShowType is
                 )
+
+----------------------------------------------------------------------
+-- Instances for compositions involving indexed monadic state.
+-- These are provided for improved type inference,
+-- by requiring that the part focused onto by the outer optic
+-- is as dictated by the state.
+
+instance forall (k :: Symbol) (i :: IxState) empty js ks a b (o2 :: Optic js a b).
+         ( KnownSymbol k
+         , Gettable o2
+         , empty ~ '[]
+         , ks ~ js
+         , a ~ Binding.Get k i -- this is the additional line that helps type inference
+         ) => Gettable ( ((Name_ k :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
+         where
+instance forall (k :: Symbol) (i :: IxState) empty js ks a b (o2 :: Optic js a b).
+         ( KnownSymbol k
+         , Settable o2
+         , empty ~ '[]
+         , ks ~ js
+         , a ~ Binding.Put k i -- ditto
+         ) => Settable ( ((Name_ k :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
+         where
 
 ----------------------------------------------------------------------
 

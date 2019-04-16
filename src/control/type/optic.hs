@@ -447,13 +447,17 @@ instance ( empty ~ '[]
 --
 --   * the composite of two getters is a getter,
 --   * the composite of a lens (outside) with a setter (inside) is a setter.
+--
+-- Note that compositions where the first optic accesses from a monadic state
+-- is not included here.
+-- This is to provide improved type inference, see "FIR.Instances.Optics".
 
-instance forall k (s :: k) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( Gettable o1
          , Gettable o2
          , ks ~ (is :++: js)
          ) => Gettable ((o1 `ComposeO` o2) :: Optic ks s b) where
-instance forall k (s :: k) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+instance forall (s :: Type)  is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( Settable o1
          , Settable o2
          , ks ~ (is :++: js)

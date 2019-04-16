@@ -3,6 +3,7 @@
 {-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -13,16 +14,18 @@ module FIR.Builtin where
 -- base
 import Control.Arrow
   ( second )
-import Data.Int
-  ( Int32 )
 import Data.Maybe
   ( maybe )
+import Data.Proxy
+  ( Proxy )
 import Data.Word
   ( Word32 )
 import GHC.TypeLits
   ( Symbol )
 import GHC.TypeNats
-  ( Nat )
+  ( Nat, SomeNat(SomeNat), someNatVal )
+import Numeric.Natural
+  ( Natural )
 
 -- containers
 import Data.Set
@@ -72,15 +75,15 @@ type StageBuiltins (k :: Symbol) (stage :: Stage) (modes :: [ExecutionMode Nat])
 
 type family StageBuiltins' (info :: StageExecutionInfo stage) :: [ Symbol :-> Binding ] where
   StageBuiltins' VertexInfo
-    = '[ "gl_VertexId"       ':-> Var R Int32
-       , "gl_InstanceId"     ':-> Var R Int32
+    = '[ "gl_VertexID"       ':-> Var R Word32
+       , "gl_InstanceID"     ':-> Var R Word32
        , "gl_Position"       ':-> Var W ( V 4 Float )
        , "gl_PointSize"      ':-> Var W Float
        ]
   StageBuiltins' (TessellationControlInfo inputSize outputSize)
-    = '[ "gl_InvocationId"   ':-> Var R Int32
-       , "gl_PatchVertices"  ':-> Var R Int32
-       , "gl_PrimitiveId"    ':-> Var R Int32
+    = '[ "gl_InvocationID"   ':-> Var R Word32
+       , "gl_PatchVertices"  ':-> Var R Word32
+       , "gl_PrimitiveID"    ':-> Var R Word32
        , "gl_in"
             ':-> Var R
                   ( Array inputSize
@@ -102,8 +105,8 @@ type family StageBuiltins' (info :: StageExecutionInfo stage) :: [ Symbol :-> Bi
        ]
   StageBuiltins' (TessellationEvaluationInfo inputSize)
     = '[ "gl_TessCoord"      ':-> Var R ( V 3 Float )
-       , "gl_PatchVertices"  ':-> Var R Int32
-       , "gl_PrimitiveId"    ':-> Var R Int32
+       , "gl_PatchVertices"  ':-> Var R Word32
+       , "gl_PrimitiveID"    ':-> Var R Word32
        , "gl_PerVertex"
            ':-> Var R
                   ( Array inputSize
@@ -116,8 +119,8 @@ type family StageBuiltins' (info :: StageExecutionInfo stage) :: [ Symbol :-> Bi
        , "gl_PointSize"      ':-> Var W Float
        ]
   StageBuiltins' (GeometryInfo inputSize)
-    = '[ "gl_PrimitiveId"    ':-> Var R Int32
-       , "gl_InvocationId"   ':-> Var R Int32
+    = '[ "gl_PrimitiveID"    ':-> Var R Word32
+       , "gl_InvocationID"   ':-> Var R Word32
        , "gl_PerVertex"
            ':-> Var R
                   ( Array inputSize
@@ -128,54 +131,77 @@ type family StageBuiltins' (info :: StageExecutionInfo stage) :: [ Symbol :-> Bi
                   )
        , "gl_Position"       ':-> Var W ( V 4 Float )
        , "gl_PointSize"      ':-> Var W Float
-       , "gl_Layer"          ':-> Var W Int32
-       , "gl_ViewportIndex"  ':-> Var W Int32
+       , "gl_Layer"          ':-> Var W Word32
+       , "gl_ViewportIndex"  ':-> Var W Word32
        ]
   StageBuiltins' FragmentInfo
-    = '[ "gl_Layer"          ':-> Var R Int32
-       , "gl_ViewportIndex"  ':-> Var R Int32
+    = '[ "gl_Layer"          ':-> Var R Word32
+       , "gl_ViewportIndex"  ':-> Var R Word32
        , "gl_FragCoord"      ':-> Var R ( V 4 Float )
        , "gl_PointCoord"     ':-> Var R ( V 2 Float )
        , "gl_FrontFacing"    ':-> Var R Bool
-       , "gl_SampleId"       ':-> Var R Int32
+       , "gl_SampleID"       ':-> Var R Word32
        , "gl_SamplePosition" ':-> Var R ( V 2 Float )
        , "gl_FragDepth"      ':-> Var W Float
        ]
   StageBuiltins' GLComputeInfo
     = '[ "gl_NumWorkgroups"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupSize"        ':-> Var R ( V 3 Word32 )
-       , "gl_WorkgroupId"          ':-> Var R ( V 3 Word32 )
-       , "gl_LocalInvocationId"    ':-> Var R ( V 3 Word32 )
-       , "gl_GlobalInvocationId"   ':-> Var R ( V 3 Word32 )
+       , "gl_WorkgroupID"          ':-> Var R ( V 3 Word32 )
+       , "gl_LocalInvocationID"    ':-> Var R ( V 3 Word32 )
+       , "gl_GlobalInvocationID"   ':-> Var R ( V 3 Word32 )
        , "gl_LocalInvocationIndex" ':-> Var R Word32
        ]
   StageBuiltins' KernelInfo
     = '[ "gl_NumWorkgroups"             ':-> Var R Word32
        , "gl_WorkgroupSize"             ':-> Var R Word32
-       , "gl_WorkgroupId"               ':-> Var R Word32
-       , "gl_LocalInvocationId"         ':-> Var R Word32
-       , "gl_GlobalInvocationId"        ':-> Var R Word32
+       , "gl_WorkgroupID"               ':-> Var R Word32
+       , "gl_LocalInvocationID"         ':-> Var R Word32
+       , "gl_GlobalInvocationID"        ':-> Var R Word32
        , "gl_LocalInvocationIndex"      ':-> Var R Word32
        , "gl_WorkDim"                   ':-> Var R Word32
        , "gl_GlobalSize"                ':-> Var R Word32
        , "gl_EnqueuedWorkgroupSize"     ':-> Var R Word32
        , "gl_GlobalOffset"              ':-> Var R Word32
-       , "gl_GlobalLinearId"            ':-> Var R Word32
+       , "gl_GlobalLinearID"            ':-> Var R Word32
        , "gl_SubgroupSize"              ':-> Var R Word32
        , "gl_SubgroupMaxSize"           ':-> Var R Word32
        , "gl_NumSubgroups"              ':-> Var R Word32
        , "gl_NumEnqueuedSubgroups"      ':-> Var R Word32
-       , "gl_SubgroupId"                ':-> Var R Word32
-       , "gl_SubgroupLocalInvocationId" ':-> Var R Word32
+       , "gl_SubgroupID"                ':-> Var R Word32
+       , "gl_SubgroupLocalInvocationID" ':-> Var R Word32
        ]
 
+-- some code duplication happening here with the logic in "SPIRV.ExecutionMode"
 stageBuiltins :: Stage -> [ SPIRV.ExecutionMode Word32 ] -> [ (Text, SPIRV.PointerTy) ]
 stageBuiltins Vertex _
   = builtinPointer $ knownInterface @(StageBuiltins' VertexInfo)
-stageBuiltins TessellationControl _
-  = builtinPointer $ knownInterface @(StageBuiltins' ( TessellationControlInfo 65535 65535 ) ) -- TODO
-stageBuiltins TessellationEvaluation _
-  = builtinPointer $ knownInterface @(StageBuiltins' ( TessellationEvaluationInfo 65535 ) ) -- TODO
+stageBuiltins TessellationControl modes =
+  let
+    maxPatchVertices :: [ SPIRV.ExecutionMode Word32 ] -> Natural
+    maxPatchVertices [] = 32
+    maxPatchVertices ( MaxPatchVertices i : _ ) = fromIntegral i
+    maxPatchVertices ( _ : next ) = maxPatchVertices next
+    outputVertices :: [ SPIRV.ExecutionMode Word32 ] -> Natural
+    outputVertices [] = 32
+    outputVertices ( OutputVertices i : _ ) = fromIntegral i
+    outputVertices ( _ : next ) = outputVertices next
+    res :: SomeNat -> SomeNat -> [ (Text, SPIRV.PointerTy) ]
+    res ( SomeNat (_ :: Proxy maxPatchVertices) ) ( SomeNat (_ :: Proxy outputVertices) )
+      = builtinPointer
+      $ knownInterface @(StageBuiltins' (TessellationControlInfo maxPatchVertices outputVertices))
+  in res (someNatVal (maxPatchVertices modes)) (someNatVal (outputVertices modes))
+stageBuiltins TessellationEvaluation modes =
+  let
+    inputVertices :: [ SPIRV.ExecutionMode Word32 ] -> Natural
+    inputVertices [] = 32
+    inputVertices ( OutputVertices i : _ ) = fromIntegral i -- 'InputVertices' is a synonym for 'OutputVertices' (weird I know, sorry)
+    inputVertices ( _ : next ) = inputVertices next
+    res :: SomeNat -> [ (Text, SPIRV.PointerTy) ]
+    res ( SomeNat (_ :: Proxy inputVertices) )
+      = builtinPointer
+      $ knownInterface @(StageBuiltins' (TessellationEvaluationInfo inputVertices))
+  in res (someNatVal (inputVertices modes))
 stageBuiltins Geometry modes
   | InputPoints         `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 1 ))
   | InputLines          `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 2 ))

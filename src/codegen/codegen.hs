@@ -110,7 +110,8 @@ import CodeGen.Put
 import CodeGen.State
   ( CGState(currentBlock, localBindings)
   , CGContext
-  , _currentBlock
+  , FunctionContext(TopLevel)
+  , _currentBlock, _functionContext
   , _localBindings, _localBinding
   , _userFunction
   , _userEntryPoint
@@ -194,7 +195,13 @@ codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
 
         defRes <-
             if makeMutable
-            then do let ptrTy = SPIRV.PointerTy Storage.Function a_ty
+            then do
+                    ctx <- use _functionContext
+                    let storage =
+                          case ctx of
+                            TopLevel -> Storage.Private
+                            _        -> Storage.Function
+                    let ptrTy = SPIRV.PointerTy storage a_ty
                     ptrID <- newVariable ptrTy
                     store (name, a_ID) ptrID ptrTy
                     pure (ptrID, SPIRV.pointerTy ptrTy)

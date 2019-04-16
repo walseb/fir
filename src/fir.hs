@@ -123,6 +123,7 @@ module FIR
   , module Math.Logic.Class
   , SPIRV.Decoration.Decoration(..)
   , SPIRV.ExecutionMode.ExecutionMode(..)
+  , SPIRV.ExecutionMode.InputVertices -- synonym of 'OutputVertices' for tessellation evaluation shaders
   , SPIRV.FunctionControl.Inlineability(..)
   , SPIRV.FunctionControl.SideEffects(..)
   , SPIRV.FunctionControl.FunctionControl
@@ -281,7 +282,7 @@ instance TH.Lift Text where
 -- | Utility function to run IO actions at compile time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.
 --
--- __Usage__: in a module which imports this modules and shaders
+-- __Usage__: in a module which imports this module and shaders @vertexShader@, @fragmentShader@
 -- (bearing in mind the TH staging restriction), write:
 --
 -- > shaderCompilationResult =

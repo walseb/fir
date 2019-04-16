@@ -128,6 +128,7 @@ type family ImageTexel k :: Optic
 
 ----------------------------------------------------
 -- instances for this particular 'ghost' composite
+-- (leverages that normal runtime optics only ever have 1 run-time index, this has 2)
 
 instance {-# OVERLAPPING #-} 
          forall 
@@ -136,7 +137,8 @@ instance {-# OVERLAPPING #-}
            ( props   :: ImageProperties )
            ( ops     :: [OperandName]   )
            ( empty   :: [Type]          )
-           ( is      :: [Type]          )
+           ( imgOps  :: Type            )
+           ( imgCds  :: Type            )
            ( imgData :: Type            )
          .
          ( KnownSymbol k
@@ -144,13 +146,14 @@ instance {-# OVERLAPPING #-}
          , Known ImageProperties props
          , ValidImageRead props ops
          , empty ~ '[]
-         , is ~ '[ImageOperands props ops, ImageCoordinates props ops]
+         , imgOps ~ ImageOperands props ops
+         , imgCds ~ ImageCoordinates props ops
          , imgData ~ ImageData props ops
          )
       => Gettable ( ( ( Name_ k :: Optic empty i (Image props))
                     `ComposeO`
-                      ( RTOptic_ :: Optic is (Image props) imgData )
-                    ) :: Optic is i imgData
+                      ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData )
+                    ) :: Optic '[imgOps, imgCds] i imgData
                   )
       where
 
@@ -161,7 +164,8 @@ instance {-# OVERLAPPING #-}
            ( props   :: ImageProperties )
            ( ops     :: [OperandName]   )
            ( empty   :: [Type]          )
-           ( is      :: [Type]          )
+           ( imgOps  :: Type            )
+           ( imgCds  :: Type            )
            ( imgData :: Type            )
          .
          ( KnownSymbol k
@@ -169,12 +173,13 @@ instance {-# OVERLAPPING #-}
          , Known ImageProperties props
          , ValidImageWrite props ops
          , empty ~ '[]
-         , is ~ '[ImageOperands props ops, ImageCoordinates props ops]
+         , imgOps ~ ImageOperands props ops
+         , imgCds ~ ImageCoordinates props ops
          , imgData ~ ImageData props ops
          )
       => Settable ( ( ( Name_ k :: Optic empty i (Image props))
                     `ComposeO`
-                      ( RTOptic_ :: Optic is (Image props) imgData )
-                    ) :: Optic is i imgData
+                      ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData )
+                    ) :: Optic '[imgOps, imgCds] i imgData
                   )
       where

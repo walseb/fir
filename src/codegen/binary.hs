@@ -169,14 +169,16 @@ putEntryPoints bindings
 putStageExecutionModes :: ID -> Set (SPIRV.ExecutionMode Word32) -> Binary.Put
 putStageExecutionModes stageID
   = traverse_
-      ( \mode -> putInstruction Map.empty
-          Instruction
-            { operation = SPIRV.Op.ExecutionMode
-            , resTy     = Nothing
-            , resID     = Nothing
-            , args      = Arg stageID
-                        $ Arg mode EndArgs
-            }
+      ( \case
+          SPIRV.MaxPatchVertices {} -> pure () -- custom execution mode that doesn't exist in SPIR-V
+          mode -> putInstruction Map.empty
+            Instruction
+              { operation = SPIRV.Op.ExecutionMode
+              , resTy     = Nothing
+              , resID     = Nothing
+              , args      = Arg stageID
+                          $ Arg mode EndArgs
+              }
       )
 
 putExecutionModes

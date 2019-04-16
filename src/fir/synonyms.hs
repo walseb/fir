@@ -66,6 +66,7 @@ type Output          decs ty = Global Storage.Output          decs ty
 type Uniform         decs ty = Global Storage.Uniform         decs ty
 type PushConstant    decs ty = Global Storage.PushConstant    decs ty
 type StorageBuffer   decs ty = Global Storage.StorageBuffer   decs ty
+type Private         decs ty = Global Storage.Private         decs ty
 
 -- synonym for function with no function control information
 type Function     as b = Def.Function NoFunctionControl as b
