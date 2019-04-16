@@ -7,6 +7,7 @@ module SPIRV.PrimOp
   , NumPrimOp(..), FloatPrimOp(..)
   , VecPrimOp(..), MatPrimOp(..)
   , ConvPrimOp(..)
+  , GeomPrimOp(..)
   , opAndReturnType, op
   ) where
 
@@ -38,6 +39,7 @@ data PrimOp where
   VecOp   :: VecPrimOp   -> Word32           -> ScalarTy -> PrimOp
   MatOp   :: MatPrimOp   -> Word32 -> Word32 -> ScalarTy -> PrimOp
   ConvOp  :: ConvPrimOp  -> ScalarTy         -> ScalarTy -> PrimOp
+  GeomOp  :: GeomPrimOp                                  -> PrimOp
   deriving Show
 
 data BoolPrimOp
@@ -136,6 +138,11 @@ data ConvPrimOp
   -- -- | CFloor
   deriving Show
 
+data GeomPrimOp
+  = EmitGeometryVertex
+  | EndGeometryPrimitive
+  deriving Show
+
 opAndReturnType :: PrimOp -> (Operation, PrimTy)
 opAndReturnType (BoolOp boolOp )
   = ( booleanOp  boolOp
@@ -161,6 +168,8 @@ opAndReturnType (MatOp matOp n m s)
   = matrixOp matOp n m s
 opAndReturnType (ConvOp cOp s1 s2)
   = second Scalar (convOp cOp s1 s2)
+opAndReturnType (GeomOp gOp)
+  = geomOp gOp
 
 op :: PrimOp -> Operation
 op = fst . opAndReturnType
@@ -295,3 +304,7 @@ convOp Convert (Integer Signed   v) (Integer Signed   w)
 convOp Convert (Integer Unsigned v) (Integer Unsigned w)
   | v /= w = ( UConvert, Integer Unsigned w)
 convOp _ ty1 ty2 = error $ "unsupported conversion from " ++ show ty1 ++ " to " ++ show ty2
+
+geomOp :: GeomPrimOp -> (Operation, PrimTy)
+geomOp EmitGeometryVertex   = ( EmitVertex  , Unit )
+geomOp EndGeometryPrimitive = ( EndPrimitive, Unit )

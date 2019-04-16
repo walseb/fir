@@ -17,13 +17,16 @@ import Control.Arrow
 import Data.Coerce
   ( coerce )
 import Data.Foldable
-  ( traverse_ )
+  ( traverse_, toList )
 import Data.Maybe
-  ( fromJust )
+  ( fromJust, fromMaybe )
 import Data.Semigroup
   ( First(First) )
 import Data.Word
   ( Word32 )
+
+-- containers
+import qualified Data.Set as Set
 
 -- lens
 import Control.Lens
@@ -65,6 +68,7 @@ import CodeGen.State
   , _builtin
   , _usedGlobal
   , _userGlobal
+  , _entryPointExecutionModes
   , addCapabilities, addMemberName, addMemberDecoration, addDecorations
   )
 import FIR.Builtin
@@ -199,7 +203,7 @@ typeID ty =
 
                           -- workaround for builtin decoration complexities:
                           -- add "builtin" decorations when relevant
-                          --   (for gl_in, gl_out, gl_perVertex)
+                          --   (for gl_in, gl_out, gl_PerVertex)
                           ctxt <- use _functionContext
                           case ctxt of
                             EntryPoint stage _
@@ -391,37 +395,50 @@ bindingID :: forall m.
              ) => Text -> m (ID, SPIRV.PrimTy)
 bindingID varName
   = do  ctxt <- use _functionContext
-        case ctxt of
-          EntryPoint stage stageName
-            | Just ptrTy <- lookup varName (stageBuiltins stage)
-            -> do builtin <- builtinID stage stageName varName
-                  let ptrPrimTy = SPIRV.pointerTy ptrTy
-                  _ <- typeID ptrPrimTy -- ensure pointer type is declared
-                  -- note that 'builtinID' sets the necessary decorations for the builtin
-                  pure (builtin, ptrPrimTy)
-                
-          _ -> do -- obtain the binding ID
-                  mbLoc   <- use ( _localBinding varName )
-                  mbKnown <- use ( _knownBinding varName )
-                  mbGlob  <-
-                    do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName
-                        -- declare pointer type (if necessary)
-                        mapM_ (typeID . snd) glob
-                        pure glob
 
-                  bd@(bdID,_)
-                      <- note
-                          ( "codeGen: no binding with name " <> varName )
-                          ( mbLoc <<?> mbKnown <<?> mbGlob )
+        -- is this a built-in variable?
+        mbBuiltin :: Maybe ( SPIRV.PointerTy, SPIRV.Stage, Text )
+          <- case ctxt of
+            EntryPoint stage stageName ->
+              do
+                modes <- toList . fromMaybe Set.empty <$> use ( _entryPointExecutionModes stage stageName )
+                let mbBuiltinTy = lookup varName (stageBuiltins stage modes)
+                pure ( ( , stage, stageName ) <$> mbBuiltinTy )
+            _ ->
+              pure Nothing
 
-                  -- add the user decorations for this binding if necessary
-                  decorations <- fmap snd <$> view ( _userGlobal varName )
-                  case decorations of
-                    Nothing   -> pure ()
-                    Just decs -> addDecorations bdID decs
+        case mbBuiltin of
+          Just (ptrTy, stage, stageName) -> -- yes
+            do
+              builtin <- builtinID stage stageName varName
+              let ptrPrimTy = SPIRV.pointerTy ptrTy
+              _ <- typeID ptrPrimTy -- ensure pointer type is declared
+              -- note that 'builtinID' sets the necessary decorations for the builtin
+              pure (builtin, ptrPrimTy)
 
-                  -- return the binding ID
-                  pure bd
+          _ -> do
+            -- not a built-in variable, obtain the binding ID
+            mbLoc   <- use ( _localBinding varName )
+            mbKnown <- use ( _knownBinding varName )
+            mbGlob  <-
+              do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName
+                  -- declare pointer type (if necessary)
+                  mapM_ (typeID . snd) glob
+                  pure glob
+
+            bd@(bdID,_)
+                <- note
+                    ( "codeGen: no binding with name " <> varName )
+                    ( mbLoc <<?> mbKnown <<?> mbGlob )
+
+            -- add the user decorations for this binding if necessary
+            decorations <- fmap snd <$> view ( _userGlobal varName )
+            case decorations of
+              Nothing   -> pure ()
+              Just decs -> addDecorations bdID decs
+
+            -- return the binding ID
+            pure bd
 
 -- get the ID for a global variable,
 -- adding this global to the list of 'used' global variables if it isn't already there

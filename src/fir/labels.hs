@@ -64,16 +64,16 @@ import Control.Monad.Indexed
   ( Codensity, (:=) )
 import Control.Type.Optic
   ( Optic, Name )
-import Data.Type.Map
-  ( Insert )
 import FIR.AST
   ( AST )
 import FIR.Binding
-  ( BindingsMap, Var, R, RW )
+  ( Var, R, RW )
 import FIR.Instances.Bindings
-  ( ValidDef,Get, Put )
+  ( AddBinding, Get, Put )
 import FIR.Instances.Codensity
   ( CanDefine(def), use, assign, modifying )
+import FIR.IxState
+  ( IxState )
 import FIR.Prim.Singletons
   ( PrimTy )
 
@@ -84,7 +84,7 @@ data Label (k :: Symbol) (a :: Type) = Label
 
 data LabelUsage
   = Symbolic
-  | Use Symbol BindingsMap
+  | Use Symbol IxState
 
 class IsLabel k a (usage :: LabelUsage) v
     | v -> a, usage v -> k, v k -> usage
@@ -126,12 +126,11 @@ infixr 4 .=
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , PrimTy a
-        , ValidDef k i
         , CanDefine k RW a i (AST a)
         )
      => Label k a
      -> AST a
-     -> Codensity AST (AST a := Insert k (Var RW a) i) i
+     -> Codensity AST (AST a := AddBinding k (Var RW a) i) i
 _ #= a = def @k @RW a
 
 -- | Define a new constant using a label.
@@ -139,12 +138,11 @@ _ #= a = def @k @RW a
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , PrimTy a
-        , ValidDef k i
         , CanDefine k R a i (AST a)
         )
      => Label k a
      -> AST a
-     -> Codensity AST (AST a := Insert k (Var R a) i) i
+     -> Codensity AST (AST a := AddBinding k (Var R a) i) i
 _ #=! a = def @k @R a
 
 -- | Set the value of a variable with given label.

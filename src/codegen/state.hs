@@ -6,7 +6,7 @@ module CodeGen.State where
 
 -- base
 import Data.Foldable
-  ( traverse_ )
+  ( traverse_, toList )
 import Data.Maybe
   ( fromMaybe )
 import Data.Word
@@ -223,22 +223,26 @@ _builtin stage stageName builtinName
       ( \s mb_i -> case mb_i of
          Nothing -> s
          Just i  -> set _interfaceBuiltin           (Just i)
-                  . set ( _usedGlobal builtinName ) (Just (i,ty))
+                  . set ( _usedGlobal builtinName ) (Just (i, builtinTy s))
                   . set ( _decorate i ) (Just $ builtinDecorations builtinName)
                   $ s
       )
   where _interfaceBuiltin :: Lens' CGState (Maybe ID)
         _interfaceBuiltin = _interfaceBinding stage stageName builtinName
 
-        ty :: SPIRV.PointerTy
-        ty =
-          fromMaybe
-            ( error
-              ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
-                  \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
+        builtinTy :: CGState -> SPIRV.PointerTy
+        builtinTy s =
+          let modes :: [SPIRV.ExecutionMode Word32]
+              modes = fromMaybe []
+                        ( toList <$> Map.lookup (stage, stageName) (executionModes s) )
+          in
+            fromMaybe
+              ( error
+                ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
+                    \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
+                )
               )
-            )
-            ( lookup builtinName $ stageBuiltins stage )
+              ( lookup builtinName $ stageBuiltins stage modes )
 
 _executionModes :: Lens' CGState (Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32)))
 _executionModes = lens executionModes ( \s v -> s { executionModes = v } )

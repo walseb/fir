@@ -48,6 +48,10 @@ module FIR.Instances.Codensity
   , get, put, modify
     -- *** Special cases for manipulating images
   , imageRead, imageWrite
+
+  -- * Geometry shader primitive instructions
+  , emitVertex, endPrimitive
+
     -- * Instances
 
     -- ** Syntactic type class
@@ -110,14 +114,13 @@ import Data.Type.Known
   ( Known )
 import Data.Type.List
   ( KnownLength(sLength), Postpend )
-import Data.Type.Map
-  ( Insert, Union )
 import FIR.AST
-  ( AST(..), Syntactic(Internal,toAST,fromAST) )
+  ( AST(..)
+  , Syntactic(Internal,toAST,fromAST)
+  , primOp
+  )
 import FIR.Binding
-  ( Binding(EntryPoint)
-  , BindingsMap
-  , FunctionType, Var, Fun
+  ( FunctionType, Var
   , Permission
   )
 import FIR.Builtin
@@ -125,7 +128,9 @@ import FIR.Builtin
 import FIR.Instances.AST
   ( )
 import FIR.Instances.Bindings
-  ( ValidDef, ValidFunDef, ValidEntryPoint
+  ( AddBinding, AddFunBinding
+  , ValidFunDef, FunctionDefinitionStartState
+  , ValidEntryPoint, EntryPointStartState, AddEntryPoint
   , LookupImageProperties
   , ValidImageRead, ValidImageWrite
   , ProvidedSymbol, ProvidedOptic
@@ -134,6 +139,8 @@ import FIR.Instances.Images
   ( ImageTexel )
 import FIR.Instances.Optics
   ( User, Assigner, KnownOptic, opticSing )
+import FIR.IxState
+  ( Context(..), IxState(IxState), StageContext, EntryPoints )
 import FIR.Prim.Image
   ( ImageProperties, ImageData, ImageCoordinates )
 import FIR.Prim.Singletons
@@ -161,8 +168,10 @@ import Math.Logic.Class
   , Choose(..), ifThenElse
   , Ord(..)
   )
+import qualified SPIRV.PrimOp as SPIRV
+  ( GeomPrimOp(..) )
 import SPIRV.Stage
-  ( Stage )
+  ( Stage(..) )
 
 --------------------------------------------------------------------------
 -- * Monadic control operations
@@ -188,7 +197,7 @@ while :: ( GHC.Stack.HasCallStack
          , b ~ (AST Bool := i)
          , r ~ (AST () := i)
          )
-      => Codensity AST b (i :: BindingsMap)
+      => Codensity AST b (i :: IxState)
       -> Codensity AST l i'
       -> Codensity AST r i''
 while = fromAST While
@@ -220,8 +229,12 @@ fundef' :: forall k as b l i.
           , PrimTy b
           , ValidFunDef k as i l
           )
-       => Codensity AST (AST b := l) (Union i as)
-       -> Codensity AST (AST (FunctionType as b) := Insert k (Fun as b) i) i
+       => Codensity AST
+              ( AST b := 'IxState l (Function k as) (EntryPoints i) )
+              ( FunctionDefinitionStartState k as i )
+       -> Codensity AST
+              ( AST (FunctionType as b) := AddFunBinding k as b i )
+              i
 fundef' = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
 
 -- | Define a new function.
@@ -243,8 +256,12 @@ fundef :: forall k as b l i r.
            , PrimTy b
            , ValidFunDef k as i l
            )
-        => Codensity AST (AST b := l) (Union i as) -- ^ Function body code.
-        -> Codensity AST (r := Insert k (Fun as b) i) i
+        => Codensity AST
+              ( AST b := 'IxState l (Function k as) (EntryPoints i) )
+              ( FunctionDefinitionStartState k as i ) -- ^ Function body code.
+        -> Codensity AST
+              ( r := AddFunBinding k as b i )
+              i
 fundef = fromAST . toAST . fundef' @k @as @b @l @i
 
 
@@ -256,17 +273,25 @@ fundef = fromAST . toAST . fundef' @k @as @b @l @i
 --
 -- *@k@: name of entry point,
 -- *@s@: entry point 'SPIRV.Stage.Stage',
+-- *@modes@: entry point 'SPIRV.ExecutionMode.ExecutionMode's,
+-- *@decs@: entry point interface 'SPIRV.Decoration.Decoration's,
 -- *@l@: state at end of entry point body (usually inferred),
 -- *@i@: state at start of entry point body (usually inferred).
-entryPoint :: forall k s l i.
+-- *@builtins@: builtins for this entry point (usually inferred).
+entryPoint :: forall k s modes decs l i builtins.
              ( GHC.Stack.HasCallStack
              , KnownSymbol k
              , Known Stage s
-             , ValidEntryPoint k s i l
+             , ValidEntryPoint k s i l builtins
+             , builtins ~ StageBuiltins k s modes
              )
-           => Codensity AST (AST () := l) (Union i (StageBuiltins s)) -- ^ Entry point body.
-           -> Codensity AST (AST () := Insert k (EntryPoint s) i) i
-entryPoint = fromAST ( Entry @k @s @l @i Proxy Proxy ) . toAST
+           => Codensity AST
+                ( AST () := 'IxState l (EntryPoint k s) (EntryPoints i) )
+                ( EntryPointStartState k s i builtins ) -- ^ Entry point body.
+           -> Codensity AST
+                ( AST () := AddEntryPoint k s modes decs i )
+                i
+entryPoint = fromAST ( Entry @k @s @modes @decs @l @i Proxy Proxy ) . toAST
 
 -- $vardef
 -- For defining constants/variables, we want an extra layer of flexiblity:
@@ -292,27 +317,24 @@ entryPoint = fromAST ( Entry @k @s @l @i Proxy Proxy ) . toAST
 class ( KnownSymbol k
       , Known [Permission] ps
       , PrimTy a
-      , ValidDef k i
       )
    => CanDefine k ps a i ma | ma -> a where
-  def :: GHC.Stack.HasCallStack => ma -> Codensity AST ( AST a := Insert k (Var ps a) i ) i
+  def :: GHC.Stack.HasCallStack => ma -> Codensity AST ( AST a := AddBinding k (Var ps a) i ) i
 
 instance ( KnownSymbol k
          , Known [Permission] ps
          , PrimTy a
-         , ValidDef k i
          , i' ~ i, i'' ~ i
          )
       => CanDefine k ps a i (Codensity AST (AST a := i') i'') where
   def :: GHC.Stack.HasCallStack
       => Codensity AST ( AST a := i ) i
-      -> Codensity AST ( AST a := Insert k (Var ps a) i ) i
+      -> Codensity AST ( AST a := AddBinding k (Var ps a) i ) i
   def = fromAST ( Def @k @ps @a @i Proxy Proxy ) . toAST
 
 instance ( KnownSymbol k
          , Known [Permission] ps
          , PrimTy a
-         , ValidDef k i
          )
       => CanDefine k ps a i (AST a) where
   def = def @k @ps @a @i @(Codensity AST (AST a := i) i) . ixPure
@@ -351,7 +373,7 @@ assign = fromAST ( Assign @optic sLength opticSing )
 -- Like @get@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @use \@(Name k)@.
-get :: forall (k :: Symbol) a (i :: BindingsMap).
+get :: forall (k :: Symbol) a (i :: IxState).
        ( KnownSymbol k
        , Gettable (Name k :: Optic '[] i a)
        )
@@ -362,7 +384,7 @@ get = use @(Name k :: Optic '[] i a)
 -- Like @put@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @assign \@(Name k)@.
-put :: forall (k :: Symbol) a (i :: BindingsMap).
+put :: forall (k :: Symbol) a (i :: IxState).
        ( KnownSymbol k
        , Settable (Name k :: Optic '[] i a)
        )
@@ -373,7 +395,7 @@ put = assign @(Name k :: Optic '[] i a)
 -- | Like @modify@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @modifying \@(Name k)@.
-modify :: forall (k :: Symbol) a (i :: BindingsMap).
+modify :: forall (k :: Symbol) a (i :: IxState).
           ( KnownSymbol k
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)
@@ -394,7 +416,7 @@ modify = modifying @(Name k :: Optic '[] i a)
 -- * @k@: image name,
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
-imageRead :: forall k props (i :: BindingsMap).
+imageRead :: forall k props (i :: IxState).
             ( KnownSymbol k, ProvidedSymbol k
             , Gettable (ImageTexel k)
             , LookupImageProperties k i ~ props
@@ -415,7 +437,7 @@ imageRead = use @(ImageTexel k) NoOperands
 -- * @k@: image name,
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
-imageWrite :: forall k props (i :: BindingsMap).
+imageWrite :: forall k props (i :: IxState).
              ( KnownSymbol k, ProvidedSymbol k
              , Gettable (ImageTexel k)
              , LookupImageProperties k i ~ props
@@ -428,13 +450,28 @@ imageWrite :: forall k props (i :: BindingsMap).
 imageWrite = assign @(ImageTexel k) NoOperands
 
 --------------------------------------------------------------------------
+-- geometry shader primitive instructions
+
+-- | Geometry shader: write the current output values at the current vertex index.
+emitVertex :: forall (i :: IxState).
+              ( StageContext i ~ Just Geometry )
+           => Codensity AST ( AST () := i ) i
+emitVertex = primOp @i @SPIRV.EmitGeometryVertex
+
+-- | Geometry shader: end the current primitive and pass to the next one.
+endPrimitive :: forall (i :: IxState).
+                ( StageContext i ~ Just Geometry )
+             =>  Codensity AST ( AST () := i ) i
+endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
+
+--------------------------------------------------------------------------
 -- type synonyms for use/assign
 
 type family ListVariadicCod
-              ( is :: [Type]      )
-              ( s  :: BindingsMap )
-              ( a  :: Type        )
-            = ( r  :: Type        )
+              ( is :: [Type]  )
+              ( s  :: IxState )
+              ( a  :: Type    )
+            = ( r  :: Type    )
             | r -> is s a where
   ListVariadicCod '[]         s a = Codensity AST (AST a := s) s
   ListVariadicCod ( i ': is ) s a = AST i -> ListVariadicCod is s a
@@ -451,10 +488,10 @@ type CodAssigner (optic :: Optic is s a) = ListVariadicCod (is `Postpend` a) s (
 -- modifying
 
 type family VariadicCodModifier
-              ( is :: [Type] )
-              ( s  :: BindingsMap )
-              ( a  :: Type )
-            = ( r  :: Type )
+              ( is :: [Type]  )
+              ( s  :: IxState )
+              ( a  :: Type    )
+            = ( r  :: Type    )
             | r -> is s a
             where
   VariadicCodModifier '[]       s a = (AST a -> AST a) -> Codensity AST (AST () := s) s

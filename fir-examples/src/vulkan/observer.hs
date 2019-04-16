@@ -35,7 +35,9 @@ import GHC.TypeNats
 import qualified SDL
 
 -- fir
-import Math.Algebra.Class
+import FIR
+  hiding
+    ( Input, Eq(..), Ord(..), Any, pure, view )
 import Math.Linear
   ( V, M
   , pattern V2, pattern V3

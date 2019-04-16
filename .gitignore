@@ -8,7 +8,7 @@ dist-newstyle/
 *.fail
 *.spv
 
-shaders/
+/shaders/
 haddock-api/
 fir-examples/screenshots
 fir-examples/src/kaleidogen

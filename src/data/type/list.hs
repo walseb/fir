@@ -20,8 +20,6 @@ module Data.Type.List
   ) where
 
 -- base 
-import Data.Kind
-  ( Type )
 import GHC.TypeLits
   ( TypeError, ErrorMessage(..) )
 import GHC.TypeNats
@@ -43,12 +41,12 @@ type family Elem x as where
   Elem x (x ': _ ) = 'True
   Elem x (_ ': as) = Elem x as
 
-type family Zip (is :: [Type]) (js :: [Type]) :: [Type] where
+type family Zip (is :: [k]) (js :: [k]) :: [k] where
   Zip '[] js = js
   Zip is '[] = is
   Zip (i ': is) (j ': js) = (i,j) ': Zip is js
 
-type family ExactZip (msg :: ErrorMessage) (as :: [Type]) (bs :: [Type]) :: [Type] where
+type family ExactZip (msg :: ErrorMessage) (as :: [k]) (bs :: [k]) :: [k] where
   ExactZip _  '[]        '[]       = '[]
   ExactZip msg (a ': as) (b ': bs) = (a,b) ': ExactZip msg as bs
   ExactZip msg _ _ = TypeError msg

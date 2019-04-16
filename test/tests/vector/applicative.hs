@@ -23,7 +23,7 @@ type Defs = '[ "in_col1" ':-> Input      '[] (V 3 Float)
              , "in_col2" ':-> Input      '[] (V 3 Float)
              , "in_col3" ':-> Input      '[] (V 3 Float)
              , "out_col" ':-> Output     '[] (V 3 Float)
-             , "main"    ':-> EntryPoint '[] Fragment
+             , "main"    ':-> EntryPoint '[OriginUpperLeft] Fragment
              ]
 
 program :: Program Defs ()

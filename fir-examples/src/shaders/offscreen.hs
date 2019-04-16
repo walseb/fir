@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Example1.Shaders where
+module Shaders.Offscreen where
 
 -- text-utf8
 import "text-utf8" Data.Text
@@ -36,7 +36,7 @@ type VertexDefs =
    , "out_colour"   ':-> Output '[ Location 1 ] (V 4 Float)
    , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ] --, Block ]
                           ( Struct '[ "mvp" ':-> M 4 4 Float ] )
-   , "main"         ':-> EntryPoint '[ ] Vertex
+   , "main"         ':-> EntryPoint '[] Vertex
    ]
 
 vertex :: Program VertexDefs ()
@@ -56,7 +56,7 @@ type FragmentDefs =
   '[ "in_position" ':-> Input  '[ Location 0 ] (V 4 Float)
    , "in_colour"   ':-> Input  '[ Location 1 ] (V 4 Float)
    , "out_colour"  ':-> Output '[ Location 0 ] (V 4 Float)
-   , "main"        ':-> EntryPoint '[ ] Fragment
+   , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
 fragment :: Program FragmentDefs ()
@@ -71,8 +71,8 @@ fragment = Program do
 -- compiling
 
 vertPath, fragPath :: FilePath
-vertPath = "src/example1/vert.spv"
-fragPath = "src/example1/frag.spv"
+vertPath = "src/shaders/offscreen_vert.spv"
+fragPath = "src/shaders/offscreen_frag.spv"
 
 compileVertexShader :: IO ( Either Text Text )
 compileVertexShader = compile vertPath [] vertex

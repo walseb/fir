@@ -29,6 +29,10 @@ import "text-utf8" Data.Text
   ( Text )
 import qualified "text-utf8" Data.Text as Text
 
+-- fir
+import Data.Type.Map
+  ( (:->)((:->)) )
+
 --------------------------------------------------
 
 class Demotable k where
@@ -76,3 +80,8 @@ instance Demotable k => Known [k] '[] where
   known = []
 instance ( Known k a, Known [k] as ) => Known [k] (a ': as) where
   known = known @k @a : known @[k] @as
+
+instance ( Demotable k, Demotable v ) => Demotable (k :-> v) where
+  type Demote (k :-> v) = Demote k :-> Demote v
+instance ( Known k a, Known v b ) => Known (k :-> v) (a ':-> b) where
+  known = known @k @a :-> known @v @b

@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
+
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -49,7 +51,8 @@ whereas the graded multiplication sits at the value-level.
 module Math.Algebra.GradedSemigroup where
 
 -- base
-import Data.Kind(Type, Constraint)
+import Data.Kind
+  ( Type, Constraint )
 
 
 infixl 6 <!>

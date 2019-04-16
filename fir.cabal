@@ -1,10 +1,9 @@
 name:           fir
-version:        0.0.0
+version:        0.0.1.0
 synopsis:       An EDSL that compiles to SPIR-V for graphics programming on the GPU in Haskell.
 category:       Graphics
 author:         Sam Derbyshire
 maintainer:     Sam Derbyshire
-license:        MIT
 build-type:     Simple
 cabal-version:  >= 1.10
 description:
@@ -35,6 +34,8 @@ description:
   .
   * __"Math.Linear"__: vectors, matrices, and operations on them, as used by this library.
   .
+  * __"Math.Quaternion"__: quaternions and their action by conjugation in 3 dimensions, useful for 3D cameras.
+  .
   .
   Important types used by this library:
   .
@@ -53,11 +54,10 @@ description:
   .
   It is recommended to install the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/),
   as it provides useful executables to manipulate @SPIR-V@ assembly, such as
-  @spirv-dis@ for viewing, @spirv-opt@ for optimising,
-  and @spirv-cfg@ for generating control flow graphs.
+  @spirv-dis@ for viewing (edit and then recompile with @spirv-as@),
+  @spirv-opt@ for optimising, and @spirv-cfg@ for generating control flow graphs.
   It is also possible to use @spirv-cross@ to automatically generate @GLSL@ code
   from @SPIR-V@.
-
 
 library
 
@@ -99,6 +99,7 @@ library
       , Data.Type.Known
       , Data.Type.List
       , Data.Type.Map
+      , Data.Type.Maybe
       , Data.Type.Snoc
       , Deriving.Base
       , FIR.AST
@@ -110,6 +111,7 @@ library
       , FIR.Instances.Codensity
       , FIR.Instances.Images
       , FIR.Instances.Optics
+      , FIR.IxState
       , FIR.Prim.Array
       , FIR.Prim.Image
       , FIR.Prim.Singletons
@@ -189,23 +191,3 @@ library
     if impl(ghc >= 8.6)
         default-extensions:
             NoStarIsType
-
-
-test-suite fir-test
-
-  hs-source-dirs:
-      test
-
-  type:
-      detailed-0.9
-
-  test-module:
-      Test
-
-  build-depends:
-      base
-        >= 4.12
-    , fir
-
-  default-language:
-        Haskell2010

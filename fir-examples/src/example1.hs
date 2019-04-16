@@ -13,16 +13,18 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 
-module Offscreen.Main ( offscreen ) where
+module Example1 ( example1 ) where
 
 -- base
 import Control.Monad
-  ( (>=>) )
+  ( (>=>), when )
 import Control.Monad.IO.Class
   ( liftIO )
 import Data.Bits
 import Data.Coerce
   ( coerce )
+import Data.Traversable
+  ( for )
 import Data.Word
   ( Word8 )
 import qualified Foreign
@@ -35,14 +37,26 @@ import Codec.Picture.Types
 import Codec.Picture.Png
   ( writePng )
 
+-- lens
+import Control.Lens
+  ( use, assign )
+
 -- managed
 import Control.Monad.Managed
   ( MonadManaged, runManaged )
+
+-- sdl2
+import qualified SDL
+import qualified SDL.Event
 
 -- text-utf8
 import "text-utf8" Data.Text
   ( Text )
 import qualified "text-utf8" Data.Text as Text
+
+-- transformers
+import Control.Monad.Trans.State.Lazy
+  ( evalStateT )
 
 -- vector
 import qualified Data.Vector.Storable as Vector
@@ -52,6 +66,8 @@ import Graphics.Vulkan.Marshal.Create
   ( (&*) )
 import qualified Graphics.Vulkan as Vulkan
 import qualified Graphics.Vulkan.Core_1_0 as Vulkan
+import qualified Graphics.Vulkan.Ext.VK_KHR_surface as Vulkan
+import qualified Graphics.Vulkan.Ext.VK_KHR_swapchain as Vulkan
 import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
@@ -61,124 +77,142 @@ import Math.Linear
   ( V, pattern V2, pattern V3 )
 
 -- fir-examples
-import Offscreen.Shaders
+import Shaders.Example1
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
 import Vulkan.Observer
+import Vulkan.SDL
 
 ----------------------------------------------------------------------------
 
 shaderCompilationResult :: Either Text Text
 shaderCompilationResult
   = $( runCompilationsTH
-        [ ("Vertex shader"  , compileVertexShader  )
-        , ("Fragment shader", compileFragmentShader)
+        [ ("Vertex shader"  , compileVertexShader   )
+        , ("Geometry shader", compileGeometryShader )
+        , ("Fragment shader", compileFragmentShader )
         ]
      )
 
-offscreen :: IO ()
-offscreen = runManaged do
+example1 :: IO ()
+example1 = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
     Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err)
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
-  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance []
+  enableSDLLogging
+  initializeSDL
+  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples"
+
+  neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
+  extensionNames <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
+  logMsg $ "Needed instance extensions are: " ++ show extensionNames
+
+  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance neededExtensions
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice
 
-  let features :: Vulkan.Ptr Vulkan.VkPhysicalDeviceFeatures
-      features = Vulkan.vkNullPtr
+  let features :: Maybe Vulkan.VkPhysicalDeviceFeatures
+      features = Just $ Vulkan.createVk ( Vulkan.set @"geometryShader" Vulkan.VK_TRUE )
   device           <- logMsg "Creating logical device"       *> createLogicalDevice  physicalDevice queueFamilyIndex features
+  surface          <- logMsg "Creating SDL surface"          *> createSurface window vulkanInstance
 
+  assertSurfacePresentable physicalDevice queueFamilyIndex surface
 
-  let
-    colFmt :: Vulkan.VkFormat
-    colFmt = Vulkan.VK_FORMAT_B8G8R8A8_UNORM
+  let preferredSwapchainFormat :: Vulkan.VkSurfaceFormatKHR
+      preferredSwapchainFormat
+        = VkSurfaceFormatKHR
+            Vulkan.VK_FORMAT_B8G8R8A8_UNORM
+            Vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
 
-    depthFmt :: Vulkan.VkFormat
-    depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
+      depthFmt :: Vulkan.VkFormat
+      depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
 
-    width, height :: Num a => a
-    width  = 1920
-    height = 1080
+  surfaceFormat@(~(VkSurfaceFormatKHR colFmt _)) <-
+    logMsg "Choosing swapchain format & color space"
+      *> chooseSwapchainFormat preferredSwapchainFormat physicalDevice surface
 
-    extent :: Vulkan.VkExtent2D
-    extent =
-      Vulkan.createVk
-        (  Vulkan.set @"width"  width
-        &* Vulkan.set @"height" height
-        )
+  ( swapchain, extent ) <-
+    logMsg "Creating swapchain"
+      *> createSwapchain
+            physicalDevice device
+            surface surfaceFormat
+            ( Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT .|. Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT )
 
-    extent3D :: Vulkan.VkExtent3D
-    extent3D =
-      Vulkan.createVk
-        (  Vulkan.set @"width"  width
-        &* Vulkan.set @"height" height
-        &* Vulkan.set @"depth"  1
-        )
+  let width, height :: Num a => a
+      width  = fromIntegral $ Vulkan.getField @"width"  extent
+      height = fromIntegral $ Vulkan.getField @"height" extent
 
-  renderPass <- logMsg "Creating a render pass" *> createRenderPass device colFmt depthFmt
-
-  (colorImage, _) <-
-    createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
+      extent3D :: Vulkan.VkExtent3D
       extent3D
-      colFmt
-      Vulkan.VK_IMAGE_TILING_OPTIMAL
-      (     Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-        .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-      )
-      [ ]
-  colorImageView <-
-    createImageView
-      device colorImage
-      Vulkan.VK_IMAGE_VIEW_TYPE_2D
-      colFmt
-      Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-  (screenshotImage, screenshotImageMemory) <-
-    createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
-      extent3D
-      colFmt
-      Vulkan.VK_IMAGE_TILING_LINEAR -- host visible image needs linear tiling
-      Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
-      [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-      , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-      ]
-  (depthImage, _) <-
-    createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
-      extent3D
-      depthFmt
-      Vulkan.VK_IMAGE_TILING_OPTIMAL
-      Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-      [ ]
-  depthImageView <- createImageView device depthImage
-    Vulkan.VK_IMAGE_VIEW_TYPE_2D
-    depthFmt
-    Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
-  
-  framebuffer <- createFramebuffer device renderPass extent [colorImageView, depthImageView]
+        = Vulkan.createVk
+            (  Vulkan.set @"width"  width
+            &* Vulkan.set @"height" height
+            &* Vulkan.set @"depth"  1
+            )
 
+  swapchainImages <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
+  renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt depthFmt
+
+  framebuffersWithAttachments <- logMsg "Creating frame buffers"
+    *> ( for swapchainImages $ \swapchainImage -> do
+
+          colorImageView
+            <- createImageView
+                  device swapchainImage
+                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                  colFmt
+                  Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+          (screenshotImage, screenshotImageMemory)
+            <- createImage physicalDevice device
+                  Vulkan.VK_IMAGE_TYPE_2D
+                  extent3D
+                  colFmt
+                  Vulkan.VK_IMAGE_TILING_LINEAR -- host visible image needs linear tiling
+                  (     Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+                    .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
+                  )
+                  [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                  , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                  ]
+          (depthImage, _)
+            <- createImage physicalDevice device
+                  Vulkan.VK_IMAGE_TYPE_2D
+                  extent3D
+                  depthFmt
+                  Vulkan.VK_IMAGE_TILING_OPTIMAL
+                  Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                  [ ]
+          depthImageView
+            <- createImageView device depthImage
+                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                  depthFmt
+                  Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
+          let attachments = [ (swapchainImage, colorImageView)
+                            , (depthImage    , depthImageView)
+                            ]
+          framebuffer <- createFramebuffer device renderPass extent (map snd attachments)
+          pure (framebuffer, attachments, (screenshotImage, screenshotImageMemory))
+       )
 
   let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
-      clearValues = [ pinkClear
+      clearValues = [ tealClear
                     , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
                     ]
         where
-          pink :: Vulkan.VkClearColorValue
-          pink =
+          teal :: Vulkan.VkClearColorValue
+          teal =
             Vulkan.createVk
-              (  Vulkan.setAt @"float32" @0 1.0
+              (  Vulkan.setAt @"float32" @0 0.1
               &* Vulkan.setAt @"float32" @1 0.5
               &* Vulkan.setAt @"float32" @2 0.7
               &* Vulkan.setAt @"float32" @3 1
               )
 
-          pinkClear :: Vulkan.VkClearValue
-          pinkClear = Vulkan.createVk ( Vulkan.set @"color"  pink )
+          tealClear :: Vulkan.VkClearValue
+          tealClear = Vulkan.createVk ( Vulkan.set @"color"  teal )
 
           depthStencilClear :: Vulkan.VkClearDepthStencilValue
           depthStencilClear = Vulkan.createVk
@@ -186,6 +220,9 @@ offscreen = runManaged do
 
   commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
   queue       <- getQueue device 0
+
+  nextImageSem <- createSemaphore device
+  submitted    <- createSemaphore device
 
   descriptorPool <- createDescriptorPool device
 
@@ -244,7 +281,7 @@ offscreen = runManaged do
 
   (indexBuffer, _) <- createIndexBuffer physicalDevice device icosahedronIndices
 
-  (mvpUniformBuffer, _)
+  (mvpUniformBuffer, mvpUniformPtr)
     <- createUniformBuffer
           physicalDevice
           device
@@ -252,186 +289,282 @@ offscreen = runManaged do
 
   updateDescriptorSet device descriptorSet mvpUniformBuffer
 
-  commandBuffer <- allocateCommandBuffer device commandPool
-
-  beginCommandBuffer commandBuffer
-
-  beginRenderPass commandBuffer renderPass framebuffer clearValues extent
-
-  liftIO $
-    Foreign.Marshal.withArray [ vertexBuffer ] $ \buffers ->
-    Foreign.Marshal.withArray [ 0 ] $ \offsets ->
-    Vulkan.vkCmdBindVertexBuffers commandBuffer 0 1 buffers offsets
-
-  liftIO $
-    Vulkan.vkCmdBindIndexBuffer
-      commandBuffer
-      indexBuffer
-      0
-      Vulkan.VK_INDEX_TYPE_UINT32
-
-  liftIO $ do
-    Vulkan.vkCmdBindPipeline
-      commandBuffer
-      Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
-      graphicsPipeline
-
-    Foreign.Marshal.withArray [ descriptorSet ] $ \descriptorSetsPtr ->
-      Vulkan.vkCmdBindDescriptorSets
-        commandBuffer
-        Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
-        pipelineLayout
-        0
-        1
-        descriptorSetsPtr
-        0
-        Vulkan.vkNullPtr
-
-    Vulkan.vkCmdDrawIndexed
-      commandBuffer
-      ( fromIntegral ( length icosahedronIndices ) )
-      1
-      0
-      0
-      0
-
-  endRenderPass commandBuffer
-
-  -- image copying
-  let noOffset :: Vulkan.VkOffset3D
-      noOffset
-        = Vulkan.createVk
-            (  Vulkan.set @"x" 0
-            &* Vulkan.set @"y" 0
-            &* Vulkan.set @"z" 0
-            )
-
-      layers :: Vulkan.VkImageSubresourceLayers
-      layers
-        = Vulkan.createVk
-          (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-          &* Vulkan.set @"mipLevel"       0
-          &* Vulkan.set @"baseArrayLayer" 0
-          &* Vulkan.set @"layerCount"     1
-          )
-
-      imageCopy :: Vulkan.VkImageCopy
-      imageCopy
-        = Vulkan.createVk
-          (  Vulkan.set @"srcSubresource" layers
-          &* Vulkan.set @"srcOffset"      noOffset
-          &* Vulkan.set @"dstSubresource" layers
-          &* Vulkan.set @"dstOffset"      noOffset
-          &* Vulkan.set @"extent"         extent3D
-          )
-
-      subresourceRange :: Vulkan.VkImageSubresourceRange
-      subresourceRange =
-        Vulkan.createVk
-          (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-          &* Vulkan.set @"baseMipLevel"   0
-          &* Vulkan.set @"levelCount"     1
-          &* Vulkan.set @"baseArrayLayer" 0
-          &* Vulkan.set @"layerCount"     1
-          )
-
-      screenshotImageBarrier :: Vulkan.VkImageMemoryBarrier
-      screenshotImageBarrier =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
-          &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-          &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-          &* Vulkan.set @"dstAccessMask" 0
-          &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-          &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-          &* Vulkan.set @"image"               screenshotImage
-          &* Vulkan.set @"subresourceRange"    subresourceRange
-          &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-          &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-          )
-
-  cmdPipelineBarrier
-    commandBuffer
-    Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-    Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-    []
-    []
-    [ screenshotImageBarrier ]
-  liftIO $ Vulkan.vkCmdCopyImage commandBuffer
-    colorImage
-    Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-    screenshotImage
-    Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-    1
-    ( Vulkan.unsafePtr imageCopy )
-
-  -- now change image layout to make screenshot image available for memory mapping (to write to disk)
-
   let
-    screenshotImageBarrier2 :: Vulkan.VkImageMemoryBarrier
-    screenshotImageBarrier2 =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
-        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-        &* Vulkan.set @"dstAccessMask" 0
-        &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-        &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_GENERAL
-        &* Vulkan.set @"image"               screenshotImage
-        &* Vulkan.set @"subresourceRange"    subresourceRange
-        &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-        &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-        )
+    mkCommandBuffer
+      :: MonadManaged m
+      => Vulkan.VkFramebuffer
+      -> [(Vulkan.VkImage, Vulkan.VkImageView)]
+      -> Maybe (Vulkan.VkImage, Vulkan.VkDeviceMemory)
+      -> m Vulkan.VkCommandBuffer
+    mkCommandBuffer framebuffer attachments mbScreenshot
+      = do
 
-  cmdPipelineBarrier
-    commandBuffer
-    Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-    Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-    []
-    []
-    [ screenshotImageBarrier2 ]
+        commandBuffer <-
+          allocateCommandBuffer device commandPool
 
-  endCommandBuffer commandBuffer
+        beginCommandBuffer commandBuffer
 
-  fence <- createFence device
+        cmdBeginRenderPass commandBuffer renderPass framebuffer clearValues extent
 
-  submitCommandBuffer
-    queue
-    commandBuffer
-    []
-    []
-    ( Just fence )
+        liftIO $
+          Foreign.Marshal.withArray [ vertexBuffer ] $ \buffers ->
+          Foreign.Marshal.withArray [ 0 ] $ \offsets ->
+          Vulkan.vkCmdBindVertexBuffers commandBuffer 0 1 buffers offsets
 
-  liftIO $ waitForFences device (WaitAll [fence])
+        liftIO $
+          Vulkan.vkCmdBindIndexBuffer
+            commandBuffer
+            indexBuffer
+            0
+            Vulkan.VK_INDEX_TYPE_UINT32
 
-  liftIO do
+        liftIO $ do
+          Vulkan.vkCmdBindPipeline
+            commandBuffer
+            Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
+            graphicsPipeline
 
-      memPtr :: Vulkan.Ptr Word8
-        <- coerce <$> allocaAndPeek
-              ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound 0
-                >=> throwVkResult
+          Foreign.Marshal.withArray [ descriptorSet ] $ \descriptorSetsPtr ->
+            Vulkan.vkCmdBindDescriptorSets
+              commandBuffer
+              Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
+              pipelineLayout
+              0
+              1
+              descriptorSetsPtr
+              0
+              Vulkan.vkNullPtr
+
+          Vulkan.vkCmdDrawIndexed
+            commandBuffer
+            ( fromIntegral ( length icosahedronIndices ) )
+            1
+            0
+            0
+            0
+
+        cmdEndRenderPass commandBuffer
+
+        -- image copying
+        let noOffset :: Vulkan.VkOffset3D
+            noOffset
+              = Vulkan.createVk
+                  (  Vulkan.set @"x" 0
+                  &* Vulkan.set @"y" 0
+                  &* Vulkan.set @"z" 0
+                  )
+
+            layers :: Vulkan.VkImageSubresourceLayers
+            layers
+              = Vulkan.createVk
+                (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+                &* Vulkan.set @"mipLevel"       0
+                &* Vulkan.set @"baseArrayLayer" 0
+                &* Vulkan.set @"layerCount"     1
+                )
+
+            imageCopy :: Vulkan.VkImageCopy
+            imageCopy
+              = Vulkan.createVk
+                (  Vulkan.set @"srcSubresource" layers
+                &* Vulkan.set @"srcOffset"      noOffset
+                &* Vulkan.set @"dstSubresource" layers
+                &* Vulkan.set @"dstOffset"      noOffset
+                &* Vulkan.set @"extent"         extent3D
+                )
+
+            subresourceRange :: Vulkan.VkImageSubresourceRange
+            subresourceRange =
+              Vulkan.createVk
+                (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+                &* Vulkan.set @"baseMipLevel"   0
+                &* Vulkan.set @"levelCount"     1
+                &* Vulkan.set @"baseArrayLayer" 0
+                &* Vulkan.set @"layerCount"     1
+                )
+
+        -- if taking a screenshot, copy swapchain color image onto screenshot image
+        case mbScreenshot of
+          Nothing -> pure ()
+          Just ( screenshotImage, _)
+            -> liftIO do
+                -- transition screenshot image layout to TRANSFER_DST so that swapchain image can be copied onto it
+                let
+                  screenshotImageBarrier :: Vulkan.VkImageMemoryBarrier
+                  screenshotImageBarrier =
+                    Vulkan.createVk
+                      (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+                      &* Vulkan.set @"pNext" Vulkan.vkNullPtr
+                      &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                      &* Vulkan.set @"dstAccessMask" 0
+                      &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+                      &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+                      &* Vulkan.set @"image"               screenshotImage
+                      &* Vulkan.set @"subresourceRange"    subresourceRange
+                      &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
+                      &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
+                      )
+                cmdPipelineBarrier
+                  commandBuffer
+                  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                  Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
+                  []
+                  []
+                  [ screenshotImageBarrier ]
+                -- perform the copy
+                Vulkan.vkCmdCopyImage commandBuffer
+                  ( fst $ attachments !! 0 ) -- (swapchain) color attachment
+                  Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+                  screenshotImage
+                  Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+                  1
+                  ( Vulkan.unsafePtr imageCopy )
+
+        -- now change image layouts:
+        --   - make swapchain image available for presentation
+        --   - make screenshot image available for memory mapping (to write to disk)
+
+        let
+
+          swapchainImageBarrier :: Vulkan.VkImageMemoryBarrier
+          swapchainImageBarrier =
+            Vulkan.createVk
+              (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+              &* Vulkan.set @"pNext" Vulkan.vkNullPtr
+              &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+              &* Vulkan.set @"dstAccessMask" 0
+              &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+              &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+              &* Vulkan.set @"image"         ( fst $ attachments !! 0 ) -- swapchain image
+              &* Vulkan.set @"subresourceRange"    subresourceRange
+              &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
+              &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
               )
 
-      let size = 4 * width * height
+          barriers = case mbScreenshot of
+            Nothing -> [ swapchainImageBarrier ]
+            Just ( screenshotImage, _ )
+              -> let
+                    screenshotImageBarrier :: Vulkan.VkImageMemoryBarrier
+                    screenshotImageBarrier =
+                      Vulkan.createVk
+                        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+                        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
+                        &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                        &* Vulkan.set @"dstAccessMask" 0
+                        &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+                        &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_GENERAL
+                        &* Vulkan.set @"image"               screenshotImage
+                        &* Vulkan.set @"subresourceRange"    subresourceRange
+                        &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
+                        &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
+                        )
+                  in [ swapchainImageBarrier, screenshotImageBarrier ]
 
-          -- image data is stored in BGRA component order,
-          -- whether R8G8B8A8 or B8G8R8A8 format is used
-          bgraToRgba :: [a] -> [a]
-          bgraToRgba ( b : g : r : a : rest )
-            = r : g : b : a : bgraToRgba rest
-          bgraToRgba l = l
+        cmdPipelineBarrier
+          commandBuffer
+          Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+          Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
+          []
+          []
+          barriers
 
-      imageData :: Image PixelRGBA8
-        <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
+        endCommandBuffer commandBuffer
 
-      writePng "screenshots/offscreen.png" imageData
+        pure commandBuffer
 
-      Vulkan.vkUnmapMemory device screenshotImageMemory
 
-  liftIO ( Vulkan.vkQueueWaitIdle queue )
-    >>= throwVkResult
+  commandBuffers <-
+    for framebuffersWithAttachments $ \(framebuffer, attachments, _ ) ->
+      mkCommandBuffer framebuffer attachments Nothing
 
-  pure ()
+  screenshotCommandBuffers <-
+    for framebuffersWithAttachments $ \(framebuffer, attachments, screenshotImageAndMemory) ->
+      mkCommandBuffer framebuffer attachments (Just screenshotImageAndMemory)
+
+
+  mainLoop do
+
+    ----------------
+    -- input
+
+    inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
+    prevInput <- use _input
+    let newInput = foldl onSDLInput prevInput inputEvents
+    let action = interpretInput newInput
+    assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
+
+    ----------------
+    -- simulation
+
+    oldObserver <- use _observer
+    let (observer, orientation) = oldObserver `move` action
+    assign _observer observer
+
+    let mvp = modelViewProjection observer (Just orientation)
+
+    when ( locate action )
+      ( liftIO $ putStrLn ( show observer ) )
+
+    -- update MVP
+    liftIO ( Foreign.poke mvpUniformPtr mvp )
+
+    ----------------
+    -- rendering
+
+    nextImageIndex <- acquireNextImage device swapchain nextImageSem
+
+    let
+      commandBuffer
+        | takeScreenshot action = screenshotCommandBuffers !! nextImageIndex
+        | otherwise             = commandBuffers           !! nextImageIndex
+
+    submitCommandBuffer
+      queue
+      commandBuffer
+      [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
+      [submitted]
+      Nothing
+
+    present queue swapchain nextImageIndex [submitted]
+
+    -- if taking a screenshot, map the image memory, read from it, and write to disk
+    when ( takeScreenshot action ) $ liftIO do
+
+        let screenshotImageMemory :: Vulkan.VkDeviceMemory
+            ( _, _, (_, screenshotImageMemory) )
+              = framebuffersWithAttachments !! nextImageIndex
+
+        memPtr :: Vulkan.Ptr Word8
+          <- coerce <$> allocaAndPeek
+                ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound 0
+                  >=> throwVkResult
+                )
+
+        let size = 4 * width * height
+
+            -- image data is stored in BGRA component order,
+            -- whether R8G8B8A8 or B8G8R8A8 format is used
+            bgraToRgba :: [a] -> [a]
+            bgraToRgba ( b : g : r : a : rest )
+              = r : g : b : a : bgraToRgba rest
+            bgraToRgba l = l
+
+        imageData :: Image PixelRGBA8
+          <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
+
+        writePng "screenshots/example1.png" imageData
+
+        Vulkan.vkUnmapMemory device screenshotImageMemory
+
+    liftIO ( Vulkan.vkQueueWaitIdle queue )
+      >>= throwVkResult
+
+    ----------------
+
+    pure ( shouldQuit action )
+
+
 
 
 
@@ -507,14 +640,13 @@ createRenderPass dev colorFormat depthFormat =
       Vulkan.createVk
         (  Vulkan.set @"srcSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
         &* Vulkan.set @"dstSubpass"    0
-        &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+        &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"srcAccessMask" 0
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"dstAccessMask"
               (    Vulkan.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
                .|. Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
               )
-        &* Vulkan.set @"dependencyFlags" Vulkan.VK_DEPENDENCY_BY_REGION_BIT
         )
 
     dependency2 :: Vulkan.VkSubpassDependency
@@ -529,7 +661,6 @@ createRenderPass dev colorFormat depthFormat =
               )
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
         &* Vulkan.set @"dstAccessMask" 0
-        &* Vulkan.set @"dependencyFlags" Vulkan.VK_DEPENDENCY_BY_REGION_BIT
         )
 
     createInfo :: Vulkan.VkRenderPassCreateInfo
@@ -589,7 +720,7 @@ createGraphicsPipeline device renderPass extent layout0 = do
       ( Vulkan.vkDestroyPipelineLayout device )
 
   vertexShader   <- loadShader device vertPath
-
+  geometryShader <- loadShader device geomPath
   fragmentShader <- loadShader device fragPath
 
   let
@@ -618,6 +749,16 @@ createGraphicsPipeline device renderPass extent layout0 = do
         &* Vulkan.setStrRef @"pName"  "main"
         &* Vulkan.set @"module"       vertexShader
         &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_VERTEX_BIT
+        )
+
+    geometryShaderStage =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
+        &* Vulkan.set @"pNext"        Vulkan.VK_NULL
+        &* Vulkan.set @"flags"        0
+        &* Vulkan.setStrRef @"pName"  "main"
+        &* Vulkan.set @"module"       geometryShader
+        &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT
         )
 
     fragmentShaderStage =
@@ -785,7 +926,7 @@ createGraphicsPipeline device renderPass extent layout0 = do
         &* Vulkan.setListCountAndRef
                 @"stageCount"
                 @"pStages"
-                [ vertexShaderStage, fragmentShaderStage ]
+                [ vertexShaderStage, geometryShaderStage, fragmentShaderStage ]
         &* Vulkan.setVkRef @"pVertexInputState"   vertexInputState
         &* Vulkan.set      @"basePipelineIndex"   0
         &* Vulkan.set      @"subpass"             0

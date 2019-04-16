@@ -78,9 +78,13 @@ import Data.Type.Map
   , Key, Value
   , Lookup
   )
-import FIR.Binding
-  ( BindingsMap )
+import {-# SOURCE #-} FIR.AST
+  ( AST )
+--import FIR.Binding
+--  ( IxState )
 import qualified FIR.Instances.Bindings as Binding
+import FIR.IxState
+  ( IxState )
 import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
 import FIR.Prim.Image
@@ -114,7 +118,7 @@ data SOptic (optic :: Optic i s a) :: Type where
   -- as we convert 'Name' optics to 'Index' optics behind the scenes
   SBinding  :: KnownSymbol k
             => Proxy k
-            -> SOptic (Name k :: Optic '[] (as :: BindingsMap) b)
+            -> SOptic (Name k :: Optic '[] (as :: IxState) b)
   SImageTexel :: ( KnownSymbol k
                  , Known ImageProperties props
                  )
@@ -197,7 +201,7 @@ instance ( KnownSymbol k
 instance ( KnownSymbol k
          , empty ~ '[]
          )
-      => KnownOptic (Name_ k :: Optic empty (bds :: BindingsMap) a)
+      => KnownOptic (Name_ k :: Optic empty (bds :: IxState) a)
       where
   opticSing = SBinding (Proxy @k)
 instance forall is js ks s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
@@ -244,7 +248,7 @@ instance {-# OVERLAPPING #-}
   => KnownOptic ( ( ( Name_ k :: Optic empty i (Image props) )
                     `ComposeO`
                     ( RTOptic_ :: Optic is (Image props) r)
-                  ) :: Optic is (i :: BindingsMap) r
+                  ) :: Optic is (i :: IxState) r
                 )
   where
   opticSing = SImageTexel (Proxy @k) (Proxy @props)
@@ -266,7 +270,7 @@ type family ValidAnIndexOptic (is :: [Type]) (s :: Type) (a :: Type) :: Constrai
 
 type family ListVariadicIx
               ( as :: [Type]      )
-              ( i  :: BindingsMap )
+              ( i  :: IxState )
               ( b  :: Type        )
             = ( r  :: Type        )
             | r -> as i b  where
@@ -284,7 +288,7 @@ instance ( KnownSymbol k
          , r ~ Binding.Get k i
          , empty ~ '[]
          )
-      => Gettable (Name_ k :: Optic empty (i :: BindingsMap) r) where
+      => Gettable (Name_ k :: Optic empty (i :: IxState) r) where
 
 
 instance
@@ -602,7 +606,7 @@ instance ( KnownSymbol k
          , r ~ Binding.Put k i
          , empty ~ '[]
          )
-      => Settable (Name_ k :: Optic empty (i :: BindingsMap) r ) where
+      => Settable (Name_ k :: Optic empty (i :: IxState) r ) where
 
   
 
@@ -901,55 +905,6 @@ instance
     => Settable (Name_ k :: Optic empty (M m n a) r) where
 
 ----------------------------------------------------------------------
--- type class instances for equalisers
-
-instance KnownNat n => MonoContained (Array n a) where
-  type MonoType (Array n a) = a
-  setAll a _ = MkArray @n $ Array.replicate (fromIntegral . natVal $ Proxy @n) a
-
-instance MonoContained (RuntimeArray a) where
-  type MonoType (RuntimeArray a) = a
-  setAll a (MkRuntimeArray arr)
-    = MkRuntimeArray $ Array.replicate n a
-        where n = Array.length arr
-
-instance (KnownNat n, 1 <= n)
-      => MonoContained (V n a) where
-  type MonoType (V n a) = a
-  setAll = const . pure
-
-instance (KnownNat m, KnownNat n, 1 <= m)
-      => MonoContained (M m n a) where
-  type MonoType (M m n a) = V m a
-  setAll = const . M . distribute . pure
-
-instance MonoContained (Struct ((k ':-> v) ': '[]))
-      where
-  type MonoType (Struct ((k ':-> v) ': '[])) = v
-  setAll = const . (:& End)
-
-instance {-# OVERLAPPABLE #-}
-         ( AllValuesEqual k v as
-         , MonoContained (Struct as)
-         , MonoType (Struct as) ~ v
-         )
-       => MonoContained (Struct ((k ':-> v) ': as)) where
-  type MonoType (Struct ((k ':-> v) ': as)) = v
-  setAll a (_ :& as) = a :& setAll a as
-
-type family AllValuesEqual (k0 :: Symbol) (a :: v) (as :: [k :-> v]) :: Constraint where
-  AllValuesEqual _ _ '[]                 = ()
-  AllValuesEqual k0 v ( (_ ':-> v) ': as) = AllValuesEqual k0 v as
-  AllValuesEqual k0 v ( (k ':-> w) ': _ )
-    = TypeError (      Text "Cannot create 'Joint' setter for struct type."
-                  :$$: Text "Struct contains members of different types."
-                  :$$: Text "Type at key " :<>: ShowType k0 :<>: Text " is:" 
-                  :$$: Text "    " :<>: ShowType v
-                  :$$: Text "Type at key " :<>: ShowType k :<>: Text " is:" 
-                  :$$: Text "    " :<>: ShowType w
-                )
-
-----------------------------------------------------------------------
 -- helper type families for structs
 
 type Field ( k :: Symbol )
@@ -1014,6 +969,10 @@ type instance ContainerKind (RuntimeArray a) = Type
 type instance DegreeKind    (RuntimeArray a) = ()
 type instance LabelKind     (RuntimeArray a) = ()
 
+type instance ContainerKind (AST c) = Type
+type instance DegreeKind    (AST c) = DegreeKind c
+type instance LabelKind     (AST c) = LabelKind  c
+
 -- need to separate the above open type family instances before all their uses
 -- needed because of [GHC trac #12088](https://gitlab.haskell.org/ghc/ghc/issues/12088)
 -- see also [GHC trac #15987](https://gitlab.haskell.org/ghc/ghc/issues/15987#note_164461)
@@ -1062,6 +1021,55 @@ instance Contained (RuntimeArray a) where
   type LabelOf   (RuntimeArray a) _ = '()
   type Overlapping (RuntimeArray a) k _
         = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+
+----------------------------------------------------------------------
+-- type class instances for equalisers
+
+instance KnownNat n => MonoContained (Array n a) where
+  type MonoType (Array n a) = a
+  setAll a _ = MkArray @n $ Array.replicate (fromIntegral . natVal $ Proxy @n) a
+
+instance MonoContained (RuntimeArray a) where
+  type MonoType (RuntimeArray a) = a
+  setAll a (MkRuntimeArray arr)
+    = MkRuntimeArray $ Array.replicate n a
+        where n = Array.length arr
+
+instance (KnownNat n, 1 <= n)
+      => MonoContained (V n a) where
+  type MonoType (V n a) = a
+  setAll = const . pure
+
+instance (KnownNat m, KnownNat n, 1 <= m)
+      => MonoContained (M m n a) where
+  type MonoType (M m n a) = V m a
+  setAll = const . M . distribute . pure
+
+instance MonoContained (Struct ((k ':-> v) ': '[]))
+      where
+  type MonoType (Struct ((k ':-> v) ': '[])) = v
+  setAll = const . (:& End)
+
+instance {-# OVERLAPPABLE #-}
+         ( AllValuesEqual k v as
+         , MonoContained (Struct as)
+         , MonoType (Struct as) ~ v
+         )
+       => MonoContained (Struct ((k ':-> v) ': as)) where
+  type MonoType (Struct ((k ':-> v) ': as)) = v
+  setAll a (_ :& as) = a :& setAll a as
+
+type family AllValuesEqual (k0 :: Symbol) (a :: v) (as :: [k :-> v]) :: Constraint where
+  AllValuesEqual _ _ '[]                 = ()
+  AllValuesEqual k0 v ( (_ ':-> v) ': as) = AllValuesEqual k0 v as
+  AllValuesEqual k0 v ( (k ':-> w) ': _ )
+    = TypeError (      Text "Cannot create 'Joint' setter for struct type."
+                  :$$: Text "Struct contains members of different types."
+                  :$$: Text "Type at key " :<>: ShowType k0 :<>: Text " is:"
+                  :$$: Text "    " :<>: ShowType v
+                  :$$: Text "Type at key " :<>: ShowType k :<>: Text " is:"
+                  :$$: Text "    " :<>: ShowType w
+                )
 
 ----------------------------------------------------------------------
 -- synonyms

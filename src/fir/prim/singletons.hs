@@ -357,18 +357,19 @@ sScalarTy SDouble = SPIRV.Floating         W64
 -- statically known list of variables (for function definitions)
 
 class KnownVar (bd :: (Symbol :-> Binding)) where
-  knownVar :: (Text.Text, (SPIRV.PrimTy, [Permission]))
+  knownVar :: ( Text.Text, (SPIRV.PrimTy, [Permission]) )
 
 instance (KnownSymbol k, Known [Permission] ps, PrimTy a)
        => KnownVar (k ':-> Var ps a) where
-  knownVar = ( knownValue @k
-             , ( primTy @a
-               , knownValue @ps
-               )
-             )
+  knownVar =
+    ( knownValue @k
+    , ( primTy @a
+      , knownValue @ps
+      )
+    )
 
 class KnownVars (bds :: BindingsMap) where
-  knownVars :: [(Text.Text, (SPIRV.PrimTy, [Permission]))]
+  knownVars :: [ (Text.Text, (SPIRV.PrimTy, [Permission])) ]
 instance KnownVars '[] where
   knownVars = []
 instance (KnownVar bd, KnownVars bds)
@@ -379,7 +380,7 @@ instance (KnownVar bd, KnownVars bds)
 -- statically known interfaces (for entry points)
 
 class KnownInterfaceBinding (bd :: (Symbol :-> Binding)) where
-  knownInterfaceBinding :: (Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))
+  knownInterfaceBinding :: ( Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass) )
 
 instance (KnownSymbol k, PrimTy a)
        => KnownInterfaceBinding (k ':-> Var '[ 'Read ] a) where
@@ -397,6 +398,7 @@ instance (KnownSymbol k, PrimTy a)
         , Storage.Output
         )
       )
+
 instance
   TypeError
     (    Text "Interface binding " :<>: ShowType k :<>: Text " is both readable and writable."
@@ -411,7 +413,7 @@ instance
   knownInterfaceBinding = error "unreachable"
 
 class KnownInterface (bds :: BindingsMap) where
-  knownInterface :: [(Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass))]
+  knownInterface :: [ ( Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass) ) ]
 instance KnownInterface '[] where
   knownInterface = []
 instance (KnownInterfaceBinding bd, KnownInterface bds)

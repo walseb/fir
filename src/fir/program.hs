@@ -52,12 +52,12 @@ import Data.Type.Map
   ( (:->), InsertionSort )
 import FIR.AST
   ( AST )
-import FIR.Binding
-  ( BindingsMap )
 import FIR.Definition
   ( Definition, KnownDefinitions
-  , StartBindings, EndBindings
+  , StartState, EndState
   )
+import FIR.IxState
+  ( IxState(IxState) )
 import FIR.Prim.Singletons
   ( KnownInterface(knownInterface) )
 import qualified SPIRV.PrimTy as SPIRV
@@ -69,19 +69,19 @@ import qualified SPIRV.PrimTy as SPIRV
 -- These are wrappers around the main internal representation
 -- @Codensity AST (AST a := j) i@
 
-type Procedure (a :: Type) (i :: BindingsMap) (j :: BindingsMap)
+type Procedure (a :: Type) (i :: IxState) (j :: IxState)
   = Codensity AST (AST a := j) i
 
 type UndecoratedProgram
     ( defs :: [ Symbol :-> Definition ] )
     ( a    :: Type                      )
-  = ( CodensityProgram (StartBindings defs) (EndBindings defs) a :: Type )
+  = ( CodensityProgram (StartState defs) (EndState defs) a :: Type )
 
 type family CodensityProgram
-    ( i :: BindingsMap ) -- available data at the start (e.g. uniforms)
-    ( j :: BindingsMap ) -- everything in 'i', plus top-level functions and entry-points of the program
-    ( a :: Type        )
-  = ( r :: Type        )
+    ( i :: IxState ) -- available data at the start (e.g. uniforms)
+    ( j :: IxState ) -- everything in 'i', plus top-level functions and entry-points of the program
+    ( a :: Type    )
+  = ( r :: Type    )
   | r -> i j a where
   CodensityProgram i j a = Codensity AST ( AST a := j ) i
 
@@ -99,10 +99,9 @@ data Program
           => UndecoratedProgram (InsertionSort defs) a
           -> Program defs a
 
-programGlobals :: forall i j a. KnownInterface i
-               => CodensityProgram i j a -> Map Text SPIRV.PrimTy
+programGlobals :: forall bds j ctx eps a.
+                  KnownInterface bds
+               => CodensityProgram ('IxState bds ctx eps) j a -> Map Text SPIRV.PrimTy
 programGlobals _ = Map.fromList
-                 . map ( second
-                            ( \ (ty, storage) -> SPIRV.Pointer storage ty )
-                       )
-                 $ knownInterface @i
+                 . map ( second ( \ (ty, storage) -> SPIRV.Pointer storage ty ) )
+                 $ knownInterface @bds

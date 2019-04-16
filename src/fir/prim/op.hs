@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
 
 module FIR.Prim.Op where
 
@@ -27,6 +28,10 @@ import GHC.TypeNats
   ( KnownNat, natVal )
 
 -- fir
+import Control.Monad.Indexed
+  ( (:=)(AtKey) )
+import FIR.IxState
+  ( IxState )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy
   , primTy, scalarTy
@@ -391,6 +396,20 @@ instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.Convert '(a,b) where
   op = convert
   opName = SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)
   opSing = Just SConvert
+
+-- geometry primitive instructions
+instance PrimOp SPIRV.EmitGeometryVertex (i :: IxState) where
+  type PrimOpConstraint SPIRV.EmitGeometryVertex i = ()
+  type PrimOpType SPIRV.EmitGeometryVertex i = (() := i) i
+  op = AtKey ()
+  opName = SPIRV.GeomOp SPIRV.EmitGeometryVertex
+  opSing = Nothing
+instance PrimOp SPIRV.EndGeometryPrimitive (i :: IxState) where
+  type PrimOpConstraint SPIRV.EndGeometryPrimitive i = ()
+  type PrimOpType SPIRV.EndGeometryPrimitive i = (() := i) i
+  op = AtKey ()
+  opName = SPIRV.GeomOp SPIRV.EndGeometryPrimitive
+  opSing = Nothing
 
 -- vector operations
 -- doing it by hand because I'm an idiot who doesn't know better

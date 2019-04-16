@@ -18,13 +18,13 @@ import Math.Linear
 -- program
 
 type Defs = '[ "position" ':-> Output     '[] (V 4 Float)
-             , "main"     ':-> EntryPoint '[] Fragment
+             , "main"     ':-> EntryPoint '[] Vertex
              ]
 
 program :: Program Defs ()
 program = Program do
 
-  entryPoint @"main" @Fragment do
+  entryPoint @"main" @Vertex do
 
     let (#<) = (<) @(Procedure _ _i _i) -- disambiguate to help type inference
 

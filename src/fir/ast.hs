@@ -70,16 +70,19 @@ import Data.Type.Known
   ( Known, knownValue )
 import Data.Type.List
   ( SLength )
-import Data.Type.Map
-  ( Insert, Union )
 import FIR.Binding
-  ( Binding(EntryPoint), FunctionType, Var, Fun, Permission )
+  ( FunctionType, Var, Permission )
 import FIR.Builtin
   ( StageBuiltins )
 import FIR.Instances.Bindings
-  ( ValidDef, ValidFunDef, ValidEntryPoint )
+  ( AddBinding, AddFunBinding
+  , ValidFunDef, FunctionDefinitionStartState
+  , ValidEntryPoint, EntryPointStartState, AddEntryPoint
+  )
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
+import FIR.IxState
+  ( Context(..), IxState(..), EntryPoints )
 import FIR.Prim.Image
   ( ImageOperands )
 import FIR.Prim.Op
@@ -127,14 +130,20 @@ data AST :: Type -> Type where
         , KnownSymbol k
         , Known [Permission] ps
         , PrimTy a
-        , ValidDef k i
         )
       => Proxy k  -- ^ Variable name.
       -> Proxy ps -- ^ Permissions (read,write,...).
       -> AST (    (a := i) i
-               -> (a := Insert k (Var ps a) i) i
+               -> (a := AddBinding k (Var ps a) i) i
              )
   -- | Defining a new function.
+  --
+  -- Meaning of type variables:
+  -- * k: function name,
+  -- * as: named function arguments,
+  -- * b: function return type,
+  -- * l: bindings state at end of function definition (usually inferred),
+  -- * i: monadic state at function definition site (usually inferred).
   FunDef :: forall k as b l i.
             ( GHC.Stack.HasCallStack
             , KnownSymbol k
@@ -145,24 +154,38 @@ data AST :: Type -> Type where
          => Proxy k  -- ^ Funtion name.
          -> Proxy as -- ^ Function argument types.
          -> Proxy b  -- ^ Function return type.
-         -> AST (    (b := l) (Union i as)
-                  -> (FunctionType as b := Insert k (Fun as b) i) i
+         -> AST ( ( b := 'IxState l (Function k as) (EntryPoints i) )
+                    ( FunctionDefinitionStartState k as i )
+                -> ( FunctionType as b := AddFunBinding k as b i ) i
                 )
+
   -- | Defining a new entry point.
   --
   -- An entry point is like a function definition with no arguments and Unit return type.
   -- Code within an entry point is given access to additional builtins.
-  Entry :: forall k s l i.
+  --
+  -- Meaning of type variables:
+  -- * k: entry point name,
+  -- * s: entry point stage,
+  -- * modes: execution modes for the entry point,
+  -- * decs: decorations for the interface of the entry point,
+  -- * l: bindings state at end of entry point definition (usually inferred),
+  -- * i: monadic state at entry point definition site (usually inferred),
+  -- * builtins: builtins for this entry point (usually inferred).
+  Entry :: forall k s modes decs l i builtins.
            ( GHC.Stack.HasCallStack
            , KnownSymbol k
            , Known SPIRV.Stage s
-           , ValidEntryPoint k s i l
+           , ValidEntryPoint k s i l builtins
+           , builtins ~ StageBuiltins k s modes
            )
          => Proxy k -- ^ Entry point name.
          -> Proxy s -- ^ Entry point stage.
-         -> AST (    (() := l) (Union i (StageBuiltins s))
-                  -> (() := Insert k (EntryPoint s) i) i
+         -> AST ( ( () := 'IxState l (EntryPoint k s) (EntryPoints i) )
+                    ( EntryPointStartState k s i builtins )
+                -> ( () := AddEntryPoint k s modes decs i ) i
                 )
+
   -- | /Use/ an optic, returning a monadic value read from the (indexed) state.
   --
   -- Like @use@ from the lens library.

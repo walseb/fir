@@ -86,8 +86,8 @@ import Control.Type.Optic
   )
 import Data.Type.Known
   ( Known )
-import FIR.Binding
-  ( BindingsMap )
+import FIR.IxState
+  ( IxState )
 import FIR.Prim.Image
   ( ImageProperties
   , Image, ImageData, ImageCoordinates
@@ -131,13 +131,13 @@ type family ImageTexel k :: Optic
 
 instance {-# OVERLAPPING #-} 
          forall 
-           ( k       :: Symbol      )
-           ( i       :: BindingsMap )
+           ( k       :: Symbol          )
+           ( i       :: IxState         )
            ( props   :: ImageProperties )
-           ( ops     :: [OperandName] )
-           ( empty   :: [Type] )
-           ( is      :: [Type] )
-           ( imgData :: Type )
+           ( ops     :: [OperandName]   )
+           ( empty   :: [Type]          )
+           ( is      :: [Type]          )
+           ( imgData :: Type            )
          .
          ( KnownSymbol k
          , LookupImageProperties k i ~ props
@@ -156,13 +156,13 @@ instance {-# OVERLAPPING #-}
 
 instance {-# OVERLAPPING #-} 
          forall 
-           ( k       :: Symbol      )
-           ( i       :: BindingsMap )
+           ( k       :: Symbol          )
+           ( i       :: IxState         )
            ( props   :: ImageProperties )
-           ( ops     :: [OperandName] )
-           ( empty   :: [Type] )
-           ( is      :: [Type] )
-           ( imgData :: Type )
+           ( ops     :: [OperandName]   )
+           ( empty   :: [Type]          )
+           ( is      :: [Type]          )
+           ( imgData :: Type            )
          .
          ( KnownSymbol k
          , LookupImageProperties k i ~ props

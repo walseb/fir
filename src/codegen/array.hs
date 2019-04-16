@@ -31,7 +31,7 @@ import Control.Type.Optic
 import Data.Type.Known
   ( knownValue )
 import Data.Type.Map
-  ( (:->)((:->)), Insert )
+  ( (:->)((:->)) )
 import Math.Algebra.Class
   ( AdditiveMonoid(fromInteger, (+)) )
 import Math.Logic.Class
@@ -48,7 +48,11 @@ import FIR.Instances.Codensity
   , locally, while
   )
 import FIR.Instances.Bindings
-  ( Get, Put )
+  ( Get, Put
+  , AddBinding
+  )
+import FIR.IxState
+  ( IxState(..) )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
@@ -64,13 +68,13 @@ import FIR.Prim.Singletons
 -- Runs in an environment with no local state.
 -- This __unsafely__ assumes that @ixName@ is not already defined
 -- in the current state.
-createArray :: forall n arrName ixName a i j.
+createArray :: forall n arrName ixName a i j ctx eps.
              ( CanDefine ixName RW Word32 i (AST Word32)
              , KnownNat n
              , KnownSymbol arrName
              , PrimTy a
-             , i ~ '[ arrName ':-> Var RW (Array n a) ]
-             , j ~ Insert ixName (Var RW Word32) i
+             , i ~ ( 'IxState '[ arrName ':-> Var RW (Array n a) ] ctx eps )
+             , j ~ AddBinding ixName (Var RW Word32) i
              , Get ixName j ~ Word32
              , Put ixName j ~ Word32
              , Get arrName j ~ Array n a

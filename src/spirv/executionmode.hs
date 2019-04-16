@@ -3,18 +3,26 @@
 {-# LANGUAGE DerivingVia           #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module SPIRV.ExecutionMode where
 
 -- base
+import Data.Type.Bool
+  ( If, type (&&) )
 import Data.Word
   ( Word32 )
+import GHC.TypeLits
+  ( Symbol, AppendSymbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats
   ( Nat )
 
@@ -23,6 +31,12 @@ import Data.Binary.Class.Put
   ( Put(..) )
 import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
+import Data.Type.List
+  ( Elem )
+import Data.Type.Maybe
+  ( IsJust )
+import SPIRV.Stage
+  ( Stage(..) )
 
 --------------------------------------------------
 -- execution modes
@@ -52,7 +66,7 @@ data ExecutionMode a
   | Triangles
   | InputTrianglesAdjacency
   | Quads
-  | Isoline
+  | Isolines
   | OutputVertices a
   | OutputPoints
   | OutputLineStrip
@@ -86,7 +100,7 @@ instance Put (ExecutionMode Word32) where
   put Triangles               = put @Word32 22
   put InputTrianglesAdjacency = put @Word32 23
   put Quads                   = put @Word32 24
-  put Isoline                 = put @Word32 25
+  put Isolines                = put @Word32 25
   put (OutputVertices i)      = put @Word32 26 *> put i
   put OutputPoints            = put @Word32 27
   put OutputLineStrip         = put @Word32 28
@@ -160,8 +174,8 @@ instance Known (ExecutionMode Nat) InputTrianglesAdjacency where
   known = InputTrianglesAdjacency
 instance Known (ExecutionMode Nat) Quads where
   known = Quads
-instance Known (ExecutionMode Nat) Isoline where
-  known = Isoline
+instance Known (ExecutionMode Nat) Isolines where
+  known = Isolines
 instance Known Nat i => Known (ExecutionMode Nat) (OutputVertices i) where
   known = OutputVertices ( knownValue @i )
 instance Known (ExecutionMode Nat) OutputPoints where
@@ -175,3 +189,240 @@ instance Known Nat i => Known (ExecutionMode Nat) (VecTypeHint i) where
 instance Known (ExecutionMode Nat) ContractionOff where
   known = ContractionOff
 
+--------------------------------------------------
+-- validation of execution modes (at the type level)
+
+type family ValidStagesFor (mode :: ExecutionMode Nat) :: [ Stage ] where
+  ValidStagesFor (Invocations _)         = '[ Geometry ]
+  ValidStagesFor SpacingEqual            = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor SpacingFractionalEven   = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor SpacingFractionalOdd    = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor VertexOrderCw           = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor VertexOrderCcw          = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor PixelCenterInteger      = '[ Fragment ]
+  ValidStagesFor OriginUpperLeft         = '[ Fragment ]
+  ValidStagesFor OriginLowerLeft         = '[ Fragment ]
+  ValidStagesFor EarlyFragmentTests      = '[ Fragment ]
+  ValidStagesFor PointMode               = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor DepthReplacing          = '[ Fragment ]
+  ValidStagesFor DepthGreater            = '[ Fragment ]
+  ValidStagesFor DepthLess               = '[ Fragment ]
+  ValidStagesFor DepthUnchanged          = '[ Fragment ]
+  ValidStagesFor (LocalSize _ _ _)       = '[ GLCompute, Kernel ]
+  ValidStagesFor (LocalSizeHint _ _ _)   = '[ Kernel ]
+  ValidStagesFor InputPoints             = '[ Geometry ]
+  ValidStagesFor InputLines              = '[ Geometry ]
+  ValidStagesFor InputLinesAdjacency     = '[ Geometry ]
+  ValidStagesFor Triangles               = '[ Geometry, TessellationControl, TessellationEvaluation ]
+  ValidStagesFor InputTrianglesAdjacency = '[ Geometry ]
+  ValidStagesFor Quads                   = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor Isolines                = '[ TessellationControl, TessellationEvaluation ]
+  ValidStagesFor (OutputVertices _)      = '[ Geometry, TessellationControl, TessellationEvaluation ]
+  ValidStagesFor OutputPoints            = '[ Geometry ]
+  ValidStagesFor OutputLineStrip         = '[ Geometry ]
+  ValidStagesFor OutputTriangleStrip     = '[ Geometry ]
+  ValidStagesFor (VecTypeHint _)         = '[ Kernel ]
+  ValidStagesFor ContractionOff          = '[ Kernel ]
+  ValidStagesFor _
+    -- for the moment, anything else is considered valid (no validity checks)
+    = '[ Vertex, TessellationControl, TessellationEvaluation, Geometry, Fragment, GLCompute, Kernel ]
+
+
+data StageExecutionInfo (s :: Stage) where
+  VertexInfo
+    :: StageExecutionInfo 'Vertex
+  TessellationControlInfo
+    :: Nat -- input size
+    -> Nat -- output size
+    -> StageExecutionInfo 'TessellationControl
+  TessellationEvaluationInfo
+    :: Nat -- input size
+    -> StageExecutionInfo 'TessellationEvaluation
+  GeometryInfo
+    :: Nat -- input size
+    -> StageExecutionInfo 'Geometry
+  FragmentInfo
+    :: StageExecutionInfo 'Fragment
+  GLComputeInfo
+    :: StageExecutionInfo 'GLCompute
+  KernelInfo
+    :: StageExecutionInfo 'Kernel
+
+type family Unreachable :: k where
+
+type family Named (k :: Symbol) (s :: Stage) :: Symbol where
+  Named k Vertex   = "Vertex shader named" `AppendSymbol` k
+  Named k TessellationControl = "Tessellation control shader named " `AppendSymbol` k
+  Named k TessellationEvaluation = "Tessellation evaluation shader named " `AppendSymbol` k
+  Named k Geometry = "Geometry shader named " `AppendSymbol` k
+  Named k Fragment = "Fragment shader named " `AppendSymbol` k
+  Named k GLCompute = "Compute shader named " `AppendSymbol` k
+  Named k Kernel = "Compute kernel named " `AppendSymbol` k
+
+type family ValidateExecutionModes (k :: Symbol) ( s :: Stage ) ( modes :: [ExecutionMode Nat] ) :: StageExecutionInfo s where
+  ValidateExecutionModes k Fragment modes
+    = If (  HasOneOf k Fragment '[ OriginLowerLeft, OriginUpperLeft ] modes
+         && HasAtMostOneOf k Fragment '[ DepthGreater, DepthLess, DepthUnchanged ] modes
+         && PertainTo k Fragment modes
+         )
+        FragmentInfo
+        Unreachable
+  ValidateExecutionModes k Vertex modes
+    = If ( PertainTo k Vertex modes )
+         VertexInfo
+         Unreachable
+  ValidateExecutionModes k TessellationControl modes
+    = TypeError ( Text "Tessellation control stage support TODO." )
+    {-
+    -- TODO: either control or evaluation needs to specify these...
+    = If (  HasAtMostOneOf k TessellationControl '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
+         && HasAtMostOneOf k TessellationControl '[ Triangles, Quads, Isolines ] modes
+         && HasAtMostOneOf k TessellationControl '[ VertexOrderCw, VertexOrderCcw ] modes
+         && Has k TessellationControl OutputVertices modes
+         && PertainTo k TessellationEvaluation modes
+         )
+        TessellationControlInfo
+        Unreachable
+    -}
+  ValidateExecutionModes k TessellationEvaluation modes
+    = TypeError ( Text "Tessellation evaluation stage support TODO." )
+    {-
+    = If (  HasAtMostOneOf k TessellationEvaluation '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
+         && HasAtMostOneOf k TessellationEvaluation '[ Triangles, Quads, Isolines ] modes
+         && HasAtMostOneOf k TessellationEvaluation '[ VertexOrderCw, VertexOrderCcw ] modes
+         && PertainTo k TessellationEvaluation modes
+         )
+        TessellationEvaluationInfo
+        Unreachable
+    -}
+  ValidateExecutionModes k Geometry modes
+    = If ( HasOneOf k Geometry '[ OutputPoints, OutputLineStrip, OutputTriangleStrip ] modes )
+        ( GeometryInfo (GeometryInputSize k modes) )
+        Unreachable
+  ValidateExecutionModes k GLCompute modes
+    = If ( PertainTo k GLCompute modes )
+        GLComputeInfo
+        Unreachable
+  ValidateExecutionModes k Kernel modes
+    = If ( PertainTo k Kernel modes )
+        KernelInfo
+        Unreachable
+
+type family PertainTo (k :: Symbol) (s :: Stage) (modes :: [ExecutionMode Nat]) :: Bool where
+  PertainTo _ _ '[] = True
+  PertainTo k s (mode ': modes)
+    = Pertains k s mode (s `Elem` ValidStagesFor mode) && PertainTo k s modes
+
+type family Pertains (k :: Symbol) (s :: Stage) (mode :: m) (ok :: Bool) :: Bool where
+  Pertains _ _ _ True = True
+  Pertains k s mode False
+    = TypeError
+        ( Text (Named k s) :<>: Text " does not support execution mode " :<>: ShowType mode )
+
+type family HasOneOf (k :: Symbol) (s :: Stage) (oneOf :: [ m ] ) (modes :: [ m ]) :: Bool where
+  HasOneOf k s oneOf modes
+    = If ( IsJust ( LookupOneOf k s oneOf modes ) )
+        True
+        ( TypeError
+            ( Text (Named k s) :<>: Text " needs to be given one of the following execution modes:"
+             :$$: ShowType oneOf
+            )
+        )
+
+type family HasAtMostOneOf (k :: Symbol) (s :: Stage) (oneOf :: [ m ] ) (modes :: [ m ]) :: Bool where
+  HasAtMostOneOf k s oneOf modes
+    = If ( IsJust ( LookupOneOf k s oneOf modes ) ) -- computes LookupOneOf which will error if there are conflicts
+        True
+        True
+
+type family LookupOneOf (k :: Symbol) (s :: Stage) (oneOf :: [ m ] ) (modes :: [ m ]) :: Maybe m where
+  LookupOneOf  k s oneOf '[] = Nothing
+  LookupOneOf  k s oneOf (mode ': modes)
+    = If ( mode `Elem` oneOf )
+        ( Just (NoConflictWithLookupOneOf k s mode ( LookupOneOf k s oneOf modes ) ) )
+        ( LookupOneOf k s oneOf modes )
+
+type family NoConflictWithLookupOneOf (k :: Symbol) (s :: Stage) (already :: m) (another :: Maybe m) :: m where
+  NoConflictWithLookupOneOf _ _ already Nothing = already
+  NoConflictWithLookupOneOf k s already (Just another)
+    = TypeError
+        (    Text (Named k s) :<>: Text " has conflicting execution modes: "
+        :<>: ShowType already :<>: Text " and " :<>: ShowType another :<>: Text "."
+        )
+
+
+type family GeometryInputSize ( k :: Symbol ) ( modes :: [ ExecutionMode Nat ] ) :: Nat where
+  GeometryInputSize k '[]
+    = TypeError
+      (    Text (Named k Geometry) :<>: Text " is under-specified: missing input information."
+      :$$: Text "Must specify exactly one of 'Triangles', 'InputTrianglesAdjacency',\
+                \ 'InputPoints', 'InputLines', 'InputLinesAdjacency'."
+      )
+  GeometryInputSize k ( InputPoints ': modes )
+    = If ( NoSizes k Geometry InputPoints modes )
+        1
+        Unreachable
+  GeometryInputSize k ( InputLines ': modes )
+    = If ( NoSizes k Geometry InputLines modes )
+        2
+        Unreachable
+  GeometryInputSize k ( InputLinesAdjacency ': modes )
+    = If ( NoSizes k Geometry InputLinesAdjacency modes )
+        4
+        Unreachable
+  GeometryInputSize k ( Triangles ': modes )
+    = If ( NoSizes k Geometry Triangles modes )
+        3
+        Unreachable
+  GeometryInputSize k ( InputTrianglesAdjacency ': modes )
+    = If ( NoSizes k Geometry Triangles modes )
+        6
+        Unreachable
+  GeometryInputSize k ( _ ': modes )
+    = GeometryInputSize k modes
+
+type family NoSizes
+              ( k         :: Symbol                )
+              ( stage     :: Stage                 )
+              ( givenSize :: ExecutionMode Nat     )
+              ( modes     :: [ ExecutionMode Nat ] )
+              :: Bool where
+  NoSizes _ _     _     '[]
+    = 'True
+  NoSizes k stage given (InputPoints ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting inputs."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputPoints :<>: Text "."
+        )
+  NoSizes k stage given (InputLines ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting inputs."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputLines :<>: Text "."
+        )
+  NoSizes k stage given (InputLinesAdjacency ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting inputs."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputLinesAdjacency :<>: Text "."
+        )
+  NoSizes k stage given (Triangles ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting inputs."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Triangles :<>: Text "."
+        )
+  NoSizes k stage given (InputTrianglesAdjacency ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting inputs."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputTrianglesAdjacency :<>: Text "."
+        )
+  NoSizes k stage given (Quads ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting inputs."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Quads :<>: Text "."
+        )
+  NoSizes k stage given (Isolines ': _ )
+    = TypeError
+        (   Text (Named k stage) :<>: Text " conflicting inputs."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Isolines :<>: Text "."
+        )
+  NoSizes k stage given ( _ ': modes )
+    = NoSizes k stage given modes

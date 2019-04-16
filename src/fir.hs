@@ -101,6 +101,8 @@ module FIR
       ( Function
       , EntryPoint
       )
+  , FIR.IxState.IxState(IxState)
+  , FIR.IxState.Context(TopLevel)  --EntryPoint
   , module FIR.Instances.AST
   , module FIR.Instances.Codensity
   , module FIR.Instances.Images
@@ -217,6 +219,7 @@ import FIR.Instances.AST
 import FIR.Instances.Codensity
 import FIR.Instances.Images
 import FIR.Instances.Optics
+import FIR.IxState
 import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct
@@ -270,11 +273,27 @@ compile filePath flags (Program program) = case runCodeGen cgContext (toAST prog
                 ( ByteString.writeFile filePath bin )
               Prelude.pure ( Right "OK" )
   where cgContext :: CGContext
-        cgContext = (context @defs) { debugMode = Debug `elem` flags }
+        cgContext = (initialCGContext @defs) { debugMode = Debug `elem` flags }
 
 instance TH.Lift Text where
   lift t = [| Text.pack $(TH.lift $ Text.unpack t) |]
 
+-- | Utility function to run IO actions at compile time using Template Haskell.
+-- Useful for compiling shaders at compile-time, before launching a graphics application.
+--
+-- __Usage__: in a module which imports this modules and shaders
+-- (bearing in mind the TH staging restriction), write:
+--
+-- > shaderCompilationResult =
+-- >   $( runCompilationsTH
+-- >        [ ("Vertex shader"  , compile vertPath [] vertexShader  )
+-- >        , ("Fragment shader", compile fragPath [] fragmentShader)
+-- >        ]
+-- >   )
+--
+-- This will compile the vertexShader @vertexShader@ at filepath @vertPath@,
+-- and similarly for the fragment shader.
+-- These can then be loaded into Vulkan shader modules for use in rendering.
 runCompilationsTH :: [ ( Text, IO (Either Text Text) ) ] -> TH.Q TH.Exp
 runCompilationsTH namedCompilations
   = TH.lift Prelude.=<< TH.runIO (combineCompilations namedCompilations)

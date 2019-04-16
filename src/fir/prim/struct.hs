@@ -12,7 +12,12 @@
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 
-module FIR.Prim.Struct where
+module FIR.Prim.Struct
+  ( Struct(..)
+  , foldrStruct
+  , traverseStruct
+  )
+  where
 
 -- base
 import Control.Applicative
@@ -70,18 +75,16 @@ instance PrimTyMap as => Ord (Struct as) where
                     EQ -> compare as bs
                     un -> un
 
-class Display as where
-  display :: as -> String
-instance PrimTyMap as => Display (Struct as) where
-  display s = case primTyMapSing @as of
-    SNil
-      -> ""
-    SCons {}
-      -> case s of
-            (a :& as)
-              -> case display as of
-                    "" -> show a
-                    d  -> show a ++ ", " ++ d
+display :: forall as. PrimTyMap as => Struct as -> String
+display s = case primTyMapSing @as of
+  SNil
+    -> ""
+  SCons {}
+    -> case s of
+          (a :& as)
+            -> case display as of
+                  "" -> show a
+                  d  -> show a ++ ", " ++ d
 
 instance PrimTyMap as => Show (Struct as) where
   show s = "{ " ++ display s ++ " }" 
@@ -131,14 +134,12 @@ instance FreeGradedSemigroup
   generated (a :& End) = a
 
 
-class FoldrStruct x where
-  foldrStruct
-    :: forall b.
-       (forall a. PrimTy a => a -> b -> b)
-    -> b -> x -> b
-
-instance PrimTyMap as => FoldrStruct (Struct as) where
-  foldrStruct f b s = case primTyMapSing @as of
+foldrStruct
+    :: forall as b. PrimTyMap as
+    => ( forall a. PrimTy a => a -> b -> b )
+    -> b -> Struct as -> b
+foldrStruct f b s =
+  case primTyMapSing @as of
     SNil
       -> b
     SCons {}
@@ -146,10 +147,11 @@ instance PrimTyMap as => FoldrStruct (Struct as) where
           (a :& as)
             -> f a (foldrStruct f b as)
 
-traverseStruct :: (Applicative f, FoldrStruct (Struct as)) =>
-  ( forall a. PrimTy a => a -> f b )
-  -> Struct as
-  -> f [b]
+traverseStruct
+    :: ( Applicative f, PrimTyMap as )
+    => ( forall a. PrimTy a => a -> f b )
+    -> Struct as
+    -> f [b]
 traverseStruct f
    = foldrStruct ( \a bs -> liftA2 (:) (f a) bs )
        ( pure [] )

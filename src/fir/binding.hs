@@ -5,12 +5,11 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
 
 module FIR.Binding
   ( Permission(Read,Write)
   , R, W, RW
-  , Binding(Variable, Function, EntryPoint)
+  , Binding(Variable, Function)
   , Var, Fun
   , BindingsMap
   , FunctionType
@@ -22,16 +21,13 @@ module FIR.Binding
 import Data.Kind
   ( Type )
 import GHC.TypeLits
-  ( Symbol
-  , TypeError, ErrorMessage(..)
-  )
+  ( Symbol )
 
 -- fir
 import Data.Type.Known
   ( Demotable(Demote), Known(known) )
 import Data.Type.Map
   ( (:->)((:->)), Map )
-import qualified SPIRV.Stage   as SPIRV
 import qualified SPIRV.Storage as SPIRV
 
 ------------------------------------------------------------------------------------------------
@@ -54,7 +50,6 @@ type RW = '[ 'Read, 'Write ]
 data Binding where
   Variable   :: [Permission] -> Type -> Binding
   Function   :: [Symbol :-> Binding] -> Type -> Binding
-  EntryPoint :: SPIRV.Stage -> Binding
 
 -- shorthands
 type Var ps a = 'Variable ps a
@@ -71,8 +66,6 @@ type family FunctionType (as :: BindingsMap) (b :: Type) = (res :: Type) where
 type family BindingType (bd :: Binding) :: Type where
   BindingType (Var  _ a) = a
   BindingType (Fun as b) = FunctionType as b
-  BindingType (EntryPoint _)
-    = TypeError ( Text "Unexpected entry point provided as an argument to a function." )
 
 ------------------------------------------------------------------------------------------------
 -- relation to SPIRV storage classes

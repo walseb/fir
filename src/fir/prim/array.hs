@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 
 {-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE DeriveFoldable         #-}
@@ -17,7 +18,11 @@
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 
-module FIR.Prim.Array where
+module FIR.Prim.Array
+  ( Array(..), mkArray
+  , RuntimeArray(..)
+  )
+  where
 
 -- base
 import Data.Kind
@@ -58,14 +63,15 @@ deriving instance Functor     (Array n)
 deriving instance Foldable    (Array n)
 deriving instance Traversable (Array n)
 instance KnownNat n => Applicative (Array n) where
-  pure = MkArray @n . Array.replicate (fromIntegral . natVal $ Proxy @n)
-  (MkArray f) <*> (MkArray a) = MkArray @n (f <*> a)
+  pure = MkArray . Array.replicate (fromIntegral . natVal $ Proxy @n)
+  (MkArray f) <*> (MkArray a) = MkArray (f <*> a)
+
 
 instance GradedSemigroup (Array 0 a) Nat where
   type Grade Nat (Array 0 a) l = Array l a
   type l1 :<!>: l2 = l1 + l2
   (<!>) :: forall l1 l2. Array l1 a -> Array l2 a -> Array (l1+l2) a
-  MkArray v1 <!> MkArray v2 = MkArray @(l1+l2) (v1 Array.++ v2)
+  MkArray v1 <!> MkArray v2 = MkArray (v1 Array.++ v2)
 
 instance GeneratedGradedSemigroup (Array 0 a) Nat () where
   type GenType    (Array 0 a) ()  _  = a

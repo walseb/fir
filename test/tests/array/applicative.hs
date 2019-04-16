@@ -20,7 +20,7 @@ import FIR
 
 type Defs = '[ "arr"  ':-> Input      '[] (Array 256 Float)
              , "out"  ':-> Output     '[] Float
-             , "main" ':-> EntryPoint '[] Fragment
+             , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
              ]
 
 program :: Program Defs ()

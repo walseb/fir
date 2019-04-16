@@ -43,14 +43,17 @@ import CodeGen.State
 import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
 import Data.Type.Map
-  ( (:->)((:->)) )
+  ( (:->)((:->)), Insert )
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
+import qualified FIR.Binding as Binding
+import FIR.IxState
+  ( IxState(IxState), EntryPointInfo )
+import qualified FIR.IxState as IxState
 import FIR.Prim.Image
   ( Image, knownImage, ImageProperties )
 import FIR.Prim.Singletons
   ( PrimTy, primTy )
-import qualified FIR.Binding as Binding
 import qualified SPIRV.Decoration      as SPIRV
 import qualified SPIRV.ExecutionMode   as SPIRV
 import qualified SPIRV.FunctionControl as SPIRV
@@ -137,12 +140,29 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
            AnnotateFunction   x -> ( g, Map.insert k x f, e )
            AnnotateEntryPoint x -> ( g, f, Map.insert k x e )
 
+type family StartState (defs :: [ Symbol :-> Definition ]) :: IxState where
+  StartState defs
+    = 'IxState (StartBindings defs) IxState.TopLevel '[]
+
+type family EndState (defs :: [ Symbol :-> Definition ]) :: IxState where
+  EndState defs
+    = 'IxState (EndBindings defs) IxState.TopLevel (DefinitionEntryPoints defs)
+
+type family DefinitionEntryPoints
+              ( defs :: [ Symbol :-> Definition ] )
+              :: [ ( Symbol, SPIRV.Stage ) :-> EntryPointInfo ]
+              where
+  DefinitionEntryPoints '[] = '[]
+  DefinitionEntryPoints ( (k ':-> EntryPoint modes stage) ': defs )
+    = Insert '(k, stage) '(modes,'[]) (DefinitionEntryPoints defs)
+  DefinitionEntryPoints ( _ ': defs )
+    = DefinitionEntryPoints defs
 
 type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   StartBindings '[]
     = '[]
   StartBindings ((k ':-> Global storage _ ty) ': defs)
-    = (k ':-> Variable (StoragePermissions storage) ty) ': StartBindings defs
+    = Insert k (Variable (StoragePermissions storage) ty) (StartBindings defs)
   StartBindings ((k ':-> _) ': defs)
     = StartBindings defs
 
@@ -150,22 +170,23 @@ type family EndBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bind
   EndBindings '[]
     = '[]
   EndBindings ((k ':-> Global storage _ ty) ': defs)
-    = (k ':-> Variable (StoragePermissions storage) ty) ': EndBindings defs
+    = Insert k (Variable (StoragePermissions storage) ty) (EndBindings defs)
   EndBindings ((k ':-> Function _ as b) ': defs)
-    = (k ':-> Binding.Function as b) ': EndBindings defs
-  EndBindings ((k ':-> EntryPoint _ stage) ': defs)
-    = (k ':-> Binding.EntryPoint stage) ': EndBindings defs
+    = Insert k (Binding.Function as b) (EndBindings defs)
+  EndBindings (_ ': defs)
+    = EndBindings defs
 
 --------------------------------------------------------------------------
 
-context :: forall defs. KnownDefinitions defs => CGContext
-context = let (   userGlobals
-                , userFunctions
-                , userEntryPoints
-                ) = annotations @defs
-          in emptyContext
-                { userGlobals
-                , userFunctions
-                , userEntryPoints
-                }
+initialCGContext :: forall defs. KnownDefinitions defs => CGContext
+initialCGContext =
+  let (   userGlobals
+        , userFunctions
+        , userEntryPoints
+        ) = annotations @defs
+  in emptyContext
+        { userGlobals
+        , userFunctions
+        , userEntryPoints
+        }
 

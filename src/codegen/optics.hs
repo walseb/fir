@@ -77,11 +77,11 @@ import Data.Type.List
   , SLength(SZero, SSucc)
   )
 import FIR.AST
-  ( AST((:$), Fst, Snd, Use, Assign, View, Set) )
+  ( AST((:$), Lit, Fst, Snd, Use, Assign, View, Set) )
 import FIR.Instances.Optics
   ( SOptic(..) )
 import FIR.Prim.Singletons
-  ( primTy, sPrimTy )
+  ( SPrimTy(..), primTy, sPrimTy )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 
@@ -193,8 +193,13 @@ operationTree _ SId    = pure Done
 operationTree _ SJoint = pure (Join `Then` Done)
 operationTree (i `ConsAST` _) (SAnIndex _ a _)
   = (`Then` Done) . Access (sPrimTy a) . RTInds Unsafe . (:[]) . fst <$> codeGen i
-operationTree _ (SIndex _ a n)
-  = pure $ Access (sPrimTy a) ( CTInds [n] ) `Then` Done
+operationTree _ (SIndex s a n)
+  -- if accessing a runtime array, a compile-time index may be unsafe
+  | SRuntimeArray <- s
+    = (`Then` Done) . Access (sPrimTy a) . RTInds Unsafe . (:[]) . fst <$> codeGen (Lit n)
+  -- otherwise, a compile time index is guaranteed to be in-bounds
+  | otherwise
+    = pure $ Access (sPrimTy a) ( CTInds [n] ) `Then` Done
 operationTree is (SComposeO lg1 opt1 opt2)
   = do  let (is1, is2) = composedIndices lg1 is
         ops1 <- operationTree is1 opt1
@@ -295,9 +300,9 @@ storeThroughAccessChain' basePtr val ( Access a is `Then` ops)
   = do
       newBasePtr <- accessChain basePtr a is
       storeThroughAccessChain' newBasePtr val ops
-storeThroughAccessChain' basePtr (valID, _) ( Combine cb trees )
+storeThroughAccessChain' _ _ ( Combine _ _ )
   = throwError "storeThroughAccessChain': product setter TODO"
-storeThroughAccessChain' basePtr valID ( Join `Then` tree )
+storeThroughAccessChain' _ _ ( Join `Then` _ )
   = throwError "storeThroughAccessChain': joint setter TODO"
 
 

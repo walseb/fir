@@ -138,9 +138,9 @@ createLogicalDevice
   :: MonadManaged m
   => Vulkan.VkPhysicalDevice
   -> Int
-  -> Vulkan.Ptr Vulkan.VkPhysicalDeviceFeatures
+  -> Maybe Vulkan.VkPhysicalDeviceFeatures
   -> m Vulkan.VkDevice
-createLogicalDevice physicalDevice queueFamilyIndex features =
+createLogicalDevice physicalDevice queueFamilyIndex mbFeatures =
   let
     queueCreateInfo :: Vulkan.VkDeviceQueueCreateInfo
     queueCreateInfo =
@@ -151,26 +151,49 @@ createLogicalDevice physicalDevice queueFamilyIndex features =
         &* Vulkan.setListCountAndRef @"queueCount" @"pQueuePriorities" [ 1.0 :: Float ]
         )
 
+
+
     deviceCreateInfo :: Vulkan.VkDeviceCreateInfo
-    deviceCreateInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
-        &* Vulkan.set @"pNext" Foreign.nullPtr
-        &* Vulkan.set @"flags" 0
-        &* Vulkan.setListCountAndRef
-              @"queueCreateInfoCount"
-              @"pQueueCreateInfos"
-              [ queueCreateInfo ]
-        &* Vulkan.setListCountAndRef
-              @"enabledLayerCount"
-              @"ppEnabledLayerNames"
-              []
-        &* Vulkan.setListCountAndRef
-              @"enabledExtensionCount"
-              @"ppEnabledExtensionNames"
-              [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
-        &* Vulkan.set @"pEnabledFeatures" features
-        )
+    deviceCreateInfo = case mbFeatures of
+      Nothing ->
+        Vulkan.createVk
+          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
+          &* Vulkan.set @"pNext" Foreign.nullPtr
+          &* Vulkan.set @"flags" 0
+          &* Vulkan.setListCountAndRef
+                @"queueCreateInfoCount"
+                @"pQueueCreateInfos"
+                [ queueCreateInfo ]
+          &* Vulkan.setListCountAndRef
+                @"enabledLayerCount"
+                @"ppEnabledLayerNames"
+                []
+          &* Vulkan.setListCountAndRef
+                @"enabledExtensionCount"
+                @"ppEnabledExtensionNames"
+                [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
+          &* Vulkan.set @"pEnabledFeatures" Vulkan.vkNullPtr
+          )
+      Just features ->
+        Vulkan.createVk
+          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
+          &* Vulkan.set @"pNext" Foreign.nullPtr
+          &* Vulkan.set @"flags" 0
+          &* Vulkan.setListCountAndRef
+                @"queueCreateInfoCount"
+                @"pQueueCreateInfos"
+                [ queueCreateInfo ]
+          &* Vulkan.setListCountAndRef
+                @"enabledLayerCount"
+                @"ppEnabledLayerNames"
+                []
+          &* Vulkan.setListCountAndRef
+                @"enabledExtensionCount"
+                @"ppEnabledExtensionNames"
+                [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
+          &* Vulkan.setVkRef @"pEnabledFeatures" features
+          )
+
   in
     managedVulkanResource
       ( Vulkan.vkCreateDevice physicalDevice ( Vulkan.unsafePtr deviceCreateInfo ) )
@@ -483,7 +506,7 @@ allocateCommandBuffer dev commandPool =
       )
 
 
-beginRenderPass
+cmdBeginRenderPass
   :: MonadIO m
   => Vulkan.VkCommandBuffer
   -> Vulkan.VkRenderPass
@@ -491,7 +514,7 @@ beginRenderPass
   -> [Vulkan.VkClearValue] -- indexed by framebuffer attachments
   -> Vulkan.VkExtent2D
   -> m ()
-beginRenderPass commandBuffer renderPass framebuffer clearValues extent =
+cmdBeginRenderPass commandBuffer renderPass framebuffer clearValues extent =
   let
     zeroZero :: Vulkan.VkOffset2D
     zeroZero =
@@ -527,13 +550,13 @@ beginRenderPass commandBuffer renderPass framebuffer clearValues extent =
         ( Vulkan.unsafePtr beginInfo )
         Vulkan.VK_SUBPASS_CONTENTS_INLINE
 
-nextSubpass :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
-nextSubpass commandBuffer =
+cmdNextSubpass :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
+cmdNextSubpass commandBuffer =
   liftIO $ Vulkan.vkCmdNextSubpass commandBuffer Vulkan.VK_SUBPASS_CONTENTS_INLINE
 
 
-endRenderPass :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
-endRenderPass = liftIO . Vulkan.vkCmdEndRenderPass
+cmdEndRenderPass :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
+cmdEndRenderPass = liftIO . Vulkan.vkCmdEndRenderPass
 
 acquireNextImage
   :: MonadIO m

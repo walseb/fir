@@ -21,6 +21,8 @@ import Data.Word
   ( Word32 )
 import GHC.TypeLits
   ( Symbol )
+import GHC.TypeNats
+  ( Nat )
 
 -- containers
 import Data.Set
@@ -34,12 +36,12 @@ import "text-utf8" Data.Text
 -- fir
 import Data.Type.Map
   ( (:->)((:->))
-  , InsertionSort, Union
+  , InsertionSort
   )
 import FIR.Binding
-  ( BindingsMap, Var, R, W )
+  ( Binding, BindingsMap, Var, R, W )
 import FIR.Prim.Array
-  ( RuntimeArray )
+  ( Array )
 import FIR.Prim.Singletons
   ( KnownInterface(knownInterface) )
 import FIR.Prim.Struct
@@ -51,7 +53,11 @@ import qualified SPIRV.Builtin       as SPIRV
   , readBuiltin
   )
 import qualified SPIRV.Decoration    as SPIRV
-  ( Decoration(Builtin, Patch) )
+  ( Decoration(Block, Builtin, Patch) )
+import           SPIRV.ExecutionMode as SPIRV
+  ( ExecutionMode(..)
+  , StageExecutionInfo(..), ValidateExecutionModes
+  )
 import qualified SPIRV.PrimTy        as SPIRV
   ( PrimTy, PointerTy, pattern PointerTy )
 import qualified SPIRV.Storage       as SPIRV
@@ -61,27 +67,23 @@ import SPIRV.Stage
 
 --------------------------------------------------------------------------
 
-type family GetAllBuiltins (entryPoints :: [( Symbol, Stage )]) :: BindingsMap where
-  GetAllBuiltins '[]                    = '[ ]
-  GetAllBuiltins ( '( _, stage) ': ps ) = Union ( StageBuiltins stage ) ( GetAllBuiltins ps )
+type StageBuiltins (k :: Symbol) (stage :: Stage) (modes :: [ExecutionMode Nat])
+  = ( InsertionSort ( StageBuiltins' (ValidateExecutionModes k stage modes) ) :: BindingsMap )
 
-type StageBuiltins (stage :: Stage)
-  = ( InsertionSort ( StageBuiltins' stage ) :: BindingsMap )
-
-type family StageBuiltins' (stage :: Stage) :: BindingsMap where
-  StageBuiltins' Vertex
+type family StageBuiltins' (info :: StageExecutionInfo stage) :: [ Symbol :-> Binding ] where
+  StageBuiltins' VertexInfo
     = '[ "gl_VertexId"       ':-> Var R Int32
        , "gl_InstanceId"     ':-> Var R Int32
        , "gl_Position"       ':-> Var W ( V 4 Float )
        , "gl_PointSize"      ':-> Var W Float
        ]
-  StageBuiltins' TessellationControl
+  StageBuiltins' (TessellationControlInfo inputSize outputSize)
     = '[ "gl_InvocationId"   ':-> Var R Int32
        , "gl_PatchVertices"  ':-> Var R Int32
        , "gl_PrimitiveId"    ':-> Var R Int32
        , "gl_in"
             ':-> Var R
-                  ( RuntimeArray 
+                  ( Array inputSize
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
                               , "gl_PointSize" ':-> Float
                               ]
@@ -89,22 +91,22 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
                   )
        , "gl_out"
             ':-> Var W
-                  ( RuntimeArray 
+                  ( Array outputSize
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
                               , "gl_PointSize" ':-> Float
                               ]
                     )
                   )
-       , "gl_TessLevelOuter" ':-> Var W ( RuntimeArray Float )
-       , "gl_TessLevelInner" ':-> Var W ( RuntimeArray Float )
+       , "gl_TessLevelOuter" ':-> Var W ( Array 4 Float )
+       , "gl_TessLevelInner" ':-> Var W ( Array 2 Float )
        ]
-  StageBuiltins' TessellationEvaluation
+  StageBuiltins' (TessellationEvaluationInfo inputSize)
     = '[ "gl_TessCoord"      ':-> Var R ( V 3 Float )
        , "gl_PatchVertices"  ':-> Var R Int32
        , "gl_PrimitiveId"    ':-> Var R Int32
-       , "gl_perVertex" 
+       , "gl_PerVertex"
            ':-> Var R
-                  ( RuntimeArray 
+                  ( Array inputSize
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
                               , "gl_PointSize" ':-> Float
                               ]
@@ -113,12 +115,12 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_Position"       ':-> Var W ( V 4 Float )
        , "gl_PointSize"      ':-> Var W Float
        ]
-  StageBuiltins' Geometry 
+  StageBuiltins' (GeometryInfo inputSize)
     = '[ "gl_PrimitiveId"    ':-> Var R Int32
        , "gl_InvocationId"   ':-> Var R Int32
-       , "gl_perVertex" 
+       , "gl_PerVertex"
            ':-> Var R
-                  ( RuntimeArray 
+                  ( Array inputSize
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
                               , "gl_PointSize" ':-> Float
                               ]
@@ -128,8 +130,8 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_PointSize"      ':-> Var W Float
        , "gl_Layer"          ':-> Var W Int32
        , "gl_ViewportIndex"  ':-> Var W Int32
-       ]                                        
-  StageBuiltins' Fragment 
+       ]
+  StageBuiltins' FragmentInfo
     = '[ "gl_Layer"          ':-> Var R Int32
        , "gl_ViewportIndex"  ':-> Var R Int32
        , "gl_FragCoord"      ':-> Var R ( V 4 Float )
@@ -137,10 +139,9 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_FrontFacing"    ':-> Var R Bool
        , "gl_SampleId"       ':-> Var R Int32
        , "gl_SamplePosition" ':-> Var R ( V 2 Float )
-       , "gl_SampleMask"     ':-> Var W ( RuntimeArray Int32 )
        , "gl_FragDepth"      ':-> Var W Float
        ]
-  StageBuiltins' GLCompute 
+  StageBuiltins' GLComputeInfo
     = '[ "gl_NumWorkgroups"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupSize"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupId"          ':-> Var R ( V 3 Word32 )
@@ -148,7 +149,7 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_GlobalInvocationId"   ':-> Var R ( V 3 Word32 )
        , "gl_LocalInvocationIndex" ':-> Var R Word32
        ]
-  StageBuiltins' Kernel
+  StageBuiltins' KernelInfo
     = '[ "gl_NumWorkgroups"             ':-> Var R Word32
        , "gl_WorkgroupSize"             ':-> Var R Word32
        , "gl_WorkgroupId"               ':-> Var R Word32
@@ -168,22 +169,31 @@ type family StageBuiltins' (stage :: Stage) :: BindingsMap where
        , "gl_SubgroupLocalInvocationId" ':-> Var R Word32
        ]
 
-stageBuiltins :: Stage -> [ (Text, SPIRV.PointerTy) ]
-stageBuiltins Vertex                 = builtinPointer $ knownInterface @(StageBuiltins Vertex                )
-stageBuiltins TessellationControl    = builtinPointer $ knownInterface @(StageBuiltins TessellationControl   )
-stageBuiltins TessellationEvaluation = builtinPointer $ knownInterface @(StageBuiltins TessellationEvaluation)
-stageBuiltins Geometry               = builtinPointer $ knownInterface @(StageBuiltins Geometry              )
-stageBuiltins Fragment               = builtinPointer $ knownInterface @(StageBuiltins Fragment              )
-stageBuiltins GLCompute              = builtinPointer $ knownInterface @(StageBuiltins GLCompute             )
-stageBuiltins Kernel                 = builtinPointer $ knownInterface @(StageBuiltins Kernel                )
+stageBuiltins :: Stage -> [ SPIRV.ExecutionMode Word32 ] -> [ (Text, SPIRV.PointerTy) ]
+stageBuiltins Vertex _
+  = builtinPointer $ knownInterface @(StageBuiltins' VertexInfo)
+stageBuiltins TessellationControl _
+  = builtinPointer $ knownInterface @(StageBuiltins' ( TessellationControlInfo 65535 65535 ) ) -- TODO
+stageBuiltins TessellationEvaluation _
+  = builtinPointer $ knownInterface @(StageBuiltins' ( TessellationEvaluationInfo 65535 ) ) -- TODO
+stageBuiltins Geometry modes
+  | InputPoints         `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 1 ))
+  | InputLines          `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 2 ))
+  | Triangles           `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 3 ))
+  | InputLinesAdjacency `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 4 ))
+  | otherwise                        = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 6 ))
+stageBuiltins Fragment _
+  = builtinPointer $ knownInterface @(StageBuiltins' FragmentInfo )
+stageBuiltins GLCompute _
+  = builtinPointer $ knownInterface @(StageBuiltins' GLComputeInfo )
+stageBuiltins Kernel _
+  = builtinPointer $ knownInterface @(StageBuiltins' KernelInfo )
 
 builtinPointer :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
                -> [ (Text, SPIRV.PointerTy) ]
-builtinPointer
-  = map 
-      ( second
-          ( \ (ty, storage) -> SPIRV.PointerTy storage ty )
-      )
+builtinPointer = map
+  ( second ( \ (ty, storage) -> SPIRV.PointerTy storage ty ) )
+
 
 --------------------------------------------------------------------------
 -- decoration of builtins
@@ -196,8 +206,9 @@ builtinDecorations "gl_TessLevelInner"
 builtinDecorations "gl_TessLevelOuter"
   = Set.fromAscList [ SPIRV.Builtin SPIRV.TessLevelOuter, SPIRV.Patch ]
 builtinDecorations perVertex
-  | perVertex `elem` [ "gl_in", "gl_out", "gl_perVertex" ]
-  = Set.empty -- workaround: we decorate in this case when we create the relevant struct
+  | perVertex `elem` [ "gl_in", "gl_out", "gl_PerVertex" ]
+  -- workaround: in this case the 'Builtin' decoration is applied when we create the relevant struct
+  = Set.fromAscList [ SPIRV.Block ]
 builtinDecorations builtin
   = maybe
       Set.empty

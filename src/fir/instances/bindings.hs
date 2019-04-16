@@ -21,9 +21,9 @@ or accessing a binding that does not exist.
 
 module FIR.Instances.Bindings
   ( Get, Put
-  , ValidDef
-  , ValidFunDef
-  , ValidEntryPoint
+  , AddBinding, AddFunBinding
+  , ValidFunDef, FunctionDefinitionStartState
+  , ValidEntryPoint, EntryPointStartState, AddEntryPoint
   , LookupImageProperties
   , ValidImageRead
   , ValidImageWrite
@@ -55,16 +55,19 @@ import Control.Type.Optic
 import Data.Type.List
   ( Elem )
 import Data.Type.Map
-  ( (:->)((:->))
-  , Lookup, Remove
+  ( (:->)((:->)), Map
+  , Insert, Remove
+  , Lookup, Union
   )
 import FIR.Binding
-  ( Binding(EntryPoint), BindingsMap, FunctionType
+  ( Binding, BindingsMap, FunctionType
   , Permission(Read,Write)
   , Var, Fun
   )
-import FIR.Builtin
-  ( StageBuiltins )
+import FIR.IxState
+  ( Context(..), IxState(..)
+  , EntryPointInfo
+  )
 import FIR.Prim.Image
   ( ImageProperties(Properties), Image
   , OperandName(DepthComparison, BaseOperand)
@@ -79,14 +82,22 @@ import SPIRV.Image
   , MultiSampling(..)
   , Operand(LODOperand)
   )
-import qualified SPIRV.Image    as Image
+import qualified SPIRV.Decoration    as SPIRV
+  ( Decoration )
+import qualified SPIRV.ExecutionMode as SPIRV
+  ( ExecutionMode )
+import qualified SPIRV.Image         as Image
   ( Component(Integer, Floating)
   , Operand(..)
   )
-import qualified SPIRV.ScalarTy as SPIRV
+import qualified SPIRV.ScalarTy      as SPIRV
   ( ScalarTy(Integer, Floating) )
-import SPIRV.Stage
+import qualified SPIRV.Stage         as SPIRV
   ( Stage )
+
+-------------------------------------------------
+-- | Helper type family for impossible sub-cases.
+type family Unreachable :: k where
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.use'
@@ -95,8 +106,8 @@ import SPIRV.Stage
 --
 -- Throws a type error if no variable by that name exists,
 -- or if the variable is not readable.
-type family Get (k :: Symbol) (i :: BindingsMap) :: Type where
-  Get k i = GetBinding k (Lookup k i)
+type family Get (k :: Symbol) (i :: IxState) :: Type where
+  Get k ('IxState bds _ _) = GetBinding k (Lookup k bds)
 
 type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   GetBinding k 'Nothing
@@ -115,10 +126,6 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
           ( Text "'get'/'use': variable named " :<>: ShowType k :<>: Text " is not readable." )
         )
   GetBinding _ ('Just (Fun as b)) = FunctionType as b
-  GetBinding k ('Just ('EntryPoint _))
-    = TypeError (     Text "'get'/'use': an entry point is bound by name " :<>: ShowType k :<>: Text "."
-                 :$$: Text "Entry points cannot be called, only defined."
-                )
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.put' and 'FIR.Instances.Codensity.assign'
@@ -127,8 +134,8 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
 --
 -- Throws a type error if no variable is bound by that name,
 -- or if the variable is not writable.
-type family Put (k :: Symbol) (i :: BindingsMap) :: Type where
-  Put k i = PutBinding k (Lookup k i)
+type family Put (k :: Symbol) (i :: IxState) :: Type where
+  Put k ('IxState bds _ _) = PutBinding k (Lookup k bds)
 
 type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
   PutBinding k 'Nothing = TypeError
@@ -148,51 +155,111 @@ type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
           )
   PutBinding k ('Just (Var perms a))
     = If
-        (Elem 'Write perms)
+        ( Elem 'Write perms )
         a
         ( TypeError 
           ( Text "'put'/'assign': variable " :<>: ShowType k :<>: Text " is not writable." )
         )
-  PutBinding k ('Just ('EntryPoint _)) = TypeError
-    (      Text "'put'/'assign': entry point bound at name "
-      :<>: ShowType k :<>: Text ". "
-      :$$: Text "Use 'entryPoint' to define a new entry point."
-    )
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.def'
 
+-- | Add a new binding to the indexed state.
+type family AddBinding
+              ( k  :: Symbol  )
+              ( bd :: Binding )
+              ( s  :: IxState )
+              :: IxState where
+  AddBinding k bd ('IxState bds ctx eps)
+    = If ( ValidDef k bds )
+        ( 'IxState (Insert k bd bds) ctx eps )
+        Unreachable
+
 -- | Check that it is valid to define a new variable with given name.
 --
 -- Throws a type error if a binding by this name already exists.
-type family ValidDef (k :: Symbol) (i :: BindingsMap) :: Constraint where
+type family ValidDef (k :: Symbol) (i :: BindingsMap) :: Bool where
   ValidDef k i = NotAlreadyDefined k (Lookup k i)
 
-type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
-  NotAlreadyDefined _ 'Nothing  = ()
+type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Bool where
+  NotAlreadyDefined _ 'Nothing  = 'True
   NotAlreadyDefined k ('Just _) = TypeError
     ( Text "'def': a binding by the name " :<>: ShowType k :<>: Text " already exists." )
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.fundef'
 
+-- | Indexed monadic state at start of function body.
+--
+-- Adds the required function variables to the indexed monadic state.
+type family FunctionDefinitionStartState
+              ( k  :: Symbol      )
+              ( as :: BindingsMap )
+              ( s  :: IxState     )
+            :: IxState where
+  FunctionDefinitionStartState k as ('IxState i ctx eps)
+    = 'IxState (Union i as) ('Function k as) eps
+
+-- | Adds a function binding to the indexed monadic state.
+type family AddFunBinding (k :: Symbol) (as :: BindingsMap) (b :: Type) (s :: ixState) :: IxState where
+  AddFunBinding k as b ('IxState bds ctx eps)
+  -- 'ValidFunDef' should have already checked that name 'k' is not already in use
+    = 'IxState (Insert k (Fun as b) bds) ctx eps
+
+-- | Set the monadic context: within a function body.
+type family SetFunctionContext
+              ( k  :: Symbol      )
+              ( as :: BindingsMap )
+              ( s  :: IxState     )
+              :: IxState where
+  SetFunctionContext k as ('IxState bds TopLevel eps)
+    = 'IxState bds ('Function k as) eps
+  SetFunctionContext k _ ('IxState _ ('Function l _) _ )
+    = TypeError
+        (    Text "'fundef': unexpected nested function definition."
+        :$$: Text "Function " :<>: ShowType k
+        :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
+        )
+  SetFunctionContext k _ ('IxState _ ('EntryPoint stage stageName) _ )
+    = TypeError
+        (    Text "'fundef': unexpected function definition inside entry point."
+        :$$: Text "Function " :<>: ShowType k
+        :<>: Text " declared inside " :<>: ShowType stage
+        :<>: Text " entry point " :<>: ShowType stageName :<>: Text "."
+        )
+
 -- | Check that a function definition is valid.
 --
 -- Throws a type error if:
 -- 
+--   * function is not declared at the top level,
 --   * function name is already in use,
 --   * one of the function's arguments is itself a function,
---   * another function is defined inside the function.
+--   * another function is defined inside the function,
 type family ValidFunDef 
       ( k  :: Symbol      )  -- name of function to be defined
       ( as :: BindingsMap )  -- function arguments
-      ( i  :: BindingsMap )  -- variables in scope
-      ( l  :: BindingsMap )  -- @l@ contains the above three sets, together with the function's local variables
-    :: Constraint where      -- ( it is the total state at the end of the function definition )  
-  ValidFunDef k as i l
+      ( s  :: IxState     )  -- indexed state at the point the function is definition
+      ( l  :: BindingsMap )  -- total bindings at the end of the function definition
+    :: Constraint
+    where
+  ValidFunDef k _ ('IxState _ ('Function l _) _ ) _
+    = TypeError
+        (    Text "'fundef': unexpected nested function definition."
+        :$$: Text "Function " :<>: ShowType k
+        :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
+        )
+  ValidFunDef k _ ('IxState _ ('EntryPoint stage stageName) _ ) _
+    = TypeError
+        (    Text "'fundef': unexpected function definition inside entry point."
+        :$$: Text "Function " :<>: ShowType k
+        :<>: Text " declared inside " :<>: ShowType stage
+        :<>: Text " entry point " :<>: ShowType stageName :<>: Text "."
+        )
+  ValidFunDef k as ('IxState i 'TopLevel _) l
     = ( NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
-      , ValidArguments k as (Remove i (Remove as l))
-      ) --     │             └━━━━━━┬━━━━━┘
+      , ValidArguments k as (Remove i (Remove as l)) )
+        --     │             └━━━━━━┬━━━━━┘
         --     │                         │
         --     │                         │
         --     │    local variables ├━━┘
@@ -218,23 +285,10 @@ type family ValidArguments'
      :$$: ShowType as
      :$$: Text "Function definitions can only abstract over variables, not over functions."
     )
-  ValidArguments' k as _ ((v ':-> EntryPoint _) ': _     ) _   = TypeError
-    (     Text "'fundef': function argument " :<>: ShowType v
-     :<>: Text "denotes an entry point; expecting a variable."
-     :$$: Text "In function definition for " :<>: ShowType k :<>: Text ","
-     :$$: Text "when trying to abstract over:"
-     :$$: ShowType as
-    )
   ValidArguments' k as l (_ ': as_rec) l_rec = ValidArguments' k as l as_rec l_rec
   ValidArguments' k _  l _ ((v ':-> Fun _ _) ': _    ) = TypeError
     (     Text "'fundef': unexpected nested function definition inside function " :<>: ShowType k :<>: Text ":"
      :$$: Text "local name " :<>: ShowType v :<>: Text " binds a function."
-     :$$: Text "Local bindings for " :<>: ShowType k :<>: Text " are:"
-     :$$: ShowType l
-    )
-  ValidArguments' k _  l _ ((v ':-> EntryPoint _) ': _    ) = TypeError
-    (     Text "'fundef': unexpected entry point defined within function " :<>: ShowType k :<>: Text ":"
-     :$$: Text "local name " :<>: ShowType v :<>: Text " binds an entry point."
      :$$: Text "Local bindings for " :<>: ShowType k :<>: Text " are:"
      :$$: ShowType l
     )
@@ -253,6 +307,51 @@ type family NoFunctionNameConflict
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.entryPoint'
 
+
+-- | Indexed monadic state at start of entry point body.
+type family EntryPointStartState
+              ( k        :: Symbol      )
+              ( s        :: SPIRV.Stage )
+              ( i        :: IxState     )
+              ( builtins :: BindingsMap )
+              :: IxState where
+  EntryPointStartState k s ('IxState i ctx eps) builtins
+    = 'IxState (Union i builtins) ('EntryPoint k s) eps
+
+-- | Insert new entry point at end of current list of entry points.
+--
+-- Checks that no entry point with the same stage and name has already been defined.
+type family AddEntryPoint
+              ( k     :: Symbol                              )
+              ( s     :: SPIRV.Stage                         )
+              ( modes :: [ SPIRV.ExecutionMode Nat ]         )
+              ( decs  :: [ Symbol :-> SPIRV.Decoration Nat ] )
+              ( i     :: IxState                             )
+              :: IxState where
+  AddEntryPoint k s modes decs ('IxState i ctx eps)
+    = 'IxState i 'TopLevel (InsertEntryPoint k s modes decs eps)
+
+-- | Auxiliary function for 'AddEntryPoint' which performs the check & appends.
+type family InsertEntryPoint
+              ( k     :: Symbol                                     )
+              ( s     :: SPIRV.Stage                                )
+              ( modes :: [ SPIRV.ExecutionMode Nat ]                )
+              ( decs  :: [ Symbol :-> SPIRV.Decoration Nat ]        )
+              ( eps   :: Map ( Symbol, SPIRV.Stage ) EntryPointInfo )
+              :: Map ( Symbol, SPIRV.Stage ) EntryPointInfo
+              where
+  InsertEntryPoint k s modes decs '[]
+    = '[ '(k,s) ':-> '(modes, decs) ]
+  InsertEntryPoint k s modes decs ( ('(k,s) ':-> _) ': _ )
+    = TypeError
+        (    Text "'entryPoint': duplicate entry point declaration."
+        :$$: Text "There already exists a " :<>: ShowType s
+        :<>: Text " entry point with name " :<>: ShowType k :<>: Text "."
+        )
+  InsertEntryPoint k s modes decs ( ep ': eps )
+    = ep ': InsertEntryPoint k s modes decs eps
+
+
 -- | Check that an entry point definition is valid.
 --
 -- Throws a type error if:
@@ -260,15 +359,16 @@ type family NoFunctionNameConflict
 --   * a function is defined within the entry point,
 --   * the name of a builtin for this entry point is already in use.
 type family ValidEntryPoint
-              ( k :: Symbol      )
-              ( s :: Stage       )
-              ( i :: BindingsMap )
-              ( l :: BindingsMap ) 
+              ( k        :: Symbol      )
+              ( s        :: SPIRV.Stage )
+              ( i        :: IxState     )
+              ( l        :: BindingsMap )
+              ( builtins :: BindingsMap )
             :: Constraint where
-  ValidEntryPoint k s i l
+  ValidEntryPoint k s ('IxState i _ _) l builtins
     = ( NoEntryPointNameConflict k (Lookup k i)
       , ValidLocalBehaviour s (Remove i l)
-      , BuiltinsDoNotAppearBefore s ( StageBuiltins s ) i
+      , BuiltinsDoNotAppearBefore s builtins i
       )
 
 type family NoEntryPointNameConflict
@@ -281,11 +381,11 @@ type family NoEntryPointNameConflict
     )
   NoEntryPointNameConflict _ 'Nothing = ()
 
-type ValidLocalBehaviour (s :: Stage) ( l :: BindingsMap)
+type ValidLocalBehaviour (s :: SPIRV.Stage) (l :: BindingsMap)
   = ( ValidLocalBehaviour' s l l :: Constraint )
 
 type family ValidLocalBehaviour'
-              ( s     :: stage       )
+              ( s     :: SPIRV.Stage )
               ( l     :: BindingsMap )
               ( l_rec :: BindingsMap )
               :: Constraint where
@@ -297,15 +397,9 @@ type family ValidLocalBehaviour'
      :$$: Text "Local bindings for " :<>: ShowType s :<>: Text " entry point are:"
      :$$: ShowType l
     )
-  ValidLocalBehaviour' s l ((v ':-> EntryPoint _) ': _    ) = TypeError
-    (     Text "'entryPoint': unexpected entry point definition inside " :<>: ShowType s :<>: Text " entry point:"
-     :$$: Text "local name " :<>: ShowType v :<>: Text "binds an entry point."
-     :$$: Text "Local bindings for " :<>: ShowType s :<>: Text " entry point are:"
-     :$$: ShowType l
-    )
 
 type family BuiltinsDoNotAppearBefore
-              (s        :: Stage       )
+              (s        :: SPIRV.Stage )
               (builtins :: BindingsMap )
               (i        :: BindingsMap )
               :: Constraint where
@@ -314,7 +408,7 @@ type family BuiltinsDoNotAppearBefore
     = BuiltinDoesNotAppearBefore s b bs i (Lookup b i)
 
 type family BuiltinDoesNotAppearBefore
-              ( s      :: Stage         )
+              ( s      :: SPIRV.Stage   )
               ( b      :: Symbol        )
               ( bs     :: BindingsMap   )
               ( i      :: BindingsMap   )
@@ -334,8 +428,9 @@ type family BuiltinDoesNotAppearBefore
 -- | Retrieve the properties of an image.
 --
 -- Throws a type error if there is no image with given name.
-type LookupImageProperties k i
-  = ( ImagePropertiesFromLookup k i (Lookup k i) :: ImageProperties )
+type family LookupImageProperties (k :: Symbol) (i :: IxState) :: ImageProperties where
+  LookupImageProperties k ('IxState i _ _ )
+    = ImagePropertiesFromLookup k i (Lookup k i)
 
 type family ImagePropertiesFromLookup
               ( k      :: Symbol        )
@@ -554,7 +649,7 @@ type family AssertProvidedSymbol ( k :: Symbol ) (x :: l) :: l where
       x
 
 -- | Check that a shader stage is not ambiguous.
-type family ProvidedStage ( s :: Stage ) :: Constraint where
+type family ProvidedStage ( s :: SPIRV.Stage ) :: Constraint where
   ProvidedStage s =
     Assert
       ( TypeError

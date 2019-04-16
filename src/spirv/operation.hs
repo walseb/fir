@@ -374,6 +374,15 @@ pattern BitwiseAnd           :: Operation
 pattern BitwiseAnd           = Code 199
 pattern Not                  :: Operation
 pattern Not                  = Code 200
+-- geometry primitives
+pattern EmitVertex :: Operation
+pattern EmitVertex = Code 218
+pattern EndPrimitive :: Operation
+pattern EndPrimitive = Code 219
+pattern EmitStreamVertex :: Operation
+pattern EmitStreamVertex = Code 220
+pattern EndStreamPrimitive :: Operation
+pattern EndStreamPrimitive = Code 221
 -- control flow
 pattern Phi               :: Operation
 pattern Phi               = Code 245
@@ -621,6 +630,10 @@ showOperation BitwiseOr            = "BitwiseOr"
 showOperation BitwiseXor           = "BitwiseXor"
 showOperation BitwiseAnd           = "BitwiseAnd"
 showOperation Not                  = "Not"
+showOperation EmitVertex         = "EmitVertex"
+showOperation EndPrimitive       = "EndPrimitive"
+showOperation EmitStreamVertex   = "EmitStreamVertex"
+showOperation EndStreamPrimitive = "EndStreamPrimitive"
 showOperation Phi = "Phi"
 showOperation LoopMerge = "LoopMerge"
 showOperation SelectionMerge = "SelectionMerge"
