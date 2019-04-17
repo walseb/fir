@@ -117,9 +117,9 @@ instance ( KnownSymbol k
 --------------------------------------------------------------------------
 -- infix operators
 
-infixr 4 #=
-infixr 4 #=!
-infixr 4 .=
+infixr 1 #=
+infixr 1 #=!
+infixr 1 .=
 
 -- | Define a new variable using a label.
 (#=) :: forall a k i.

@@ -147,7 +147,7 @@ onSDLInput input (SDL.KeyboardEvent ev)
                                }
          SDL.Released -> input { keysDown = filter (/= keyCode) (keysDown input) }
 onSDLInput input (SDL.MouseMotionEvent ev)
-  = input { mousePos = fmap ((* 0.003) . Prelude.fromIntegral) (V2 px py)
+  = input { mousePos = fmap Prelude.fromIntegral (V2 px py)
           , mouseRel = fmap ((* 0.003) . Prelude.fromIntegral) (V2 rx ry)
           }
     where

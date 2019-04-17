@@ -141,6 +141,10 @@ module FIR
   , R11G11B10
   , RGB10A2
 
+  -- known
+  , Data.Type.Known.Known(..)
+  , Data.Type.Known.knownValue
+
   -- re-exporting parts of Prelude
   , Prelude.Bool(..), Prelude.otherwise
   , Prelude.Maybe(..), Prelude.maybe
@@ -212,6 +216,7 @@ import CodeGen.State
 import Control.Arrow.Strength
 import Control.Monad.Indexed
 import Control.Type.Optic
+import Data.Type.Known
 import Data.Type.Map
 import FIR.AST
 import FIR.Binding

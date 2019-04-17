@@ -208,11 +208,12 @@ codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
             else pure cgRes
         
         assign ( _localBinding name ) ( Just defRes )
+        -- addName ( fst defRes ) name -- (not necessarily helpful to assign names as we're using SSA)
         pure cgRes
 
 codeGen (FunDef (_ :: Proxy name) (_ :: Proxy as) (_ :: Proxy b) :$ body)
   = let argTys = map (second fst) (knownVars @as)
-        retTy  = primTyVal @b
+        retTy  = primTyVal  @b
         name   = knownValue @name
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
@@ -465,6 +466,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
 
         -- true block
         block trueBlock
+        assign _localBindings bindingsBefore
         (trueID, trueTy) <- codeGen bodyTrue
         trueEndBlock <- note ( "codeGen: true branch in if statement escaped CFG" )
                             =<< use _currentBlock
@@ -473,6 +475,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
 
         -- false block
         block falseBlock
+        assign _localBindings bindingsBefore
         (falseID, falseTy) <- codeGen bodyFalse
         falseEndBlock <- note ( "codeGen: false branch in if statement escaped CFG" )
                             =<< use _currentBlock
@@ -484,10 +487,16 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
 
         -- merge block
         block mergeBlock
-        phiInstructions
-          ( \ bd -> bd `Map.member` bindingsBefore )
-          [ trueEndBlock, falseEndBlock ]
-          [ trueBindings, falseBindings ]
+        phiBindings
+          <- phiInstructions
+              ( \ bd -> bd `Map.member` bindingsBefore )
+              [ trueEndBlock, falseEndBlock ]
+              [ trueBindings, falseBindings ]
+
+        -- update local bindings to refer to the phi instructions
+        Map.traverseWithKey
+          ( \ bdName bdID -> modifying ( _localBinding bdName ) ( fmap $ first (const bdID) ) )
+          phiBindings
 
         -- get the value of the conditional
         if trueTy == falseTy

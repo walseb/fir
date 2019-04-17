@@ -24,8 +24,10 @@ library
 
   exposed-modules:
       Example1
+    , Julia
     , Offscreen
     , Shaders.Example1
+    , Shaders.Julia
     , Shaders.Offscreen
     , Vulkan.Backend
     , Vulkan.Buffer

@@ -10,6 +10,8 @@
 module Vulkan.SDL where
 
 -- base
+import Control.Monad
+  ( void )
 import Control.Monad.IO.Class
   ( MonadIO )
 import qualified Foreign
@@ -41,10 +43,10 @@ enableSDLLogging =
   SDL.Raw.logSetAllPriority SDL.Raw.SDL_LOG_PRIORITY_VERBOSE
 
 
-initializeSDL :: MonadIO m => m ()
-initializeSDL = do
+initializeSDL :: MonadIO m => SDL.LocationMode -> m ()
+initializeSDL mouseLocationMode = do
   logMsg "Initializing SDL" *> SDL.initialize [ SDL.InitVideo ]
-  logMsg "SDL: setting relative mouse location" <* SDL.setMouseLocationMode SDL.RelativeLocation
+  void ( SDL.setMouseLocationMode mouseLocationMode )
 
 
 createWindow :: MonadManaged m => Text -> m SDL.Window

@@ -83,7 +83,7 @@ data CGState
       , knownConstants      :: Map AConstant           Instruction
       -- which top-level global (input/output) variables have been used
       , usedGlobals         :: Map Text                (ID, SPIRV.PointerTy)
-      -- top-level bindings available, such as input/output variables and top-level functions
+      -- top-level bindings available, such as top-level functions
       , knownBindings       :: Map Text                (ID, SPIRV.PrimTy   )
       -- variables declared by the user in the program
       , localBindings       :: Map Text                (ID, SPIRV.PrimTy   )
@@ -362,6 +362,12 @@ addCapabilities :: forall t m.
                 => t SPIRV.Capability -> m ()
 addCapabilities
   = traverse_ ( \cap -> assign ( _neededCapability cap ) (Just ()) )
+
+addName :: MonadState CGState m
+        => ID -> Text -> m ()
+addName bdID name
+  = modifying _names
+      ( Set.insert (bdID, Left name) )
 
 addMemberName :: MonadState CGState m 
               => ID -> Word32 -> Text -> m ()
