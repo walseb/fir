@@ -74,7 +74,9 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 import FIR
   ( runCompilationsTH )
 import Math.Linear
-  ( V, pattern V2, pattern V3 )
+  ( V, pattern V2, pattern V3
+  , (^+^), (*^)
+  )
 
 -- fir-examples
 import Shaders.Julia
@@ -437,15 +439,27 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
     inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
     prevInput <- use _input
     let
+      prevAction = interpretInput prevInput
       newInput = foldl onSDLInput prevInput inputEvents
       action   = interpretInput newInput
-    assign _input newInput
+    pos <- 
+      if locate action
+      then do SDL.setMouseLocationMode SDL.RelativeLocation
+              -- precision mode
+              pure ( mousePos prevInput ^+^ ( 10 *^ mouseRel newInput ) )
+      else do SDL.setMouseLocationMode SDL.AbsoluteLocation
+              -- smooth out mouse movement slightly
+              let pos@(V2 px py) = 0.5 *^ ( mousePos prevInput ^+^ mousePos newInput )
+              when (locate prevAction)
+                ( SDL.warpMouse SDL.WarpCurrentFocus (SDL.P (SDL.V2 (round px) (round py))) )
+              pure pos
+    assign _input ( newInput { mousePos = pos, mouseRel = pure 0 } )
 
     ----------------
     -- simulation
 
     -- update MVP
-    liftIO ( Foreign.poke mousePosUniformPtr ( mousePos newInput ) )
+    liftIO ( Foreign.poke mousePosUniformPtr pos )
 
     ----------------
     -- rendering

@@ -291,12 +291,12 @@ matrixOp Inv    n m s = ( MatrixInverse    , Matrix n m s )
 matrixOp Out    n m s = ( OuterProduct     , Matrix n m s )
 
 convOp :: ConvPrimOp -> ScalarTy -> ScalarTy -> (Operation, ScalarTy)
-convOp Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF   , Floating         w )
-convOp Convert (Integer Unsigned _) (Floating         w) = ( ConvertUToF   , Floating         w )
-convOp Convert (Floating         _) (Integer Signed   w) = ( ConvertFToS   , Integer Signed   w )
-convOp Convert (Floating         _) (Integer Unsigned w) = ( ConvertFToU   , Integer Unsigned w )
-convOp Convert (Integer Unsigned _) (Integer Signed   w) = ( SatConvertUToS, Integer Signed   w )
-convOp Convert (Integer Signed   _) (Integer Unsigned w) = ( SatConvertSToU, Integer Unsigned w )
+convOp Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF, Floating         w )
+convOp Convert (Integer Unsigned _) (Floating         w) = ( ConvertUToF, Floating         w )
+convOp Convert (Floating         _) (Integer Signed   w) = ( ConvertFToS, Integer Signed   w )
+convOp Convert (Floating         _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
+convOp Convert (Integer Unsigned _) (Integer Signed   w) = ( BitCast    , Integer Signed   w ) -- technically not allowed between different widths
+convOp Convert (Integer Signed   _) (Integer Unsigned w) = ( BitCast    , Integer Unsigned w ) -- but that's what glslangvalidator does...
 convOp Convert (Floating         v) (Floating         w)
   | v /= w = ( FConvert, Floating         w)
 convOp Convert (Integer Signed   v) (Integer Signed   w)

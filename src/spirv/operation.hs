@@ -251,6 +251,9 @@ pattern SatConvertSToU = Code 118
 pattern SatConvertUToS :: Operation
 pattern SatConvertUToS = Code 119
 -- pointer casting
+-- bit cast
+pattern BitCast :: Operation
+pattern BitCast = Code 124
 -- no 125
 -- numeric instructions
 pattern SNegate :: Operation
@@ -572,6 +575,7 @@ showOperation SConvert = "SConvert"
 showOperation FConvert = "FConvert"
 showOperation SatConvertSToU = "SatConvertSToU"
 showOperation SatConvertUToS = "SatConvertUToS"
+showOperation BitCast = "BitCast"
 showOperation SNegate = "SNegate"
 showOperation FNegate = "FNegate"
 showOperation IAdd = "IAdd"

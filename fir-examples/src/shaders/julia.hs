@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE NamedWildCards         #-}
 {-# LANGUAGE OverloadedLabels       #-}
 {-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE RebindableSyntax       #-}
@@ -49,8 +50,7 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-maxDepth :: AST Word32
-maxDepth = 2048
+
 
 complexSquare :: AST (V 2 Float) -> AST (V 2 Float)
 complexSquare (Vec2 x y) = Vec2 ( x * x - y * y ) ( 2 * x * y )
@@ -83,6 +83,17 @@ sunset = mkArray . Array.fromList $
        , V4 1    1    1    1
        ]
 
+maxDepth :: AST Word32
+maxDepth = 256
+
+xSamples, ySamples :: AST Word32
+xSamples = 4
+ySamples = 4
+
+xWidth, yWidth :: AST Float
+xWidth = recip . convert $ xSamples
+yWidth = recip . convert $ ySamples
+
 fragment :: Program FragmentDefs ()
 fragment = Program $ entryPoint @"main" @Fragment do
 
@@ -90,23 +101,48 @@ fragment = Program $ entryPoint @"main" @Fragment do
     ~(Vec2 mx my) <- use @(Name "ubo" :.: Name "mousePos")
 
 
+    let (#<) = (<) @(Procedure _ _i _i) -- disambiguate to help type inference
 
-    #pos @(V 2 Float) #= Vec2 ((x-960)/400) ((y-540)/400)
-    #continue         #= Lit True
-    #depth @Word32    #= 0
+    #total     @Word32 #= 0
 
-    while #continue do
-      pos   <- #pos
-      depth <- #depth
-      if ( pos ^.^ pos > 4 || depth >= maxDepth )
-        then ( #continue .= Lit False )
-        else do
-          #pos   .= complexSquare pos ^+^ Vec2 ((mx-960)/400) ((my-540)/400)
-          #depth .= depth + 1
+    #xSampleNo @Word32 #= 0
+    while ( #xSampleNo #< pure xSamples ) do
 
-    finalDepth <- #depth
+      #ySampleNo @Word32 #= 0
+      while ( #ySampleNo #< pure ySamples ) do
+
+
+        xNo <- #xSampleNo 
+        yNo <- #ySampleNo
+
+        let
+          dx, dy :: AST Float
+          dx = ( convert xNo + 0.5 ) * xWidth - 0.5
+          dy = ( convert yNo + 0.5 ) * xWidth - 0.5
+
+        #pos @(V 2 Float) #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
+        #continue         #= Lit True
+        #depth @Word32    #= 0
+    
+        while #continue do
+          pos   <- #pos
+          depth <- #depth
+          if ( pos ^.^ pos > 8 || depth > maxDepth )
+            then ( #continue .= Lit False )
+            else do
+              #pos   .= complexSquare pos ^+^ Vec2 ((mx-960)/600) ((my-540)/600)
+              #depth .= depth + 1
+
+        depth <- #depth
+        #total %= (+depth)
+
+        #ySampleNo %= (+1)
+      #xSampleNo %= (+1)
+
+
+    total <- #total
     t <- def @"t" @R
-        ( log ( convert finalDepth ) / log ( convert maxDepth - 1 ) :: AST Float )
+        ( log ( convert total * xWidth * yWidth ) / log ( convert maxDepth ) :: AST Float )
 
     let col = gradient t (Lit sunset)
 
