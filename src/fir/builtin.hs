@@ -58,22 +58,20 @@ import qualified SPIRV.Builtin       as SPIRV
 import qualified SPIRV.Decoration    as SPIRV
   ( Decoration(Block, Builtin, Patch) )
 import           SPIRV.ExecutionMode as SPIRV
-  ( ExecutionMode(..)
-  , StageExecutionInfo(..), ValidateExecutionModes
-  )
+  ( ExecutionMode(..) )
 import qualified SPIRV.PrimTy        as SPIRV
   ( PrimTy, PointerTy, pattern PointerTy )
 import qualified SPIRV.Storage       as SPIRV
   ( StorageClass )
 import SPIRV.Stage
-  ( Stage(..) )
+  ( Stage(..), StageInfo(..) )
 
 --------------------------------------------------------------------------
 
-type StageBuiltins (k :: Symbol) (stage :: Stage) (modes :: [ExecutionMode Nat])
-  = ( InsertionSort ( StageBuiltins' (ValidateExecutionModes k stage modes) ) :: BindingsMap )
+type StageBuiltins (info :: StageInfo Nat stage)
+  = ( InsertionSort ( StageBuiltins' info ) :: BindingsMap )
 
-type family StageBuiltins' (info :: StageExecutionInfo stage) :: [ Symbol :-> Binding ] where
+type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding ] where
   StageBuiltins' VertexInfo
     = '[ "gl_VertexID"       ':-> Var R Word32
        , "gl_InstanceID"     ':-> Var R Word32

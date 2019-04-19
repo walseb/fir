@@ -123,8 +123,6 @@ import FIR.Binding
   ( FunctionType, Var
   , Permission
   )
-import FIR.Builtin
-  ( StageBuiltins )
 import FIR.Instances.AST
   ( )
 import FIR.Instances.Bindings
@@ -140,7 +138,7 @@ import FIR.Instances.Images
 import FIR.Instances.Optics
   ( User, Assigner, KnownOptic, opticSing )
 import FIR.IxState
-  ( Context(..), IxState(IxState), StageContext, EntryPoints )
+  ( Context(..), IxState(IxState), StageContext, EntryPointInfos )
 import FIR.Prim.Image
   ( ImageProperties, ImageData, ImageCoordinates )
 import FIR.Prim.Singletons
@@ -171,7 +169,7 @@ import Math.Logic.Class
 import qualified SPIRV.PrimOp as SPIRV
   ( GeomPrimOp(..) )
 import SPIRV.Stage
-  ( Stage(..) )
+  ( Stage(..), StageInfo )
 
 --------------------------------------------------------------------------
 -- * Monadic control operations
@@ -222,47 +220,47 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 
 -- Defining functions and variables.
 
-fundef' :: forall k as b l i.
+fundef' :: forall name as b j_bds i.
           ( GHC.Stack.HasCallStack
-          , KnownSymbol k
+          , KnownSymbol name
           , KnownVars as
           , PrimTy b
-          , ValidFunDef k as i l
+          , ValidFunDef name as i j_bds
           )
        => Codensity AST
-              ( AST b := 'IxState l (Function k as) (EntryPoints i) )
-              ( FunctionDefinitionStartState k as i )
+              ( AST b := 'IxState j_bds (Function name as) (EntryPointInfos i) )
+              ( FunctionDefinitionStartState name as i )
        -> Codensity AST
-              ( AST (FunctionType as b) := AddFunBinding k as b i )
+              ( AST (FunctionType as b) := AddFunBinding name as b i )
               i
-fundef' = fromAST ( FunDef @k @as @b @l @i Proxy Proxy Proxy ) . toAST
+fundef' = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
 
 -- | Define a new function.
 --
 -- Type-level arguments:
 -- 
--- * @k@: function name,
+-- * @name@: function name,
 -- * @as@: list of argument types,
 -- * @b@: return type,
--- * @l@: state at end of function body (usually inferred),
--- * @i@: state at start of function body (usually inferred),
+-- * @j_bds@: state at end of function body (usually inferred),
+-- * @i@: bindings state at start of function body (usually inferred),
 -- * @r@: function type itself, result of 'fundef' (usually inferred).
-fundef :: forall k as b l i r.
+fundef :: forall name as b j_bds i r.
            ( GHC.Stack.HasCallStack
            , Syntactic r
            , Internal r ~ FunctionType as b
-           , KnownSymbol k
+           , KnownSymbol name
            , KnownVars as
            , PrimTy b
-           , ValidFunDef k as i l
+           , ValidFunDef name as i j_bds
            )
         => Codensity AST
-              ( AST b := 'IxState l (Function k as) (EntryPoints i) )
-              ( FunctionDefinitionStartState k as i ) -- ^ Function body code.
+              ( AST b := 'IxState j_bds (Function name as) (EntryPointInfos i) )
+              ( FunctionDefinitionStartState name as i ) -- ^ Function body code.
         -> Codensity AST
-              ( r := AddFunBinding k as b i )
+              ( r := AddFunBinding name as b i )
               i
-fundef = fromAST . toAST . fundef' @k @as @b @l @i
+fundef = fromAST . toAST . fundef' @name @as @b @j_bds @i
 
 
 -- | Define a new entry point (or shader stage).
@@ -271,27 +269,25 @@ fundef = fromAST . toAST . fundef' @k @as @b @l @i
 --
 -- Type-level arguments:
 --
--- *@k@: name of entry point,
--- *@s@: entry point 'SPIRV.Stage.Stage',
--- *@modes@: entry point 'SPIRV.ExecutionMode.ExecutionMode's,
--- *@decs@: entry point interface 'SPIRV.Decoration.Decoration's,
--- *@l@: state at end of entry point body (usually inferred),
+-- *@name@: name of entry point,
+-- *@stage@: entry point 'SPIRV.Stage.Stage',
+-- *@stageInfo@: entry point 'SPIRV.Stage.StageInfo',
+-- *@j_bds@: bindings state at end of entry point body (usually inferred),
 -- *@i@: state at start of entry point body (usually inferred).
--- *@builtins@: builtins for this entry point (usually inferred).
-entryPoint :: forall k s modes decs l i builtins.
+entryPoint :: forall name stage stageInfo j_bds i.
              ( GHC.Stack.HasCallStack
-             , KnownSymbol k
-             , Known Stage s
-             , ValidEntryPoint k s i l builtins
-             , builtins ~ StageBuiltins k s modes
+             , KnownSymbol name
+             , Known Stage stage
+             , Known (StageInfo Nat stage) stageInfo
+             , ValidEntryPoint name stageInfo i j_bds
              )
            => Codensity AST
-                ( AST () := 'IxState l (EntryPoint k s) (EntryPoints i) )
-                ( EntryPointStartState k s i builtins ) -- ^ Entry point body.
+                ( AST () := 'IxState j_bds (EntryPoint name stageInfo) (EntryPointInfos i) )
+                ( EntryPointStartState name stageInfo i ) -- ^ Entry point body.
            -> Codensity AST
-                ( AST () := AddEntryPoint k s modes decs i )
+                ( AST () := AddEntryPoint name stageInfo i )
                 i
-entryPoint = fromAST ( Entry @k @s @modes @decs @l @i Proxy Proxy ) . toAST
+entryPoint = fromAST ( Entry @name @stage @stageInfo @j_bds @i Proxy Proxy ) . toAST
 
 -- $vardef
 -- For defining constants/variables, we want an extra layer of flexiblity:

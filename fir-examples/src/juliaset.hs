@@ -509,7 +509,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/julia.png" imageData
+        writePng "screenshots/julia_set.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 

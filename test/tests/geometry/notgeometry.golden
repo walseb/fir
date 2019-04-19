@@ -1,0 +1,19 @@
+
+test\tests\geometry\notgeometry.hs:34:5: error:
+    • Couldn't match type ‘'Fragment’ with ‘'Geometry’
+        arising from a use of ‘emitVertex’
+    • In a stmt of a 'do' block: emitVertex
+      In the third argument of ‘entryPoint’, namely
+        ‘do col <- get @"in_colour"
+            put @"out_colour" col
+            emitVertex’
+      In a stmt of a 'do' block:
+        entryPoint
+          @"main"
+          @Fragment
+          do col <- get @"in_colour"
+             put @"out_colour" col
+             emitVertex
+   |
+34 |     emitVertex    -- not allowed: not in a geometry shader
+   |     ^^^^^^^^^^

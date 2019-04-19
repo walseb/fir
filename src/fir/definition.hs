@@ -21,7 +21,9 @@ import Data.Kind
 import Data.Word
   ( Word32 )
 import GHC.TypeLits
-  ( Symbol )
+  ( Symbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats
   ( Nat )
 
@@ -46,9 +48,11 @@ import Data.Type.Map
   ( (:->)((:->)), Insert )
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
+import FIR.Instances.Bindings
+  ( InsertEntryPointInfo )
 import qualified FIR.Binding as Binding
 import FIR.IxState
-  ( IxState(IxState), EntryPointInfo )
+  ( IxState(IxState), EntryPointInfo(EntryPointInfo) )
 import qualified FIR.IxState as IxState
 import FIR.Prim.Image
   ( Image, knownImage, ImageProperties )
@@ -150,13 +154,28 @@ type family EndState (defs :: [ Symbol :-> Definition ]) :: IxState where
 
 type family DefinitionEntryPoints
               ( defs :: [ Symbol :-> Definition ] )
-              :: [ ( Symbol, SPIRV.Stage ) :-> EntryPointInfo ]
+              :: [ EntryPointInfo ]
               where
   DefinitionEntryPoints '[] = '[]
   DefinitionEntryPoints ( (k ':-> EntryPoint modes stage) ': defs )
-    = Insert '(k, stage) '(modes,'[]) (DefinitionEntryPoints defs)
+    = DefinitionInsertEntryPointInfo k
+        ( SPIRV.ValidateExecutionModes k stage modes )
+        ( DefinitionEntryPoints defs )
   DefinitionEntryPoints ( _ ': defs )
     = DefinitionEntryPoints defs
+
+type family DefinitionInsertEntryPointInfo
+              ( k    :: Symbol                            )
+              ( nfo  :: Maybe (SPIRV.StageInfo Nat stage) )
+              ( nfos :: [ EntryPointInfo ]                )
+              :: [ EntryPointInfo ]
+              where
+  DefinitionInsertEntryPointInfo _ 'Nothing _
+  -- 'SPIRV.ValidateExecutionModes' never returns Nothing, it throws a type error instead
+  -- this trick forces evaluation of "SPIRV.ValidateExecutionModes", fixing [issue #43](https://gitlab.com/sheaf/fir/issues/43)
+    = TypeError ( 'Text "Invalid entry point execution modes (unreachable)" )
+  DefinitionInsertEntryPointInfo k ('Just nfo) nfos
+    = InsertEntryPointInfo ('EntryPointInfo k nfo) nfos
 
 type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   StartBindings '[]

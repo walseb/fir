@@ -23,7 +23,8 @@ module FIR.Instances.Bindings
   ( Get, Put
   , AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
-  , ValidEntryPoint, EntryPointStartState, AddEntryPoint
+  , ValidEntryPoint, EntryPointStartState
+  , AddEntryPoint, InsertEntryPointInfo
   , LookupImageProperties
   , ValidImageRead
   , ValidImageWrite
@@ -38,11 +39,11 @@ import Prelude
 import Data.Kind
   ( Type, Constraint )
 import Data.Type.Bool
-  ( If )
+  ( If, type (||), type (&&) )
 import Data.Type.Equality
   ( type (==) )
 import GHC.TypeLits
-  ( Symbol
+  ( Symbol, CmpSymbol
   , TypeError
   , ErrorMessage(..)
   )
@@ -55,7 +56,7 @@ import Control.Type.Optic
 import Data.Type.List
   ( Elem )
 import Data.Type.Map
-  ( (:->)((:->)), Map
+  ( (:->)((:->))
   , Insert, Remove
   , Lookup, Union
   )
@@ -64,9 +65,11 @@ import FIR.Binding
   , Permission(Read,Write)
   , Var, Fun
   )
+import FIR.Builtin
+  ( StageBuiltins )
 import FIR.IxState
   ( Context(..), IxState(..)
-  , EntryPointInfo
+  , EntryPointInfo(..)
   )
 import FIR.Prim.Image
   ( ImageProperties(Properties), Image
@@ -82,10 +85,6 @@ import SPIRV.Image
   , MultiSampling(..)
   , Operand(LODOperand)
   )
-import qualified SPIRV.Decoration    as SPIRV
-  ( Decoration )
-import qualified SPIRV.ExecutionMode as SPIRV
-  ( ExecutionMode )
 import qualified SPIRV.Image         as Image
   ( Component(Integer, Floating)
   , Operand(..)
@@ -93,7 +92,7 @@ import qualified SPIRV.Image         as Image
 import qualified SPIRV.ScalarTy      as SPIRV
   ( ScalarTy(Integer, Floating) )
 import qualified SPIRV.Stage         as SPIRV
-  ( Stage )
+  ( Stage, StageInfo, CmpStage )
 
 -------------------------------------------------
 -- | Helper type family for impossible sub-cases.
@@ -310,46 +309,63 @@ type family NoFunctionNameConflict
 
 -- | Indexed monadic state at start of entry point body.
 type family EntryPointStartState
-              ( k        :: Symbol      )
-              ( s        :: SPIRV.Stage )
-              ( i        :: IxState     )
-              ( builtins :: BindingsMap )
+              ( k        :: Symbol                )
+              ( nfo      :: SPIRV.StageInfo Nat s )
+              ( i        :: IxState               )
               :: IxState where
-  EntryPointStartState k s ('IxState i ctx eps) builtins
-    = 'IxState (Union i builtins) ('EntryPoint k s) eps
+  EntryPointStartState k nfo ('IxState i ctx eps)
+    = 'IxState (Union i (StageBuiltins nfo)) ('EntryPoint k nfo) eps
 
 -- | Insert new entry point at end of current list of entry points.
 --
 -- Checks that no entry point with the same stage and name has already been defined.
 type family AddEntryPoint
-              ( k     :: Symbol                              )
-              ( s     :: SPIRV.Stage                         )
-              ( modes :: [ SPIRV.ExecutionMode Nat ]         )
-              ( decs  :: [ Symbol :-> SPIRV.Decoration Nat ] )
-              ( i     :: IxState                             )
+              ( k     :: Symbol                )
+              ( nfo   :: SPIRV.StageInfo Nat s )
+              ( i     :: IxState               )
               :: IxState where
-  AddEntryPoint k s modes decs ('IxState i ctx eps)
-    = 'IxState i 'TopLevel (InsertEntryPoint k s modes decs eps)
+  AddEntryPoint k nfo ('IxState i ctx eps)
+    = 'IxState i 'TopLevel (InsertEntryPointInfo ('EntryPointInfo k nfo) eps)
 
 -- | Auxiliary function for 'AddEntryPoint' which performs the check & appends.
-type family InsertEntryPoint
-              ( k     :: Symbol                                     )
-              ( s     :: SPIRV.Stage                                )
-              ( modes :: [ SPIRV.ExecutionMode Nat ]                )
-              ( decs  :: [ Symbol :-> SPIRV.Decoration Nat ]        )
-              ( eps   :: Map ( Symbol, SPIRV.Stage ) EntryPointInfo )
-              :: Map ( Symbol, SPIRV.Stage ) EntryPointInfo
+type family InsertEntryPointInfo
+              ( nfo   :: EntryPointInfo     )
+              ( eps   :: [ EntryPointInfo ] )
+              :: [ EntryPointInfo ]
               where
-  InsertEntryPoint k s modes decs '[]
-    = '[ '(k,s) ':-> '(modes, decs) ]
-  InsertEntryPoint k s modes decs ( ('(k,s) ':-> _) ': _ )
+  InsertEntryPointInfo nfo '[]
+    = '[ nfo ]
+  InsertEntryPointInfo
+    ( 'EntryPointInfo k (nfo  :: SPIRV.StageInfo Nat s1) )
+    ( 'EntryPointInfo l (nfo2 :: SPIRV.StageInfo Nat s2) ': eps )
+    = InsertEntryPointInfoWithComparison
+          ( CmpSymbol k l )
+          ( SPIRV.CmpStage s1 s2 )
+          ( 'EntryPointInfo k nfo  )
+          ( 'EntryPointInfo l nfo2 )
+          eps
+
+type family InsertEntryPointInfoWithComparison
+              ( cmpName  :: Ordering           )
+              ( cmpStage :: Ordering           )
+              ( nfo1     :: EntryPointInfo     )
+              ( nfo2     :: EntryPointInfo     )
+              ( nfos     :: [ EntryPointInfo ] )
+            :: [ EntryPointInfo ]
+            where
+  InsertEntryPointInfoWithComparison EQ EQ
+      ( 'EntryPointInfo k (_ :: SPIRV.StageInfo Nat s ) )
+      _
+      _
     = TypeError
         (    Text "'entryPoint': duplicate entry point declaration."
         :$$: Text "There already exists a " :<>: ShowType s
         :<>: Text " entry point with name " :<>: ShowType k :<>: Text "."
         )
-  InsertEntryPoint k s modes decs ( ep ': eps )
-    = ep ': InsertEntryPoint k s modes decs eps
+  InsertEntryPointInfoWithComparison cmpName cmpStage nfo1 nfo2 nfos
+    = If ( cmpName == LT || ( cmpName == EQ && cmpStage == LT ) )
+        ( nfo1 ': nfo2 ': nfos )
+        ( nfo2 ': InsertEntryPointInfo nfo1 nfos )
 
 
 -- | Check that an entry point definition is valid.
@@ -359,16 +375,15 @@ type family InsertEntryPoint
 --   * a function is defined within the entry point,
 --   * the name of a builtin for this entry point is already in use.
 type family ValidEntryPoint
-              ( k        :: Symbol      )
-              ( s        :: SPIRV.Stage )
-              ( i        :: IxState     )
-              ( l        :: BindingsMap )
-              ( builtins :: BindingsMap )
+              ( k        :: Symbol                )
+              ( nfo      :: SPIRV.StageInfo Nat s )
+              ( i        :: IxState               )
+              ( l        :: BindingsMap           )
             :: Constraint where
-  ValidEntryPoint k s ('IxState i _ _) l builtins
+  ValidEntryPoint k (nfo :: SPIRV.StageInfo Nat s) ('IxState i _ _) l
     = ( NoEntryPointNameConflict k (Lookup k i)
       , ValidLocalBehaviour s (Remove i l)
-      , BuiltinsDoNotAppearBefore s builtins i
+      , BuiltinsDoNotAppearBefore s (StageBuiltins nfo) i
       )
 
 type family NoEntryPointNameConflict

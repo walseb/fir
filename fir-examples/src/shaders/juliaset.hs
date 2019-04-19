@@ -68,7 +68,7 @@ gradient t colors
         i = convert ( (n-1) * t ) -- rounds down
         s :: AST Float
         s = (n-1) * t - convert i
-        
+
 
 sunset :: Array 9 (V 4 Float)
 sunset = mkArray . Array.fromList $
@@ -123,7 +123,7 @@ fragment = Program $ entryPoint @"main" @Fragment do
         #pos @(V 2 Float) #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
         #continue         #= Lit True
         #depth @Word32    #= 0
-    
+
         while #continue do
           pos   <- #pos
           depth <- #depth

@@ -41,7 +41,7 @@ import qualified GHC.Stack
 import GHC.TypeLits
   ( KnownSymbol, symbolVal )
 import GHC.TypeNats
-  ( KnownNat, natVal )
+  ( Nat, KnownNat, natVal )
 
 -- containers
 import Data.Tree
@@ -72,8 +72,6 @@ import Data.Type.List
   ( SLength )
 import FIR.Binding
   ( FunctionType, Var, Permission )
-import FIR.Builtin
-  ( StageBuiltins )
 import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
@@ -82,7 +80,7 @@ import FIR.Instances.Bindings
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
 import FIR.IxState
-  ( Context(..), IxState(..), EntryPoints )
+  ( Context(..), IxState(..), EntryPointInfos )
 import FIR.Prim.Image
   ( ImageOperands )
 import FIR.Prim.Op
@@ -97,6 +95,7 @@ import Math.Linear
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 import qualified SPIRV.Stage  as SPIRV
+  ( Stage, StageInfo )
 
 ------------------------------------------------------------
 -- main AST data type
@@ -139,24 +138,24 @@ data AST :: Type -> Type where
   -- | Defining a new function.
   --
   -- Meaning of type variables:
-  -- * k: function name,
+  -- * name: function name,
   -- * as: named function arguments,
   -- * b: function return type,
-  -- * l: bindings state at end of function definition (usually inferred),
+  -- * j_bds: bindings state at end of function definition (usually inferred),
   -- * i: monadic state at function definition site (usually inferred).
-  FunDef :: forall k as b l i.
+  FunDef :: forall name as b j_bds i.
             ( GHC.Stack.HasCallStack
-            , KnownSymbol k
+            , KnownSymbol name
             , KnownVars as
             , PrimTy b
-            , ValidFunDef k as i l
+            , ValidFunDef name as i j_bds
             )
-         => Proxy k  -- ^ Funtion name.
-         -> Proxy as -- ^ Function argument types.
-         -> Proxy b  -- ^ Function return type.
-         -> AST ( ( b := 'IxState l (Function k as) (EntryPoints i) )
-                    ( FunctionDefinitionStartState k as i )
-                -> ( FunctionType as b := AddFunBinding k as b i ) i
+         => Proxy name -- ^ Funtion name.
+         -> Proxy as   -- ^ Function argument types.
+         -> Proxy b    -- ^ Function return type.
+         -> AST ( ( b := 'IxState j_bds (Function name as) (EntryPointInfos i) )
+                    ( FunctionDefinitionStartState name as i )
+                -> ( FunctionType as b := AddFunBinding name as b i ) i
                 )
 
   -- | Defining a new entry point.
@@ -165,25 +164,23 @@ data AST :: Type -> Type where
   -- Code within an entry point is given access to additional builtins.
   --
   -- Meaning of type variables:
-  -- * k: entry point name,
-  -- * s: entry point stage,
-  -- * modes: execution modes for the entry point,
-  -- * decs: decorations for the interface of the entry point,
-  -- * l: bindings state at end of entry point definition (usually inferred),
+  -- * name: entry point name,
+  -- * stage: entry point stage,
+  -- * stageInfo: entry point stage info,
+  -- * j_bds: bindings state at end of entry point definition (usually inferred),
   -- * i: monadic state at entry point definition site (usually inferred),
-  -- * builtins: builtins for this entry point (usually inferred).
-  Entry :: forall k s modes decs l i builtins.
+  Entry :: forall name stage stageInfo j_bds i.
            ( GHC.Stack.HasCallStack
-           , KnownSymbol k
-           , Known SPIRV.Stage s
-           , ValidEntryPoint k s i l builtins
-           , builtins ~ StageBuiltins k s modes
+           , KnownSymbol name
+           , Known SPIRV.Stage stage
+           , Known (SPIRV.StageInfo Nat stage) stageInfo
+           , ValidEntryPoint name stageInfo i j_bds
            )
-         => Proxy k -- ^ Entry point name.
-         -> Proxy s -- ^ Entry point stage.
-         -> AST ( ( () := 'IxState l (EntryPoint k s) (EntryPoints i) )
-                    ( EntryPointStartState k s i builtins )
-                -> ( () := AddEntryPoint k s modes decs i ) i
+         => Proxy name  -- ^ Entry point name.
+         -> Proxy stage -- ^ Entry point stage.
+         -> AST ( ( () := 'IxState j_bds (EntryPoint name stageInfo) (EntryPointInfos i) )
+                    ( EntryPointStartState name stageInfo i )
+                -> ( () := AddEntryPoint name stageInfo i ) i
                 )
 
   -- | /Use/ an optic, returning a monadic value read from the (indexed) state.

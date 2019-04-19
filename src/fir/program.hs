@@ -21,7 +21,6 @@ similar to the interface for a shader module in @OpenGL@ or @Vulkan.
 
 module FIR.Program
   ( Procedure
-  , UndecoratedProgram
   , CodensityProgram
   , Program(Program)
   , programGlobals
@@ -49,7 +48,7 @@ import "text-utf8" Data.Text
 import Control.Monad.Indexed
   ( (:=), Codensity )
 import Data.Type.Map
-  ( (:->), InsertionSort )
+  ( (:->) )
 import FIR.AST
   ( AST )
 import FIR.Definition
@@ -72,11 +71,6 @@ import qualified SPIRV.PrimTy as SPIRV
 type Procedure (a :: Type) (i :: IxState) (j :: IxState)
   = Codensity AST (AST a := j) i
 
-type UndecoratedProgram
-    ( defs :: [ Symbol :-> Definition ] )
-    ( a    :: Type                      )
-  = ( CodensityProgram (StartState defs) (EndState defs) a :: Type )
-
 type family CodensityProgram
     ( i :: IxState ) -- available data at the start (e.g. uniforms)
     ( j :: IxState ) -- everything in 'i', plus top-level functions and entry-points of the program
@@ -96,7 +90,7 @@ data Program
       ( a    :: Type                      )
     :: Type where
   Program :: ( KnownDefinitions defs )
-          => UndecoratedProgram (InsertionSort defs) a
+          => CodensityProgram (StartState defs) (EndState defs) a
           -> Program defs a
 
 programGlobals :: forall bds j ctx eps a.

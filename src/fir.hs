@@ -254,7 +254,7 @@ instance DrawableProgram (AST a) where
 instance DrawableProgram (Codensity AST (AST a := j) i) where
   draw = drawTree . toTree . toAST
 instance ( DrawableProgram
-             ( UndecoratedProgram (InsertionSort defs) a )
+             ( CodensityProgram (StartState defs) (EndState defs) a )
          )
       => DrawableProgram (Program defs a)
       where

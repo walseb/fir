@@ -36,7 +36,7 @@ import Data.Type.List
 import Data.Type.Maybe
   ( IsJust )
 import SPIRV.Stage
-  ( Stage(..) )
+  ( Stage(..), StageInfo(..) )
 
 --------------------------------------------------
 -- execution modes
@@ -239,49 +239,32 @@ type family ValidStagesFor (mode :: ExecutionMode Nat) :: [ Stage ] where
     = '[ Vertex, TessellationControl, TessellationEvaluation, Geometry, Fragment, GLCompute, Kernel ]
 
 
-data StageExecutionInfo (s :: Stage) where
-  VertexInfo
-    :: StageExecutionInfo 'Vertex
-  TessellationControlInfo
-    :: Nat -- input size
-    -> Nat -- output size
-    -> StageExecutionInfo 'TessellationControl
-  TessellationEvaluationInfo
-    :: Nat -- input size
-    -> StageExecutionInfo 'TessellationEvaluation
-  GeometryInfo
-    :: Nat -- input size
-    -> StageExecutionInfo 'Geometry
-  FragmentInfo
-    :: StageExecutionInfo 'Fragment
-  GLComputeInfo
-    :: StageExecutionInfo 'GLCompute
-  KernelInfo
-    :: StageExecutionInfo 'Kernel
-
 type family Unreachable :: k where
 
-type family Named (k :: Symbol) (s :: Stage) :: Symbol where
-  Named k Vertex   = "Vertex shader named" `AppendSymbol` k
-  Named k TessellationControl = "Tessellation control shader named " `AppendSymbol` k
-  Named k TessellationEvaluation = "Tessellation evaluation shader named " `AppendSymbol` k
-  Named k Geometry = "Geometry shader named " `AppendSymbol` k
-  Named k Fragment = "Fragment shader named " `AppendSymbol` k
-  Named k GLCompute = "Compute shader named " `AppendSymbol` k
-  Named k Kernel = "Compute kernel named " `AppendSymbol` k
+type family Quote (k :: Symbol) :: Symbol where
+  Quote k = "\"" `AppendSymbol` k `AppendSymbol` "\""
 
-type family ValidateExecutionModes (k :: Symbol) ( s :: Stage ) ( modes :: [ExecutionMode Nat] ) :: StageExecutionInfo s where
+type family Named (k :: Symbol) (s :: Stage) :: Symbol where
+  Named k Vertex   = "Vertex shader named" `AppendSymbol` Quote k
+  Named k TessellationControl = "Tessellation control shader named " `AppendSymbol` Quote k
+  Named k TessellationEvaluation = "Tessellation evaluation shader named " `AppendSymbol` Quote k
+  Named k Geometry = "Geometry shader named " `AppendSymbol` Quote k
+  Named k Fragment = "Fragment shader named " `AppendSymbol` Quote k
+  Named k GLCompute = "Compute shader named " `AppendSymbol` Quote k
+  Named k Kernel = "Compute kernel named " `AppendSymbol` Quote k
+
+type family ValidateExecutionModes (k :: Symbol) ( s :: Stage ) ( modes :: [ExecutionMode Nat] ) :: Maybe (StageInfo Nat s) where
   ValidateExecutionModes k Fragment modes
     = If (  HasOneOf k Fragment '[ OriginLowerLeft, OriginUpperLeft ] modes
          && HasAtMostOneOf k Fragment '[ DepthGreater, DepthLess, DepthUnchanged ] modes
          && PertainTo k Fragment modes
          )
-        FragmentInfo
-        Unreachable
+        ( Just FragmentInfo )
+        Nothing
   ValidateExecutionModes k Vertex modes
     = If ( PertainTo k Vertex modes )
-         VertexInfo
-         Unreachable
+         ( Just VertexInfo )
+         Nothing
   ValidateExecutionModes k TessellationControl modes
   -- require that the tessellation control shader specifies tessellation info
   -- (will ignore all conflicting info provided by the tessellation evaluation shader)
@@ -290,32 +273,34 @@ type family ValidateExecutionModes (k :: Symbol) ( s :: Stage ) ( modes :: [Exec
          && HasAtMostOneOf k TessellationControl '[ VertexOrderCw, VertexOrderCcw ] modes
          && PertainTo      k TessellationEvaluation modes
          )
-        ( TessellationControlInfo
-            ( TessellationControlMaxPatchVertices k modes )
-            ( TessellationControlOutputSize       k modes )
+        ( Just 
+            ( TessellationControlInfo
+              ( TessellationControlMaxPatchVertices k modes )
+              ( TessellationControlOutputSize       k modes )
+            )
         )
-        Unreachable
+        Nothing
   ValidateExecutionModes k TessellationEvaluation modes
     = If (  HasAtMostOneOf k TessellationEvaluation '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
          && HasOneOf       k TessellationEvaluation '[ Triangles, Quads, Isolines ] modes
          && HasAtMostOneOf k TessellationEvaluation '[ VertexOrderCw, VertexOrderCcw ] modes
          && PertainTo      k TessellationEvaluation modes
          )
-        ( TessellationEvaluationInfo 32 )
+        ( Just ( TessellationEvaluationInfo 32 ) )
         --        default value  ----^^ 
-        Unreachable
+        Nothing
   ValidateExecutionModes k Geometry modes
     = If ( HasOneOf k Geometry '[ OutputPoints, OutputLineStrip, OutputTriangleStrip ] modes )
-        ( GeometryInfo (GeometryInputSize k modes) )
-        Unreachable
+        ( Just ( GeometryInfo (GeometryInputSize k modes) ) )
+        Nothing
   ValidateExecutionModes k GLCompute modes
     = If ( PertainTo k GLCompute modes )
-        GLComputeInfo
-        Unreachable
+        ( Just GLComputeInfo )
+        Nothing
   ValidateExecutionModes k Kernel modes
     = If ( PertainTo k Kernel modes )
-        KernelInfo
-        Unreachable
+        ( Just KernelInfo )
+        Nothing
 
 type family PertainTo (k :: Symbol) (s :: Stage) (modes :: [ExecutionMode Nat]) :: Bool where
   PertainTo _ _ '[] = True

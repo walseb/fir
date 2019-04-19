@@ -21,8 +21,12 @@ Indexed monadic state used to keep track of context in the AST.
 module FIR.IxState where
 
 -- base
+import Data.Word
+  ( Word32 )
 import GHC.TypeLits
-  ( Symbol, KnownSymbol )
+  ( Symbol, KnownSymbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats
   ( Nat )
 
@@ -35,40 +39,32 @@ import Data.Type.Known
   ( Demotable(Demote)
   , Known(known), knownValue
   )
-import Data.Type.Map
-  ( (:->), Map )
 import FIR.Binding
   ( BindingsMap
   , Permission
   )
 import FIR.Prim.Singletons
   ( KnownVars(knownVars) )
-import qualified SPIRV.Decoration as SPIRV
-  ( Decoration )
-import qualified SPIRV.ExecutionMode as SPIRV
-  ( ExecutionMode )
 import qualified SPIRV.PrimTy as SPIRV
   ( PrimTy )
 import qualified SPIRV.Stage as SPIRV
-  ( Stage )
-
+  ( Stage, StageInfo )
 
 -------------------------------------------------------------------
 -- | Data (kind) used to keep track of context at the type-level.
-data Context s as
-  = TopLevel
-  | Function s as
-  | EntryPoint
-      s           -- ^ stage name
-      SPIRV.Stage -- ^ stage (= execution model)
+data Context lit nat bindings where
+  TopLevel :: Context lit nat bindings
+  Function :: lit -> bindings -> Context lit nat bindings
+  EntryPoint :: lit -> SPIRV.StageInfo nat stage -> Context lit nat bindings
 
 -- type-level context
 type TLContext
-  = Context Symbol BindingsMap
+  = Context Symbol Nat BindingsMap
 -- value-level context
 type VLContext
   = Context
       Text
+      Word32
       [ ( Text, (SPIRV.PrimTy, [Permission]) ) ]
 
 instance Demotable TLContext where
@@ -77,39 +73,55 @@ instance Demotable TLContext where
 instance Known TLContext 'TopLevel where
   known = TopLevel
 instance ( KnownVars args
-         , KnownSymbol fn
+         , KnownSymbol fnName
          )
-       => Known TLContext (Function fn args) where
+       => Known TLContext ('Function fnName args) where
   known = Function
-            ( knownValue @fn   )
-            ( knownVars  @args )
-instance ( Known SPIRV.Stage stage
+            ( knownValue @fnName )
+            ( knownVars  @args   )
+instance ( Known (SPIRV.StageInfo Nat stage) stageInfo
          , KnownSymbol stageName
          )
-      => Known TLContext (EntryPoint stageName stage) where
+      => Known TLContext ('EntryPoint stageName (stageInfo :: SPIRV.StageInfo Nat stage)) where
   known = EntryPoint
             ( knownValue @stageName )
-            ( knownValue @stage     )
+            ( knownValue @stageInfo )
 
-type EntryPointInfo
-  = ( [ SPIRV.ExecutionMode Nat ]
-    , [ Symbol :-> SPIRV.Decoration Nat ]
-    )
+data EntryPointInfo where
+  EntryPointInfo
+    :: Symbol -> SPIRV.StageInfo Nat stage -> EntryPointInfo
 
-data IxState
-  = IxState
-      { bindings :: BindingsMap
-      , context  :: TLContext
-      , entryPoints
-          :: Map ( Symbol, SPIRV.Stage ) EntryPointInfo
-      }
+data IxState where
+  IxState
+    :: { bindings :: BindingsMap
+       , context  :: TLContext
+       , entryPoints
+           :: [ EntryPointInfo ]
+       }
+    -> IxState
 
-type family EntryPoints
-             ( s :: IxState )
-             :: Map ( Symbol, SPIRV.Stage ) EntryPointInfo
-             where
-  EntryPoints ('IxState _ _ eps) = eps
+type family EntryPointInfos ( s :: IxState ) :: [ EntryPointInfo ] where
+  EntryPointInfos ('IxState _ _ eps) = eps
+
 
 type family StageContext ( s :: IxState ) :: Maybe SPIRV.Stage where
-  StageContext ('IxState _ ('EntryPoint _ stage) _) = Just stage
-  StageContext _ = 'Nothing
+  StageContext' ('IxState _ ('EntryPoint _ (info :: SPIRV.StageInfo Nat stage)) _)
+    = Just stage
+  StageContext' _
+    = Nothing
+
+
+type family StageContext' ( s :: IxState ) :: SPIRV.Stage where
+  StageContext' ('IxState _ ('EntryPoint _ (info :: SPIRV.StageInfo Nat stage)) _)
+    = stage
+  StageContext' _
+    = TypeError
+        ( 'Text "Cannot access stage context: not within a stage." )
+
+type family StageInfoContext
+                ( s :: IxState )
+              :: Maybe (SPIRV.StageInfo Nat (StageContext' s))
+                where
+  StageInfoContext ('IxState _ ('EntryPoint _ info) _)
+    = Just info
+  StageInfoContext _ = 'Nothing
