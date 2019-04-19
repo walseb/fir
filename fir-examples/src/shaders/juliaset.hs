@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeOperators          #-}
 
-module Shaders.Julia where
+module Shaders.JuliaSet where
 
 -- base
 import GHC.TypeNats
@@ -72,7 +72,7 @@ gradient t colors
 
 sunset :: Array 9 (V 4 Float)
 sunset = mkArray . Array.fromList $
-       [ V4 0    0    0    1
+       [ V4 0    0    0    0
        , V4 0.28 0.1  0.38 1
        , V4 0.58 0.2  0.38 1
        , V4 0.83 0.3  0.22 1
@@ -127,7 +127,7 @@ fragment = Program $ entryPoint @"main" @Fragment do
         while #continue do
           pos   <- #pos
           depth <- #depth
-          if ( pos ^.^ pos > 8 || depth > maxDepth )
+          if ( pos ^.^ pos > 4 || depth > maxDepth )
             then ( #continue .= Lit False )
             else do
               #pos   .= complexSquare pos ^+^ Vec2 ((mx-960)/600) ((my-540)/600)
@@ -152,8 +152,8 @@ fragment = Program $ entryPoint @"main" @Fragment do
 -- compiling
 
 vertPath, fragPath :: FilePath
-vertPath = "src/shaders/julia_vert.spv"
-fragPath = "src/shaders/julia_frag.spv"
+vertPath = "src/shaders/juliaset_vert.spv"
+fragPath = "src/shaders/juliaset_frag.spv"
 
 compileVertexShader :: IO ( Either Text Text )
 compileVertexShader = compile vertPath [] vertex

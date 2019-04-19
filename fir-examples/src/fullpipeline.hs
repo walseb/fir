@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 
-module Julia ( julia ) where
+module FullPipeline ( fullPipeline ) where
 
 -- base
 import Control.Monad
@@ -49,6 +49,10 @@ import Control.Monad.Managed
 import qualified SDL
 import qualified SDL.Event
 
+-- storable-tuple
+import Foreign.Storable.Tuple
+  ( )
+
 -- text-utf8
 import "text-utf8" Data.Text
   ( Text )
@@ -74,12 +78,9 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 import FIR
   ( runCompilationsTH )
 import Math.Linear
-  ( V, pattern V2, pattern V3
-  , (^+^), (*^)
-  )
 
 -- fir-examples
-import Shaders.Julia
+import Shaders.FullPipeline
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
@@ -91,20 +92,23 @@ import Vulkan.SDL
 shaderCompilationResult :: Either Text Text
 shaderCompilationResult
   = $( runCompilationsTH
-        [ ("Vertex shader"  , compileVertexShader   )
-        , ("Fragment shader", compileFragmentShader )
+        [ ("Vertex shader"                 , compileVertexShader                 )
+        , ("Tessellation control shader"   , compileTessellationControlShader    )
+        , ("Tessellation evaluation shader", compileTessellationEvaluationShader )
+        , ("Geometry shader"               , compileGeometryShader               )
+        , ("Fragment shader"               , compileFragmentShader               )
         ]
      )
 
-julia :: IO ()
-julia = ( runManaged . ( `evalStateT` initialState ) ) do
+fullPipeline :: IO ()
+fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
     Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err)
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
   enableSDLLogging
-  initializeSDL SDL.AbsoluteLocation
+  initializeSDL SDL.RelativeLocation -- relative mouse location
   window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
@@ -116,7 +120,10 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
   queueFamilyIndex <- logMsg "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice
 
   let features :: Maybe Vulkan.VkPhysicalDeviceFeatures
-      features = Just $ Vulkan.createVk ( Vulkan.set @"geometryShader" Vulkan.VK_TRUE )
+      features = Just $ Vulkan.createVk
+          (  Vulkan.set @"geometryShader"     Vulkan.VK_TRUE
+          &* Vulkan.set @"tessellationShader" Vulkan.VK_TRUE
+          )
   device           <- logMsg "Creating logical device"       *> createLogicalDevice  physicalDevice queueFamilyIndex features
   surface          <- logMsg "Creating SDL surface"          *> createSurface window vulkanInstance
 
@@ -127,6 +134,9 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
         = VkSurfaceFormatKHR
             Vulkan.VK_FORMAT_B8G8R8A8_UNORM
             Vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+
+      depthFmt :: Vulkan.VkFormat
+      depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
 
   surfaceFormat@(~(VkSurfaceFormatKHR colFmt _)) <-
     logMsg "Choosing swapchain format & color space"
@@ -152,7 +162,7 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
             )
 
   swapchainImages <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
-  renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt
+  renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt depthFmt
 
   framebuffersWithAttachments <- logMsg "Creating frame buffers"
     *> ( for swapchainImages $ \swapchainImage -> do
@@ -175,25 +185,46 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
                   [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                   , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                   ]
-          let attachments = [ (swapchainImage, colorImageView) ]
+          (depthImage, _)
+            <- createImage physicalDevice device
+                  Vulkan.VK_IMAGE_TYPE_2D
+                  extent3D
+                  depthFmt
+                  Vulkan.VK_IMAGE_TILING_OPTIMAL
+                  Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                  [ ]
+          depthImageView
+            <- createImageView device depthImage
+                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                  depthFmt
+                  Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
+          let attachments = [ (swapchainImage, colorImageView)
+                            , (depthImage    , depthImageView)
+                            ]
           framebuffer <- createFramebuffer device renderPass extent (map snd attachments)
           pure (framebuffer, attachments, (screenshotImage, screenshotImageMemory))
        )
 
   let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
-      clearValues = [ pinkClear ]
+      clearValues = [ tealClear
+                    , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
+                    ]
         where
-          pink :: Vulkan.VkClearColorValue
-          pink =
+          teal :: Vulkan.VkClearColorValue
+          teal =
             Vulkan.createVk
-              (  Vulkan.setAt @"float32" @0 1.0
+              (  Vulkan.setAt @"float32" @0 0.1
               &* Vulkan.setAt @"float32" @1 0.5
               &* Vulkan.setAt @"float32" @2 0.7
               &* Vulkan.setAt @"float32" @3 1
               )
 
-          pinkClear :: Vulkan.VkClearValue
-          pinkClear = Vulkan.createVk ( Vulkan.set @"color" pink )
+          tealClear :: Vulkan.VkClearValue
+          tealClear = Vulkan.createVk ( Vulkan.set @"color"  teal )
+
+          depthStencilClear :: Vulkan.VkClearDepthStencilValue
+          depthStencilClear = Vulkan.createVk
+            ( Vulkan.set @"depth" 1 &* Vulkan.set @"stencil" 0 )
 
   commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
   queue       <- getQueue device 0
@@ -211,31 +242,64 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let
 
-    viewportVertices :: [ V 3 Foreign.C.CFloat ]
-    viewportVertices =
-      [ V3 (-1) (-1) 0
-      , V3 (-1)   1  0
-      , V3   1 (-1)  0
-      , V3   1   1   0
+    phi :: Foreign.C.CFloat
+    phi = 0.5 + sqrt 1.25
+
+    icosahedronVerts :: [ V 2 ( V 3 Foreign.C.CFloat) ]
+    icosahedronVerts =
+      [ V2 ( V3    0     1    phi  ) ( V3 0    1    0    )
+      , V2 ( V3    0   (-1)   phi  ) ( V3 0    0.75 0.25 )
+      , V2 ( V3    0     1  (-phi) ) ( V3 0    0.25 0.75 )
+      , V2 ( V3    0   (-1) (-phi) ) ( V3 0    0    1    )
+      , V2 ( V3    1    phi    0   ) ( V3 1    0    0    )
+      , V2 ( V3  (-1)   phi    0   ) ( V3 0.75 0.25 0    )
+      , V2 ( V3    1  (-phi)   0   ) ( V3 0.25 0.75 0    )
+      , V2 ( V3  (-1) (-phi)   0   ) ( V3 0    1    0    )
+      , V2 ( V3   phi    0     1   ) ( V3 1    0    0    )
+      , V2 ( V3   phi    0   (-1)  ) ( V3 0.75 0    0.25 )
+      , V2 ( V3 (-phi)   0     1   ) ( V3 0.25 0    0.75 )
+      , V2 ( V3 (-phi)   0   (-1)  ) ( V3 0    0    1    )
       ]
 
-    viewportIndices :: [ Foreign.Word32 ]
-    viewportIndices
-      = [ 0, 1, 2
-        , 2, 1, 3
+    icosahedronIndices :: [ Foreign.Word32 ]
+    icosahedronIndices
+      = [ 0,  1,  8
+        , 0, 10,  1
+        , 0,  4,  5
+        , 0,  8,  4
+        , 0,  5, 10
+        , 1,  7,  6
+        , 1,  6,  8
+        , 1, 10,  7
+        , 2,  9,  3
+        , 2,  3, 11
+        , 2,  5,  4
+        , 2,  4,  9
+        , 2, 11,  5
+        , 3,  6,  7
+        , 3,  9,  6
+        , 3,  7, 11
+        , 4,  8,  9
+        , 5, 11, 10
+        , 6,  9,  8
+        , 7, 10, 11
         ]
 
-  (vertexBuffer, _) <- createVertexBuffer physicalDevice device viewportVertices
+  (vertexBuffer, _) <- createVertexBuffer physicalDevice device icosahedronVerts
 
-  (indexBuffer, _) <- createIndexBuffer physicalDevice device viewportIndices
+  (indexBuffer, _) <- createIndexBuffer physicalDevice device icosahedronIndices
 
-  (mousePosUniformBuffer, mousePosUniformPtr)
+  let initialMVP = modelViewProjection initialObserver Nothing
+      initialOrig :: V 4 Foreign.C.CFloat
+      initialOrig = V4 0 0 0 1 ^*! initialMVP
+
+  (ubo, uboPtr)
     <- createUniformBuffer
           physicalDevice
           device
-          (V2 0 0)
+          (initialMVP, initialOrig)
 
-  updateDescriptorSet device descriptorSet mousePosUniformBuffer
+  updateDescriptorSet device descriptorSet ubo
 
   let
     mkCommandBuffer
@@ -285,7 +349,7 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
 
           Vulkan.vkCmdDrawIndexed
             commandBuffer
-            ( fromIntegral ( length viewportIndices ) )
+            ( fromIntegral ( length icosahedronIndices ) )
             1
             0
             0
@@ -438,28 +502,25 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
 
     inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
     prevInput <- use _input
-    let
-      prevAction = interpretInput prevInput
-      newInput = foldl onSDLInput prevInput inputEvents
-      action   = interpretInput newInput
-    pos <- 
-      if locate action
-      then do SDL.setMouseLocationMode SDL.RelativeLocation
-              -- precision mode
-              pure ( mousePos prevInput ^+^ ( 10 *^ mouseRel newInput ) )
-      else do SDL.setMouseLocationMode SDL.AbsoluteLocation
-              -- smooth out mouse movement slightly
-              let pos@(V2 px py) = 0.5 *^ ( mousePos prevInput ^+^ mousePos newInput )
-              when (locate prevAction)
-                ( SDL.warpMouse SDL.WarpCurrentFocus (SDL.P (SDL.V2 (round px) (round py))) )
-              pure pos
-    assign _input ( newInput { mousePos = pos, mouseRel = pure 0 } )
+    let newInput = foldl onSDLInput prevInput inputEvents
+    let action = interpretInput newInput
+    assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
 
     ----------------
     -- simulation
 
+    oldObserver <- use _observer
+    let (observer, orientation) = oldObserver `move` action
+    assign _observer observer
+
+    let mvp = modelViewProjection observer (Just orientation)
+        origin = V4 0 0 0 1 ^*! mvp
+
+    when ( locate action )
+      ( liftIO $ putStrLn ( show observer ) )
+
     -- update MVP
-    liftIO ( Foreign.poke mousePosUniformPtr pos )
+    liftIO ( Foreign.poke uboPtr (mvp, origin) )
 
     ----------------
     -- rendering
@@ -505,7 +566,7 @@ julia = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/julia.png" imageData
+        writePng "screenshots/example1.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 
@@ -524,8 +585,9 @@ createRenderPass
   :: MonadManaged m
   => Vulkan.VkDevice
   -> Vulkan.VkFormat
+  -> Vulkan.VkFormat
   -> m Vulkan.VkRenderPass
-createRenderPass dev colorFormat =
+createRenderPass dev colorFormat depthFormat =
   let
 
     colorAttachmentDescription :: Vulkan.VkAttachmentDescription
@@ -549,6 +611,26 @@ createRenderPass dev colorFormat =
         &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
         )
 
+    depthAttachmentDescription :: Vulkan.VkAttachmentDescription
+    depthAttachmentDescription =
+      Vulkan.createVk
+        (  Vulkan.set @"flags"          0
+        &* Vulkan.set @"format"         depthFormat
+        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
+        &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
+        &* Vulkan.set @"storeOp"        Vulkan.VK_ATTACHMENT_STORE_OP_STORE
+        &* Vulkan.set @"stencilLoadOp"  Vulkan.VK_ATTACHMENT_LOAD_OP_DONT_CARE
+        &* Vulkan.set @"stencilStoreOp" Vulkan.VK_ATTACHMENT_STORE_OP_DONT_CARE
+        &* Vulkan.set @"initialLayout"  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+        &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        )
+
+    depthAttachmentReference :: Vulkan.VkAttachmentReference
+    depthAttachmentReference =
+      Vulkan.createVk
+        (  Vulkan.set @"attachment" 1
+        &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        )
 
     subpass :: Vulkan.VkSubpassDescription
     subpass =
@@ -559,6 +641,7 @@ createRenderPass dev colorFormat =
               @"colorAttachmentCount"
               @"pColorAttachments"
               [ colorAttachmentReference ]
+        &* Vulkan.setVkRef @"pDepthStencilAttachment" depthAttachmentReference
         &* Vulkan.setListCountAndRef @"inputAttachmentCount"    @"pInputAttachments"    []
         &* Vulkan.setListCountAndRef @"preserveAttachmentCount" @"pPreserveAttachments" []
         &* Vulkan.set @"pResolveAttachments" Vulkan.vkNullPtr
@@ -602,7 +685,7 @@ createRenderPass dev colorFormat =
         &* Vulkan.setListCountAndRef
               @"attachmentCount"
               @"pAttachments"
-              [ colorAttachmentDescription ]
+              [ colorAttachmentDescription, depthAttachmentDescription ]
         &* Vulkan.setListCountAndRef
               @"subpassCount"
               @"pSubpasses"
@@ -649,8 +732,11 @@ createGraphicsPipeline device renderPass extent layout0 = do
       ( Vulkan.vkCreatePipelineLayout  device ( Vulkan.unsafePtr pipelineLayoutCreateInfo ) )
       ( Vulkan.vkDestroyPipelineLayout device )
 
-  vertexShader   <- loadShader device vertPath
-  fragmentShader <- loadShader device fragPath
+  vertexShader                 <- loadShader device vertPath
+  tessellationControlShader    <- loadShader device tescPath
+  tessellationEvaluationShader <- loadShader device tesePath
+  geometryShader               <- loadShader device geomPath
+  fragmentShader               <- loadShader device fragPath
 
   let
     rasterizationCreateInfo :: Vulkan.VkPipelineRasterizationStateCreateInfo
@@ -680,6 +766,36 @@ createGraphicsPipeline device renderPass extent layout0 = do
         &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_VERTEX_BIT
         )
 
+    tescShaderStage =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
+        &* Vulkan.set @"pNext"        Vulkan.VK_NULL
+        &* Vulkan.set @"flags"        0
+        &* Vulkan.setStrRef @"pName"  "main"
+        &* Vulkan.set @"module"       tessellationControlShader
+        &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT
+        )
+
+    teseShaderStage =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
+        &* Vulkan.set @"pNext"        Vulkan.VK_NULL
+        &* Vulkan.set @"flags"        0
+        &* Vulkan.setStrRef @"pName"  "main"
+        &* Vulkan.set @"module"       tessellationEvaluationShader
+        &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
+        )
+
+    geometryShaderStage =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
+        &* Vulkan.set @"pNext"        Vulkan.VK_NULL
+        &* Vulkan.set @"flags"        0
+        &* Vulkan.setStrRef @"pName"  "main"
+        &* Vulkan.set @"module"       geometryShader
+        &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT
+        )
+
     fragmentShaderStage =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
@@ -694,7 +810,7 @@ createGraphicsPipeline device renderPass extent layout0 = do
     vertexBindingDescription =
       Vulkan.createVk
         (  Vulkan.set @"binding"   0
-        &* Vulkan.set @"stride"    ( fromIntegral ( Foreign.sizeOf ( undefined :: V 3 Foreign.C.CFloat ) ) )
+        &* Vulkan.set @"stride"    ( fromIntegral ( Foreign.sizeOf ( undefined :: V 2 ( V 3 Foreign.C.CFloat ) ) ) )
         &* Vulkan.set @"inputRate" Vulkan.VK_VERTEX_INPUT_RATE_VERTEX
         )
 
@@ -704,6 +820,14 @@ createGraphicsPipeline device renderPass extent layout0 = do
         &* Vulkan.set @"binding"  0
         &* Vulkan.set @"format"   Vulkan.VK_FORMAT_R32G32B32_SFLOAT
         &* Vulkan.set @"offset"   0
+        )
+
+    colorAttributeDescription =
+      Vulkan.createVk
+        (  Vulkan.set @"location" 1
+        &* Vulkan.set @"binding"  0
+        &* Vulkan.set @"format"  Vulkan.VK_FORMAT_R32G32B32_SFLOAT
+        &* Vulkan.set @"offset"  ( fromIntegral ( Foreign.sizeOf ( undefined :: V 3 Foreign.C.CFloat ) ) )
         )
 
     vertexInputState =
@@ -717,15 +841,25 @@ createGraphicsPipeline device renderPass extent layout0 = do
         &* Vulkan.setListCountAndRef
                 @"vertexAttributeDescriptionCount"
                 @"pVertexAttributeDescriptions"
-                [ positionAttributeDescription ]
+                [ positionAttributeDescription
+                , colorAttributeDescription
+                ]
         )
 
     assemblyStateCreateInfo =
       Vulkan.createVk
         (  Vulkan.set @"sType"    Vulkan.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
         &* Vulkan.set @"pNext"    Vulkan.VK_NULL
-        &* Vulkan.set @"topology" Vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+        &* Vulkan.set @"topology" Vulkan.VK_PRIMITIVE_TOPOLOGY_PATCH_LIST
         &* Vulkan.set @"primitiveRestartEnable" Vulkan.VK_FALSE
+        )
+
+    tessellationState =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO
+        &* Vulkan.set @"pNext" Vulkan.VK_NULL
+        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"patchControlPoints" 3
         )
 
     viewport =
@@ -798,6 +932,35 @@ createGraphicsPipeline device renderPass extent layout0 = do
         &* Vulkan.setListCountAndRef @"attachmentCount" @"pAttachments" [ attachmentState ]
         )
 
+    nullStencilOp :: Vulkan.VkStencilOpState
+    nullStencilOp =
+      Vulkan.createVk
+        (  Vulkan.set @"reference"   0
+        &* Vulkan.set @"writeMask"   0
+        &* Vulkan.set @"compareMask" 0
+        &* Vulkan.set @"compareOp"   Vulkan.VK_COMPARE_OP_EQUAL
+        &* Vulkan.set @"depthFailOp" Vulkan.VK_STENCIL_OP_KEEP
+        &* Vulkan.set @"passOp"      Vulkan.VK_STENCIL_OP_KEEP
+        &* Vulkan.set @"failOp"      Vulkan.VK_STENCIL_OP_KEEP
+        )
+
+    depthStencilState :: Vulkan.VkPipelineDepthStencilStateCreateInfo
+    depthStencilState =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
+        &* Vulkan.set @"pNext" Vulkan.VK_NULL
+        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"depthTestEnable"   Vulkan.VK_TRUE
+        &* Vulkan.set @"depthWriteEnable"  Vulkan.VK_TRUE
+        &* Vulkan.set @"depthCompareOp"    Vulkan.VK_COMPARE_OP_LESS_OR_EQUAL
+        &* Vulkan.set @"depthBoundsTestEnable" Vulkan.VK_FALSE
+        &* Vulkan.set @"maxDepthBounds"    1
+        &* Vulkan.set @"minDepthBounds"    0
+        &* Vulkan.set @"stencilTestEnable" Vulkan.VK_FALSE
+        &* Vulkan.set @"front" nullStencilOp
+        &* Vulkan.set @"back"  nullStencilOp
+        )
+
     createInfo =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO
@@ -807,9 +970,13 @@ createGraphicsPipeline device renderPass extent layout0 = do
                 @"stageCount"
                 @"pStages"
                 [ vertexShaderStage
+                , tescShaderStage
+                , teseShaderStage
+                , geometryShaderStage
                 , fragmentShaderStage
                 ]
         &* Vulkan.setVkRef @"pVertexInputState"   vertexInputState
+        &* Vulkan.setVkRef @"pTessellationState"  tessellationState
         &* Vulkan.set      @"basePipelineIndex"   0
         &* Vulkan.set      @"subpass"             0
         &* Vulkan.set      @"renderPass"          renderPass
@@ -819,6 +986,7 @@ createGraphicsPipeline device renderPass extent layout0 = do
         &* Vulkan.setVkRef @"pViewportState"      viewportState
         &* Vulkan.setVkRef @"pMultisampleState"   multisampleState
         &* Vulkan.setVkRef @"pColorBlendState"    colorBlendState
+        &* Vulkan.setVkRef @"pDepthStencilState"  depthStencilState
         )
 
   pipeline <-
@@ -844,7 +1012,10 @@ createDescriptorSetLayout device = do
         (  Vulkan.set @"binding" 0
         &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
         &* Vulkan.set @"descriptorCount" 1
-        &* Vulkan.set @"stageFlags" Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT
+        &* Vulkan.set @"stageFlags"
+              (   Vulkan.VK_SHADER_STAGE_VERTEX_BIT
+              .|. Vulkan.VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
+              )
         &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
         )
 

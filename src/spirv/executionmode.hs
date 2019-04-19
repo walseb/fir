@@ -285,10 +285,10 @@ type family ValidateExecutionModes (k :: Symbol) ( s :: Stage ) ( modes :: [Exec
   ValidateExecutionModes k TessellationControl modes
   -- require that the tessellation control shader specifies tessellation info
   -- (will ignore all conflicting info provided by the tessellation evaluation shader)
-    = If (  HasOneOf k TessellationControl '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
-         && HasOneOf k TessellationControl '[ Triangles, Quads, Isolines ] modes
-         && HasOneOf k TessellationControl '[ VertexOrderCw, VertexOrderCcw ] modes
-         && PertainTo k TessellationEvaluation modes
+    = If (  HasOneOf       k TessellationControl '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
+         && HasAtMostOneOf k TessellationControl '[ Triangles, Quads, Isolines ] modes
+         && HasAtMostOneOf k TessellationControl '[ VertexOrderCw, VertexOrderCcw ] modes
+         && PertainTo      k TessellationEvaluation modes
          )
         ( TessellationControlInfo
             ( TessellationControlMaxPatchVertices k modes )
@@ -297,9 +297,9 @@ type family ValidateExecutionModes (k :: Symbol) ( s :: Stage ) ( modes :: [Exec
         Unreachable
   ValidateExecutionModes k TessellationEvaluation modes
     = If (  HasAtMostOneOf k TessellationEvaluation '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
-         && HasAtMostOneOf k TessellationEvaluation '[ Triangles, Quads, Isolines ] modes
+         && HasOneOf       k TessellationEvaluation '[ Triangles, Quads, Isolines ] modes
          && HasAtMostOneOf k TessellationEvaluation '[ VertexOrderCw, VertexOrderCcw ] modes
-         && PertainTo k TessellationEvaluation modes
+         && PertainTo      k TessellationEvaluation modes
          )
         ( TessellationEvaluationInfo 32 )
         --        default value  ----^^ 

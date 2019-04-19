@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Shaders.Example1 where
+module Shaders.FullPipeline where
 
 -- text-utf8
 import "text-utf8" Data.Text
@@ -33,8 +33,12 @@ type VertexDefs =
   '[ "in_position"  ':-> Input  '[ Location 0 ] (V 3 Float)
    , "in_colour"    ':-> Input  '[ Location 1 ] (V 3 Float)
    , "out_colour"   ':-> Output '[ Location 0 ] (V 4 Float)
-   , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ] --, Block ]
-                          ( Struct '[ "mvp" ':-> M 4 4 Float ] )
+   , "origin"       ':-> Output '[ Location 1 ] (V 4 Float)
+   , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+                          ( Struct '[ "mvp"    ':-> M 4 4 Float
+                                    , "origin" ':-> V 4 Float
+                                    ]
+                          )
    , "main"         ':-> EntryPoint '[ ] Vertex
    ]
 
@@ -50,12 +54,10 @@ vertex = Program $ entryPoint @"main" @Vertex do
 -- tessellation control
 
 type TessellationControlDefs =
-  '[ "in_col"  ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
-   , "out_col" ':-> Output     '[ Location 0 ] (Array 3 (V 4 Float))
-   , "main"    ':-> EntryPoint '[ SpacingEqual, Triangles
-                                , VertexOrderCcw, OutputVertices 3
-                                ]
-                      TessellationControl
+  '[ "in_col"     ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
+   , "out_col"    ':-> Output     '[ Location 0 ] (Array 3 (V 4 Float))
+   , "main"       ':-> EntryPoint '[ SpacingEqual, VertexOrderCw, OutputVertices 3 ]
+                        TessellationControl
    ]
 
 tessellationControl :: Program TessellationControlDefs ()
@@ -65,12 +67,12 @@ tessellationControl = Program $ entryPoint @"main" @TessellationControl do
   in_pos <- use @(Name "gl_in" :.: AnIndex Word32 :.: Name "gl_Position") i
   in_col <- use @(Name "in_col" :.: AnIndex Word32) i
 
-  assign @(Name "gl_TessLevelInner" :.: Index 0) 10
-  assign @(Name "gl_TessLevelInner" :.: Index 1) 10
-  assign @(Name "gl_TessLevelOuter" :.: Index 0) 12
-  assign @(Name "gl_TessLevelOuter" :.: Index 1) 12
-  assign @(Name "gl_TessLevelOuter" :.: Index 2) 12
-  assign @(Name "gl_TessLevelOuter" :.: Index 3) 12
+  assign @(Name "gl_TessLevelInner" :.: Index 0) 16
+  assign @(Name "gl_TessLevelInner" :.: Index 1) 16
+  assign @(Name "gl_TessLevelOuter" :.: Index 0) 16
+  assign @(Name "gl_TessLevelOuter" :.: Index 1) 16
+  assign @(Name "gl_TessLevelOuter" :.: Index 2) 16
+  assign @(Name "gl_TessLevelOuter" :.: Index 3) 16
 
   assign @(Name "gl_out" :.: AnIndex Word32 :.: Name "gl_Position") i in_pos
   assign @(Name "out_col" :.: AnIndex Word32) i in_col
@@ -81,8 +83,12 @@ tessellationControl = Program $ entryPoint @"main" @TessellationControl do
 type TessellationEvaluationDefs =
   '[ "in_cols" ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
    , "out_col" ':-> Output     '[ Location 0 ] (V 4 Float)
-   , "main"    ':-> EntryPoint '[ ]
-                      TessellationEvaluation
+   , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+                          ( Struct '[ "mvp"    ':-> M 4 4 Float
+                                    , "origin" ':-> V 4 Float
+                                    ]
+                          )
+   , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
 tessellationEvaluation :: Program TessellationEvaluationDefs ()
@@ -98,8 +104,10 @@ tessellationEvaluation = Program $ entryPoint @"main" @TessellationEvaluation do
   pos0 <- use @(Name "gl_PerVertex" :.: Index 0 :.: Name "gl_Position")
   pos1 <- use @(Name "gl_PerVertex" :.: Index 1 :.: Name "gl_Position")
   pos2 <- use @(Name "gl_PerVertex" :.: Index 2 :.: Name "gl_Position")
-  let t = ( (1-) $ (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2 )
-  put @"gl_Position" ( ((0.5+0.5*t)*^) $ u *^ pos0 ^+^ v *^ pos1 ^+^ w *^ pos2 )
+  orig <- use @(Name "ubo" :.: Name "origin")
+  let t = 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
+  put @"gl_Position"
+    ( t *^ orig ^+^ (1-t) *^ ( u *^ pos0 ^+^ v *^ pos1 ^+^ w *^ pos2 ) )
 
 
 ------------------------------------------------
@@ -155,22 +163,22 @@ type FragmentDefs =
 
 fragment :: Program FragmentDefs ()
 fragment = Program $ entryPoint @"main" @Fragment do
-    --col    <- get @"in_colour"
+    col    <- get @"in_colour"
     normal <- get @"normal"
     let
       light = Vec3 0 (-0.98058) (-0.19612)
-      out_col = ( 0.5 + 0.5 * ( normal ^.^ light) ) *^ (Vec4 0.3 0.7 0.15 1.0)
-    put @"out_colour" out_col
+      out_col = ( 0.5 + 0.5 * ( normal ^.^ light) ) *^ col
+    put @"out_colour" (set @(Index 3) 1 out_col)
 
 ------------------------------------------------
 -- compiling
 
 vertPath, tescPath, tesePath, geomPath, fragPath :: FilePath
-vertPath = "src/shaders/example1_vert.spv"
-tescPath = "src/shaders/example1_tesc.spv"
-tesePath = "src/shaders/example1_tese.spv"
-geomPath = "src/shaders/example1_geom.spv"
-fragPath = "src/shaders/example1_frag.spv"
+vertPath = "src/shaders/fullpipeline_vert.spv"
+tescPath = "src/shaders/fullpipeline_tesc.spv"
+tesePath = "src/shaders/fullpipeline_tese.spv"
+geomPath = "src/shaders/fullpipeline_geom.spv"
+fragPath = "src/shaders/fullpipeline_frag.spv"
 
 compileVertexShader :: IO ( Either Text Text )
 compileVertexShader = compile vertPath [] vertex
