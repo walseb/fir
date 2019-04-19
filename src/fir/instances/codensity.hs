@@ -220,21 +220,6 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 
 -- Defining functions and variables.
 
-fundef' :: forall name as b j_bds i.
-          ( GHC.Stack.HasCallStack
-          , KnownSymbol name
-          , KnownVars as
-          , PrimTy b
-          , ValidFunDef name as i j_bds
-          )
-       => Codensity AST
-              ( AST b := 'IxState j_bds (Function name as) (EntryPointInfos i) )
-              ( FunctionDefinitionStartState name as i )
-       -> Codensity AST
-              ( AST (FunctionType as b) := AddFunBinding name as b i )
-              i
-fundef' = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
-
 -- | Define a new function.
 --
 -- Type-level arguments:
@@ -242,8 +227,8 @@ fundef' = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
 -- * @name@: function name,
 -- * @as@: list of argument types,
 -- * @b@: return type,
--- * @j_bds@: state at end of function body (usually inferred),
--- * @i@: bindings state at start of function body (usually inferred),
+-- * @j_bds@: bindings state at end of function body (usually inferred),
+-- * @i@: monadic state at start of function body (usually inferred),
 -- * @r@: function type itself, result of 'fundef' (usually inferred).
 fundef :: forall name as b j_bds i r.
            ( GHC.Stack.HasCallStack
@@ -260,7 +245,7 @@ fundef :: forall name as b j_bds i r.
         -> Codensity AST
               ( r := AddFunBinding name as b i )
               i
-fundef = fromAST . toAST . fundef' @name @as @b @j_bds @i
+fundef = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
 
 
 -- | Define a new entry point (or shader stage).
