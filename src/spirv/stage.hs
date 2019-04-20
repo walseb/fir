@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
@@ -104,6 +105,19 @@ data StageInfo (n :: Type) (s :: Stage) where
     :: StageInfo n 'GLCompute
   KernelInfo
     :: StageInfo n 'Kernel
+
+stageOf :: StageInfo n s -> Stage
+stageOf VertexInfo                    = Vertex
+stageOf TessellationControlInfo    {} = TessellationControl
+stageOf TessellationEvaluationInfo {} = TessellationEvaluation
+stageOf GeometryInfo               {} = Geometry
+stageOf FragmentInfo                  = Fragment
+stageOf GLComputeInfo                 = GLCompute
+stageOf KernelInfo                    = Kernel
+
+deriving instance Show n => Show (StageInfo n s)
+deriving instance Eq   n => Eq   (StageInfo n s)
+deriving instance Ord  n => Ord  (StageInfo n s)
 
 instance Demotable (StageInfo Nat s) where
   type Demote (StageInfo Nat s) = StageInfo Word32 s

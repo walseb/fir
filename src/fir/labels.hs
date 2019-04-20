@@ -72,8 +72,8 @@ import FIR.Instances.Bindings
   ( AddBinding, Get, Put )
 import FIR.Instances.Codensity
   ( CanDefine(def), use, assign, modifying )
-import FIR.IxState
-  ( IxState )
+import FIR.ASTState
+  ( ASTState )
 import FIR.Prim.Singletons
   ( PrimTy )
 
@@ -84,7 +84,7 @@ data Label (k :: Symbol) (a :: Type) = Label
 
 data LabelUsage
   = Symbolic
-  | Use Symbol IxState
+  | Use Symbol ASTState
 
 class IsLabel k a (usage :: LabelUsage) v
     | v -> a, usage v -> k, v k -> usage

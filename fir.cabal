@@ -18,11 +18,6 @@ description:
   This means the Haskell type-system and type-checker are put to use
   in verifying programs at compile time.
   .
-  In addition, programs can be manipulated as Haskell objects,
-  which allows them to be combined in various ways.
-  .
-  An overview of the library is include in the __readme__ file.
-  .
   See the @fir-examples@ project subdirectory for fleshed out examples,
   including using the @vulkan-api@ package for rendering.
   .
@@ -48,8 +43,8 @@ description:
   A value of this type can be thought of as stateful GPU code.
   Uses McBride-style indexed monads, see "Control.Monad.Indexed".
   * __@Program defs a@__: a shader program that can be compiled to @SPIR-V@, and returns a value of type @a@.
-  @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc), and top-level functions.
-  See "FIR.Program".
+  @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc), top-level functions and entry points.
+  See "FIR.Program" or the example shaders.
   .
   .
   It is recommended to install the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/),
@@ -103,6 +98,7 @@ library
       , Data.Type.Snoc
       , Deriving.Base
       , FIR.AST
+      , FIR.ASTState
       , FIR.Binding
       , FIR.Builtin
       , FIR.Definition
@@ -111,7 +107,6 @@ library
       , FIR.Instances.Codensity
       , FIR.Instances.Images
       , FIR.Instances.Optics
-      , FIR.IxState
       , FIR.Prim.Array
       , FIR.Prim.Image
       , FIR.Prim.Singletons

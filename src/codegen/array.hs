@@ -51,8 +51,8 @@ import FIR.Instances.Bindings
   ( Get, Put
   , AddBinding
   )
-import FIR.IxState
-  ( IxState(..) )
+import FIR.ASTState
+  ( ASTState(..) )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
@@ -73,7 +73,7 @@ createArray :: forall n arrName ixName a i j ctx eps.
              , KnownNat n
              , KnownSymbol arrName
              , PrimTy a
-             , i ~ ( 'IxState '[ arrName ':-> Var RW (Array n a) ] ctx eps )
+             , i ~ ( 'ASTState '[ arrName ':-> Var RW (Array n a) ] ctx eps )
              , j ~ AddBinding ixName (Var RW Word32) i
              , Get ixName j ~ Word32
              , Put ixName j ~ Word32

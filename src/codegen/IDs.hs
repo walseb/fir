@@ -17,16 +17,13 @@ import Control.Arrow
 import Data.Coerce
   ( coerce )
 import Data.Foldable
-  ( traverse_, toList )
+  ( traverse_ )
 import Data.Maybe
-  ( fromJust, fromMaybe )
+  ( fromJust )
 import Data.Semigroup
   ( First(First) )
 import Data.Word
   ( Word32 )
-
--- containers
-import qualified Data.Set as Set
 
 -- lens
 import Control.Lens
@@ -57,8 +54,7 @@ import CodeGen.Monad
   )
 import CodeGen.State
   ( CGState, CGContext
-  , FunctionContext(EntryPoint)
-  , _functionContext
+    , _functionContext
   , _knownExtInst
   , _knownStringLit
   , _knownBinding
@@ -68,12 +64,13 @@ import CodeGen.State
   , _builtin
   , _usedGlobal
   , _userGlobal
-  , _entryPointExecutionModes
   , _interfaceBinding
   , addCapabilities, addMemberName, addMemberDecoration, addDecorations
   )
 import FIR.Builtin
   ( stageBuiltins )
+import FIR.ASTState
+  ( FunctionContext(InEntryPoint), stageContext )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), primTy
   , SPrimTy(..)
@@ -107,16 +104,8 @@ extInstID :: (MonadState CGState m, MonadFresh ID m)
           => SPIRV.ExtInst -> m ID
 extInstID extInst = 
   tryToUse ( _knownExtInst extInst )
-    ( fromJust . resID ) -- ExtInstImport instruction always has a result ID
-    ( \ v -> pure
-      Instruction
-        { operation = SPIRV.Op.ExtInstImport
-        , resTy     = Nothing
-        , resID     = Just v
-        , args      = Arg ( SPIRV.extInstName extInst )
-                      EndArgs
-        }
-    )
+    id
+    pure
 
 -- get an ID for a given type ( result ID of corresponding type constructor instruction )
 -- ( if one is known use it, otherwise recursively create fresh IDs for necessary types )
@@ -207,8 +196,8 @@ typeID ty =
                           -- add "builtin" decorations when relevant
                           --   (for gl_in, gl_out, gl_PerVertex)
                           ctxt <- use _functionContext
-                          case ctxt of
-                            EntryPoint stage _
+                          case snd <$> stageContext ctxt of
+                            Just stage
                               | stage `elem` [ SPIRV.TessellationControl
                                              , SPIRV.TessellationEvaluation
                                              , SPIRV.Geometry
@@ -378,9 +367,9 @@ constID a =
         _knownAConstant = _knownConstant ( aConstant a )
 
 builtinID :: (MonadState CGState m, MonadFresh ID m)
-          => SPIRV.Stage -> Text -> Text -> m ID
-builtinID stage stageName builtinName =
-  tryToUse ( _builtin stage stageName builtinName )
+          => Text -> SPIRV.StageInfo Word32 stage -> Text -> m ID
+builtinID stageName stageInfo builtinName =
+  tryToUse ( _builtin stageName stageInfo builtinName )
     id
     pure
 
@@ -398,59 +387,46 @@ bindingID :: forall m.
 bindingID varName
   = do  ctxt <- use _functionContext
 
-        -- is this a built-in variable?
-        (mbBuiltin, mbStage) :: (Maybe SPIRV.PointerTy, Maybe ( SPIRV.Stage, Text ))
-          <- case ctxt of
-            EntryPoint stage stageName ->
-              do
-                modes <- toList . fromMaybe Set.empty <$> use ( _entryPointExecutionModes stage stageName )
-                let mbBuiltinTy = lookup varName (stageBuiltins stage modes)
-                pure ( mbBuiltinTy, Just ( stage, stageName) )
-            _ ->
-              pure (Nothing, Nothing)
+        case ctxt of
+          InEntryPoint stageName stageInfo
+            | Just ptrTy <- lookup varName (stageBuiltins stageInfo)
+              ->
+                do -- this is a built-in variable, use 'builtinID'
+                  builtin <- builtinID stageName stageInfo varName
+                  let ptrPrimTy = SPIRV.pointerTy ptrTy
+                  _ <- typeID ptrPrimTy -- ensure pointer type is declared
+                  -- note that 'builtinID' sets the necessary decorations for the builtin
+                  pure (builtin, ptrPrimTy)
+          _ ->
+            do -- this is not a built-in variable, obtain the binding ID
+              mbLoc   <- use ( _localBinding varName )
+              mbKnown <- use ( _knownBinding varName )
+              mbGlob  <-
+                do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName (stageContext ctxt)
+                    -- declare pointer type (if necessary)
+                    mapM_ (typeID . snd) glob
+                    pure glob
 
-        case (mbBuiltin, mbStage) of
-          (Just ptrTy, Just (stage, stageName)) ->
-            -- this is a built-in variable, use 'builtinID'
-            do
-              builtin <- builtinID stage stageName varName
-              let ptrPrimTy = SPIRV.pointerTy ptrTy
-              _ <- typeID ptrPrimTy -- ensure pointer type is declared
-              -- note that 'builtinID' sets the necessary decorations for the builtin
-              pure (builtin, ptrPrimTy)
+              bd@(bdID,_)
+                  <- note
+                      ( "codeGen: no binding with name " <> varName )
+                      ( mbLoc <<?> mbKnown <<?> mbGlob )
 
-          _ -> do
-            -- this is not a built-in variable, obtain the binding ID
-            mbLoc   <- use ( _localBinding varName )
-            mbKnown <- use ( _knownBinding varName )
-            mbGlob  <-
-              do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName mbStage
-                  -- declare pointer type (if necessary)
-                  mapM_ (typeID . snd) glob
-                  pure glob
+              -- add the user decorations for this binding if there are any
+              traverse ( addDecorations bdID )
+                =<< fmap snd <$> view ( _userGlobal varName )
 
-            bd@(bdID,_)
-                <- note
-                    ( "codeGen: no binding with name " <> varName )
-                    ( mbLoc <<?> mbKnown <<?> mbGlob )
+              -- return the binding ID
+              pure bd
 
-            -- add the user decorations for this binding if necessary
-            decorations <- fmap snd <$> view ( _userGlobal varName )
-            case decorations of
-              Nothing   -> pure ()
-              Just decs -> addDecorations bdID decs
-
-            -- return the binding ID
-            pure bd
-
--- get the ID for a global variable,
+-- get the ID for a user-defined global variable,
 -- adding this global to the list of 'used' global variables if it isn't already there
 -- adding this global to the stage interface if applicable
 globalID :: ( MonadState CGState m
             , MonadReader CGContext m
             , MonadFresh ID m
             )
-         => Text -> Maybe (SPIRV.Stage, Text) -> m ( Maybe (ID, SPIRV.PointerTy) )
+         => Text -> Maybe (Text, SPIRV.Stage) -> m ( Maybe (ID, SPIRV.PointerTy) )
 globalID globalName mbStage
   = do glob <- view ( _userGlobal globalName )
        case glob of

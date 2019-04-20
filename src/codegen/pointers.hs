@@ -47,15 +47,17 @@ import CodeGen.Monad
   , tryToUse
   )
 import CodeGen.State
-  ( FunctionContext(TopLevel, EntryPoint)
-  , PointerState(Fresh)
+  ( PointerState(Fresh)
   , _functionContext
   , _interfaceBinding
   , _localVariable
   , _temporaryPointer
   )
+import FIR.ASTState
+  ( FunctionContext(TopLevel, InEntryPoint) )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
+import qualified SPIRV.Stage     as SPIRV
 import qualified SPIRV.Storage   as Storage
 
 ----------------------------------------------------------------------------
@@ -143,10 +145,12 @@ load (loadeeName, loadeeID) (SPIRV.PointerTy storage ty)
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: load operation not allowed at top level"
-        EntryPoint stage entryPointName
+        InEntryPoint entryPointName stageInfo
           | storage == Storage.Input
           -- add this variable to the interface of the entry point
-          -> assign ( _interfaceBinding stage entryPointName loadeeName ) (Just loadeeID)
+          -> assign
+                ( _interfaceBinding entryPointName (SPIRV.stageOf stageInfo) loadeeName )
+                ( Just loadeeID )
         _ -> pure ()
       loadInstruction ty loadeeID
 
@@ -169,10 +173,12 @@ store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: store operation not allowed at top level"
-        EntryPoint stage entryPointName
+        InEntryPoint entryPointName stageInfo
           | storage == Storage.Output
           -- add this variable to the interface of the entry point
-          -> assign ( _interfaceBinding stage entryPointName storeeName ) (Just pointerID)
+          -> assign
+                ( _interfaceBinding entryPointName (SPIRV.stageOf stageInfo) storeeName )
+                ( Just pointerID )
         _ -> pure ()
       storeInstruction pointerID storeeID
 

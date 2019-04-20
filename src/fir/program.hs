@@ -55,8 +55,8 @@ import FIR.Definition
   ( Definition, KnownDefinitions
   , StartState, EndState
   )
-import FIR.IxState
-  ( IxState(IxState) )
+import FIR.ASTState
+  ( ASTState(ASTState) )
 import FIR.Prim.Singletons
   ( KnownInterface(knownInterface) )
 import qualified SPIRV.PrimTy as SPIRV
@@ -68,14 +68,14 @@ import qualified SPIRV.PrimTy as SPIRV
 -- These are wrappers around the main internal representation
 -- @Codensity AST (AST a := j) i@
 
-type Procedure (a :: Type) (i :: IxState) (j :: IxState)
+type Procedure (a :: Type) (i :: ASTState) (j :: ASTState)
   = Codensity AST (AST a := j) i
 
 type family CodensityProgram
-    ( i :: IxState ) -- available data at the start (e.g. uniforms)
-    ( j :: IxState ) -- everything in 'i', plus top-level functions and entry-points of the program
-    ( a :: Type    )
-  = ( r :: Type    )
+    ( i :: ASTState ) -- available data at the start (e.g. uniforms)
+    ( j :: ASTState ) -- everything in 'i', plus top-level functions and entry-points of the program
+    ( a :: Type     )
+  = ( r :: Type     )
   | r -> i j a where
   CodensityProgram i j a = Codensity AST ( AST a := j ) i
 
@@ -95,7 +95,7 @@ data Program
 
 programGlobals :: forall bds j ctx eps a.
                   KnownInterface bds
-               => CodensityProgram ('IxState bds ctx eps) j a -> Map Text SPIRV.PrimTy
+               => CodensityProgram ('ASTState bds ctx eps) j a -> Map Text SPIRV.PrimTy
 programGlobals _ = Map.fromList
                  . map ( second ( \ (ty, storage) -> SPIRV.Pointer storage ty ) )
                  $ knownInterface @bds

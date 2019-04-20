@@ -86,8 +86,8 @@ import Control.Type.Optic
   )
 import Data.Type.Known
   ( Known )
-import FIR.IxState
-  ( IxState )
+import FIR.ASTState
+  ( ASTState )
 import FIR.Prim.Image
   ( ImageProperties
   , Image, ImageData, ImageCoordinates
@@ -133,7 +133,7 @@ type family ImageTexel k :: Optic
 instance {-# OVERLAPPING #-} 
          forall 
            ( k       :: Symbol          )
-           ( i       :: IxState         )
+           ( i       :: ASTState        )
            ( props   :: ImageProperties )
            ( ops     :: [OperandName]   )
            ( empty   :: [Type]          )
@@ -160,7 +160,7 @@ instance {-# OVERLAPPING #-}
 instance {-# OVERLAPPING #-} 
          forall 
            ( k       :: Symbol          )
-           ( i       :: IxState         )
+           ( i       :: ASTState        )
            ( props   :: ImageProperties )
            ( ops     :: [OperandName]   )
            ( empty   :: [Type]          )

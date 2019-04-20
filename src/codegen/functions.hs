@@ -21,8 +21,6 @@ import Data.ByteString.Lazy
 
 -- containers
 import qualified Data.Map.Strict as Map
-import Data.Set
-  ( Set )
 
 -- lens
 import Control.Lens
@@ -61,18 +59,22 @@ import CodeGen.Pointers
   ( declareVariable )
 import CodeGen.State
   ( CGState(localVariables)
-  , FunctionContext(TopLevel, Function, EntryPoint)
   , _functionContext
   , _knownBinding
   , _localBindings, _localBinding
   , _localVariables
   , _interface
-  , _entryPointExecutionModes
+  , _entryPoint
   , addCapabilities
   )
 import Data.Map.Traverse
   ( traverseWithKey_ )
-import qualified SPIRV.ExecutionMode   as SPIRV
+import FIR.Binding
+  ( Permissions )
+import FIR.ASTState
+  ( FunctionContext(..)
+  , VLFunctionContext
+  )
 import qualified SPIRV.FunctionControl as SPIRV
 import qualified SPIRV.Operation       as SPIRV.Op
 import qualified SPIRV.PrimTy          as SPIRV
@@ -81,15 +83,15 @@ import qualified SPIRV.Stage           as SPIRV
 ----------------------------------
 -- dealing with function context
 
-inFunctionContext :: [(Text, SPIRV.PrimTy)] -> CGMonad a -> CGMonad a
-inFunctionContext as
-  = inContext ( Function as ) as
+inFunctionContext :: Text -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
+inFunctionContext functionName as
+  = inContext ( InFunction functionName as ) as
 
-inEntryPointContext :: SPIRV.Stage -> Text -> CGMonad a -> CGMonad a
-inEntryPointContext stage stageName
-  = inContext ( EntryPoint stage stageName ) []
+inEntryPointContext :: Text -> SPIRV.StageInfo Word32 stage -> CGMonad a -> CGMonad a
+inEntryPointContext stageName stageInfo
+  = inContext ( InEntryPoint stageName stageInfo ) []
 
-inContext :: forall a. FunctionContext -> [(Text, SPIRV.PrimTy)] -> CGMonad a -> CGMonad a
+inContext :: forall a. VLFunctionContext -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
 inContext context as body
   = do
       outsideBindings <- use _localBindings
@@ -143,14 +145,14 @@ declareFunctionCall res func argIDs
 
 declareFunction :: Text
                 -> SPIRV.FunctionControl
-                -> [(Text, SPIRV.PrimTy)]
+                -> [(Text, (SPIRV.PrimTy, Permissions))]
                 -> SPIRV.PrimTy
                 -> CGMonad (ID, SPIRV.PrimTy)
                 -> CGMonad ID
 declareFunction funName control as b body
   = createIDRec ( _knownBinding funName )
       ( do resTyID <- typeID b
-           fnTyID  <- typeID ( SPIRV.Function (map snd as) b )
+           fnTyID  <- typeID funTy
            pure (resTyID, fnTyID)
       )
       ( \(resTyID,fnTyID) v -> do
@@ -162,7 +164,7 @@ declareFunction funName control as b body
             , args      = Arg control
                         $ Arg fnTyID EndArgs
             }
-        (retValID, _) <- inFunctionContext as body
+        (retValID, _) <- inFunctionContext funName as body
         case b of
           SPIRV.Unit
             -> liftPut $ putInstruction Map.empty
@@ -186,12 +188,15 @@ declareFunction funName control as b body
             , resID     = Nothing
             , args      = EndArgs
             }
-        pure (v, SPIRV.Function (map snd as) b)
+        pure (v, funTy)
       )
+  where
+    funTy :: SPIRV.PrimTy
+    funTy = SPIRV.Function ( map (fst . snd) as ) b
 
 
-declareArgument :: Text -> SPIRV.PrimTy -> CGMonad ID
-declareArgument argName argTy
+declareArgument :: Text -> (SPIRV.PrimTy, Permissions) -> CGMonad ID
+declareArgument argName (argTy, _)
   = createIDRec ( _localBinding argName )
      ( ( , argTy) <$> typeID argTy )
      ( \(argTyID,_) v -> do
@@ -206,24 +211,23 @@ declareArgument argName argTy
 
 declareEntryPoint
   :: Text
-  -> SPIRV.Stage
-  -> Set (SPIRV.ExecutionMode Word32)
+  -> SPIRV.StageInfo Word32 stage
   -> CGMonad r
   -> CGMonad ID
-declareEntryPoint stageName stage modes body
+declareEntryPoint stageName stageInfo body
   = createIDRec ( _knownBinding stageName )
       ( do unitTyID <- typeID SPIRV.Unit
-           fnTyID  <- typeID ( SPIRV.Function [] SPIRV.Unit )
+           fnTyID  <- typeID funTy
            pure (unitTyID, fnTyID)
       )
       ( \(unitTyID,fnTyID) v -> do
+        -- declare entry point ID proper
+        assign ( _entryPoint stageName stage ) (Just v)
         -- initialise entry point with empty interface
-        -- loading/storing should add to the interface as needed
-        assign ( _interface stage stageName ) (Just Map.empty)
+        -- (loading/storing should add to the interface as needed)
+        assign ( _interface stageName stage ) (Just Map.empty)
         -- add the required capabilities
         addCapabilities ( SPIRV.stageCapabilities stage )
-        -- annotate the execution modes
-        assign ( _entryPointExecutionModes stage stageName ) (Just modes)
 
         liftPut $ putInstruction Map.empty
           Instruction
@@ -233,7 +237,7 @@ declareEntryPoint stageName stage modes body
             , args      = Arg SPIRV.noFunctionControl
                         $ Arg fnTyID EndArgs
             }
-        _ <- inEntryPointContext stage stageName body
+        _ <- inEntryPointContext stageName stageInfo body
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Return
@@ -248,5 +252,11 @@ declareEntryPoint stageName stage modes body
             , resID     = Nothing
             , args      = EndArgs
             }
-        pure (v, SPIRV.Function [] SPIRV.Unit)
+        pure (v, funTy)
       )
+  where
+    stage :: SPIRV.Stage
+    stage = SPIRV.stageOf stageInfo
+
+    funTy :: SPIRV.PrimTy
+    funTy = SPIRV.Function [] SPIRV.Unit

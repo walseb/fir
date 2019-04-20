@@ -71,7 +71,7 @@ import Data.Type.Known
 import Data.Type.List
   ( SLength )
 import FIR.Binding
-  ( FunctionType, Var, Permission )
+  ( FunctionType, Var, Permissions )
 import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
@@ -79,8 +79,8 @@ import FIR.Instances.Bindings
   )
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
-import FIR.IxState
-  ( Context(..), IxState(..), EntryPointInfos )
+import FIR.ASTState
+  ( FunctionContext(..), ASTState(..), EntryPointInfos )
 import FIR.Prim.Image
   ( ImageOperands )
 import FIR.Prim.Op
@@ -106,7 +106,7 @@ infixl 9 :$
 data AST :: Type -> Type where
 
   -- | Lambda abstraction
-  Lam :: {-PrimTy a =>-} (AST a -> AST b) -> AST (a -> b)
+  Lam :: (AST a -> AST b) -> AST (a -> b)
 
   -- | Function application
   (:$) :: AST (a -> b) -> AST a -> AST b
@@ -127,7 +127,7 @@ data AST :: Type -> Type where
   Def :: forall k ps a i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
-        , Known [Permission] ps
+        , Known Permissions ps
         , PrimTy a
         )
       => Proxy k  -- ^ Variable name.
@@ -153,7 +153,7 @@ data AST :: Type -> Type where
          => Proxy name -- ^ Funtion name.
          -> Proxy as   -- ^ Function argument types.
          -> Proxy b    -- ^ Function return type.
-         -> AST ( ( b := 'IxState j_bds (Function name as) (EntryPointInfos i) )
+         -> AST ( ( b := 'ASTState j_bds (InFunction name as) (EntryPointInfos i) )
                     ( FunctionDefinitionStartState name as i )
                 -> ( FunctionType as b := AddFunBinding name as b i ) i
                 )
@@ -176,9 +176,9 @@ data AST :: Type -> Type where
            , Known (SPIRV.StageInfo Nat stage) stageInfo
            , ValidEntryPoint name stageInfo i j_bds
            )
-         => Proxy name  -- ^ Entry point name.
-         -> Proxy stage -- ^ Entry point stage.
-         -> AST ( ( () := 'IxState j_bds (EntryPoint name stageInfo) (EntryPointInfos i) )
+         => Proxy name      -- ^ Entry point name.
+         -> Proxy stageInfo -- ^ Entry point stage info.
+         -> AST ( ( () := 'ASTState j_bds (InEntryPoint name stageInfo) (EntryPointInfos i) )
                     ( EntryPointStartState name stageInfo i )
                 -> ( () := AddEntryPoint name stageInfo i ) i
                 )
@@ -322,7 +322,7 @@ toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")
 toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
-toTreeArgs (Entry  _ (_ :: Proxy stage) ) as
+toTreeArgs (Entry  _ (_ :: Proxy (stageInfo :: SPIRV.StageInfo Nat stage) )) as
   = return (Node ("Entry @" ++ show (knownValue @stage)) as)
 toTreeArgs (Lit (a :: ty)) as
   = return (Node ("Lit @(" ++ show (primTyVal @ty) ++ ") " ++ show a ) as)

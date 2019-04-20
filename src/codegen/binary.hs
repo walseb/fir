@@ -63,7 +63,7 @@ import qualified SPIRV.Stage         as SPIRV
 
 ----------------------------------------------------------------------------
 
-putInstruction :: Map SPIRV.ExtInst Instruction -> Instruction -> Binary.Put
+putInstruction :: Map SPIRV.ExtInst ID -> Instruction -> Binary.Put
 putInstruction extInsts
   Instruction { operation = op, resTy = opResTy, resID = opResID, args = opArgs }
     = case op of
@@ -81,7 +81,7 @@ putInstruction extInsts
 
            
       SPIRV.Op.ExtCode ext extOpCode ->
-        case resID =<< Map.lookup ext extInsts of
+        case Map.lookup ext extInsts of
           Nothing    -> pure ()
           Just extID ->
             putInstruction Map.empty
@@ -121,9 +121,16 @@ putCapabilities
                               EndArgs
                 }
 
-putExtendedInstructions :: Map SPIRV.ExtInst Instruction -> Binary.Put
+putExtendedInstructions :: Map SPIRV.ExtInst ID -> Binary.Put
 putExtendedInstructions
-  = traverse_ ( putInstruction Map.empty )
+  = traverseWithKey_ \ extInst extInstID ->
+      putInstruction Map.empty
+        Instruction
+          { operation = SPIRV.Op.ExtInstImport
+          , resTy     = Nothing
+          , resID     = Just extInstID
+          , args      = Arg ( SPIRV.extInstName extInst ) EndArgs
+          }
       
 putMemoryModel :: Binary.Put
 putMemoryModel 
@@ -153,16 +160,19 @@ putEntryPoint stage stageName entryPointID interface
           stageID = ID . fromIntegral . fromEnum $ stage
 
 putEntryPoints
-  :: Map Text ID
-  -> Map (SPIRV.Stage, Text) (Map Text ID)
+  :: Map (Text, SPIRV.Stage) ID
+  -> Map (Text, SPIRV.Stage) (Map Text ID)
   -> ExceptT Text Binary.PutM ()
-putEntryPoints bindings
+putEntryPoints entryPointIDs
   = traverseWithKey_
-      ( \(stage, stageName) interface -> do
+      ( \(stageName, stage) interface -> do
         entryPointID
           <- note
-              ( "putEntryPoints: entry point " <> stageName <> "not bound to any ID." )
-              ( Map.lookup stageName bindings )
+              (  "putEntryPoints: " <> Text.pack (show stage)
+              <> " entry point named \"" <> stageName
+              <> "\" not bound to any ID."
+              )
+              ( Map.lookup (stageName, stage) entryPointIDs )
         lift ( putEntryPoint stage stageName entryPointID interface )
       )
 
@@ -182,16 +192,19 @@ putStageExecutionModes stageID
       )
 
 putExecutionModes
-  :: Map Text ID
-  -> Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32))
+  :: Map (Text, SPIRV.Stage) ID
+  -> Map (Text, SPIRV.Stage) (Set (SPIRV.ExecutionMode Word32))
   -> ExceptT Text Binary.PutM ()
-putExecutionModes bindings
+putExecutionModes entryPointIDs
   = traverseWithKey_
-      ( \(_, stageName) executionModes -> do
+      ( \(stageName, stage) executionModes -> do
         entryPointID
           <- note
-              ( "putExecutionModes: entry point " <> stageName <> "not bound to any ID." )
-              ( Map.lookup stageName bindings )
+              (  "putExecutionModes: " <> Text.pack (show stage)
+              <> " entry point named \"" <> stageName
+              <> "\" not bound to any ID."
+              )
+              ( Map.lookup (stageName, stage) entryPointIDs )
         lift ( putStageExecutionModes entryPointID executionModes )
       )
 

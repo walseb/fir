@@ -24,8 +24,6 @@ import GHC.TypeLits
   ( Symbol )
 import GHC.TypeNats
   ( Nat, SomeNat(SomeNat), someNatVal )
-import Numeric.Natural
-  ( Natural )
 
 -- containers
 import Data.Set
@@ -57,14 +55,12 @@ import qualified SPIRV.Builtin       as SPIRV
   )
 import qualified SPIRV.Decoration    as SPIRV
   ( Decoration(Block, Builtin, Patch) )
-import           SPIRV.ExecutionMode as SPIRV
-  ( ExecutionMode(..) )
 import qualified SPIRV.PrimTy        as SPIRV
   ( PrimTy, PointerTy, pattern PointerTy )
 import qualified SPIRV.Storage       as SPIRV
   ( StorageClass )
 import SPIRV.Stage
-  ( Stage(..), StageInfo(..) )
+  ( StageInfo(..) )
 
 --------------------------------------------------------------------------
 
@@ -170,54 +166,32 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
        , "gl_SubgroupLocalInvocationID" ':-> Var R Word32
        ]
 
--- some code duplication happening here with the logic in "SPIRV.ExecutionMode"
-stageBuiltins :: Stage -> [ SPIRV.ExecutionMode Word32 ] -> [ (Text, SPIRV.PointerTy) ]
-stageBuiltins Vertex _
-  = builtinPointer $ knownInterface @(StageBuiltins' VertexInfo)
-stageBuiltins TessellationControl modes =
-  let
-    maxPatchVertices :: [ SPIRV.ExecutionMode Word32 ] -> Natural
-    maxPatchVertices [] = 32
-    maxPatchVertices ( MaxPatchVertices i : _ ) = fromIntegral i
-    maxPatchVertices ( _ : next ) = maxPatchVertices next
-    outputVertices :: [ SPIRV.ExecutionMode Word32 ] -> Natural
-    outputVertices [] = 32
-    outputVertices ( OutputVertices i : _ ) = fromIntegral i
-    outputVertices ( _ : next ) = outputVertices next
-    res :: SomeNat -> SomeNat -> [ (Text, SPIRV.PointerTy) ]
-    res ( SomeNat (_ :: Proxy maxPatchVertices) ) ( SomeNat (_ :: Proxy outputVertices) )
-      = builtinPointer
-      $ knownInterface @(StageBuiltins' (TessellationControlInfo maxPatchVertices outputVertices))
-  in res (someNatVal (maxPatchVertices modes)) (someNatVal (outputVertices modes))
-stageBuiltins TessellationEvaluation modes =
-  let
-    inputVertices :: [ SPIRV.ExecutionMode Word32 ] -> Natural
-    inputVertices [] = 32
-    inputVertices ( OutputVertices i : _ ) = fromIntegral i -- 'InputVertices' is a synonym for 'OutputVertices' (weird I know, sorry)
-    inputVertices ( _ : next ) = inputVertices next
-    res :: SomeNat -> [ (Text, SPIRV.PointerTy) ]
-    res ( SomeNat (_ :: Proxy inputVertices) )
-      = builtinPointer
-      $ knownInterface @(StageBuiltins' (TessellationEvaluationInfo inputVertices))
-  in res (someNatVal (inputVertices modes))
-stageBuiltins Geometry modes
-  | InputPoints         `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 1 ))
-  | InputLines          `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 2 ))
-  | Triangles           `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 3 ))
-  | InputLinesAdjacency `elem` modes = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 4 ))
-  | otherwise                        = builtinPointer $ knownInterface @(StageBuiltins' ( GeometryInfo 6 ))
-stageBuiltins Fragment _
-  = builtinPointer $ knownInterface @(StageBuiltins' FragmentInfo )
-stageBuiltins GLCompute _
-  = builtinPointer $ knownInterface @(StageBuiltins' GLComputeInfo )
-stageBuiltins Kernel _
-  = builtinPointer $ knownInterface @(StageBuiltins' KernelInfo )
+stageBuiltins :: StageInfo Word32 stage -> [ (Text, SPIRV.PointerTy) ]
+stageBuiltins VertexInfo
+  = builtinPointer ( knownInterface @(StageBuiltins' VertexInfo) )
+stageBuiltins (TessellationControlInfo inputSize outputSize)
+  = case ( someNatVal (fromIntegral inputSize), someNatVal (fromIntegral outputSize) ) of
+      ( SomeNat ( _ :: Proxy inputSize ), SomeNat ( _ :: Proxy outputSize ) )
+        -> builtinPointer ( knownInterface @(StageBuiltins' (TessellationControlInfo inputSize outputSize)) )
+stageBuiltins (TessellationEvaluationInfo inputSize)
+  = case someNatVal (fromIntegral inputSize) of
+      SomeNat ( _ :: Proxy inputSize )
+        -> builtinPointer ( knownInterface @(StageBuiltins' (TessellationEvaluationInfo inputSize)) )
+stageBuiltins (GeometryInfo inputSize)
+  = case someNatVal (fromIntegral inputSize) of
+      SomeNat ( _ :: Proxy inputSize )
+        -> builtinPointer ( knownInterface @(StageBuiltins' (GeometryInfo inputSize)) )
+stageBuiltins FragmentInfo
+  = builtinPointer ( knownInterface @(StageBuiltins' FragmentInfo) )
+stageBuiltins GLComputeInfo
+  = builtinPointer ( knownInterface @(StageBuiltins' GLComputeInfo) )
+stageBuiltins KernelInfo
+  = builtinPointer ( knownInterface @(StageBuiltins' KernelInfo) )
 
 builtinPointer :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
                -> [ (Text, SPIRV.PointerTy) ]
 builtinPointer = map
   ( second ( \ (ty, storage) -> SPIRV.PointerTy storage ty ) )
-
 
 --------------------------------------------------------------------------
 -- decoration of builtins

@@ -56,7 +56,7 @@ import {-# SOURCE #-} FIR.AST
   ( AST )
 import FIR.Binding
   ( Binding, BindingsMap, Var
-  , Permission(Read,Write)
+  , Permission(Read,Write), Permissions
   )
 import FIR.Prim.Array
   ( Array,RuntimeArray )
@@ -357,9 +357,9 @@ sScalarTy SDouble = SPIRV.Floating         W64
 -- statically known list of variables (for function definitions)
 
 class KnownVar (bd :: (Symbol :-> Binding)) where
-  knownVar :: ( Text.Text, (SPIRV.PrimTy, [Permission]) )
+  knownVar :: ( Text.Text, (SPIRV.PrimTy, Permissions) )
 
-instance (KnownSymbol k, Known [Permission] ps, PrimTy a)
+instance (KnownSymbol k, Known Permissions ps, PrimTy a)
        => KnownVar (k ':-> Var ps a) where
   knownVar =
     ( knownValue @k
@@ -369,7 +369,7 @@ instance (KnownSymbol k, Known [Permission] ps, PrimTy a)
     )
 
 class KnownVars (bds :: BindingsMap) where
-  knownVars :: [ (Text.Text, (SPIRV.PrimTy, [Permission])) ]
+  knownVars :: [ (Text.Text, (SPIRV.PrimTy, Permissions)) ]
 instance KnownVars '[] where
   knownVars = []
 instance (KnownVar bd, KnownVars bds)

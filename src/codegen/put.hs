@@ -71,8 +71,8 @@ putDecs
               putMemoryModel
     let knownBindingIDs = fmap fst knownBindings
         usedGlobalIDs   = fmap fst usedGlobals
-    putEntryPoints    knownBindingIDs interfaces
-    putExecutionModes knownBindingIDs executionModes
+    putEntryPoints    entryPoints interfaces
+    putExecutionModes entryPoints userEntryPoints
     lift $ do
               putKnownStringLits      knownStringLits
               putBindingAnnotations   knownBindingIDs

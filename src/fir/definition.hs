@@ -51,13 +51,17 @@ import FIR.Binding
 import FIR.Instances.Bindings
   ( InsertEntryPointInfo )
 import qualified FIR.Binding as Binding
-import FIR.IxState
-  ( IxState(IxState), EntryPointInfo(EntryPointInfo) )
-import qualified FIR.IxState as IxState
+import FIR.ASTState
+  ( ASTState(ASTState), EntryPointInfo(EntryPointInfo) )
+import qualified FIR.ASTState as ASTState
+import FIR.Prim.Array
+  ( Array )
 import FIR.Prim.Image
   ( Image, knownImage, ImageProperties )
 import FIR.Prim.Singletons
   ( PrimTy, primTy )
+import FIR.Prim.Struct
+  ( Struct )
 import qualified SPIRV.Decoration      as SPIRV
 import qualified SPIRV.ExecutionMode   as SPIRV
 import qualified SPIRV.FunctionControl as SPIRV
@@ -67,6 +71,8 @@ import qualified SPIRV.PrimTy          as SPIRV
 import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Storage         as SPIRV
   ( StorageClass )
+import qualified SPIRV.Storage         as Storage
+  ( StorageClass(..) )
 
 --------------------------------------------------------------------------
 -- annotating top-level definitions with necessary information
@@ -125,9 +131,9 @@ instance ( Known SPIRV.Stage stage, Known [SPIRV.ExecutionMode Nat] modes )
             )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
-  annotations :: ( Map Text (SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
-                 , Map Text SPIRV.FunctionControl
-                 , Map Text (SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
+  annotations :: ( Map Text                ( SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
+                 , Map Text                SPIRV.FunctionControl
+                 , Map (Text, SPIRV.Stage) ( Set (SPIRV.ExecutionMode Word32) )
                  )
 
 instance KnownDefinitions '[] where
@@ -140,17 +146,19 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
     = let (g,f,e) = annotations @defs
           k = knownValue @k
       in case knownValue @def of
-           AnnotateGlobal     x -> ( Map.insert k x g, f, e )
-           AnnotateFunction   x -> ( g, Map.insert k x f, e )
-           AnnotateEntryPoint x -> ( g, f, Map.insert k x e )
+           AnnotateGlobal     x      -> ( Map.insert k x g, f, e )
+           AnnotateFunction   x      -> ( g, Map.insert k x f, e )
+           AnnotateEntryPoint (s, x) -> ( g, f, Map.insert l x e )
+              where l :: ( Text, SPIRV.Stage )
+                    l = (k,s)
 
-type family StartState (defs :: [ Symbol :-> Definition ]) :: IxState where
+type family StartState (defs :: [ Symbol :-> Definition ]) :: ASTState where
   StartState defs
-    = 'IxState (StartBindings defs) IxState.TopLevel '[]
+    = 'ASTState (StartBindings defs) ASTState.TopLevel '[]
 
-type family EndState (defs :: [ Symbol :-> Definition ]) :: IxState where
+type family EndState (defs :: [ Symbol :-> Definition ]) :: ASTState where
   EndState defs
-    = 'IxState (EndBindings defs) IxState.TopLevel (DefinitionEntryPoints defs)
+    = 'ASTState (EndBindings defs) ASTState.TopLevel (DefinitionEntryPoints defs)
 
 type family DefinitionEntryPoints
               ( defs :: [ Symbol :-> Definition ] )
@@ -172,7 +180,8 @@ type family DefinitionInsertEntryPointInfo
               where
   DefinitionInsertEntryPointInfo _ 'Nothing _
   -- 'SPIRV.ValidateExecutionModes' never returns Nothing, it throws a type error instead
-  -- this trick forces evaluation of "SPIRV.ValidateExecutionModes", fixing [issue #43](https://gitlab.com/sheaf/fir/issues/43)
+  -- this trick forces evaluation of "SPIRV.ValidateExecutionModes"
+  -- ( this fixes [issue #43](https://gitlab.com/sheaf/fir/issues/43) )
     = TypeError ( 'Text "Invalid entry point execution modes (unreachable)" )
   DefinitionInsertEntryPointInfo k ('Just nfo) nfos
     = InsertEntryPointInfo ('EntryPointInfo k nfo) nfos
@@ -194,6 +203,52 @@ type family EndBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bind
     = Insert k (Binding.Function as b) (EndBindings defs)
   EndBindings (_ ': defs)
     = EndBindings defs
+
+type family ValidateGlobal
+              ( storage :: SPIRV.StorageClass       )
+              ( decs    :: [ SPIRV.Decoration Nat ] )
+              ( ty      :: Type                     )
+              :: Maybe Type -- returns 'Just ty' if block/layout decorations are needed (onto the type 'ty')
+              where
+  ValidateGlobal Storage.UniformConstant '[] (Image ty) = Nothing
+  ValidateGlobal Storage.UniformConstant (dec ': _) (Image _)
+    = TypeError
+        ( 'Text "Invalid decoration " :<>: ShowType dec :<>: 'Text " applied to image." )
+  ValidateGlobal Storage.UniformConstant _ nonImageTy
+    = TypeError
+        (    'Text "Uniform constant global expected to point to an image, but points to "
+        :<>: ShowType nonImageTy :<>: 'Text " instead."
+        )
+  ValidateGlobal Storage.Image '[] (Image ty) = Nothing
+  ValidateGlobal Storage.Image  (dec ': _) (Image _)
+    = TypeError
+        ( 'Text "Invalid decoration " :<>: ShowType dec :<>: 'Text " applied to image." )
+  ValidateGlobal Storage.Image  _ nonImageTy
+    = TypeError
+        (    'Text "Image global expected to point to an image, but points to "
+        :<>: ShowType nonImageTy :<>: 'Text " instead."
+        )
+  -- TODO: check the decorations provided
+  ValidateGlobal Storage.Uniform _ (Struct as) = Just (Struct as)
+  ValidateGlobal Storage.Uniform _ (Array n (Struct as)) = Just (Array n (Struct as))
+  ValidateGlobal Storage.Uniform _ ty
+    = TypeError
+        (    'Text "Uniform buffer should be backed by a struct or array containing a struct;"
+        :$$: 'Text "found type " :<>: ShowType ty :<>: 'Text " instead."
+        )
+  ValidateGlobal Storage.StorageBuffer _ (Struct as) = Just (Struct as)
+  ValidateGlobal Storage.StorageBuffer _ (Array n (Struct as)) = Just (Array n (Struct as))
+  ValidateGlobal Storage.StorageBuffer _ ty
+    = TypeError
+        (    'Text "Uniform buffer should be backed by a struct or array containing a struct;"
+        :$$: 'Text "found type " :<>: ShowType ty :<>: 'Text " instead."
+        )
+  -- TODO
+  ValidateGlobal Storage.Input  _ _ = Nothing
+  ValidateGlobal Storage.Output _ _ = Nothing
+  -- TODO
+  ValidateGlobal _ _ _ = Nothing
+
 
 --------------------------------------------------------------------------
 

@@ -101,8 +101,8 @@ module FIR
       ( Function
       , EntryPoint
       )
-  , FIR.IxState.IxState(IxState)
-  , FIR.IxState.Context(TopLevel)  --EntryPoint
+  , FIR.ASTState.ASTState(ASTState)
+  , FIR.ASTState.FunctionContext(TopLevel)
   , module FIR.Instances.AST
   , module FIR.Instances.Codensity
   , module FIR.Instances.Images
@@ -225,7 +225,7 @@ import FIR.Instances.AST
 import FIR.Instances.Codensity
 import FIR.Instances.Images
 import FIR.Instances.Optics
-import FIR.IxState
+import FIR.ASTState
 import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct

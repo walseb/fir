@@ -121,7 +121,7 @@ import FIR.AST
   )
 import FIR.Binding
   ( FunctionType, Var
-  , Permission
+  , Permissions
   )
 import FIR.Instances.AST
   ( )
@@ -137,8 +137,8 @@ import FIR.Instances.Images
   ( ImageTexel )
 import FIR.Instances.Optics
   ( User, Assigner, KnownOptic, opticSing )
-import FIR.IxState
-  ( Context(..), IxState(IxState), StageContext, EntryPointInfos )
+import FIR.ASTState
+  ( FunctionContext(..), ASTState(ASTState), StageContext, EntryPointInfos )
 import FIR.Prim.Image
   ( ImageProperties, ImageData, ImageCoordinates )
 import FIR.Prim.Singletons
@@ -195,7 +195,7 @@ while :: ( GHC.Stack.HasCallStack
          , b ~ (AST Bool := i)
          , r ~ (AST () := i)
          )
-      => Codensity AST b (i :: IxState)
+      => Codensity AST b (i :: ASTState)
       -> Codensity AST l i'
       -> Codensity AST r i''
 while = fromAST While
@@ -240,7 +240,7 @@ fundef :: forall name as b j_bds i r.
            , ValidFunDef name as i j_bds
            )
         => Codensity AST
-              ( AST b := 'IxState j_bds (Function name as) (EntryPointInfos i) )
+              ( AST b := 'ASTState j_bds (InFunction name as) (EntryPointInfos i) )
               ( FunctionDefinitionStartState name as i ) -- ^ Function body code.
         -> Codensity AST
               ( r := AddFunBinding name as b i )
@@ -267,7 +267,7 @@ entryPoint :: forall name stage stageInfo j_bds i.
              , ValidEntryPoint name stageInfo i j_bds
              )
            => Codensity AST
-                ( AST () := 'IxState j_bds (EntryPoint name stageInfo) (EntryPointInfos i) )
+                ( AST () := 'ASTState j_bds (InEntryPoint name stageInfo) (EntryPointInfos i) )
                 ( EntryPointStartState name stageInfo i ) -- ^ Entry point body.
            -> Codensity AST
                 ( AST () := AddEntryPoint name stageInfo i )
@@ -296,14 +296,14 @@ entryPoint = fromAST ( Entry @name @stage @stageInfo @j_bds @i Proxy Proxy ) . t
 -- *@a@: underlying type of the variable (inferred if the provided value is monomorphic),
 -- *@i@: state at start of definition (usually inferred).
 class ( KnownSymbol k
-      , Known [Permission] ps
+      , Known Permissions ps
       , PrimTy a
       )
    => CanDefine k ps a i ma | ma -> a where
   def :: GHC.Stack.HasCallStack => ma -> Codensity AST ( AST a := AddBinding k (Var ps a) i ) i
 
 instance ( KnownSymbol k
-         , Known [Permission] ps
+         , Known Permissions ps
          , PrimTy a
          , i' ~ i, i'' ~ i
          )
@@ -314,7 +314,7 @@ instance ( KnownSymbol k
   def = fromAST ( Def @k @ps @a @i Proxy Proxy ) . toAST
 
 instance ( KnownSymbol k
-         , Known [Permission] ps
+         , Known Permissions ps
          , PrimTy a
          )
       => CanDefine k ps a i (AST a) where
@@ -354,7 +354,7 @@ assign = fromAST ( Assign @optic sLength opticSing )
 -- Like @get@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @use \@(Name k)@.
-get :: forall (k :: Symbol) a (i :: IxState).
+get :: forall (k :: Symbol) a (i :: ASTState).
        ( KnownSymbol k
        , Gettable (Name k :: Optic '[] i a)
        )
@@ -365,7 +365,7 @@ get = use @(Name k :: Optic '[] i a)
 -- Like @put@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @assign \@(Name k)@.
-put :: forall (k :: Symbol) a (i :: IxState).
+put :: forall (k :: Symbol) a (i :: ASTState).
        ( KnownSymbol k
        , Settable (Name k :: Optic '[] i a)
        )
@@ -376,7 +376,7 @@ put = assign @(Name k :: Optic '[] i a)
 -- | Like @modify@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @modifying \@(Name k)@.
-modify :: forall (k :: Symbol) a (i :: IxState).
+modify :: forall (k :: Symbol) a (i :: ASTState).
           ( KnownSymbol k
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)
@@ -397,7 +397,7 @@ modify = modifying @(Name k :: Optic '[] i a)
 -- * @k@: image name,
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
-imageRead :: forall k props (i :: IxState).
+imageRead :: forall k props (i :: ASTState).
             ( KnownSymbol k, ProvidedSymbol k
             , Gettable (ImageTexel k)
             , LookupImageProperties k i ~ props
@@ -418,7 +418,7 @@ imageRead = use @(ImageTexel k) NoOperands
 -- * @k@: image name,
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
-imageWrite :: forall k props (i :: IxState).
+imageWrite :: forall k props (i :: ASTState).
              ( KnownSymbol k, ProvidedSymbol k
              , Gettable (ImageTexel k)
              , LookupImageProperties k i ~ props
@@ -434,13 +434,13 @@ imageWrite = assign @(ImageTexel k) NoOperands
 -- geometry shader primitive instructions
 
 -- | Geometry shader: write the current output values at the current vertex index.
-emitVertex :: forall (i :: IxState).
+emitVertex :: forall (i :: ASTState).
               ( StageContext i ~ Just Geometry )
            => Codensity AST ( AST () := i ) i
 emitVertex = primOp @i @SPIRV.EmitGeometryVertex
 
 -- | Geometry shader: end the current primitive and pass to the next one.
-endPrimitive :: forall (i :: IxState).
+endPrimitive :: forall (i :: ASTState).
                 ( StageContext i ~ Just Geometry )
              =>  Codensity AST ( AST () := i ) i
 endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
@@ -449,10 +449,10 @@ endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
 -- type synonyms for use/assign
 
 type family ListVariadicCod
-              ( is :: [Type]  )
-              ( s  :: IxState )
-              ( a  :: Type    )
-            = ( r  :: Type    )
+              ( is :: [Type]   )
+              ( s  :: ASTState )
+              ( a  :: Type     )
+            = ( r  :: Type     )
             | r -> is s a where
   ListVariadicCod '[]         s a = Codensity AST (AST a := s) s
   ListVariadicCod ( i ': is ) s a = AST i -> ListVariadicCod is s a
@@ -470,7 +470,7 @@ type CodAssigner (optic :: Optic is s a) = ListVariadicCod (is `Postpend` a) s (
 
 type family VariadicCodModifier
               ( is :: [Type]  )
-              ( s  :: IxState )
+              ( s  :: ASTState )
               ( a  :: Type    )
             = ( r  :: Type    )
             | r -> is s a

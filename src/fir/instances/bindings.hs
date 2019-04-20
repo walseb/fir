@@ -67,8 +67,8 @@ import FIR.Binding
   )
 import FIR.Builtin
   ( StageBuiltins )
-import FIR.IxState
-  ( Context(..), IxState(..)
+import FIR.ASTState
+  ( FunctionContext(..), ASTState(..)
   , EntryPointInfo(..)
   )
 import FIR.Prim.Image
@@ -105,8 +105,8 @@ type family Unreachable :: k where
 --
 -- Throws a type error if no variable by that name exists,
 -- or if the variable is not readable.
-type family Get (k :: Symbol) (i :: IxState) :: Type where
-  Get k ('IxState bds _ _) = GetBinding k (Lookup k bds)
+type family Get (k :: Symbol) (i :: ASTState) :: Type where
+  Get k ('ASTState bds _ _) = GetBinding k (Lookup k bds)
 
 type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   GetBinding k 'Nothing
@@ -133,8 +133,8 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
 --
 -- Throws a type error if no variable is bound by that name,
 -- or if the variable is not writable.
-type family Put (k :: Symbol) (i :: IxState) :: Type where
-  Put k ('IxState bds _ _) = PutBinding k (Lookup k bds)
+type family Put (k :: Symbol) (i :: ASTState) :: Type where
+  Put k ('ASTState bds _ _) = PutBinding k (Lookup k bds)
 
 type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
   PutBinding k 'Nothing = TypeError
@@ -165,13 +165,13 @@ type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
 
 -- | Add a new binding to the indexed state.
 type family AddBinding
-              ( k  :: Symbol  )
-              ( bd :: Binding )
-              ( s  :: IxState )
-              :: IxState where
-  AddBinding k bd ('IxState bds ctx eps)
+              ( k  :: Symbol   )
+              ( bd :: Binding  )
+              ( s  :: ASTState )
+              :: ASTState where
+  AddBinding k bd ('ASTState bds ctx eps)
     = If ( ValidDef k bds )
-        ( 'IxState (Insert k bd bds) ctx eps )
+        ( 'ASTState (Insert k bd bds) ctx eps )
         Unreachable
 
 -- | Check that it is valid to define a new variable with given name.
@@ -194,32 +194,32 @@ type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Bool wh
 type family FunctionDefinitionStartState
               ( k  :: Symbol      )
               ( as :: BindingsMap )
-              ( s  :: IxState     )
-            :: IxState where
-  FunctionDefinitionStartState k as ('IxState i ctx eps)
-    = 'IxState (Union i as) ('Function k as) eps
+              ( s  :: ASTState    )
+            :: ASTState where
+  FunctionDefinitionStartState k as ('ASTState i ctx eps)
+    = 'ASTState (Union i as) ('InFunction k as) eps
 
 -- | Adds a function binding to the indexed monadic state.
-type family AddFunBinding (k :: Symbol) (as :: BindingsMap) (b :: Type) (s :: ixState) :: IxState where
-  AddFunBinding k as b ('IxState bds ctx eps)
+type family AddFunBinding (k :: Symbol) (as :: BindingsMap) (b :: Type) (s :: ixState) :: ASTState where
+  AddFunBinding k as b ('ASTState bds ctx eps)
   -- 'ValidFunDef' should have already checked that name 'k' is not already in use
-    = 'IxState (Insert k (Fun as b) bds) ctx eps
+    = 'ASTState (Insert k (Fun as b) bds) ctx eps
 
 -- | Set the monadic context: within a function body.
 type family SetFunctionContext
               ( k  :: Symbol      )
               ( as :: BindingsMap )
-              ( s  :: IxState     )
-              :: IxState where
-  SetFunctionContext k as ('IxState bds TopLevel eps)
-    = 'IxState bds ('Function k as) eps
-  SetFunctionContext k _ ('IxState _ ('Function l _) _ )
+              ( s  :: ASTState    )
+              :: ASTState where
+  SetFunctionContext k as ('ASTState bds TopLevel eps)
+    = 'ASTState bds ('InFunction k as) eps
+  SetFunctionContext k _ ('ASTState _ ('InFunction l _) _ )
     = TypeError
         (    Text "'fundef': unexpected nested function definition."
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
-  SetFunctionContext k _ ('IxState _ ('EntryPoint stage stageName) _ )
+  SetFunctionContext k _ ('ASTState _ ('InEntryPoint stage stageName) _ )
     = TypeError
         (    Text "'fundef': unexpected function definition inside entry point."
         :$$: Text "Function " :<>: ShowType k
@@ -238,24 +238,24 @@ type family SetFunctionContext
 type family ValidFunDef 
       ( k  :: Symbol      )  -- name of function to be defined
       ( as :: BindingsMap )  -- function arguments
-      ( s  :: IxState     )  -- indexed state at the point the function is definition
+      ( s  :: ASTState    )  -- indexed state at the point the function is definition
       ( l  :: BindingsMap )  -- total bindings at the end of the function definition
     :: Constraint
     where
-  ValidFunDef k _ ('IxState _ ('Function l _) _ ) _
+  ValidFunDef k _ ('ASTState _ ('InFunction l _) _ ) _
     = TypeError
         (    Text "'fundef': unexpected nested function definition."
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
-  ValidFunDef k _ ('IxState _ ('EntryPoint stage stageName) _ ) _
+  ValidFunDef k _ ('ASTState _ ('InEntryPoint stage stageName) _ ) _
     = TypeError
         (    Text "'fundef': unexpected function definition inside entry point."
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside " :<>: ShowType stage
         :<>: Text " entry point " :<>: ShowType stageName :<>: Text "."
         )
-  ValidFunDef k as ('IxState i 'TopLevel _) l
+  ValidFunDef k as ('ASTState i 'TopLevel _) l
     = ( NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
       , ValidArguments k as (Remove i (Remove as l)) )
         --     │             └━━━━━━┬━━━━━┘
@@ -311,10 +311,10 @@ type family NoFunctionNameConflict
 type family EntryPointStartState
               ( k        :: Symbol                )
               ( nfo      :: SPIRV.StageInfo Nat s )
-              ( i        :: IxState               )
-              :: IxState where
-  EntryPointStartState k nfo ('IxState i ctx eps)
-    = 'IxState (Union i (StageBuiltins nfo)) ('EntryPoint k nfo) eps
+              ( i        :: ASTState              )
+              :: ASTState where
+  EntryPointStartState k nfo ('ASTState i ctx eps)
+    = 'ASTState (Union i (StageBuiltins nfo)) ('InEntryPoint k nfo) eps
 
 -- | Insert new entry point at end of current list of entry points.
 --
@@ -322,10 +322,10 @@ type family EntryPointStartState
 type family AddEntryPoint
               ( k     :: Symbol                )
               ( nfo   :: SPIRV.StageInfo Nat s )
-              ( i     :: IxState               )
-              :: IxState where
-  AddEntryPoint k nfo ('IxState i ctx eps)
-    = 'IxState i 'TopLevel (InsertEntryPointInfo ('EntryPointInfo k nfo) eps)
+              ( i     :: ASTState              )
+              :: ASTState where
+  AddEntryPoint k nfo ('ASTState i ctx eps)
+    = 'ASTState i 'TopLevel (InsertEntryPointInfo ('EntryPointInfo k nfo) eps)
 
 -- | Auxiliary function for 'AddEntryPoint' which performs the check & appends.
 type family InsertEntryPointInfo
@@ -377,10 +377,10 @@ type family InsertEntryPointInfoWithComparison
 type family ValidEntryPoint
               ( k        :: Symbol                )
               ( nfo      :: SPIRV.StageInfo Nat s )
-              ( i        :: IxState               )
+              ( i        :: ASTState              )
               ( l        :: BindingsMap           )
             :: Constraint where
-  ValidEntryPoint k (nfo :: SPIRV.StageInfo Nat s) ('IxState i _ _) l
+  ValidEntryPoint k (nfo :: SPIRV.StageInfo Nat s) ('ASTState i _ _) l
     = ( NoEntryPointNameConflict k (Lookup k i)
       , ValidLocalBehaviour s (Remove i l)
       , BuiltinsDoNotAppearBefore s (StageBuiltins nfo) i
@@ -443,8 +443,8 @@ type family BuiltinDoesNotAppearBefore
 -- | Retrieve the properties of an image.
 --
 -- Throws a type error if there is no image with given name.
-type family LookupImageProperties (k :: Symbol) (i :: IxState) :: ImageProperties where
-  LookupImageProperties k ('IxState i _ _ )
+type family LookupImageProperties (k :: Symbol) (i :: ASTState) :: ImageProperties where
+  LookupImageProperties k ('ASTState i _ _ )
     = ImagePropertiesFromLookup k i (Lookup k i)
 
 type family ImagePropertiesFromLookup
@@ -540,8 +540,8 @@ type family AllowedIndexing
 
 -- Check that depth-testing is appropriately performed.
 type family CheckDepthTest
-              ( depthTesting :: Bool   )
-              ( inty :: SPIRV.ScalarTy )
+              ( depthTesting :: Bool    )
+              ( inty  :: SPIRV.ScalarTy )
               ( depth :: Maybe HasDepth )
             :: Constraint where
   CheckDepthTest False _ (Just DepthImage)

@@ -30,8 +30,8 @@ import GHC.TypeNats
 -- fir
 import Control.Monad.Indexed
   ( (:=)(AtKey) )
-import FIR.IxState
-  ( IxState )
+import FIR.ASTState
+  ( ASTState )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy
   , primTy, scalarTy
@@ -398,13 +398,13 @@ instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.Convert '(a,b) where
   opSing = Just SConvert
 
 -- geometry primitive instructions
-instance PrimOp SPIRV.EmitGeometryVertex (i :: IxState) where
+instance PrimOp SPIRV.EmitGeometryVertex (i :: ASTState) where
   type PrimOpConstraint SPIRV.EmitGeometryVertex i = ()
   type PrimOpType SPIRV.EmitGeometryVertex i = (() := i) i
   op = AtKey ()
   opName = SPIRV.GeomOp SPIRV.EmitGeometryVertex
   opSing = Nothing
-instance PrimOp SPIRV.EndGeometryPrimitive (i :: IxState) where
+instance PrimOp SPIRV.EndGeometryPrimitive (i :: ASTState) where
   type PrimOpConstraint SPIRV.EndGeometryPrimitive i = ()
   type PrimOpType SPIRV.EndGeometryPrimitive i = (() := i) i
   op = AtKey ()

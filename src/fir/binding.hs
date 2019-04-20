@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators         #-}
 
 module FIR.Binding
-  ( Permission(Read,Write)
+  ( Permission(Read,Write), Permissions
   , R, W, RW
   , Binding(Variable, Function)
   , Var, Fun
@@ -36,6 +36,8 @@ import qualified SPIRV.Storage as SPIRV
 data Permission = Read | Write
   deriving (Eq, Show)
 
+type Permissions = [Permission]
+
 instance Demotable Permission where
   type Demote Permission = Permission
 instance Known Permission 'Read where
@@ -48,7 +50,7 @@ type W  = '[ 'Write ]
 type RW = '[ 'Read, 'Write ]
 
 data Binding where
-  Variable   :: [Permission] -> Type -> Binding
+  Variable   :: Permissions -> Type -> Binding
   Function   :: [Symbol :-> Binding] -> Type -> Binding
 
 -- shorthands

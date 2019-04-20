@@ -2,11 +2,31 @@
 {-# LANGUAGE PackageImports   #-}
 {-# LANGUAGE RankNTypes       #-}
 
+{-|
+Module: CodeGen.State
+
+This module defines the structure of the state used by the code generation,
+in two parts:
+
+  - 'CGContext', consisting of reified type-level data provided at the start
+  of code-generation (with a 'Control.Monad.Reader.ReaderT' transformer),
+  - 'CGState', consisting of state accumulated during code-generation,
+  recording which objects have been declared and their IDs.
+
+This module manually provides lenses for these. Most of these could be derived
+automatically, but a few of them are slightly trickier, requiring an affine traversal.
+
+These custom lenses also allow terse state modifications.
+For instance, usage of a built-in variable simultaneously obtains an ID for the variable,
+adds itself to the relevant entry point interface, and sets the necessary decorations.
+
+-}
+
 module CodeGen.State where
 
 -- base
 import Data.Foldable
-  ( traverse_, toList )
+  ( traverse_ )
 import Data.Maybe
   ( fromMaybe )
 import Data.Word
@@ -44,6 +64,8 @@ import CodeGen.Instruction
   )
 import FIR.Builtin
   ( stageBuiltins, builtinDecorations )
+import FIR.ASTState
+  ( FunctionContext(TopLevel), VLFunctionContext ) -- value-level function context
 import FIR.Prim.Singletons
   ( AConstant )
 import qualified SPIRV.Capability      as SPIRV
@@ -56,51 +78,72 @@ import qualified SPIRV.PrimTy          as SPIRV
 import qualified SPIRV.Stage           as SPIRV
 
 ----------------------------------------------------------------------------
--- code generator monad
+-- * Code generation state and context
 
--- code generator state
--- this consists of information we need to keep track of along the way,
--- for instance which types have been declared
+-- | Code generation state.
+--
+-- Consists of information that code generation needs to keep track of along the way,
+-- for instance which types have been declared.
 data CGState
   = CGState
-    -- current ID number (increases by 1 each time a new ID is needed)
-      { currentID           :: ID
-    -- ID of the current block in the CFG (if inside a block)
+      {
+      -- | Current ID number (increases by 1 each time a new ID is needed).
+      currentID           :: ID
+
+      -- | ID of the current block in the CFG (if inside a block).
       , currentBlock        :: Maybe ID
-      , functionContext     :: FunctionContext
+
+      -- | Current function context: top-level, within a function, within an entry point.
+      , functionContext     :: VLFunctionContext
+
+      -- | Capability requirements that have been declared.
       , neededCapabilities  :: Set                     SPIRV.Capability
-      , knownExtInsts       :: Map SPIRV.ExtInst       Instruction
+
+      -- | IDs of all used extended instruction sets.
+      , knownExtInsts       :: Map SPIRV.ExtInst       ID
+
+      -- | IDs of constant text literals.
       , knownStringLits     :: Map Text                ID
+
+      -- | IDs which have been annotated with a name / member name.
       , names               :: Set                     (ID, Either Text (Word32, Text))
-      -- entry-point interfaces, keeping track of which global variables are used
-      , interfaces          :: Map (SPIRV.Stage, Text) (Map Text ID)
-      , executionModes      :: Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32))
+
+      -- | Entry point IDs.
+      , entryPoints         :: Map (Text, SPIRV.Stage) ID
+
+      -- | Entry point interfaces, keeping track of which global variables are used.
+      , interfaces          :: Map (Text, SPIRV.Stage) (Map Text ID)
+
+      -- | Decorations for IDs.
       , decorations         :: Map ID                  (Set (SPIRV.Decoration    Word32))
+
+      -- | Decorations for members of a struct with given ID.
       , memberDecorations   :: Map (ID, Word32)        (Set (SPIRV.Decoration    Word32))
-      -- map of all types used
+
+      -- | Map of all declared types.
       , knownTypes          :: Map SPIRV.PrimTy        Instruction
-      -- map of all constants used
+
+      -- | Map of all declared constants.
       , knownConstants      :: Map AConstant           Instruction
-      -- which top-level global (input/output) variables have been used
+
+      -- | Which top-level global (input/output) variables have been used?
       , usedGlobals         :: Map Text                (ID, SPIRV.PointerTy)
-      -- top-level bindings available, such as top-level functions
+
+      -- | Top-level bindings available, such as top-level functions.
       , knownBindings       :: Map Text                (ID, SPIRV.PrimTy   )
-      -- variables declared by the user in the program
+
+      -- | Variables declared by the user in the program.
       , localBindings       :: Map Text                (ID, SPIRV.PrimTy   )
-      -- IDs of locally declared variables (floated to the top of the function definition)
+
+      -- | IDs of locally declared variables (floated to the top of the function definition).
       , localVariables      :: Map ID                  SPIRV.PointerTy
-      -- pointer ID associated to a given ID
-      -- used to keep track of auxiliary temporary pointers
-      -- (e.g. a pointer created for a runtime access chain operation)
+
+      -- | Pointer ID associated to a given ID.
+      -- Used to keep track of auxiliary temporary pointers
+      -- (e.g. a pointer created for a runtime access chain operation).
       , temporaryPointers   :: Map ID                  (ID, PointerState)
       }
   deriving Show
-
-data FunctionContext
-  = TopLevel
-  | Function [(Text, SPIRV.PrimTy)] -- argument names & types
-  | EntryPoint SPIRV.Stage Text     -- stage, and stage name
-  deriving ( Eq, Show )
 
 data PointerState
   = Fresh
@@ -117,8 +160,8 @@ initialState
       , knownExtInsts       = Map.empty
       , knownStringLits     = Map.empty
       , names               = Set.empty
+      , entryPoints         = Map.empty
       , interfaces          = Map.empty
-      , executionModes      = Map.empty
       , decorations         = Map.empty
       , memberDecorations   = Map.empty
       , knownTypes          = Map.empty
@@ -130,20 +173,31 @@ initialState
       , temporaryPointers   = Map.empty
       }
 
+
+-- | Code generation context.
+--
+-- Consists of information provided at the start of code generation,
+-- as provided by the user-provided type annotations of
+-- top-level functions, entry points and input/output variables.
 data CGContext
   = CGContext
-     { -- user defined inputs/outputs (not builtins)
+     { -- | User defined inputs/outputs (not builtins).
        userGlobals
           :: Map Text (SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
-       -- user defined functions (not entry points)
+
+       -- | User defined functions (not entry points).
      , userFunctions
           :: Map Text SPIRV.FunctionControl
-       -- entry points
+
+       -- | User definied entry points.
      , userEntryPoints
-          :: Map Text (SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
-       -- images
+          :: Map (Text, SPIRV.Stage) ( Set (SPIRV.ExecutionMode Word32) )
+
+       -- | User defined images.
      , userImages
           :: Map Text SPIRV.Image
+
+       -- | Whether to turn on debug mode.
      , debugMode :: Bool
      }
 
@@ -158,15 +212,16 @@ emptyContext
       }
 
 ----------------------------------------------------------------------------
--- useful function to deal with nested data structures
--- such as 'Map a (Map b c)'
+-- * Lenses
 
+-- | Affine traversal relative to 'Maybe'.
+--
+-- Useful function to deal with nested data structures
+-- such as @Map a (Map b c)@
 affineTraverse :: (Monoid a, Functor f) => (a -> f b) -> (Maybe a -> f (Maybe b))
 affineTraverse f Nothing  = fmap Just (f mempty)
 affineTraverse f (Just a) = fmap Just (f a)
 
-----------------------------------------------------------------------------
--- lenses
 
 _currentID :: Lens' CGState ID
 _currentID = lens currentID ( \s v -> s { currentID = v } )
@@ -174,7 +229,7 @@ _currentID = lens currentID ( \s v -> s { currentID = v } )
 _currentBlock :: Lens' CGState ( Maybe ID )
 _currentBlock = lens currentBlock ( \s v -> s { currentBlock = v } )
 
-_functionContext :: Lens' CGState FunctionContext
+_functionContext :: Lens' CGState VLFunctionContext
 _functionContext = lens functionContext ( \s v -> s { functionContext = v } )
 
 _neededCapabilities :: Lens' CGState (Set SPIRV.Capability)
@@ -183,10 +238,10 @@ _neededCapabilities = lens neededCapabilities ( \s v -> s { neededCapabilities =
 _neededCapability :: SPIRV.Capability -> Lens' CGState (Maybe ())
 _neededCapability capability = _neededCapabilities . at capability
 
-_knownExtInsts :: Lens' CGState (Map SPIRV.ExtInst Instruction)
+_knownExtInsts :: Lens' CGState (Map SPIRV.ExtInst ID)
 _knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )
 
-_knownExtInst :: SPIRV.ExtInst -> Lens' CGState (Maybe Instruction)
+_knownExtInst :: SPIRV.ExtInst -> Lens' CGState (Maybe ID)
 _knownExtInst ext = _knownExtInsts . at ext
 
 _knownStringLits :: Lens' CGState (Map Text ID)
@@ -204,56 +259,50 @@ _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
 _usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PointerTy))
 _usedGlobal name = _usedGlobals . at name
 
-_interfaces :: Lens' CGState (Map (SPIRV.Stage, Text) (Map Text ID))
+_entryPoints :: Lens' CGState (Map (Text, SPIRV.Stage) ID)
+_entryPoints = lens entryPoints ( \s v -> s { entryPoints = v } )
+
+_entryPoint :: Text -> SPIRV.Stage -> Lens' CGState (Maybe ID)
+_entryPoint name stage = _entryPoints . at (name, stage)
+
+_interfaces :: Lens' CGState (Map (Text, SPIRV.Stage) (Map Text ID))
 _interfaces = lens interfaces ( \s v -> s { interfaces = v } )
 
-_interface :: SPIRV.Stage -> Text -> Lens' CGState (Maybe (Map Text ID))
-_interface stage stageName = _interfaces . at (stage, stageName)
+_interface :: Text -> SPIRV.Stage -> Lens' CGState (Maybe (Map Text ID))
+_interface stageName stage = _interfaces . at (stageName, stage)
 
-_interfaceBinding :: SPIRV.Stage -> Text -> Text -> Lens' CGState (Maybe ID)
-_interfaceBinding stage stageName varName
-  = _interface stage stageName
+_interfaceBinding :: Text -> SPIRV.Stage -> Text -> Lens' CGState (Maybe ID)
+_interfaceBinding stageName stage varName
+  = _interface stageName stage
   . affineTraverse
   . at varName
 
-_builtin :: SPIRV.Stage -> Text -> Text -> Lens' CGState (Maybe ID)
-_builtin stage stageName builtinName
+_builtin :: Text -> SPIRV.StageInfo Word32 stage -> Text -> Lens' CGState (Maybe ID)
+_builtin stageName stageInfo builtinName
   = lens
       ( view _interfaceBuiltin )
       ( \s mb_i -> case mb_i of
          Nothing -> s
          Just i  -> set _interfaceBuiltin           (Just i)
-                  . set ( _usedGlobal builtinName ) (Just (i, builtinTy s))
+                  . set ( _usedGlobal builtinName ) (Just (i, builtinTy))
                   . set ( _decorate i ) (Just $ builtinDecorations builtinName)
                   $ s
       )
-  where _interfaceBuiltin :: Lens' CGState (Maybe ID)
-        _interfaceBuiltin = _interfaceBinding stage stageName builtinName
+  where stage :: SPIRV.Stage
+        stage = SPIRV.stageOf stageInfo
 
-        builtinTy :: CGState -> SPIRV.PointerTy
-        builtinTy s =
-          let modes :: [SPIRV.ExecutionMode Word32]
-              modes = fromMaybe []
-                        ( toList <$> Map.lookup (stage, stageName) (executionModes s) )
-          in
-            fromMaybe
-              ( error
-                ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
-                    \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
-                )
+        _interfaceBuiltin :: Lens' CGState (Maybe ID)
+        _interfaceBuiltin = _interfaceBinding stageName stage builtinName
+
+        builtinTy :: SPIRV.PointerTy
+        builtinTy =
+          fromMaybe
+            ( error
+              ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
+                  \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
               )
-              ( lookup builtinName $ stageBuiltins stage modes )
-
-_executionModes :: Lens' CGState (Map (SPIRV.Stage, Text) (Set (SPIRV.ExecutionMode Word32)))
-_executionModes = lens executionModes ( \s v -> s { executionModes = v } )
-
-_entryPointExecutionModes
-  :: SPIRV.Stage
-  -> Text
-  -> Lens'
-        CGState
-        ( Maybe ( Set (SPIRV.ExecutionMode Word32) ) )
-_entryPointExecutionModes stage stageName = _executionModes . at (stage, stageName)
+            )
+            ( lookup builtinName $ stageBuiltins stageInfo )
 
 _decorations :: Lens' CGState (Map ID (Set (SPIRV.Decoration Word32)))
 _decorations = lens decorations ( \s v -> s { decorations = v } )
@@ -339,11 +388,11 @@ _userFunctions = lens userFunctions ( \c v -> c { userFunctions = v } )
 _userFunction :: Text -> Lens' CGContext ( Maybe SPIRV.FunctionControl )
 _userFunction function = _userFunctions . at function
 
-_userEntryPoints :: Lens' CGContext ( Map Text ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) ) )
+_userEntryPoints :: Lens' CGContext ( Map (Text, SPIRV.Stage) ( Set (SPIRV.ExecutionMode Word32) ) )
 _userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
 
-_userEntryPoint :: Text -> Lens' CGContext ( Maybe ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) ) )
-_userEntryPoint entryPoint = _userEntryPoints . at entryPoint
+_userEntryPoint :: Text -> SPIRV.Stage -> Lens' CGContext ( Maybe ( Set (SPIRV.ExecutionMode Word32) ) )
+_userEntryPoint name stage = _userEntryPoints . at (name, stage)
 
 _userImages :: Lens' CGContext ( Map Text SPIRV.Image )
 _userImages = lens userImages ( \c v -> c { userImages = v } )
@@ -355,7 +404,7 @@ _debugMode :: Lens' CGContext Bool
 _debugMode = lens debugMode ( \c v -> c { debugMode = v } )
 
 -----------------------------------------------------------------------------
--- various utility functions to update state
+-- * Helper state update functions
 
 addCapabilities :: forall t m.
                   ( Traversable t, MonadState CGState m )

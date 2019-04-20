@@ -80,11 +80,9 @@ import Data.Type.Map
   )
 import {-# SOURCE #-} FIR.AST
   ( AST )
---import FIR.Binding
---  ( IxState )
 import qualified FIR.Instances.Bindings as Binding
-import FIR.IxState
-  ( IxState )
+import FIR.ASTState
+  ( ASTState )
 import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
 import FIR.Prim.Image
@@ -118,7 +116,7 @@ data SOptic (optic :: Optic i s a) :: Type where
   -- as we convert 'Name' optics to 'Index' optics behind the scenes
   SBinding  :: KnownSymbol k
             => Proxy k
-            -> SOptic (Name k :: Optic '[] (as :: IxState) b)
+            -> SOptic (Name k :: Optic '[] (as :: ASTState) b)
   SImageTexel :: ( KnownSymbol k
                  , Known ImageProperties props
                  )
@@ -201,7 +199,7 @@ instance ( KnownSymbol k
 instance ( KnownSymbol k
          , empty ~ '[]
          )
-      => KnownOptic (Name_ k :: Optic empty (bds :: IxState) a)
+      => KnownOptic (Name_ k :: Optic empty (bds :: ASTState) a)
       where
   opticSing = SBinding (Proxy @k)
 instance forall is js ks s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
@@ -249,7 +247,7 @@ instance {-# OVERLAPPING #-}
   => KnownOptic ( ( ( Name_ k :: Optic empty i (Image props) )
                     `ComposeO`
                     ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) r)
-                  ) :: Optic '[imgOps, imgCds] (i :: IxState) r
+                  ) :: Optic '[imgOps, imgCds] (i :: ASTState) r
                 )
   where
   opticSing = SImageTexel (Proxy @k) (Proxy @props)
@@ -273,7 +271,7 @@ type family ValidAnIndexOptic (is :: [Type]) (s :: Type) (a :: Type) :: Constrai
 -- by requiring that the part focused onto by the outer optic
 -- is as dictated by the state.
 
-instance forall (k :: Symbol) (i :: IxState) empty js ks a b (o2 :: Optic js a b).
+instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a b).
          ( KnownSymbol k
          , Gettable o2
          , empty ~ '[]
@@ -281,7 +279,7 @@ instance forall (k :: Symbol) (i :: IxState) empty js ks a b (o2 :: Optic js a b
          , a ~ Binding.Get k i -- this is the additional line that helps type inference
          ) => Gettable ( ((Name_ k :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
-instance forall (k :: Symbol) (i :: IxState) empty js ks a b (o2 :: Optic js a b).
+instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a b).
          ( KnownSymbol k
          , Settable o2
          , empty ~ '[]
@@ -293,10 +291,10 @@ instance forall (k :: Symbol) (i :: IxState) empty js ks a b (o2 :: Optic js a b
 ----------------------------------------------------------------------
 
 type family ListVariadicIx
-              ( as :: [Type]      )
-              ( i  :: IxState )
-              ( b  :: Type        )
-            = ( r  :: Type        )
+              ( as :: [Type]   )
+              ( i  :: ASTState )
+              ( b  :: Type     )
+            = ( r  :: Type     )
             | r -> as i b  where
   ListVariadicIx '[]       i b = (b := i) i
   ListVariadicIx (a ': as) i b = a -> ListVariadicIx as i b
@@ -312,7 +310,7 @@ instance ( KnownSymbol k
          , r ~ Binding.Get k i
          , empty ~ '[]
          )
-      => Gettable (Name_ k :: Optic empty (i :: IxState) r) where
+      => Gettable (Name_ k :: Optic empty (i :: ASTState) r) where
 
 
 instance
@@ -630,7 +628,7 @@ instance ( KnownSymbol k
          , r ~ Binding.Put k i
          , empty ~ '[]
          )
-      => Settable (Name_ k :: Optic empty (i :: IxState) r ) where
+      => Settable (Name_ k :: Optic empty (i :: ASTState) r ) where
 
   
 

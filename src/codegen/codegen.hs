@@ -17,11 +17,11 @@ module CodeGen.CodeGen
 import Prelude
   hiding ( Monad(..) )
 import Control.Arrow
-  ( first, second )
+  ( first )
 import Control.Monad
   ( when )
 import Data.Maybe
-  ( maybe, fromMaybe )
+  ( fromMaybe )
 import Data.Proxy
   ( Proxy )
 import Data.Word
@@ -36,7 +36,6 @@ import Data.ByteString.Lazy
 import Data.Map
   ( Map )
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 
 -- mtl
 import Control.Monad.Except
@@ -110,11 +109,9 @@ import CodeGen.Put
 import CodeGen.State
   ( CGState(currentBlock, localBindings)
   , CGContext
-  , FunctionContext(TopLevel)
   , _currentBlock, _functionContext
   , _localBindings, _localBinding
   , _userFunction
-  , _userEntryPoint
   )
 import Data.Type.Known
   ( knownValue )
@@ -128,6 +125,8 @@ import FIR.Instances.AST
   ( )
 import FIR.Instances.Optics
   ( SOptic(..), showSOptic )
+import FIR.ASTState
+  ( FunctionContext(TopLevel) )
 import FIR.Prim.Op
   ( PrimOp(opName) )
 import FIR.Prim.Singletons
@@ -212,22 +211,21 @@ codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
         pure cgRes
 
 codeGen (FunDef (_ :: Proxy name) (_ :: Proxy as) (_ :: Proxy b) :$ body)
-  = let argTys = map (second fst) (knownVars @as)
+  = let as     = knownVars @as
         retTy  = primTyVal  @b
         name   = knownValue @name
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
       control <- fromMaybe SPIRV.noFunctionControl <$> view ( _userFunction name )
-      funID   <- declareFunction name control argTys retTy (codeGen body)
-      pure ( funID , SPIRV.Function (map snd argTys) retTy )
+      funID   <- declareFunction name control as retTy (codeGen body)
+      pure ( funID , SPIRV.Function (map (fst . snd) as) retTy )
 
-codeGen (Entry (_ :: Proxy name) (_ :: Proxy stage) :$ body)
-  = let name  = knownValue @name
-        stage = knownValue @stage
+codeGen (Entry (_ :: Proxy name) (_ :: Proxy stageInfo) :$ body)
+  = let name      = knownValue @name
+        stageInfo = knownValue @stageInfo
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
-      modes        <- maybe Set.empty snd <$> view ( _userEntryPoint name )
-      entryPointID <- declareEntryPoint name stage modes (codeGen body)
+      entryPointID <- declareEntryPoint name stageInfo (codeGen body)
       pure ( entryPointID, SPIRV.Function [] SPIRV.Unit )
 
 codeGen (OpticUse (AnIndexedOptic singOptic is))
