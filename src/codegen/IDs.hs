@@ -14,10 +14,12 @@ module CodeGen.IDs where
 -- base
 import Control.Arrow
   ( second )
+import Control.Monad
+  ( void )
 import Data.Coerce
   ( coerce )
 import Data.Foldable
-  ( traverse_ )
+  ( for_ )
 import Data.Maybe
   ( fromJust )
 import Data.Semigroup
@@ -54,7 +56,7 @@ import CodeGen.Monad
   )
 import CodeGen.State
   ( CGState, CGContext
-    , _functionContext
+  , _functionContext
   , _knownExtInst
   , _knownStringLit
   , _knownBinding
@@ -65,12 +67,17 @@ import CodeGen.State
   , _usedGlobal
   , _userGlobal
   , _interfaceBinding
-  , addCapabilities, addMemberName, addMemberDecoration, addDecorations
+  , addCapabilities
+  , addName, addMemberName
+  , addDecorations
+  , addMemberDecoration, addMemberDecorations
   )
-import FIR.Builtin
-  ( stageBuiltins )
 import FIR.ASTState
   ( FunctionContext(InEntryPoint), stageContext )
+import FIR.Builtin
+  ( stageBuiltins )
+import FIR.Layout
+  ( inferPointerLayout )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), primTy
   , SPrimTy(..)
@@ -81,7 +88,6 @@ import FIR.Prim.Struct
 import Math.Linear
   ( M(unM), Matrix(transpose) )
 import qualified SPIRV.Builtin    as SPIRV
-  ( Builtin(Position,PointSize) )
 import qualified SPIRV.Capability as SPIRV
   ( primTyCapabilities )
 import qualified SPIRV.Decoration as SPIRV
@@ -92,6 +98,8 @@ import qualified SPIRV.Image      as SPIRV.Image
 import qualified SPIRV.Operation  as SPIRV.Op
 import qualified SPIRV.PrimTy     as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV.PrimTy
+import           SPIRV.PrimTy
+  ( StructUsage(..) )
 import qualified SPIRV.ScalarTy   as SPIRV
 import qualified SPIRV.Stage      as SPIRV
 import qualified SPIRV.Storage    as Storage
@@ -111,8 +119,8 @@ extInstID extInst =
 -- ( if one is known use it, otherwise recursively create fresh IDs for necessary types )
 typeID :: forall m.
           ( MonadState CGState m
-          , MonadFresh ID m
-          , MonadError Text m -- only needed for the constant instruction call for array length
+          , MonadFresh ID      m
+          , MonadError Text    m -- only needed for the constant instruction call for array length
           )
        => SPIRV.PrimTy -> m ID
 typeID ty =
@@ -145,20 +153,24 @@ typeID ty =
                   -> mkTyConInstruction ( Arg bID $ toArgs asIDs )
             )
 
-        SPIRV.Array l a ->
+        SPIRV.Array l a decs ->
           createIDRec _knownPrimTy
             ( do lgID  <- constID l -- array size is the result of a constant instruction
                  eltID <- typeID  a --     as opposed to being a literal number
                  pure (eltID, lgID) -- (I suppose this is to do with specialisation constants)
             )
-            ( \(eltID, lgId)
-                -> mkTyConInstruction ( Arg eltID $ Arg lgId EndArgs ) 
+            ( \(eltID, lgID) v ->
+                addDecorations v decs
+                  >> mkTyConInstruction ( Arg eltID $ Arg lgID EndArgs ) v
             )
 
-        SPIRV.RuntimeArray a ->
+        SPIRV.RuntimeArray a decs ->
           createIDRec _knownPrimTy
             ( typeID a )
-            ( \eltID -> mkTyConInstruction ( Arg eltID EndArgs ) )
+            ( \eltID v ->
+              addDecorations v decs
+                >> mkTyConInstruction ( Arg eltID EndArgs ) v
+            )
 
         SPIRV.Unit    -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
         SPIRV.Boolean -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
@@ -175,52 +187,42 @@ typeID ty =
           -> createID _knownPrimTy
                 ( mkTyConInstruction ( Arg (SPIRV.width w) EndArgs ) )
 
-        SPIRV.Struct as
+        SPIRV.Struct as decs structUsage
           -> createIDRec _knownPrimTy
-                ( traverse (typeID . snd) as ) -- return IDs of struct member types
-                ( \eltIDs structTyID 
-                    -> do let labelledElts :: [ (Word32, Text) ]
-                              labelledElts
-                                = ( zipWith
-                                    ( \i (k,_) -> (i,k) )
-                                    [0..]
-                                    as
-                                  )
+                ( traverse (typeID . (\(_,y,_) -> y)) as ) -- return IDs of struct member types
+                ( \eltIDs structTyID ->
+                  do
+                    let labelledElts :: [ (Text, Word32, SPIRV.Decorations) ]
+                        labelledElts =
+                          ( zipWith
+                            ( \i (k, _, eltDecs) -> (k, i, eltDecs) )
+                            [0..]
+                            as
+                          )
 
-                          -- add annotations: name of each struct field
-                          traverse_
-                            ( uncurry (addMemberName structTyID) )
-                            labelledElts
+                    -- add information: name of each struct field, and decorations
+                    for_ labelledElts
+                      ( \ (k,i, eltDecs) -> do
+                        addMemberName structTyID i k
+                        addMemberDecorations structTyID i eltDecs
+                        -- unfortunate workaround for built-in decorations with structs
+                        case structUsage of
+                          ForInputBuiltins  -> do
+                            for_ ( SPIRV.readBuiltin k )
+                              ( addMemberDecoration structTyID i . SPIRV.Builtin )
+                            addName structTyID "gl_in_PerVertex"
+                          ForOutputBuiltins -> do
+                            for_ ( SPIRV.readBuiltin k )
+                              ( addMemberDecoration structTyID i . SPIRV.Builtin )
+                            addName structTyID "gl_out_PerVertex"
+                          NotForBuiltins -> pure ()
+                      )
 
-                          -- workaround for builtin decoration complexities:
-                          -- add "builtin" decorations when relevant
-                          --   (for gl_in, gl_out, gl_PerVertex)
-                          ctxt <- use _functionContext
-                          case snd <$> stageContext ctxt of
-                            Just stage
-                              | stage `elem` [ SPIRV.TessellationControl
-                                             , SPIRV.TessellationEvaluation
-                                             , SPIRV.Geometry
-                                             ]
-                              -> traverse_
-                                  ( \case { (i, "gl_Position"  )
-                                              -> addMemberDecoration
-                                                    structTyID
-                                                    i
-                                                    ( SPIRV.Builtin SPIRV.Position  )
-                                          ; (i, "gl_PointSize" )
-                                              -> addMemberDecoration
-                                                    structTyID
-                                                    i
-                                                    ( SPIRV.Builtin SPIRV.PointSize )
-                                          ; _ -> pure ()
-                                          }
-                                  )
-                                  labelledElts
-                            _ -> pure ()
+                    -- decorate the overall struct
+                    addDecorations structTyID decs
 
-                          -- declare the type
-                          mkTyConInstruction (toArgs eltIDs) structTyID
+                    -- declare the type
+                    mkTyConInstruction (toArgs eltIDs) structTyID
                 )
 
         SPIRV.Pointer storage a ->
@@ -269,8 +271,8 @@ typeID ty =
 -- this is the crucial location where we make use of singletons to perform type-case
 constID :: forall m a.
            ( MonadState CGState m
-           , MonadFresh ID m
-           , MonadError Text m
+           , MonadFresh ID      m
+           , MonadError Text    m
            , PrimTy a
            )
         => a -> m ID
@@ -343,7 +345,7 @@ constID a =
         SRuntimeArray {} ->
             throwError
               "constID: cannot construct run-time arrays.\n\
-              \Runtime arrays are only available through uniforms."
+              \Runtime arrays are only available through entry-point interfaces."
         
         SArray {} ->
           createIDRec _knownAConstant
@@ -366,12 +368,6 @@ constID a =
   where _knownAConstant :: Lens' CGState (Maybe Instruction)
         _knownAConstant = _knownConstant ( aConstant a )
 
-builtinID :: (MonadState CGState m, MonadFresh ID m)
-          => Text -> SPIRV.StageInfo Word32 stage -> Text -> m ID
-builtinID stageName stageInfo builtinName =
-  tryToUse ( _builtin stageName stageInfo builtinName )
-    id
-    pure
 
 -- left-biased semigroup operation
 infixl 6 <<?>
@@ -379,10 +375,10 @@ infixl 6 <<?>
 (<<?>) = coerce ( (<>) @(Maybe (First x)) )
 
 bindingID :: forall m.
-             ( MonadState CGState m
-             , MonadReader CGContext m
-             , MonadError Text m
-             , MonadFresh ID m
+             ( MonadState  CGState    m
+             , MonadReader CGContext  m
+             , MonadError  Text       m
+             , MonadFresh  ID         m
              ) => Text -> m (ID, SPIRV.PrimTy)
 bindingID varName
   = do  ctxt <- use _functionContext
@@ -392,19 +388,16 @@ bindingID varName
             | Just ptrTy <- lookup varName (stageBuiltins stageInfo)
               ->
                 do -- this is a built-in variable, use 'builtinID'
-                  builtin <- builtinID stageName stageInfo varName
-                  let ptrPrimTy = SPIRV.pointerTy ptrTy
-                  _ <- typeID ptrPrimTy -- ensure pointer type is declared
+                  builtin <- builtinID stageName stageInfo varName ptrTy
                   -- note that 'builtinID' sets the necessary decorations for the builtin
-                  pure (builtin, ptrPrimTy)
+                  pure (builtin, SPIRV.pointerTy ptrTy)
           _ ->
             do -- this is not a built-in variable, obtain the binding ID
               mbLoc   <- use ( _localBinding varName )
               mbKnown <- use ( _knownBinding varName )
               mbGlob  <-
-                do  glob <- fmap (second SPIRV.pointerTy) <$> globalID varName (stageContext ctxt)
-                    -- declare pointer type (if necessary)
-                    mapM_ (typeID . snd) glob
+                do  glob <- fmap ( second SPIRV.pointerTy )
+                              <$> globalID varName (stageContext ctxt)
                     pure glob
 
               bd@(bdID,_)
@@ -419,12 +412,32 @@ bindingID varName
               -- return the binding ID
               pure bd
 
--- get the ID for a user-defined global variable,
--- adding this global to the list of 'used' global variables if it isn't already there
--- adding this global to the stage interface if applicable
-globalID :: ( MonadState CGState m
+
+-- | Get the ID for a built-in variable.
+--
+-- Automatically switches on this built-in in the interface of the relevant entry-point,
+-- by using the '_builtin' lens.
+builtinID :: ( MonadState CGState m
+             , MonadError Text    m
+             , MonadFresh ID      m
+             )
+          => Text -> SPIRV.StageInfo Word32 stage -> Text -> SPIRV.PointerTy -> m ID
+builtinID stageName stageInfo builtinName ptrTy =
+  tryToUse ( _builtin stageName stageInfo builtinName )
+    id
+    ( \ v -> do
+      -- Ensure that relevant pointer type is declared when this builtin is first used.
+      void ( typeID $ SPIRV.pointerTy ptrTy )
+      pure v
+    )
+
+-- | Get the ID for a user-defined global variable,
+-- adding this global to the list of 'used' global variables if it isn't already there,
+-- and (manually) adding this global variable to the relevant stage interface if necessary.
+globalID :: ( MonadState  CGState   m
             , MonadReader CGContext m
-            , MonadFresh ID m
+            , MonadError  Text      m
+            , MonadFresh  ID        m
             )
          => Text -> Maybe (Text, SPIRV.Stage) -> m ( Maybe (ID, SPIRV.PointerTy) )
 globalID globalName mbStage
@@ -434,13 +447,24 @@ globalID globalName mbStage
            -> pure Nothing
          Just (ptrTy, _)
            -> do
-                ident <- tryToUse ( _usedGlobal globalName ) fst ( pure . ( , ptrTy ) )
-                case (mbStage, ptrTy) of
+                (ident, laidOutPtrTy) <-
+                  tryToUse ( _usedGlobal globalName )
+                    id
+                    ( \ v -> do
+                      -- Ensure that relevant pointer type is declared when this global variable is first used.
+                      -- We must ensure correct layout.
+                      -- In this case, this means giving full layout information for the underlying struct,
+                      -- such as @ArrayStride@, @MatrixStride@ and @Offset@ decorations.
+                      laidOutPtrTy <- inferPointerLayout NotForBuiltins ptrTy
+                      void ( typeID $ SPIRV.pointerTy laidOutPtrTy )
+                      pure (v, laidOutPtrTy)
+                    )
+                case (mbStage, laidOutPtrTy) of
                   ( Just (stage, stageName), SPIRV.PointerTy storage _ )
                     | storage == Storage.Input || storage == Storage.Output
                       -> assign ( _interfaceBinding stage stageName globalName ) ( Just ident )
                   _   -> pure ()
-                pure ( Just (ident, ptrTy) )
+                pure ( Just (ident, laidOutPtrTy) )
 
 stringLitID :: (MonadState CGState m, MonadFresh ID m)
           => Text -> m ID

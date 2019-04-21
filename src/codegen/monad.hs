@@ -161,6 +161,6 @@ runCGMonad context state
 ----------------------------------------------------------------------------
 -- utility for exceptions
 
-note :: MonadError e m => e -> Maybe a -> m a
+note :: forall m a e. MonadError e m => e -> Maybe a -> m a
 note _ (Just a) = pure a
 note e Nothing  = throwError e

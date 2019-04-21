@@ -36,6 +36,9 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( KnownNat, natVal )
 
+-- containers
+import qualified Data.Set as Set
+
 -- half
 import Numeric.Half
   ( Half )
@@ -66,15 +69,16 @@ import Math.Algebra.Class
   ( Ring )
 import Math.Linear
   ( V, M )
-import qualified SPIRV.PrimTy   as SPIRV
+import qualified SPIRV.Decoration as SPIRV
+import qualified SPIRV.PrimTy     as SPIRV
 import SPIRV.ScalarTy
   ( Signedness(Unsigned, Signed)
   , Width(W8,W16,W32,W64)
   )
-import qualified SPIRV.ScalarTy as SPIRV
-import qualified SPIRV.Storage  as SPIRV
+import qualified SPIRV.ScalarTy   as SPIRV
+import qualified SPIRV.Storage    as SPIRV
   ( StorageClass )
-import qualified SPIRV.Storage  as Storage
+import qualified SPIRV.Storage    as Storage
 
 ------------------------------------------------------------
 -- singletons for primitive types
@@ -321,19 +325,19 @@ sPrimTy mat@SMatrix = case mat of
     -> SPIRV.Matrix (knownValue @m) (knownValue @n) (scalarTy @a)
 sPrimTy arr@SArray = case arr of
   ( _ :: SPrimTy (Array l a) )
-    -> SPIRV.Array  (knownValue @l) (primTy @a)
+    -> SPIRV.Array  (knownValue @l) (primTy @a) Set.empty
 sPrimTy rtArr@SRuntimeArray = case rtArr of
   ( _ :: SPrimTy (RuntimeArray a) )
-    -> SPIRV.RuntimeArray (primTy @a)
+    -> SPIRV.RuntimeArray (primTy @a) Set.empty
 sPrimTy struct@SStruct = case struct of
   ( _ :: SPrimTy (Struct as) )
-    -> SPIRV.Struct (sPrimTyMap (primTyMapSing @as))
+    -> SPIRV.Struct (sPrimTyMap (primTyMapSing @as)) Set.empty SPIRV.NotForBuiltins
 
-sPrimTyMap :: SPrimTyMap ty -> [(Text.Text, SPIRV.PrimTy)]
+sPrimTyMap :: SPrimTyMap ty -> [(Text.Text, SPIRV.PrimTy, SPIRV.Decorations)]
 sPrimTyMap SNil = []
 sPrimTyMap cons@SCons = case cons of
   ( _ :: SPrimTyMap ((k ':-> a) ': as) )
-    ->   (knownValue @k, primTy @a)
+    ->   (knownValue @k, primTy @a, Set.empty)
        : sPrimTyMap (primTyMapSing @as)
 
 

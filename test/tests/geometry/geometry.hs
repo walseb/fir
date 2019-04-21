@@ -32,9 +32,9 @@ type GeometryDefs =
 
 program :: Program GeometryDefs ()
 program = Program $ entryPoint @"main" @Geometry do
-  v0 <- use @(Name "gl_PerVertex" :.: Index 0 :.: Name "gl_Position")
-  v1 <- use @(Name "gl_PerVertex" :.: Index 1 :.: Name "gl_Position")
-  v2 <- use @(Name "gl_PerVertex" :.: Index 2 :.: Name "gl_Position")
+  v0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
+  v1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
+  v2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
   let
     Vec4 u1x u1y u1z _ = v1 ^-^ v0
     Vec4 u2x u2y u2z _ = v2 ^-^ v0

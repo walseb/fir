@@ -22,11 +22,11 @@ import Math.Linear
 type TessellationEvaluationDefs =
   '[ "in_cols" ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
    , "out_col" ':-> Output     '[ Location 0 ] (V 4 Float)
-   , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
-                          ( Struct '[ "mvp"    ':-> M 4 4 Float
-                                    , "origin" ':-> V 4 Float
-                                    ]
-                          )
+   , "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+                      ( Struct '[ "mvp"    ':-> M 4 4 Float
+                                , "origin" ':-> V 4 Float
+                                ]
+                      )
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
@@ -40,9 +40,9 @@ program = Program $ entryPoint @"main" @TessellationEvaluation do
                    ^+^ w *^ (view @(Index 2) in_cols)
                  )
 
-  pos0 <- use @(Name "gl_PerVertex" :.: Index 0 :.: Name "gl_Position")
-  pos1 <- use @(Name "gl_PerVertex" :.: Index 1 :.: Name "gl_Position")
-  pos2 <- use @(Name "gl_PerVertex" :.: Index 2 :.: Name "gl_Position")
+  pos0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
+  pos1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
+  pos2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
   orig <- use @(Name "ubo" :.: Name "origin")
   let t = 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
   put @"gl_Position"

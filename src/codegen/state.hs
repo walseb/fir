@@ -115,10 +115,10 @@ data CGState
       , interfaces          :: Map (Text, SPIRV.Stage) (Map Text ID)
 
       -- | Decorations for IDs.
-      , decorations         :: Map ID                  (Set (SPIRV.Decoration    Word32))
+      , decorations         :: Map ID                  SPIRV.Decorations
 
       -- | Decorations for members of a struct with given ID.
-      , memberDecorations   :: Map (ID, Word32)        (Set (SPIRV.Decoration    Word32))
+      , memberDecorations   :: Map (ID, Word32)        SPIRV.Decorations
 
       -- | Map of all declared types.
       , knownTypes          :: Map SPIRV.PrimTy        Instruction
@@ -130,10 +130,10 @@ data CGState
       , usedGlobals         :: Map Text                (ID, SPIRV.PointerTy)
 
       -- | Top-level bindings available, such as top-level functions.
-      , knownBindings       :: Map Text                (ID, SPIRV.PrimTy   )
+      , knownBindings       :: Map Text                (ID, SPIRV.PrimTy)
 
       -- | Variables declared by the user in the program.
-      , localBindings       :: Map Text                (ID, SPIRV.PrimTy   )
+      , localBindings       :: Map Text                (ID, SPIRV.PrimTy)
 
       -- | IDs of locally declared variables (floated to the top of the function definition).
       , localVariables      :: Map ID                  SPIRV.PointerTy
@@ -183,21 +183,22 @@ data CGContext
   = CGContext
      { -- | User defined inputs/outputs (not builtins).
        userGlobals
-          :: Map Text (SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
+          :: Map Text (SPIRV.PointerTy, SPIRV.Decorations )
 
        -- | User defined functions (not entry points).
      , userFunctions
           :: Map Text SPIRV.FunctionControl
 
-       -- | User definied entry points.
+       -- | User defined entry points.
      , userEntryPoints
-          :: Map (Text, SPIRV.Stage) ( Set (SPIRV.ExecutionMode Word32) )
+          :: Map (Text, SPIRV.Stage) SPIRV.ExecutionModes
 
        -- | User defined images.
      , userImages
           :: Map Text SPIRV.Image
 
-       -- | Whether to turn on debug mode.
+       -- | Whether to turn on debug mode,
+       -- which adds extra source information in the generated SPIR-V assembly.
      , debugMode :: Bool
      }
 
@@ -283,9 +284,9 @@ _builtin stageName stageInfo builtinName
       ( view _interfaceBuiltin )
       ( \s mb_i -> case mb_i of
          Nothing -> s
-         Just i  -> set _interfaceBuiltin           (Just i)
-                  . set ( _usedGlobal builtinName ) (Just (i, builtinTy))
-                  . set ( _decorate i ) (Just $ builtinDecorations builtinName)
+         Just i  -> set _interfaceBuiltin           ( Just i              )
+                  . set ( _usedGlobal builtinName ) ( Just (i, builtinTy) )
+                  . set ( _decorate   i           ) ( Just decs           )
                   $ s
       )
   where stage :: SPIRV.Stage
@@ -293,6 +294,9 @@ _builtin stageName stageInfo builtinName
 
         _interfaceBuiltin :: Lens' CGState (Maybe ID)
         _interfaceBuiltin = _interfaceBinding stageName stage builtinName
+
+        decs :: SPIRV.Decorations
+        decs = builtinDecorations builtinName
 
         builtinTy :: SPIRV.PointerTy
         builtinTy =
@@ -304,24 +308,17 @@ _builtin stageName stageInfo builtinName
             )
             ( lookup builtinName $ stageBuiltins stageInfo )
 
-_decorations :: Lens' CGState (Map ID (Set (SPIRV.Decoration Word32)))
+
+_decorations :: Lens' CGState (Map ID SPIRV.Decorations)
 _decorations = lens decorations ( \s v -> s { decorations = v } )
 
-_decorate :: ID -> Lens' CGState (Maybe (Set (SPIRV.Decoration Word32)))
+_decorate :: ID -> Lens' CGState (Maybe SPIRV.Decorations)
 _decorate bindingID = _decorations . at bindingID
 
-_memberDecorations
-  :: Lens'
-        CGState
-        ( Map (ID, Word32) ( Set ( SPIRV.Decoration Word32 ) ) )
+_memberDecorations :: Lens' CGState ( Map (ID, Word32) SPIRV.Decorations )
 _memberDecorations = lens memberDecorations ( \s v -> s { memberDecorations = v } )
 
-_memberDecorate
-  :: ID
-  -> Word32
-  -> Lens'
-        CGState
-        ( Maybe ( Set ( SPIRV.Decoration Word32 ) ) )
+_memberDecorate :: ID -> Word32 -> Lens' CGState ( Maybe SPIRV.Decorations )
 _memberDecorate bindingID index
   = _memberDecorations
   . at (bindingID, index)
@@ -367,7 +364,7 @@ _userGlobals
   :: Lens' CGContext
         ( Map Text
             ( SPIRV.PointerTy
-            , Set ( SPIRV.Decoration Word32 )
+            , SPIRV.Decorations
             )
         )
 _userGlobals = lens userGlobals ( \c v -> c { userGlobals = v } )
@@ -377,7 +374,7 @@ _userGlobal
   -> Lens' CGContext
         ( Maybe
             ( SPIRV.PointerTy
-            , Set ( SPIRV.Decoration Word32 )
+            , SPIRV.Decorations
             )
         )
 _userGlobal global = _userGlobals . at global
@@ -388,10 +385,10 @@ _userFunctions = lens userFunctions ( \c v -> c { userFunctions = v } )
 _userFunction :: Text -> Lens' CGContext ( Maybe SPIRV.FunctionControl )
 _userFunction function = _userFunctions . at function
 
-_userEntryPoints :: Lens' CGContext ( Map (Text, SPIRV.Stage) ( Set (SPIRV.ExecutionMode Word32) ) )
+_userEntryPoints :: Lens' CGContext ( Map (Text, SPIRV.Stage) SPIRV.ExecutionModes )
 _userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
 
-_userEntryPoint :: Text -> SPIRV.Stage -> Lens' CGContext ( Maybe ( Set (SPIRV.ExecutionMode Word32) ) )
+_userEntryPoint :: Text -> SPIRV.Stage -> Lens' CGContext ( Maybe SPIRV.ExecutionModes )
 _userEntryPoint name stage = _userEntryPoints . at (name, stage)
 
 _userImages :: Lens' CGContext ( Map Text SPIRV.Image )
@@ -424,8 +421,14 @@ addMemberName structTyID index name
   = modifying _names
       ( Set.insert (structTyID, Right (index,name)) )
 
+addDecoration :: MonadState CGState m
+               => ID -> SPIRV.Decoration Word32 -> m ()
+addDecoration bdID dec
+  = modifying ( _decorate bdID )
+      ( Just . maybe (Set.singleton dec) (Set.insert dec) )
+
 addDecorations :: MonadState CGState m
-               => ID -> Set (SPIRV.Decoration Word32) -> m ()
+               => ID -> SPIRV.Decorations -> m ()
 addDecorations bdID decs
   = modifying ( _decorate bdID )
       ( Just . maybe decs (Set.union decs) )
@@ -435,3 +438,9 @@ addMemberDecoration :: MonadState CGState m
 addMemberDecoration structID index dec
   = modifying ( _memberDecorate structID index )
       ( Just . maybe (Set.singleton dec) (Set.insert dec) )
+
+addMemberDecorations :: MonadState CGState m
+                     => ID -> Word32 -> SPIRV.Decorations -> m ()
+addMemberDecorations structID index decs
+  = modifying ( _memberDecorate structID index )
+      ( Just . maybe decs (Set.union decs) )

@@ -20,10 +20,10 @@ import Math.Linear
 -- program
 
 type TessellationControlDefs =
-  '[ "in_col"     ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
-   , "out_col"    ':-> Output     '[ Location 0 ] (Array 3 (V 4 Float))
-   , "main"       ':-> EntryPoint '[ SpacingEqual, VertexOrderCw, OutputVertices 3 ]
-                        TessellationControl
+  '[ "in_col"  ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
+   , "out_col" ':-> Output     '[ Location 0 ] (Array 3 (V 4 Float))
+   , "main"    ':-> EntryPoint '[ SpacingEqual, VertexOrderCw, OutputVertices 3 ]
+                      TessellationControl
    ]
 
 program :: Program TessellationControlDefs ()

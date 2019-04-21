@@ -1,7 +1,11 @@
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports    #-}
-{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PackageImports      #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module CodeGen.Pointers
   ( Safeness(Safe, Unsafe)
@@ -30,10 +34,13 @@ import Control.Lens
 -- text-utf8
 import "text-utf8" Data.Text
   ( Text )
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import CodeGen.Binary
   ( putInstruction )
+import CodeGen.Composite
+  ( accessedTy )
 import CodeGen.IDs
   ( typeID, constID )
 import CodeGen.Instruction
@@ -45,6 +52,7 @@ import CodeGen.Monad
   , MonadFresh(fresh)
   , liftPut
   , tryToUse
+  , note
   )
 import CodeGen.State
   ( PointerState(Fresh)
@@ -52,9 +60,15 @@ import CodeGen.State
   , _interfaceBinding
   , _localVariable
   , _temporaryPointer
+  , _knownConstants
   )
 import FIR.ASTState
   ( FunctionContext(TopLevel, InEntryPoint) )
+import FIR.Prim.Singletons
+  ( SPrimTy(..), SScalarTy(..)
+  , PrimTy(primTySing), ScalarTy(scalarTySing)
+  , AConstant(AConstant)
+  )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 import qualified SPIRV.Stage     as SPIRV
@@ -115,10 +129,21 @@ indicesIDs (CTInds ws)
 indicesIDs (RTInds safe is) = pure ( safe, is )
 
 -- create a pointer into a composite object with a list of successive indices
-accessChain :: (ID, SPIRV.PointerTy) -> SPIRV.PrimTy -> Indices -> CGMonad (ID, SPIRV.PointerTy)
-accessChain (basePtrID, SPIRV.PointerTy storage _) eltTy indices
+accessChain :: (ID, SPIRV.PointerTy) -> Indices -> CGMonad (ID, SPIRV.PointerTy)
+accessChain (basePtrID, SPIRV.PointerTy storage baseTy) indices
   = do
       (safe, is) <- indicesIDs indices
+      -- We need to compute the accessee type from the pointer,
+      -- because creating it from scratch using typeID risks creating
+      -- an incorrectly decorated object.
+      -- (Remember that, for instance, differently decorated structs are incompatible in SPIR-V,
+      -- even though they appear identical on the Haskell side.)
+      eltTy <-
+        note ( "'accessChain': could not compute accessee type.\n\
+               \base: " <> Text.pack (show baseTy) <> "\n\
+               \indices: " <> Text.pack (show indices) <> "."
+             )
+          =<< ( flip accessedTy baseTy <$> reverseLookupIndices indices )
       let opAccessChain
             = case safe of
                   Safe -> SPIRV.Op.InBoundsAccessChain
@@ -135,6 +160,31 @@ accessChain (basePtrID, SPIRV.PointerTy storage _) eltTy indices
                       $ toArgs is
           }
       pure (v, accessPtrTy)
+
+
+reverseLookupIndices :: Indices -> CGMonad [ Maybe Word32 ]
+reverseLookupIndices (CTInds   is) = pure (map Just is)
+reverseLookupIndices (RTInds _ is) = traverse reverseConstantLookup is
+
+reverseConstantLookup :: ID -> CGMonad (Maybe Word32)
+reverseConstantLookup c = do
+  lookups <- filter ( (== Just c) . resID . snd ) . Map.assocs <$> use _knownConstants
+  case lookups of
+    ( (AConstant (a :: ty), _) : _ )
+      -> case primTySing @ty of
+            SScalar ->
+              case scalarTySing @ty of
+                SWord8  -> pure . Just $ fromIntegral a
+                SWord16 -> pure . Just $ fromIntegral a
+                SWord32 -> pure . Just $ fromIntegral a
+                SWord64 -> pure . Just $ fromIntegral a
+                SInt8   -> pure . Just $ fromIntegral a
+                SInt16  -> pure . Just $ fromIntegral a
+                SInt32  -> pure . Just $ fromIntegral a
+                SInt64  -> pure . Just $ fromIntegral a
+                _       -> pure Nothing
+            _ -> pure Nothing
+    _ -> pure Nothing
 
 ----------------------------------------------------------------------------
 -- load/store through pointers

@@ -101,9 +101,9 @@ tessellationEvaluation = Program $ entryPoint @"main" @TessellationEvaluation do
                    ^+^ w *^ (view @(Index 2) in_cols)
                  )
 
-  pos0 <- use @(Name "gl_PerVertex" :.: Index 0 :.: Name "gl_Position")
-  pos1 <- use @(Name "gl_PerVertex" :.: Index 1 :.: Name "gl_Position")
-  pos2 <- use @(Name "gl_PerVertex" :.: Index 2 :.: Name "gl_Position")
+  pos0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
+  pos1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
+  pos2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
   orig <- use @(Name "ubo" :.: Name "origin")
   let t = 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
   put @"gl_Position"
@@ -126,9 +126,9 @@ type GeometryDefs =
 
 geometry :: Program GeometryDefs ()
 geometry = Program $ entryPoint @"main" @Geometry do
-  v0 <- use @(Name "gl_PerVertex" :.: Index 0 :.: Name "gl_Position")
-  v1 <- use @(Name "gl_PerVertex" :.: Index 1 :.: Name "gl_Position")
-  v2 <- use @(Name "gl_PerVertex" :.: Index 2 :.: Name "gl_Position")
+  v0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
+  v1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
+  v2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
   let
     Vec4 u1x u1y u1z _ = v1 ^-^ v0
     Vec4 u2x u2y u2z _ = v2 ^-^ v0

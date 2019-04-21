@@ -26,13 +26,16 @@ import GHC.TypeNats
   ( Nat, SomeNat(SomeNat), someNatVal )
 
 -- containers
-import Data.Set
-  ( Set )
 import qualified Data.Set as Set
+
+-- mtl
+import Control.Monad.Except
+  ( runExcept )
 
 -- text-utf8
 import "text-utf8" Data.Text
   ( Text )
+import qualified "text-utf8" Data.Text as Text
 
 -- fir
 import Data.Type.Map
@@ -41,6 +44,8 @@ import Data.Type.Map
   )
 import FIR.Binding
   ( Binding, BindingsMap, Var, R, W )
+import FIR.Layout
+  ( inferPointerLayout )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
@@ -54,11 +59,11 @@ import qualified SPIRV.Builtin       as SPIRV
   , readBuiltin
   )
 import qualified SPIRV.Decoration    as SPIRV
-  ( Decoration(Block, Builtin, Patch) )
+  ( Decoration(Builtin, Patch), Decorations )
 import qualified SPIRV.PrimTy        as SPIRV
-  ( PrimTy, PointerTy, pattern PointerTy )
+  ( StructUsage(..), PrimTy, PointerTy(PointerTy) )
 import qualified SPIRV.Storage       as SPIRV
-  ( StorageClass )
+  ( StorageClass(..) )
 import SPIRV.Stage
   ( StageInfo(..) )
 
@@ -101,7 +106,7 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
     = '[ "gl_TessCoord"      ':-> Var R ( V 3 Float )
        , "gl_PatchVertices"  ':-> Var R Word32
        , "gl_PrimitiveID"    ':-> Var R Word32
-       , "gl_PerVertex"
+       , "gl_in"
            ':-> Var R
                   ( Array inputSize
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
@@ -115,7 +120,7 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
   StageBuiltins' (GeometryInfo inputSize)
     = '[ "gl_PrimitiveID"    ':-> Var R Word32
        , "gl_InvocationID"   ':-> Var R Word32
-       , "gl_PerVertex"
+       , "gl_in"
            ':-> Var R
                   ( Array inputSize
                     ( Struct '[ "gl_Position"  ':-> V 4 Float
@@ -188,25 +193,39 @@ stageBuiltins GLComputeInfo
 stageBuiltins KernelInfo
   = builtinPointer ( knownInterface @(StageBuiltins' KernelInfo) )
 
-builtinPointer :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
-               -> [ (Text, SPIRV.PointerTy) ]
+builtinPointer
+    :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
+    -> [ (Text, SPIRV.PointerTy) ]
 builtinPointer = map
-  ( second ( \ (ty, storage) -> SPIRV.PointerTy storage ty ) )
+  ( second $ \ (ty, storage)
+      -> let structUsage =
+                case storage of
+                  SPIRV.Input  -> SPIRV.ForInputBuiltins
+                  SPIRV.Output -> SPIRV.ForOutputBuiltins
+                  _            -> SPIRV.NotForBuiltins
+         in case runExcept $ inferPointerLayout structUsage (SPIRV.PointerTy storage ty) of
+              Left err ->
+                error
+                  ( "'stageBuiltins' bug: cannot infer layout of builtins.\n\
+                    \Reason provided: " <> Text.unpack err
+                  )
+              Right laidOutPtr -> laidOutPtr
+  )
 
 --------------------------------------------------------------------------
 -- decoration of builtins
--- slight indirection to account for complexities with 'gl_in', 'gl_out', 'gl_perVertex'
+-- slight indirection to account for complexities with 'gl_in', 'gl_out'
 -- (that is, inputs/outputs that are given as arrays of structs)
 
-builtinDecorations :: Text -> Set (SPIRV.Decoration Word32)
+builtinDecorations :: Text -> SPIRV.Decorations
 builtinDecorations "gl_TessLevelInner"
   = Set.fromAscList [ SPIRV.Builtin SPIRV.TessLevelInner, SPIRV.Patch ]
 builtinDecorations "gl_TessLevelOuter"
   = Set.fromAscList [ SPIRV.Builtin SPIRV.TessLevelOuter, SPIRV.Patch ]
 builtinDecorations perVertex
-  | perVertex `elem` [ "gl_in", "gl_out", "gl_PerVertex" ]
+  | perVertex `elem` [ "gl_in", "gl_out" ]
   -- workaround: in this case the 'Builtin' decoration is applied when we create the relevant struct
-  = Set.fromAscList [ SPIRV.Block ]
+  = Set.empty
 builtinDecorations builtin
   = maybe
       Set.empty

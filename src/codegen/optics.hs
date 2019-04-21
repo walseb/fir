@@ -252,9 +252,9 @@ loadThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 loadThroughAccessChain' (basePtrID, SPIRV.PointerTy _ eltTy) Done
   = loadInstruction eltTy basePtrID
-loadThroughAccessChain' basePtr ( Access a is `Then` ops )
+loadThroughAccessChain' basePtr ( Access _ is `Then` ops )
   = do
-      newBasePtr <- accessChain basePtr a is
+      newBasePtr <- accessChain basePtr is
       loadThroughAccessChain' newBasePtr ops
 loadThroughAccessChain' basePtr ( Combine cb trees )
   = do
@@ -268,9 +268,9 @@ extractUsingGetter'
   :: (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 extractUsingGetter' base Done
   = pure base
-extractUsingGetter' base ( Access a (CTInds is) `Then` ops )
+extractUsingGetter' base ( Access _ (CTInds is) `Then` ops )
   = do
-      newBase <- compositeExtract a is base
+      newBase <- compositeExtract is base
       extractUsingGetter' newBase ops
 extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _ _) `Then` _ )
   -- run-time indices: revert to loading through pointers
@@ -296,9 +296,9 @@ storeThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad ()
 storeThroughAccessChain' (basePtrID, _) (valID, _) Done
   = storeInstruction basePtrID valID
-storeThroughAccessChain' basePtr val ( Access a is `Then` ops)
+storeThroughAccessChain' basePtr val ( Access _ is `Then` ops)
   = do
-      newBasePtr <- accessChain basePtr a is
+      newBasePtr <- accessChain basePtr is
       storeThroughAccessChain' newBasePtr val ops
 storeThroughAccessChain' _ _ ( Combine _ _ )
   = throwError "storeThroughAccessChain': product setter TODO"
@@ -311,9 +311,9 @@ insertUsingSetter'
 -- deal with some simple cases first
 insertUsingSetter' varName _ val Done
   = assign ( _localBinding varName ) (Just val)
-insertUsingSetter' varName base (valID, _) ( Access _ (CTInds is) `Then` Done )
+insertUsingSetter' varName base val ( Access _ (CTInds is) `Then` Done )
   = assign ( _localBinding varName ) . Just
-      =<< compositeInsert valID base is
+      =<< compositeInsert val base is
 -- in more complex situations, revert to storing through pointers
 insertUsingSetter' varName (baseID, baseTy) val ops
   = do
@@ -337,8 +337,8 @@ setUsingSetter'
   -> CGMonad (ID, SPIRV.PrimTy)
 setUsingSetter' _ val Done
   = pure val
-setUsingSetter' base (valID, _) ( Access _ (CTInds is) `Then` Done )
-  = compositeInsert valID base is
+setUsingSetter' base val ( Access _ (CTInds is) `Then` Done )
+  = compositeInsert val base is
 -- in more complex situations, revert to using load/store
 setUsingSetter' (baseID, baseTy) val ops
   = do

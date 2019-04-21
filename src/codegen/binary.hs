@@ -30,14 +30,16 @@ import Data.Set
   ( Set )
 import qualified Data.Set as Set
 
+-- mtl
+import Control.Monad.Except
+  ( ExceptT )
+
 -- text-utf8
 import "text-utf8" Data.Text
   ( Text )
 import qualified "text-utf8" Data.Text as Text
 
 -- transformers
-import Control.Monad.Except
-  ( ExceptT )
 import Control.Monad.Trans.Class
   ( lift )
 
@@ -176,7 +178,7 @@ putEntryPoints entryPointIDs
         lift ( putEntryPoint stage stageName entryPointID interface )
       )
 
-putStageExecutionModes :: ID -> Set (SPIRV.ExecutionMode Word32) -> Binary.Put
+putStageExecutionModes :: ID -> SPIRV.ExecutionModes -> Binary.Put
 putStageExecutionModes stageID
   = traverse_
       ( \case
@@ -193,7 +195,7 @@ putStageExecutionModes stageID
 
 putExecutionModes
   :: Map (Text, SPIRV.Stage) ID
-  -> Map (Text, SPIRV.Stage) (Set (SPIRV.ExecutionMode Word32))
+  -> Map (Text, SPIRV.Stage) SPIRV.ExecutionModes
   -> ExceptT Text Binary.PutM ()
 putExecutionModes entryPointIDs
   = traverseWithKey_
@@ -259,7 +261,7 @@ putNames = traverse_
                }
   )
 
-putDecorations :: Map ID (Set (SPIRV.Decoration Word32)) -> Binary.Put
+putDecorations :: Map ID SPIRV.Decorations -> Binary.Put
 putDecorations
   = traverseWithKey_
       ( \ decoratee ->
@@ -276,7 +278,7 @@ putDecorations
             )
       )
 
-putMemberDecorations :: Map (ID,Word32) (Set (SPIRV.Decoration Word32)) -> Binary.Put
+putMemberDecorations :: Map (ID,Word32) SPIRV.Decorations -> Binary.Put
 putMemberDecorations
   = traverseWithKey_
       ( \ (structID, index) ->
@@ -300,10 +302,13 @@ putInstructionsInOrder
   . sortOn resID
   . Map.elems
 
-putTypesAndConstants :: Map a Instruction -> Map b Instruction -> Binary.Put
-putTypesAndConstants as bs
+putTypesAndConstants
+  :: Map types     Instruction
+  -> Map constants Instruction
+  -> Binary.Put
+putTypesAndConstants ts cs
   = traverse_ ( putInstruction Map.empty )
-      ( sortOn resID $ Map.elems as ++ Map.elems bs )
+      ( sortOn resID $ Map.elems ts ++ Map.elems cs )
 
 putGlobals :: Map SPIRV.PrimTy Instruction
            -> Map Text (ID, SPIRV.PointerTy)

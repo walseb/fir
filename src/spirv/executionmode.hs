@@ -26,6 +26,10 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( Nat )
 
+-- containers
+import Data.Set
+  ( Set )
+
 -- fir
 import Data.Binary.Class.Put
   ( Put(..) )
@@ -79,6 +83,8 @@ data ExecutionMode a
 
 type InputVertices i = OutputVertices i
   -- synonym for providing number of input vertices for a tessellation evaluation shader
+
+type ExecutionModes = Set (ExecutionMode Word32)
 
 instance Put (ExecutionMode Word32) where
   put (Invocations i)         = put @Word32 0 *> put i

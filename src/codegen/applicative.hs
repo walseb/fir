@@ -43,6 +43,9 @@ import GHC.TypeNats
 import Unsafe.Coerce
   ( unsafeCoerce )
 
+-- containers
+import qualified Data.Set as Set
+
 -- lens
 import Control.Lens
   ( assign )
@@ -202,7 +205,7 @@ idiom (PureIdiom b)
                 -> let n :: Prelude.Num a => a
                        n = Prelude.fromIntegral (knownValue @n)
                    in compositeConstruct
-                        ( SPIRV.Array n eltTy )
+                        ( SPIRV.Array n eltTy Set.empty )
                         ( replicate n eltID )
 idiom apIdiom@(ApIdiom idi (a :: AST (f a))) =
   case primFuncSing @f of
@@ -246,7 +249,7 @@ idiom apIdiom@(ApIdiom idi (a :: AST (f a))) =
                         arrayLg = knownValue @n
                         eltTy = primTy @b
                     in do
-                      let resArrPtrTy = SPIRV.PointerTy Storage.Function (SPIRV.Array arrayLg eltTy)
+                      let resArrPtrTy = SPIRV.PointerTy Storage.Function (SPIRV.Array arrayLg eltTy Set.empty)
                       arrID <- fst <$> codeGen a
                       resArrPtrID <- fst <$> temporaryVariable arrID resArrPtrTy
                       let resArr = (resArrPtrID, resArrPtrTy)

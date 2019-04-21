@@ -5,9 +5,9 @@
 {-# LANGUAGE PatternSynonyms            #-}
 
 module SPIRV.PrimTy
-  ( PrimTy(..)
-  , PointerTy(pointerTy) -- constructor not exported
-  , pattern PointerTy
+  ( StructUsage(..)
+  , PrimTy(..)
+  , PointerTy(PointerTy, pointerTy) -- constructor (PtrTy) not exported
   , tyOp
   ) where
 
@@ -22,6 +22,8 @@ import "text-utf8" Data.Text
   ( Text )
 
 -- fir
+import SPIRV.Decoration
+  ( Decorations )
 import SPIRV.Image
   ( Image )
 import SPIRV.Operation
@@ -34,20 +36,47 @@ import SPIRV.Storage
 --------------------------------------------------
 -- SPIR-V types
 
+data StructUsage
+  = ForInputBuiltins
+  | ForOutputBuiltins
+  | NotForBuiltins
+  deriving ( Show, Eq, Ord )
+
 data PrimTy where
-  Unit         ::                                 PrimTy -- known as Void in the SPIR-V specification
-  Boolean      ::                                 PrimTy
-  Scalar       ::                     ScalarTy -> PrimTy
-  Vector       :: Word32           ->   PrimTy -> PrimTy
-  Matrix       :: Word32 -> Word32 -> ScalarTy -> PrimTy
-  Array        :: Word32 ->             PrimTy -> PrimTy
-  RuntimeArray ::                       PrimTy -> PrimTy
-  Struct       :: [(Text,PrimTy)]              -> PrimTy
-  Pointer      :: StorageClass       -> PrimTy -> PrimTy
-  Function     :: [PrimTy]           -> PrimTy -> PrimTy 
-  Image        ::                        Image -> PrimTy
-  Sampler      ::                                 PrimTy -- opaque
-  SampledImage ::                        Image -> PrimTy
+  Unit    :: PrimTy -- known as Void in the SPIR-V specification
+  Boolean :: PrimTy
+  Scalar  :: ScalarTy -> PrimTy
+  Vector  ::
+    { size :: Word32
+    , eltTy :: PrimTy
+    } -> PrimTy
+  Matrix ::
+    { rows    :: Word32
+    , cols    :: Word32
+    , entryTy :: ScalarTy
+    } -> PrimTy
+  Array ::
+    { size  :: Word32
+    , eltTy :: PrimTy
+    , decs  :: Decorations
+    } -> PrimTy
+  RuntimeArray ::
+    { eltTy :: PrimTy
+    , decs  :: Decorations
+    } -> PrimTy
+  Struct ::
+    { eltTys :: [(Text, PrimTy, Decorations)]
+    , decs   :: Decorations
+    , usage  :: StructUsage
+    } -> PrimTy
+  Pointer  :: StorageClass -> PrimTy -> PrimTy
+  Function ::
+    { argumentTypes :: [PrimTy]
+    , resultType    :: PrimTy
+    } -> PrimTy
+  Image        :: Image -> PrimTy
+  Sampler      ::          PrimTy -- opaque
+  SampledImage :: Image -> PrimTy
   deriving ( Show, Eq, Ord )
 
 -- newtype to deal with types that are known to be pointers,

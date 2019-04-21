@@ -18,8 +18,6 @@ module FIR.Definition where
 -- base
 import Data.Kind
   ( Type )
-import Data.Word
-  ( Word32 )
 import GHC.TypeLits
   ( Symbol
   , TypeError, ErrorMessage(..)
@@ -31,8 +29,6 @@ import GHC.TypeNats
 import Data.Map
   ( Map )
 import qualified Data.Map.Strict as Map
-import Data.Set
-  ( Set )
 import qualified Data.Set as Set
 
 -- text-utf8
@@ -84,9 +80,9 @@ data Definition where
   EntryPoint :: [ SPIRV.ExecutionMode Nat ] -> SPIRV.Stage -> Definition
 
 data Annotate
-  = AnnotateGlobal     ( SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
+  = AnnotateGlobal     ( SPIRV.PointerTy, SPIRV.Decorations )
   | AnnotateFunction   SPIRV.FunctionControl
-  | AnnotateEntryPoint ( SPIRV.Stage, Set (SPIRV.ExecutionMode Word32) )
+  | AnnotateEntryPoint ( SPIRV.Stage, SPIRV.ExecutionModes )
 
 instance Demotable Definition where
   type Demote Definition = Annotate
@@ -131,9 +127,9 @@ instance ( Known SPIRV.Stage stage, Known [SPIRV.ExecutionMode Nat] modes )
             )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
-  annotations :: ( Map Text                ( SPIRV.PointerTy, Set (SPIRV.Decoration Word32) )
+  annotations :: ( Map Text                ( SPIRV.PointerTy, SPIRV.Decorations )
                  , Map Text                SPIRV.FunctionControl
-                 , Map (Text, SPIRV.Stage) ( Set (SPIRV.ExecutionMode Word32) )
+                 , Map (Text, SPIRV.Stage) SPIRV.ExecutionModes
                  )
 
 instance KnownDefinitions '[] where

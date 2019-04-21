@@ -63,8 +63,6 @@ fragment :: Program FragmentDefs ()
 fragment = Program do
   entryPoint @"main" @Fragment do
     col <- get @"in_colour"
-    --pos <- get @"in_position"
-    --let nm = norm pos
     put @"out_colour" col
 
 ------------------------------------------------
@@ -79,4 +77,3 @@ compileVertexShader = compile vertPath [] vertex
 
 compileFragmentShader :: IO ( Either Text Text )
 compileFragmentShader = compile fragPath [] fragment
-

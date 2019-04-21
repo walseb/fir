@@ -14,11 +14,11 @@ import Data.Word
 import Data.Binary.Class.Put
   ( Put )
 import qualified SPIRV.Image    as Image
-import SPIRV.Operation
+import           SPIRV.Operation
   hiding ( Capability )
 import qualified SPIRV.PrimOp   as PrimOp
 import qualified SPIRV.PrimTy   as PrimTy
-import SPIRV.ScalarTy
+import           SPIRV.ScalarTy
   ( Width(..) )
 import qualified SPIRV.ScalarTy as ScalarTy
 

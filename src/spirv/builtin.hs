@@ -22,9 +22,6 @@ import Data.Binary.Class.Put
   ( Put(..) )
 import Data.Type.Known
   ( Demotable(Demote), Known(known) )
-import SPIRV.Capability
-  ( Capability )
-import qualified SPIRV.Capability as Capability
 
 --------------------------------------------------
 
@@ -251,20 +248,3 @@ instance Known Builtin VertexIndex where
   known = VertexIndex
 instance Known Builtin InstanceIndex where
   known = InstanceIndex
-
-
-capabilityBuiltins :: Capability -> [ Builtin ]
-capabilityBuiltins Capability.Shader            = [ Position, PointSize, VertexId, InstanceId
-                                                  , FragCoord, PointCoord, FrontFacing
-                                                  , SampleMask, FragDepth, HelperInvocation
-                                                  ]
-capabilityBuiltins Capability.ClipDistance      = [ ClipDistance ]
-capabilityBuiltins Capability.CullDistance      = [ CullDistance ]
-capabilityBuiltins Capability.Geometry          = [ PrimitiveId, InvocationId, Layer ]
-capabilityBuiltins Capability.Tessellation      = [ PrimitiveId, InvocationId
-                                                  , TessLevelOuter, TessLevelInner
-                                                  , TessCoord, PatchVertices
-                                                  ]
-capabilityBuiltins Capability.MultiViewport     = [ ViewportIndex ]
-capabilityBuiltins Capability.SampleRateShading = [ SampleId, SamplePosition ]
-capabilityBuiltins _                            = [ ]

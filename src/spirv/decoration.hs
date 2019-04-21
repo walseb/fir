@@ -18,6 +18,10 @@ import Data.Word
 import GHC.TypeLits
   ( Nat )
 
+-- containers
+import Data.Set
+  ( Set )
+
 -- fir
 import Data.Binary.Class.Put
   ( Put(..) )
@@ -75,6 +79,7 @@ data Decoration a
   | Alignment a
   deriving ( Show, Eq, Ord )
 
+type Decorations = Set (Decoration Word32)
 
 instance Put (Decoration Word32) where
   put RelaxedPrecision         = put @Word32  0

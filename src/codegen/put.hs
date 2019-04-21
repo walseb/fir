@@ -1,7 +1,9 @@
 {-# LANGUAGE PackageImports  #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module CodeGen.Put where
+module CodeGen.Put
+  ( putASM )
+  where
 
 -- binary
 import qualified Data.Binary.Put as Binary

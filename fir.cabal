@@ -107,6 +107,7 @@ library
       , FIR.Instances.Codensity
       , FIR.Instances.Images
       , FIR.Instances.Optics
+      , FIR.Layout
       , FIR.Prim.Array
       , FIR.Prim.Image
       , FIR.Prim.Singletons
