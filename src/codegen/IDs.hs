@@ -27,6 +27,9 @@ import Data.Semigroup
 import Data.Word
   ( Word32 )
 
+-- containers
+import qualified Data.Set as Set
+
 -- lens
 import Control.Lens
   ( Lens', view, use, assign )
@@ -99,7 +102,7 @@ import qualified SPIRV.Operation  as SPIRV.Op
 import qualified SPIRV.PrimTy     as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV.PrimTy
 import           SPIRV.PrimTy
-  ( StructUsage(..) )
+  ( AggregateUsage(..) )
 import qualified SPIRV.ScalarTy   as SPIRV
 import qualified SPIRV.Stage      as SPIRV
 import qualified SPIRV.Storage    as Storage
@@ -153,7 +156,7 @@ typeID ty =
                   -> mkTyConInstruction ( Arg bID $ toArgs asIDs )
             )
 
-        SPIRV.Array l a decs ->
+        SPIRV.Array l a decs _ ->
           createIDRec _knownPrimTy
             ( do lgID  <- constID l -- array size is the result of a constant instruction
                  eltID <- typeID  a --     as opposed to being a literal number
@@ -164,7 +167,7 @@ typeID ty =
                   >> mkTyConInstruction ( Arg eltID $ Arg lgID EndArgs ) v
             )
 
-        SPIRV.RuntimeArray a decs ->
+        SPIRV.RuntimeArray a decs _ ->
           createIDRec _knownPrimTy
             ( typeID a )
             ( \eltID v ->
@@ -396,21 +399,13 @@ bindingID varName
               mbLoc   <- use ( _localBinding varName )
               mbKnown <- use ( _knownBinding varName )
               mbGlob  <-
-                do  glob <- fmap ( second SPIRV.pointerTy )
-                              <$> globalID varName (stageContext ctxt)
-                    pure glob
+                fmap ( second SPIRV.pointerTy )
+                  <$> globalID varName (stageContext ctxt)
 
-              bd@(bdID,_)
-                  <- note
-                      ( "codeGen: no binding with name " <> varName )
-                      ( mbLoc <<?> mbKnown <<?> mbGlob )
-
-              -- add the user decorations for this binding if there are any
-              traverse ( addDecorations bdID )
-                =<< fmap snd <$> view ( _userGlobal varName )
-
-              -- return the binding ID
-              pure bd
+              -- return the binding ID (throwing an error if none was found)
+              note
+                ( "codeGen: no binding with name " <> varName )
+                ( mbLoc <<?> mbKnown <<?> mbGlob )
 
 
 -- | Get the ID for a built-in variable.
@@ -433,7 +428,8 @@ builtinID stageName stageInfo builtinName ptrTy =
 
 -- | Get the ID for a user-defined global variable,
 -- adding this global to the list of 'used' global variables if it isn't already there,
--- and (manually) adding this global variable to the relevant stage interface if necessary.
+-- adding the required decorations,  and (manually) adding this global variable
+-- to the relevant stage interface if necessary.
 globalID :: ( MonadState  CGState   m
             , MonadReader CGContext m
             , MonadError  Text      m
@@ -441,21 +437,29 @@ globalID :: ( MonadState  CGState   m
             )
          => Text -> Maybe (Text, SPIRV.Stage) -> m ( Maybe (ID, SPIRV.PointerTy) )
 globalID globalName mbStage
-  = do glob <- view ( _userGlobal globalName )
-       case glob of
+  = do mbGlobID <- view ( _userGlobal globalName )
+       case mbGlobID of
          Nothing
            -> pure Nothing
-         Just (ptrTy, _)
+         Just (ptrTy, decs)
            -> do
                 (ident, laidOutPtrTy) <-
                   tryToUse ( _usedGlobal globalName )
                     id
                     ( \ v -> do
+                      -- Declare the user-provided decorations for this global.
+                      -- For struct/arrays this applies to the underlying object,
+                      -- whereas for other types it applies directly to the variable ID.
+                      ptrDecs <- case ptrTy of
+                        SPIRV.PointerTy _ (SPIRV.Struct       {}) -> pure decs
+                        SPIRV.PointerTy _ (SPIRV.Array        {}) -> pure decs
+                        SPIRV.PointerTy _ (SPIRV.RuntimeArray {}) -> pure decs
+                        _ -> addDecorations v decs >> pure Set.empty
                       -- Ensure that relevant pointer type is declared when this global variable is first used.
                       -- We must ensure correct layout.
                       -- In this case, this means giving full layout information for the underlying struct,
                       -- such as @ArrayStride@, @MatrixStride@ and @Offset@ decorations.
-                      laidOutPtrTy <- inferPointerLayout NotForBuiltins ptrTy
+                      laidOutPtrTy <- inferPointerLayout NotForBuiltins ptrDecs ptrTy
                       void ( typeID $ SPIRV.pointerTy laidOutPtrTy )
                       pure (v, laidOutPtrTy)
                     )

@@ -61,7 +61,7 @@ import qualified SPIRV.Builtin       as SPIRV
 import qualified SPIRV.Decoration    as SPIRV
   ( Decoration(Builtin, Patch), Decorations )
 import qualified SPIRV.PrimTy        as SPIRV
-  ( StructUsage(..), PrimTy, PointerTy(PointerTy) )
+  ( AggregateUsage(..), PrimTy, PointerTy(PointerTy) )
 import qualified SPIRV.Storage       as SPIRV
   ( StorageClass(..) )
 import SPIRV.Stage
@@ -198,12 +198,12 @@ builtinPointer
     -> [ (Text, SPIRV.PointerTy) ]
 builtinPointer = map
   ( second $ \ (ty, storage)
-      -> let structUsage =
+      -> let usage =
                 case storage of
                   SPIRV.Input  -> SPIRV.ForInputBuiltins
                   SPIRV.Output -> SPIRV.ForOutputBuiltins
                   _            -> SPIRV.NotForBuiltins
-         in case runExcept $ inferPointerLayout structUsage (SPIRV.PointerTy storage ty) of
+         in case runExcept $ inferPointerLayout usage Set.empty (SPIRV.PointerTy storage ty) of
               Left err ->
                 error
                   ( "'stageBuiltins' bug: cannot infer layout of builtins.\n\

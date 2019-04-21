@@ -183,7 +183,7 @@ data CGContext
   = CGContext
      { -- | User defined inputs/outputs (not builtins).
        userGlobals
-          :: Map Text (SPIRV.PointerTy, SPIRV.Decorations )
+          :: Map Text (SPIRV.PointerTy, SPIRV.Decorations)
 
        -- | User defined functions (not entry points).
      , userFunctions

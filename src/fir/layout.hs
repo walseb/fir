@@ -95,8 +95,13 @@ requiredAlignment storage
   = throwError
       ( "Layout: unsupported storage class " <> Text.pack (show storage) <> "." )
 
-inferLayout :: MonadError Text m => SPIRV.StructUsage -> SPIRV.StorageClass -> SPIRV.PrimTy -> m SPIRV.PrimTy
-inferLayout _ storageClass ty
+inferLayout :: MonadError Text m
+            => SPIRV.AggregateUsage
+            -> SPIRV.Decorations
+            -> SPIRV.StorageClass
+            -> SPIRV.PrimTy
+            -> m SPIRV.PrimTy
+inferLayout _ _ storageClass ty
   | storageClass `elem`
       [ Storage.Image    , Storage.UniformConstant
       , Storage.Workgroup, Storage.CrossWorkgroup
@@ -104,25 +109,27 @@ inferLayout _ storageClass ty
       , Storage.Generic  , Storage.AtomicCounter
       ]
   = pure ty
-inferLayout structUsage storageClass (SPIRV.Array lg (SPIRV.Struct as sdecs _) adecs)
+inferLayout usage decs storageClass (SPIRV.Array lg (SPIRV.Struct as sdecs _) adecs _)
   | storageClass `elem` [ Storage.Input, Storage.Output ]
-  = pure $ SPIRV.Array lg (SPIRV.Struct as (Set.insert SPIRV.Block sdecs) structUsage ) adecs
+  = pure $ SPIRV.Array lg (SPIRV.Struct as (Set.insert SPIRV.Block sdecs) usage ) (Set.union decs adecs) usage
   | otherwise
-  =   ( \elt -> SPIRV.Array lg elt adecs ) . ( \elts -> SPIRV.Struct elts (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins )
+  = ( \elt -> SPIRV.Array lg elt (Set.union decs adecs) SPIRV.NotForBuiltins )
+  . ( \elts -> SPIRV.Struct elts (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins )
   <$> ( flip layoutStructMembersWith as =<< requiredAlignment storageClass )
-inferLayout _ storageClass (SPIRV.RuntimeArray (SPIRV.Struct as sdecs _) adecs)
+inferLayout _ decs storageClass (SPIRV.RuntimeArray (SPIRV.Struct as sdecs _) adecs _)
   | storageClass `elem` [ Storage.Input, Storage.Output ]
   = throwError "'inferLayout': cannot use run-time arrays in 'Input'/'Output', must use a uniform or storage buffer."
   | otherwise
-  =   ( \elt -> SPIRV.RuntimeArray elt adecs ) . ( \elt -> SPIRV.Struct elt (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins )
+  = ( \elt -> SPIRV.RuntimeArray elt (Set.union decs adecs) SPIRV.NotForBuiltins )
+  . ( \elt -> SPIRV.Struct elt (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins )
   <$> ( flip layoutStructMembersWith as =<< requiredAlignment storageClass )
-inferLayout structUsage storageClass (SPIRV.Struct as sdecs _)
+inferLayout usage decs storageClass (SPIRV.Struct as sdecs _)
   | storageClass `elem` [ Storage.Input, Storage.Output ]
-  = pure $ SPIRV.Struct as (Set.insert SPIRV.Block sdecs) structUsage
+  = pure $ SPIRV.Struct as (Set.insert SPIRV.Block (Set.union decs sdecs)) usage
   | otherwise
-  = ( \elts -> SPIRV.Struct elts (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins )
+  =   ( \elts -> SPIRV.Struct elts (Set.insert SPIRV.Block (Set.union decs sdecs)) SPIRV.NotForBuiltins )
   <$> ( flip layoutStructMembersWith as =<< requiredAlignment storageClass )
-inferLayout _ storageClass ty
+inferLayout _ _ storageClass ty
   | storageClass `elem` [ Storage.Input, Storage.Output ]
   = pure ty
   | otherwise
@@ -132,9 +139,14 @@ inferLayout _ storageClass ty
     <> Text.pack (show storageClass) <> "."
     )
 
-inferPointerLayout :: MonadError Text m => SPIRV.StructUsage -> SPIRV.PointerTy -> m SPIRV.PointerTy
-inferPointerLayout structUsage (SPIRV.PointerTy storageClass ty)
-  = SPIRV.PointerTy storageClass <$> inferLayout structUsage storageClass ty
+inferPointerLayout
+  :: MonadError Text m
+  => SPIRV.AggregateUsage
+  -> SPIRV.Decorations
+  -> SPIRV.PointerTy
+  -> m SPIRV.PointerTy
+inferPointerLayout usage decs (SPIRV.PointerTy storageClass ty)
+  = SPIRV.PointerTy storageClass <$> inferLayout usage decs storageClass ty
 
 
 layoutWith :: MonadError Text m
@@ -143,7 +155,7 @@ layoutWith _ ty@(SPIRV.Scalar {}) = pure ty
 layoutWith _ ty@(SPIRV.Vector {}) = pure ty
 layoutWith _ mat@(SPIRV.Matrix {})
   = pure mat -- cannot decorate matrix directly, must do so indirectly using arrays and structs
-layoutWith f arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs) = do
+layoutWith f arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs usage) = do
   arrStride  <- f arr
   matStride  <- f mat
   pure ( SPIRV.Array l mat
@@ -151,12 +163,13 @@ layoutWith f arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs) = do
                 ( Set.fromList [ SPIRV.ArrayStride arrStride, SPIRV.MatrixStride matStride, SPIRV.ColMajor ] )
                 decs
             )
+            usage
         )
-layoutWith f arr@(SPIRV.Array l elt decs) = do
+layoutWith f arr@(SPIRV.Array l elt decs usage) = do
   arrStride  <- f arr
   laidOutElt <- layoutWith f elt
-  pure ( SPIRV.Array l laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) )
-layoutWith f arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs) = do
+  pure ( SPIRV.Array l laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
+layoutWith f arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs usage) = do
   arrStride  <- f arr
   matStride  <- f mat
   pure ( SPIRV.RuntimeArray mat
@@ -164,11 +177,12 @@ layoutWith f arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs) = do
                 ( Set.fromList [ SPIRV.ArrayStride arrStride, SPIRV.MatrixStride matStride, SPIRV.ColMajor ] )
                 decs
             )
+            usage
         )
-layoutWith f arr@(SPIRV.RuntimeArray elt decs) = do
+layoutWith f arr@(SPIRV.RuntimeArray elt decs usage) = do
   arrStride  <- f arr
   laidOutElt <- layoutWith f elt
-  pure ( SPIRV.RuntimeArray laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) )
+  pure ( SPIRV.RuntimeArray laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
 layoutWith f (SPIRV.Struct as decs structUsage) = do
   laidOutMembers <- layoutStructMembersWith f as
   pure ( SPIRV.Struct laidOutMembers decs structUsage )

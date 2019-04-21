@@ -325,10 +325,10 @@ sPrimTy mat@SMatrix = case mat of
     -> SPIRV.Matrix (knownValue @m) (knownValue @n) (scalarTy @a)
 sPrimTy arr@SArray = case arr of
   ( _ :: SPrimTy (Array l a) )
-    -> SPIRV.Array  (knownValue @l) (primTy @a) Set.empty
+    -> SPIRV.Array  (knownValue @l) (primTy @a) Set.empty SPIRV.NotForBuiltins
 sPrimTy rtArr@SRuntimeArray = case rtArr of
   ( _ :: SPrimTy (RuntimeArray a) )
-    -> SPIRV.RuntimeArray (primTy @a) Set.empty
+    -> SPIRV.RuntimeArray (primTy @a) Set.empty SPIRV.NotForBuiltins
 sPrimTy struct@SStruct = case struct of
   ( _ :: SPrimTy (Struct as) )
     -> SPIRV.Struct (sPrimTyMap (primTyMapSing @as)) Set.empty SPIRV.NotForBuiltins

@@ -5,7 +5,7 @@
 {-# LANGUAGE PatternSynonyms            #-}
 
 module SPIRV.PrimTy
-  ( StructUsage(..)
+  ( AggregateUsage(..)
   , PrimTy(..)
   , PointerTy(PointerTy, pointerTy) -- constructor (PtrTy) not exported
   , tyOp
@@ -36,7 +36,7 @@ import SPIRV.Storage
 --------------------------------------------------
 -- SPIR-V types
 
-data StructUsage
+data AggregateUsage
   = ForInputBuiltins
   | ForOutputBuiltins
   | NotForBuiltins
@@ -59,15 +59,17 @@ data PrimTy where
     { size  :: Word32
     , eltTy :: PrimTy
     , decs  :: Decorations
+    , usage :: AggregateUsage
     } -> PrimTy
   RuntimeArray ::
     { eltTy :: PrimTy
     , decs  :: Decorations
+    , usage :: AggregateUsage
     } -> PrimTy
   Struct ::
     { eltTys :: [(Text, PrimTy, Decorations)]
     , decs   :: Decorations
-    , usage  :: StructUsage
+    , usage  :: AggregateUsage
     } -> PrimTy
   Pointer  :: StorageClass -> PrimTy -> PrimTy
   Function ::
