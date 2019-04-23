@@ -4,9 +4,9 @@
 {-|
 Module: Data.Binary.Class.Put
 
-One half of the 'Data.Binary.Binary' typeclass: putting.
+One half of the 'Data.Binary.Binary' type class: putting.
 
-This type-class is used to provide arguments to @SPIR-V@
+This type class is used to provide arguments to @SPIR-V@
 instructions; everything comes in multiples of 'Word32'.
 
 The instances provided in this module are /little endian/,

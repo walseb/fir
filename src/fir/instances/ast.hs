@@ -15,6 +15,7 @@
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-} -- helping SCC computations for type families
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
@@ -64,14 +65,16 @@ import Prelude hiding
   , Applicative(..)
   )
 import qualified Prelude
+import Data.Kind
+  ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Type.Equality
-  ( (:~:)(Refl), testEquality )
+  ( (:~:)(Refl), testEquality, type (==) )
 import Data.Word
   ( Word16 )
 import GHC.TypeLits
-  ( KnownSymbol
+  ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(..)
   )
 import GHC.TypeNats
@@ -81,35 +84,44 @@ import GHC.TypeNats
   )
 import Type.Reflection
   ( typeRep )
+import Unsafe.Coerce
+  ( unsafeCoerce )
 
 -- fir
 import Control.Type.Optic
   ( Optic(..), Index
   , Gettable, ReifiedGetter(view)
   , Settable, ReifiedSetter(set)
+  , Contained(..), ContainerKind, DegreeKind, LabelKind
+  , MonoContained(..)
   )
 import Data.Function.Variadic
   ( NatVariadic, ListVariadic )
 import Data.Type.List
-  ( KnownLength(sLength) )
+  ( type (:++:), KnownLength(sLength) )
+import Data.Type.Map
+  ( (:->)((:->)), Key, Value )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal, toAST, fromAST)
   , primOp
   )
 import FIR.Instances.Optics
-  ( KnownOptic(opticSing) )
+  ( KnownOptic(opticSing)
+  , StructElemFromIndex
+  )
 import FIR.Prim.Array
-  ( Array )
+  ( Array, RuntimeArray )
 import FIR.Prim.Op
   ( Vectorise(Vectorise) )
 import FIR.Prim.Singletons
-  ( PrimTy
+  ( PrimTy, PrimTyMap
   , ScalarTy
   , SPrimFunc(..), PrimFunc(..)
   , KnownArity
   )
-
+import FIR.Prim.Struct
+  ( Struct )
 import Math.Algebra.Class
   ( AdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring
@@ -118,6 +130,11 @@ import Math.Algebra.Class
   , Floating(..), RealFloat(..)
   , Integral
   , Convert(..)
+  )
+import Math.Algebra.GradedSemigroup
+  ( GradedSemigroup(..)
+  , GeneratedGradedSemigroup(..)
+  , FreeGradedSemigroup(..)
   )
 import Math.Linear
   ( Semimodule(..), Module(..)
@@ -269,7 +286,151 @@ instance (ScalarTy a, ScalarTy b, Convert '(a,b))
 -- a large amount of instances by hand (one for each pair of types).
 
 -----------------------------------------------
+-- * Graded semigroups
+--
+-- $semigroups
+-- Instances for graded semigroups (TODO).
+
+-- ** Vectors.
+instance GradedSemigroup (AST (V 0 a)) Nat where
+  type Grade Nat (AST (V 0 a)) i = AST (V i a)
+  type i :<!>: j = i + j
+  (<!>) :: AST (V i a) -> AST (V j a) -> AST (V (i+j) a)
+  (<!>) = error "TODO: add graded semigroup operation to AST (vector composite construct)."
+
+instance GeneratedGradedSemigroup (AST (V 0 a)) Nat () where
+  type GenType    (AST (V 0 a)) ()  _  = AST a
+  type GenDeg Nat (AST (V 0 a)) () '() = 1
+  generator = unsafeCoerce
+
+instance FreeGradedSemigroup (AST (V 0 a)) Nat () where
+  type ValidDegree (AST (V 0 a)) n = KnownNat n
+  (>!<) = error "TODO: add graded semigroup operation to AST (vector composite extract)."
+  generated = unsafeCoerce
+
+-- ** Matrices.
+instance KnownNat m => GradedSemigroup (AST (M m 0 a)) Nat where
+  type Grade Nat (AST (M m 0 a)) i = AST (M m i a)
+  type i :<!>: j = i + j
+  (<!>) :: AST (M m i a) -> AST (M m j a) -> AST (M m (i+j) a)
+  (<!>) = error "TODO: add graded semigroup operation to AST (matrix composite construct)."
+
+instance KnownNat m => GeneratedGradedSemigroup (AST (M m 0 a)) Nat () where
+  type GenType    (AST (M m 0 a)) ()  _  = AST (V m a)
+  type GenDeg Nat (AST (M m 0 a)) () '() = 1
+  generator = unsafeCoerce
+
+instance KnownNat m => FreeGradedSemigroup (AST (M m 0 a)) Nat () where
+  type ValidDegree (AST (M m 0 a)) n = KnownNat n
+  (>!<) = error "TODO: add graded semigroup operation to AST (matrix composite extract)."
+  generated = unsafeCoerce
+
+-- ** Arrays.
+instance GradedSemigroup (AST (Array 0 a)) Nat where
+  type Grade Nat (AST (Array 0 a)) l = AST (Array l a)
+  type l1 :<!>: l2 = l1 + l2
+  (<!>) = error "TODO: add graded semigroup operation to AST (array composite construct)"
+
+instance GeneratedGradedSemigroup (AST (Array 0 a)) Nat () where
+  type GenType    (AST (Array 0 a)) ()  _  = AST a
+  type GenDeg Nat (AST (Array 0 a)) () '() = 1
+  generator = error "TODO: add graded semigroup operation to AST (array singleton composite construct)."
+
+instance FreeGradedSemigroup (AST (Array 0 a)) Nat () where
+  type ValidDegree (AST (Array 0 a)) n = KnownNat n
+  (>!<) = error "TODO: add graded semigroup operation to AST (array composite extract)"
+  generated = error "TODO: add graded semigroup operation to AST (array composite extract)."
+
+-- ** Structs.
+instance GradedSemigroup (AST (Struct '[])) [Symbol :-> Type] where
+  type Grade [Symbol :-> Type] (AST (Struct '[])) as = AST (Struct as)
+  type as :<!>: bs = as :++: bs
+  (<!>) = error "TODO: add graded semigroup operation to AST (struct composite construct)"
+
+instance GeneratedGradedSemigroup (AST (Struct '[])) [Symbol :-> Type] (Symbol :-> Type) where
+  type GenType                   (AST (Struct '[])) (Symbol :-> Type) kv = AST (Value kv)
+  type GenDeg  [Symbol :-> Type] (AST (Struct '[])) (Symbol :-> Type) kv = '[ kv ]
+  generator = error "TODO: add graded semigroup operation to AST (struct singleton composite construct)."
+
+instance FreeGradedSemigroup (AST (Struct '[])) [Symbol :-> Type] (Symbol :-> Type) where
+  type ValidDegree (AST (Struct '[])) as = PrimTyMap as
+  (>!<) = error "TODO: add graded semigroup operation to AST (struct composite extract)"
+  generated = error "TODO: add graded semigroup operation to AST (struct composite extract)."
+
+-----------------------------------------------
 -- * Optics
+
+-- ** Products
+--
+-- $products
+-- Instances for product optics.
+
+type instance ContainerKind (AST (V n a)) = Type
+type instance DegreeKind    (AST (V n a)) = Nat
+type instance LabelKind     (AST (V n a)) = ()
+
+type instance ContainerKind (AST (M m n a)) = Type
+type instance DegreeKind    (AST (M m n a)) = Nat
+type instance LabelKind     (AST (M m n a)) = ()
+
+type instance ContainerKind (AST (Struct as)) = Type
+type instance DegreeKind    (AST (Struct as)) = [Symbol :-> Type]
+type instance LabelKind     (AST (Struct as)) = (Symbol :-> Type)
+
+type instance ContainerKind (AST (Array n a)) = Type
+type instance DegreeKind    (AST (Array n a)) = Nat
+type instance LabelKind     (AST (Array n a)) = ()
+
+type instance ContainerKind (AST (RuntimeArray a)) = Type
+type instance DegreeKind    (AST (RuntimeArray a)) = ()
+type instance LabelKind     (AST (RuntimeArray a)) = ()
+
+$(Prelude.pure [])
+
+instance Contained (AST (V n a)) where
+  type Container  (AST (V n a))   = AST (V 0 a)
+  type DegreeOf   (AST (V n a))   = n
+  type LabelOf    (AST (V n a)) _ = '()
+  type Overlapping  (AST (V n a)) k _
+    = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
+                :$$: Text "Maybe you intended to use a swizzle?"
+                )
+
+instance KnownNat m => Contained (AST (M m n a)) where
+  type Container (AST (M m n a))   = AST (M m 0 a)
+  type DegreeOf  (AST (M m n a))   = n
+  type LabelOf   (AST (M m n a)) _ = '()
+  type Overlapping (AST (M m n a)) k _
+    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
+
+instance Contained (AST (Struct as)) where
+  type Container (AST (Struct as)) = (AST (Struct '[]))
+  type DegreeOf  (AST (Struct as)) = as
+  type LabelOf   (AST (Struct as)) (Name_  k :: Optic _ (AST (Struct as)) (AST a))
+    = k ':-> a
+  type LabelOf   (AST (Struct as)) (Index_ i :: Optic _ (AST (Struct as)) (AST a))
+    = Key ( StructElemFromIndex
+              (Text "key: ")
+              i as i as
+          )
+      ':-> a
+  type Overlapping (AST (Struct as)) k i
+    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
+
+-- ** Equalisers
+--
+-- $equalisers
+-- Instances for equaliser optics
+
+instance (PrimTy a, KnownNat n) => MonoContained (AST (V n a)) where
+  type MonoType (AST (V n a)) = AST a
+  setAll a _ = pureAST a
+instance (PrimTy a, KnownNat n, KnownNat m) => MonoContained (AST (M m n a)) where
+  type MonoType (AST (M m n a)) = AST a
+  setAll a _ = pureAST a
+instance MonoContained (Struct as) => MonoContained (AST (Struct as)) where
+  type MonoType (AST (Struct as)) = AST (MonoType (Struct as))
+  setAll = error "TODO: structure 'setAll'"
 
 
 -- ** Getters

@@ -109,7 +109,9 @@ import Control.Monad.Indexed
   )
 import qualified Control.Monad.Indexed as Indexed
 import Control.Type.Optic
-  ( Optic, Name, Gettable, Settable, Part, Whole, Indices )
+  ( Optic, Name, Gettable, Settable
+  , Part, Whole, Indices
+  )
 import Data.Type.Known
   ( Known )
 import Data.Type.List
@@ -127,6 +129,7 @@ import FIR.Instances.AST
   ( )
 import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
+  , Has
   , ValidFunDef, FunctionDefinitionStartState
   , ValidEntryPoint, EntryPointStartState, AddEntryPoint
   , LookupImageProperties
@@ -136,7 +139,9 @@ import FIR.Instances.Bindings
 import FIR.Instances.Images
   ( ImageTexel )
 import FIR.Instances.Optics
-  ( User, Assigner, KnownOptic, opticSing )
+  ( User, Assigner, KnownOptic, opticSing
+  , StatefulOptic
+  )
 import FIR.ASTState
   ( FunctionContext(..), ASTState(ASTState), StageContext, EntryPointInfos )
 import FIR.Prim.Image
@@ -204,7 +209,7 @@ while = fromAST While
 -- Syntactic type class
 
 -- $syntactic
--- Instance for the 'Syntactic' typeclass.
+-- Instance for the 'Syntactic' type class.
 
 instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
   type Internal (Codensity AST (a := j) i) = (Internal a := j) i
@@ -327,7 +332,7 @@ instance ( KnownSymbol k
 -- Like @use@ from the lens library, except the optic needs to be passed with a type application.
 use :: forall optic.
              ( GHC.Stack.HasCallStack
-             , KnownOptic optic, ProvidedOptic optic
+             , KnownOptic optic, StatefulOptic optic
              , Gettable optic
              , Syntactic (CodUser optic)
              , Internal (CodUser optic) ~ User optic
@@ -340,7 +345,7 @@ use = fromAST ( Use @optic sLength opticSing )
 -- Like @assign@ from the lens library, except the optic needs to be passed with a type application.
 assign :: forall optic.
              ( GHC.Stack.HasCallStack
-             , KnownOptic optic, ProvidedOptic optic
+             , KnownOptic optic, StatefulOptic optic
              , Settable optic
              , Syntactic (CodAssigner optic)
              , Internal (CodAssigner optic) ~ Assigner optic
@@ -357,6 +362,7 @@ assign = fromAST ( Assign @optic sLength opticSing )
 get :: forall (k :: Symbol) a (i :: ASTState).
        ( KnownSymbol k
        , Gettable (Name k :: Optic '[] i a)
+       , a ~ Has k i
        )
     => Codensity AST (AST a := i) i
 get = use @(Name k :: Optic '[] i a)
@@ -368,6 +374,7 @@ get = use @(Name k :: Optic '[] i a)
 put :: forall (k :: Symbol) a (i :: ASTState).
        ( KnownSymbol k
        , Settable (Name k :: Optic '[] i a)
+       , a ~ Has k i
        )
     => AST a -> Codensity AST (AST () := i) i
 put = assign @(Name k :: Optic '[] i a)
@@ -380,6 +387,7 @@ modify :: forall (k :: Symbol) a (i :: ASTState).
           ( KnownSymbol k
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)
+          , a ~ Has k i
           )
        => (AST a -> AST a) -> Codensity AST (AST () := i) i
 modify = modifying @(Name k :: Optic '[] i a)
@@ -459,8 +467,8 @@ type family ListVariadicCod
 
 
 -- recall (defined in FIR.Instances.Optics):
--- type User     (g :: Optic is s a) = ListVariadicIx is            s a
--- type Assigner (g :: Optic is s a) = ListVariadicIx (Append is a) s ()
+-- type User     (g :: Optic is s a) = ListVariadicIx is                s a
+-- type Assigner (g :: Optic is s a) = ListVariadicIx (is `Postpend` s) s ()
 
 type CodUser     (optic :: Optic is s a) = ListVariadicCod  is               s a
 type CodAssigner (optic :: Optic is s a) = ListVariadicCod (is `Postpend` a) s ()
@@ -487,6 +495,7 @@ modifying
     :: forall optic.
        ( GHC.Stack.HasCallStack
        , KnownOptic optic, ProvidedOptic optic
+       , StatefulOptic optic
        , Settable optic
        , Gettable optic
        , Syntactic (CodUser optic)

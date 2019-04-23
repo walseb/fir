@@ -17,6 +17,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module FIR.Prim.Array
   ( Array(..), mkArray
@@ -29,6 +30,8 @@ import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
+import GHC.TypeLits
+  ( TypeError, ErrorMessage(Text) )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal, type (+) )
 import Unsafe.Coerce
@@ -119,7 +122,16 @@ instance GeneratedGradedSemigroup (RuntimeArray a) () () where
   --               ^^^^^ ditto
 
 
--- no injective graded semigroup instance for run-time arrays,
+-- no free graded semigroup instance for run-time arrays,
 -- because knowing rtarr = rtarr1 ++ rtarr2
 -- does not allow us to recover arr1 or arr2 from arr
 -- (as we do not know the relevant slice index)
+instance ( TypeError
+             ( Text "Runtime arrays do not form a free graded semigroup." )
+         )
+       => FreeGradedSemigroup (RuntimeArray a) () ()
+       where
+  type ValidDegree (RuntimeArray a) _
+    = TypeError ( Text "Runtime arrays do not form a free graded semigroup." )
+  (>!<)     = error "unreachable"
+  generated = error "unreachable"

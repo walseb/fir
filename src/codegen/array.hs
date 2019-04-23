@@ -48,7 +48,7 @@ import FIR.Instances.Codensity
   , locally, while
   )
 import FIR.Instances.Bindings
-  ( Get, Put
+  ( Has, Get, Put
   , AddBinding
   )
 import FIR.ASTState
@@ -77,6 +77,8 @@ createArray :: forall n arrName ixName a i j ctx eps.
              , j ~ AddBinding ixName (Var RW Word32) i
              , Get ixName j ~ Word32
              , Put ixName j ~ Word32
+             , Has ixName j ~ Word32
+             , Has arrName j ~ Array n a
              , Get arrName j ~ Array n a
              , Put arrName j ~ Array n a
              )

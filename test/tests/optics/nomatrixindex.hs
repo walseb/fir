@@ -33,6 +33,6 @@ program = Program do
 
   entryPoint @"main" @Vertex do
 
-    position <- use @( Name "vertexData" :.: Entry 4 2 )
+    c <- use @( Name "vertexData" :.: Entry 4 2 )
 
-    #gl_Position .= position
+    #gl_Position .= Vec4 c c c 1

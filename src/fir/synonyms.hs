@@ -34,16 +34,26 @@ import Numeric.Half
   ( Half )
 
 -- fir
+import Control.Type.Optic
+  ( Optic(..), Index, (:*:), (:.:)
+  , Joint
+  )
 import FIR.AST
   ( AST(Ops) )
 import FIR.Definition
   ( Definition(Global) )
 import qualified FIR.Definition as Def
+import FIR.Instances.AST
+  ( )
+import FIR.Instances.Optics
+  ( )
 import FIR.Prim.Image
   ( ImageProperties(Properties)
   , Image, ImageOperands, GatherInfo(..)
   )
 import qualified FIR.Prim.Image as Op -- for image operands
+import Math.Linear
+  ( V, M )
 import SPIRV.ScalarTy
   ( Signedness(..) )
 import SPIRV.Image
@@ -58,6 +68,8 @@ import qualified SPIRV.Image   as Image
 import qualified SPIRV.Storage as Storage
 import SPIRV.FunctionControl
   ( NoFunctionControl )
+
+--------------------------------------------------------------------------
 
 -- synonyms for (decorated) globals
 type UniformConstant decs ty = Global Storage.UniformConstant decs ty
@@ -143,3 +155,129 @@ type family FormatDefault ( fmt :: ImageFormat Nat ) :: Type where
   FormatDefault ('ImageFormat (Image.Integer Unnormalised Unsigned) ( 16 ': _ )) = Word16
   FormatDefault ('ImageFormat (Image.Integer Unnormalised Unsigned) ( _  ': _ )) = Word32
 
+----------------------------------------------------------------------
+-- synonyms for optics
+
+-- internal synonyms to help inference in subsequent definitions
+type Row_  (i :: Nat) = ( Index i :: Optic '[] (M m n a) (V m a) )
+type Col__ (i :: Nat) = ( Index i :: Optic '[] (AST (M m n a)) (AST (V m a)) )
+type Ix_   (i :: Nat) = ( Index i :: Optic '[] (V n a) a )
+type Ix__  (i :: Nat) = ( Index i :: Optic '[] (AST (V n a)) (AST a) )
+
+
+type family ColRes (i :: Nat) (mat :: Type) :: Type where
+  ColRes i (AST (M m n a)) = AST (V m a)
+  ColRes i (M m n a) = V n a
+
+type family Col (i :: Nat) = ( optic :: Optic '[] mat (ColRes i mat) ) | optic -> i where
+  Col i = ( Index i :: Optic '[] (AST (M m n a)) (AST (V m a)) )
+  Col i = ( (     (Row_ 0 :.: Ix_ i)
+              :*: (Row_ 1 :.: Ix_ i)
+            ) :: Optic '[] (M m 2 a) (V 2 a)
+          )
+  Col i = ( ( ( (     ( Row_ 0 :.: Ix_ i )
+                  :*: ( Row_ 1 :.: Ix_ i )
+                ) :: Optic '[] (M m 3 a) (V 2 a)
+              )
+              :*: ( Row_ 2 :.: Ix_ i )
+            ) :: Optic '[] (M m 3 a) (V 3 a)
+          )
+  Col i = ( ( ( ( ( (     ( Row_ 0 :.: Ix_ i )
+                      :*: ( Row_ 1 :.: Ix_ i )
+                    ) :: Optic '[] (M m 4 a) (V 2 a)
+                  )
+                  :*: ( Row_ 2 :.: Ix_ i )
+                ) :: Optic '[] (M m 4 a) (V 3 a)
+              )
+              :*: ( Row_ 3 :.: Ix_ i )
+            ) :: Optic '[] (M m 4 a) (V 4 a)
+          )
+
+type family RowRes (i :: Nat) (mat :: Type) :: Type where
+  RowRes i (M m n a) = V m a
+  RowRes i (AST (M m n a)) = AST (V n a)
+
+type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes i mat) ) | optic -> i where
+  Row i = ( Index i :: Optic '[] (M m n a) (V m a) )
+  Row i = ( (     (Col__ 0 :.: Ix__ i)
+              :*: (Col__ 1 :.: Ix__ i)
+            ) :: Optic '[] (AST (M m 2 a)) (AST (V 2 a))
+          )
+  Row i = ( ( ( (     ( Col__ 0 :.: Ix__ i )
+                  :*: ( Col__ 1 :.: Ix__ i )
+                ) :: Optic '[] (AST (M m 3 a)) (AST (V 2 a))
+              )
+              :*: ( Col__ 2 :.: Ix__ i )
+            ) :: Optic '[] (AST (M m 3 a)) (AST (V 3 a))
+          )
+  Row i = ( ( ( ( ( (     ( Col__ 0 :.: Ix__ i )
+                      :*: ( Col__ 1 :.: Ix__ i )
+                    ) :: Optic '[] (AST (M m 4 a)) (AST (V 2 a))
+                  )
+                  :*: ( Col__ 2 :.: Ix__ i )
+                ) :: Optic '[] (AST (M m 4 a)) (AST (V 3 a))
+              )
+              :*: ( Col__ 3 :.: Ix__ i )
+            ) :: Optic '[] (AST (M m 4 a)) (AST (V 4 a))
+          )
+
+type family EntryRes (mat :: Type) :: Type where
+  EntryRes (M m n a) = a
+  EntryRes (AST (M m n a)) = AST a
+
+type family Entry (i :: Nat) (j :: Nat) = ( optic :: Optic '[] mat (EntryRes mat)) where
+  Entry i j = ( ( Row i :.: Ix_  j ) :: Optic '[] (M m n a) a )
+  Entry i j = ( ( Col j :.: Ix__ i ) :: Optic '[] (AST (M m n a)) (AST a) )
+
+type family DiagRes (mat :: Type) :: Type where
+  DiagRes (M n n a) = V n a
+  DiagRes (AST (M n n a)) = AST (V n a)
+
+type family Diag :: Optic '[] mat vec where
+  Diag = ( (     (Row_ 0 :.: Ix_ 0)
+             :*: (Row_ 1 :.: Ix_ 1)
+           ) :: Optic '[] (M 2 2 a) (V 2 a)
+         )
+  Diag = ( ( ( (     (Row_ 0 :.: Ix_ 0)
+                 :*: (Row_ 1 :.: Ix_ 1)
+               ) :: Optic '[] (M 3 3 a) (V 2 a)
+             ) :*: (Row_ 2 :.: Ix_ 2)
+           ) :: Optic '[] (M 3 3 a) (V 3 a)
+         )
+  Diag = ( ( ( ( ( (    (Row_ 0 :.: Ix_ 0)
+                    :*: (Row_ 1 :.: Ix_ 1)
+                   ) :: Optic '[] (M 4 4 a) (V 2 a)
+                 ) :*: (Row_ 2 :.: Ix_ 2)
+               ) :: Optic '[] (M 4 4 a) (V 3 a)
+             ) :*: (Row_ 3 :.: Ix_ 3)
+           ) :: Optic '[] (M 4 4 a) (V 4 a)
+         )
+
+  Diag = ( (     (Col__ 0 :.: Ix__ 0)
+             :*: (Col__ 1 :.: Ix__ 1)
+           ) :: Optic '[] (AST (M 2 2 a)) (AST (V 2 a))
+         )
+  Diag = ( ( ( (     (Col__ 0 :.: Ix__ 0)
+                 :*: (Col__ 1 :.: Ix__ 1)
+               ) :: Optic '[] (AST (M 3 3 a)) (AST (V 2 a))
+             ) :*: (Col__ 2 :.: Ix__ 2)
+           ) :: Optic '[] (AST (M 3 3 a)) (AST (V 3 a))
+         )
+  Diag = ( ( ( ( ( (    (Col__ 0 :.: Ix__ 0)
+                    :*: (Col__ 1 :.: Ix__ 1)
+                   ) :: Optic '[] (AST (M 4 4 a)) (AST (V 2 a))
+                 ) :*: (Col__ 2 :.: Ix__ 2)
+               ) :: Optic '[] (AST (M 4 4 a)) (AST (V 3 a))
+             ) :*: (Col__ 3 :.: Ix__ 3)
+           ) :: Optic '[] (AST (M 4 4 a)) (AST (V 4 a))
+         )
+
+type family Center :: Optic '[] mat (EntryRes mat) where
+  Center = ( (     ( Diag :: Optic '[] (M n n a) (V n a) )
+               :.: Joint
+             ) :: Optic '[] (M n n a) a
+            )
+  Center = ( (     ( Diag :: Optic '[] (AST (M n n a)) (AST (V n a)) )
+               :.: Joint
+             ) :: Optic '[] (AST (M n n a)) (AST a)
+            )

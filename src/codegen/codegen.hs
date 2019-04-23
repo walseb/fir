@@ -414,7 +414,7 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                SPIRV.Scalar s
                  -> pure $ SPIRV.Vector n (SPIRV.Scalar s)
                SPIRV.Vector m (SPIRV.Scalar s)
-                 -> pure $ SPIRV.Matrix m n s -- TODO: check ordering of m, n
+                 -> pure $ SPIRV.Matrix m n s
                x -> throwError ( "codeGen: unexpected vector constituent "
                                <> Text.pack ( show x )
                                )

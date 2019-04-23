@@ -1,0 +1,57 @@
+
+test\tests\vector\mixedswizzle.hs:35:12: error:
+    • Cannot mix and match between different swizzle sets.
+      Swizzle set of "g" is "rgba".
+      Swizzle set of "x" is "xyzw".
+    • In a stmt of a 'do' block:
+        col <- use @(Name "in_col" :.: Swizzle "rgx")
+      In the third argument of ‘entryPoint’, namely
+        ‘do col <- use @(Name "in_col" :.: Swizzle "rgx")
+            put @"out_col" col’
+      In the second argument of ‘($)’, namely
+        ‘entryPoint
+           @"main"
+           @Fragment
+           do col <- use @(Name "in_col" :.: Swizzle "rgx")
+              put @"out_col" col’
+   |
+35 |     col <- use @(Name "in_col" :.: Swizzle "rgx") -- cannot mix "rgba" and "xyzw"
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test\tests\vector\mixedswizzle.hs:35:12: error:
+    • Cannot mix and match between different swizzle sets.
+      Swizzle set of "g" is "rgba".
+      Swizzle set of "x" is "xyzw".
+    • In a stmt of a 'do' block:
+        col <- use @(Name "in_col" :.: Swizzle "rgx")
+      In the third argument of ‘entryPoint’, namely
+        ‘do col <- use @(Name "in_col" :.: Swizzle "rgx")
+            put @"out_col" col’
+      In the second argument of ‘($)’, namely
+        ‘entryPoint
+           @"main"
+           @Fragment
+           do col <- use @(Name "in_col" :.: Swizzle "rgx")
+              put @"out_col" col’
+   |
+35 |     col <- use @(Name "in_col" :.: Swizzle "rgx") -- cannot mix "rgba" and "xyzw"
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+test\tests\vector\mixedswizzle.hs:35:12: error:
+    • Cannot mix and match between different swizzle sets.
+      Swizzle set of "g" is "rgba".
+      Swizzle set of "x" is "xyzw".
+    • In a stmt of a 'do' block:
+        col <- use @(Name "in_col" :.: Swizzle "rgx")
+      In the third argument of ‘entryPoint’, namely
+        ‘do col <- use @(Name "in_col" :.: Swizzle "rgx")
+            put @"out_col" col’
+      In the second argument of ‘($)’, namely
+        ‘entryPoint
+           @"main"
+           @Fragment
+           do col <- use @(Name "in_col" :.: Swizzle "rgx")
+              put @"out_col" col’
+   |
+35 |     col <- use @(Name "in_col" :.: Swizzle "rgx") -- cannot mix "rgba" and "xyzw"
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -96,6 +96,7 @@ library
       , Data.Type.Map
       , Data.Type.Maybe
       , Data.Type.Snoc
+      , Data.Type.String
       , Deriving.Base
       , FIR.AST
       , FIR.ASTState
@@ -115,6 +116,7 @@ library
       , FIR.Prim.Op
       , FIR.Program
       , FIR.Synonyms
+      , FIR.Swizzle
       , FIR.Temp
       , Math.Algebra.Class
       , Math.Algebra.GradedSemigroup

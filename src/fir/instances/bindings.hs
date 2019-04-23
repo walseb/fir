@@ -20,7 +20,7 @@ or accessing a binding that does not exist.
 -}
 
 module FIR.Instances.Bindings
-  ( Get, Put
+  ( Has, Get, Put
   , AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
   , ValidEntryPoint, EntryPointStartState
@@ -97,6 +97,23 @@ import qualified SPIRV.Stage         as SPIRV
 -------------------------------------------------
 -- | Helper type family for impossible sub-cases.
 type family Unreachable :: k where
+
+-------------------------------------------------
+-- * Lookup whether a binding exists in the monadic state.
+
+-- | Compute the type of a variable bound by a given name.
+--
+-- Throws a type error if no variable by that name exists.
+type family Has (k :: Symbol) (i :: ASTState) :: Type where
+  Has k ('ASTState bds _ _) = HasBinding k (Lookup k bds)
+
+type family HasBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
+  HasBinding k 'Nothing
+   = TypeError
+      (  Text "No binding named " :<>: ShowType k :<>: Text " is in scope." )
+  HasBinding k ('Just (Var _ a))
+    = a
+  HasBinding _ ('Just (Fun as b)) = FunctionType as b
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.use'

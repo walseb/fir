@@ -69,7 +69,7 @@ import FIR.AST
 import FIR.Binding
   ( Var, R, RW )
 import FIR.Instances.Bindings
-  ( AddBinding, Get, Put )
+  ( AddBinding, Has, Get, Put )
 import FIR.Instances.Codensity
   ( CanDefine(def), use, assign, modifying )
 import FIR.ASTState
@@ -108,6 +108,7 @@ instance ( KnownSymbol k
 instance ( KnownSymbol k
          , PrimTy a
          , a ~ Get k i
+         , a ~ Has k i
          , r ~ (AST a := i)
          , usage ~ 'Use k i
          )
@@ -150,6 +151,7 @@ _ #=! a = def @k @R a
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , a ~ Put k i
+        , a ~ Has k i
         , PrimTy a
         )
      => Label k a
@@ -163,6 +165,7 @@ _ .= a = assign @(Name k :: Optic '[] i a) a
         , KnownSymbol k
         , a ~ Put k i
         , a ~ Get k i
+        , a ~ Has k i
         )
      => Label k a
      -> (AST a -> AST a)

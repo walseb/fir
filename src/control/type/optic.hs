@@ -324,7 +324,7 @@ type Indices (optic :: Optic is s a) = is
 -- to be able to create product optics.
 --
 -- In particular, given a particular \"contained\" type such as @Vec a n@,
--- this typeclass returns the overall container type (in this case @Vec a :: Nat -> Type@)
+-- this type class returns the overall container type (in this case @Vec a :: Nat -> Type@)
 -- which is supposed to be an instance of the 'Math.Algebra.GradedSemigroup.GradedSemigroup' type class,
 -- meaning that some form of concatenation/product is possible,
 -- compatibly with type-level indexing information (if any; in this case @Nat@).
@@ -457,7 +457,7 @@ instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a 
          , Gettable o2
          , ks ~ (is :++: js)
          ) => Gettable ((o1 `ComposeO` o2) :: Optic ks s b) where
-instance forall (s :: Type)  is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
+instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( Settable o1
          , Settable o2
          , ks ~ (is :++: js)
@@ -717,7 +717,7 @@ type family Disjoint
         ( Disjoint o2 o4 )
   Disjoint _ _ = 'True
 
-class MultiplyGetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
+class MultiplyGetters is js s a b c lka lkb (mla :: Maybe lka) (mlb :: Maybe lkb) | c -> lka lkb where
   multiplyGetters :: ListVariadic (is :++: '[s]) a
                   -> ListVariadic (js :++: '[s]) b
                   -> ListVariadic (Zip is js :++: '[s]) c
@@ -741,8 +741,10 @@ instance ( Contained c
                   (       (DegreeOf a `WithKind` DegreeKind c)
                     :<!>: (DegreeOf b `WithKind` DegreeKind c)
                   )
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-      => MultiplyGetters '[] '[] s a b c 'Nothing 'Nothing where
+      => MultiplyGetters '[] '[] s a b c lka lkb 'Nothing 'Nothing where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @(DegreeOf a `WithKind` DegreeKind c) @(DegreeOf b `WithKind` DegreeKind c)
         (view1 s)
@@ -767,8 +769,10 @@ instance ( Contained c
                   (DegreeKind c)
                   (Container c)
                   ((DegreeOf a `WithKind` DegreeKind c) :<!>: hdb)
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-      => MultiplyGetters '[] '[] s a b c 'Nothing ('Just lb) where
+      => MultiplyGetters '[] '[] s a b c lka lkb 'Nothing ('Just lb) where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb
         ( view1 s )
@@ -799,8 +803,10 @@ instance ( Contained c
                   (DegreeKind c)
                   (Container c)
                   (hda :<!>: (DegreeOf b `WithKind` DegreeKind c))
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-      => MultiplyGetters '[] '[] s a b c ('Just la) 'Nothing where
+      => MultiplyGetters '[] '[] s a b c lka lkb ('Just la) 'Nothing where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @hda @(DegreeOf b `WithKind` DegreeKind c)
         ( generator
@@ -833,8 +839,10 @@ instance ( Contained c
                   (DegreeKind c)
                   (Container c)
                   (hda :<!>: hdb)
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-      => MultiplyGetters '[] '[] s a b c ('Just la) ('Just lb) where
+      => MultiplyGetters '[] '[] s a b c lka lkb ('Just la) ('Just lb) where
   multiplyGetters view1 view2 s
     = (<!>) @(Container c) @_ @hda @hdb
         ( generator
@@ -852,41 +860,56 @@ instance ( Contained c
             ( view2 s )
         )
 
-
-instance MultiplyGetters is        js        s a b c mla mlb
-      => MultiplyGetters (i ': is) (j ': js) s a b c mla mlb where
+instance MultiplyGetters is        js        s a b c lka lkb mla mlb
+      => MultiplyGetters (i ': is) (j ': js) s a b c lka lkb mla mlb where
   multiplyGetters view1 view2 (i,j)
-    = multiplyGetters @is @js @s @a @b @c @mla @mlb (view1 i) (view2 j)
+    = multiplyGetters @is @js @s @a @b @c @lka @lkb @mla @mlb (view1 i) (view2 j)
       :: ListVariadic (Zip is js :++: '[s]) c
-instance MultiplyGetters '[] js        s a b c mla mlb
-      => MultiplyGetters '[] (j ': js) s a b c mla mlb where
+instance MultiplyGetters '[] js        s a b c lka lkb mla mlb
+      => MultiplyGetters '[] (j ': js) s a b c lka lkb mla mlb where
   multiplyGetters view1 view2 j
-    = multiplyGetters @'[] @js @s @a @b @c @mla @mlb view1 (view2 j)
+    = multiplyGetters @'[] @js @s @a @b @c @lka @lkb @mla @mlb view1 (view2 j)
       :: ListVariadic (Zip '[] js :++: '[s]) c
-instance MultiplyGetters is        '[] s a b c mla mlb
-      => MultiplyGetters (i ': is) '[] s a b c mla mlb where
+instance MultiplyGetters is        '[] s a b c lka lkb mla mlb
+      => MultiplyGetters (i ': is) '[] s a b c lka lkb mla mlb where
   multiplyGetters view1 view2 i
-    = multiplyGetters @is @'[] @s @a @b @c @mla @mlb (view1 i) view2
+    = multiplyGetters @is @'[] @s @a @b @c @lka @lkb @mla @mlb (view1 i) view2
       :: ListVariadic (Zip is '[] :++: '[s]) c
 
 instance forall is js ks (s :: Type) a b c
                (o1 :: Optic is s a) (o2 :: Optic js s b)
-               (mla :: Maybe (LabelKind (LastAccessee o1)))
-               (mlb :: Maybe (LabelKind (LastAccessee o2)))
-       . ( ReifiedGetter o1
+               (lka :: Type) (lkb :: Type)
+               (mla :: Maybe lka)
+               (mlb :: Maybe lkb)
+               .
+         ( ReifiedGetter o1
          , ReifiedGetter o2
          , ks ~ Zip is js
          , c ~ Product o1 o2
-         , mla ~ ( If (IsProduct o1) 'Nothing ('Just (LabelOf (LastAccessee o1) (LastOptic o1))) )
-         , mlb ~ ( If (IsProduct o2) 'Nothing ('Just (LabelOf (LastAccessee o2) (LastOptic o2))) )
+         , lka ~ LabelKind (LastAccessee o1)
+         , lkb ~ LabelKind (LastAccessee o2)
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
+         , mla ~ ( If (IsProduct o1)
+                    'Nothing
+                    ( 'Just
+                        ( LabelOf (LastAccessee o1) (LastOptic o1) `WithKind` lka )
+                    )
+                  )
+         , mlb ~ ( If (IsProduct o2)
+                    'Nothing
+                    ( 'Just
+                        ( LabelOf (LastAccessee o2) (LastOptic o2) `WithKind` lkb )
+                    )
+                  )
          , MultiplyGetters
-            is js s a b c mla mlb
+            is js s a b c lka lkb mla mlb
          )
       => ReifiedGetter ((o1 `ProductO` o2) :: Optic ks s c) where
-  view = multiplyGetters @is @js @s @a @b @c @mla @mlb (view @o1) (view @o2)
+  view = multiplyGetters @is @js @s @a @b @c @lka @lkb @mla @mlb (view @o1) (view @o2)
 
 
-class MultiplySetters is js s a b c (mla :: Maybe lka) (mlb :: Maybe lkb) where
+class MultiplySetters is js s a b c lka lkb (mla :: Maybe lka) (mlb :: Maybe lkb) | c -> lka lkb where
   multiplySetters :: ListVariadic (is :++: '[a,s]) s
                   -> ListVariadic (js :++: '[b,s]) s
                   -> ListVariadic (Zip is js :++: '[c,s]) s
@@ -912,8 +935,10 @@ instance ( Contained c
          , s ~ ListVariadic '[] s
          , ValidDegree (Container c) (DegreeOf a `WithKind` DegreeKind c)
          , ValidDegree (Container c) (DegreeOf b `WithKind` DegreeKind c)
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-       => MultiplySetters '[] '[] s a b c 'Nothing 'Nothing where
+       => MultiplySetters '[] '[] s a b c lka lkb 'Nothing 'Nothing where
   multiplySetters set1 set2 c
     = let (a,b) = (>!<) c
       in  set2 b . set1 a
@@ -939,8 +964,10 @@ instance ( Contained c
          , s ~ ListVariadic '[] s
          , ValidDegree (Container c) (DegreeOf a `WithKind` DegreeKind c)
          , ValidDegree (Container c) hdb
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-      => MultiplySetters '[] '[] s a b c 'Nothing ('Just lb) where
+      => MultiplySetters '[] '[] s a b c lka lkb 'Nothing ('Just lb) where
   multiplySetters set1 set2 c
     = let (a,hb) = (>!<) @(Container c) @_ @_ @(DegreeOf a `WithKind` DegreeKind c) @hdb c
           b = generated @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
@@ -967,8 +994,10 @@ instance ( Contained c
          , s ~ ListVariadic '[] s
          , ValidDegree (Container c) hda
          , ValidDegree (Container c) (DegreeOf b `WithKind` DegreeKind c)
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-       => MultiplySetters '[] '[] s a b c ('Just la) 'Nothing where
+       => MultiplySetters '[] '[] s a b c lka lkb ('Just la) 'Nothing where
   multiplySetters set1 set2 c
     = let (ha,b) = (>!<) @(Container c) @_ @_ @hda @(DegreeOf b `WithKind` DegreeKind c) c
           a = generated @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
@@ -997,42 +1026,59 @@ instance ( Contained c
          , s ~ ListVariadic '[] s
          , ValidDegree (Container c) hda
          , ValidDegree (Container c) hdb
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
          )
-      => MultiplySetters '[] '[] s a b c ('Just la) ('Just lb) where
+      => MultiplySetters '[] '[] s a b c lka lkb ('Just la) ('Just lb) where
   multiplySetters set1 set2 c
     = let (ha,hb) = (>!<) @(Container c) @_ @_ @hda @hdb c
           a = generated @(Container c) @_ @_ @(la `WithKind` LabelKind c) ha
           b = generated @(Container c) @_ @_ @(lb `WithKind` LabelKind c) hb
       in set2 b . set1 a
 
-instance MultiplySetters is        js        s a b c mla mlb
-      => MultiplySetters (i ': is) (j ': js) s a b c mla mlb where
+instance MultiplySetters is        js        s a b c lka lkb mla mlb
+      => MultiplySetters (i ': is) (j ': js) s a b c lka lkb mla mlb where
   multiplySetters set1 set2 (i,j)
-    = multiplySetters @is @js @s @a @b @c @mla @mlb (set1 i) (set2 j)
+    = multiplySetters @is @js @s @a @b @c @lka @lkb @mla @mlb (set1 i) (set2 j)
       :: ListVariadic (Zip is js :++: '[c,s]) s
-instance MultiplySetters '[] js        s a b c mla mlb
-      => MultiplySetters '[] (j ': js) s a b c mla mlb where
+instance MultiplySetters '[] js        s a b c lka lkb mla mlb
+      => MultiplySetters '[] (j ': js) s a b c lka lkb mla mlb where
   multiplySetters set1 set2 j
-    = multiplySetters @'[] @js @s @a @b @c @mla @mlb set1 (set2 j)
+    = multiplySetters @'[] @js @s @a @b @c @lka @lkb @mla @mlb set1 (set2 j)
       :: ListVariadic (Zip '[] js :++: '[c,s]) s
-instance MultiplySetters is        '[] s a b c mla mlb
-      => MultiplySetters (i ': is) '[] s a b c mla mlb where
+instance MultiplySetters is        '[] s a b c lka lkb mla mlb
+      => MultiplySetters (i ': is) '[] s a b c lka lkb mla mlb where
   multiplySetters set1 set2 i
-    = multiplySetters @is @'[] @s @a @b @c @mla @mlb (set1 i) set2
+    = multiplySetters @is @'[] @s @a @b @c @lka @lkb @mla @mlb (set1 i) set2
       :: ListVariadic (Zip is '[] :++: '[c,s]) s
 
 instance forall is js ks (s :: Type) a b c
                (o1 :: Optic is s a) (o2 :: Optic js s b)
-               (mla :: Maybe (LabelKind (LastAccessee o1)))
-               (mlb :: Maybe (LabelKind (LastAccessee o2)))
+               (lka :: Type) (lkb :: Type)
+               (mla :: Maybe lka)
+               (mlb :: Maybe lkb)
        . ( ReifiedSetter o1
          , ReifiedSetter o2
          , ks ~ Zip is js
          , c ~ ProductIfDisjoint o1 o2
-         , mla ~ ( If (IsProduct o1) 'Nothing ('Just (LabelOf (LastAccessee o1) (LastOptic o1))) )
-         , mlb ~ ( If (IsProduct o2) 'Nothing ('Just (LabelOf (LastAccessee o2) (LastOptic o2))) )
+         , lka ~ LabelKind (LastAccessee o1)
+         , lkb ~ LabelKind (LastAccessee o2)
+         , lka ~ LabelKind c
+         , lkb ~ LabelKind c
+         , mla ~ ( If (IsProduct o1)
+                    'Nothing
+                    ( 'Just
+                        ( LabelOf (LastAccessee o1) (LastOptic o1) `WithKind` lka )
+                    )
+                  )
+         , mlb ~ ( If (IsProduct o2)
+                    'Nothing
+                    ( 'Just
+                        ( LabelOf (LastAccessee o2) (LastOptic o2) `WithKind` lkb )
+                    )
+                  )
          , MultiplySetters
-            is js s a b c mla mlb
+            is js s a b c lka lkb mla mlb
          )
       => ReifiedSetter ((o1 `ProductO` o2) :: Optic ks s c) where
-  set = multiplySetters @is @js @s @a @b @c @mla @mlb (set @o1) (set @o2)
+  set = multiplySetters @is @js @s @a @b @c @lka @lkb @mla @mlb (set @o1) (set @o2)
