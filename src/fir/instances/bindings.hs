@@ -20,7 +20,7 @@ or accessing a binding that does not exist.
 -}
 
 module FIR.Instances.Bindings
-  ( Has, Get, Put
+  ( Has, CanGet, CanPut
   , AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
   , ValidEntryPoint, EntryPointStartState
@@ -119,14 +119,11 @@ type family HasBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.use'
 
--- | Compute the type of a variable bound by a given name.
---
--- Throws a type error if no variable by that name exists,
--- or if the variable is not readable.
-type family Get (k :: Symbol) (i :: ASTState) :: Type where
-  Get k ('ASTState bds _ _) = GetBinding k (Lookup k bds)
+-- | Check whether we can 'get' a binding.
+type family CanGet (k :: Symbol) (i :: ASTState) :: Constraint where
+  CanGet k ('ASTState bds _ _) = GetBinding k (Lookup k bds)
 
-type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
+type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
   GetBinding k 'Nothing
    = TypeError
       (  Text "'get'/'use': no binding named " :<>: ShowType k :<>: Text " is in scope." )
@@ -138,23 +135,20 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   GetBinding k ('Just (Var perms a))
     = If 
         ( Elem 'Read perms )
-        a
+        ( () :: Constraint )
         ( TypeError
           ( Text "'get'/'use': variable named " :<>: ShowType k :<>: Text " is not readable." )
         )
-  GetBinding _ ('Just (Fun as b)) = FunctionType as b
+  GetBinding _ ('Just (Fun as b)) = ()
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.put' and 'FIR.Instances.Codensity.assign'
 
--- | Compute the type of a variable bound by a given name.
---
--- Throws a type error if no variable is bound by that name,
--- or if the variable is not writable.
-type family Put (k :: Symbol) (i :: ASTState) :: Type where
-  Put k ('ASTState bds _ _) = PutBinding k (Lookup k bds)
+-- | Check whether we can write to a binding.
+type family CanPut (k :: Symbol) (i :: ASTState) :: Constraint where
+  CanPut k ('ASTState bds _ _) = PutBinding k (Lookup k bds)
 
-type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
+type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
   PutBinding k 'Nothing = TypeError
     (      Text "'put'/'assign': no binding named " :<>: ShowType k :<>: Text " is in scope."
       :$$: Text "To bind a new variable, use 'def'."
@@ -173,7 +167,7 @@ type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Type where
   PutBinding k ('Just (Var perms a))
     = If
         ( Elem 'Write perms )
-        a
+        ( () :: Constraint )
         ( TypeError 
           ( Text "'put'/'assign': variable " :<>: ShowType k :<>: Text " is not writable." )
         )

@@ -63,11 +63,11 @@ gradient t colors
   =   ( (1-s) *^ ( view @(AnIndex _)  i    colors ) )
   ^+^ (    s  *^ ( view @(AnIndex _) (i+1) colors ) )
   where n :: AST Float
-        n = Lit . Prelude.fromIntegral $ knownValue @n
+        n = Lit . fromIntegral $ knownValue @n
         i :: AST Word32
-        i = convert ( (n-1) * t ) -- rounds down
+        i = floor ( (n-1) * t )
         s :: AST Float
-        s = (n-1) * t - convert i
+        s = (n-1) * t - fromIntegral i
 
 
 sunset :: Array 9 (V 4 Float)
@@ -91,8 +91,8 @@ xSamples = 4
 ySamples = 4
 
 xWidth, yWidth :: AST Float
-xWidth = recip . convert $ xSamples
-yWidth = recip . convert $ ySamples
+xWidth = recip . fromIntegral $ xSamples
+yWidth = recip . fromIntegral $ ySamples
 
 fragment :: Program FragmentDefs ()
 fragment = Program $ entryPoint @"main" @Fragment do
@@ -117,8 +117,8 @@ fragment = Program $ entryPoint @"main" @Fragment do
 
         let
           dx, dy :: AST Float
-          dx = ( convert xNo + 0.5 ) * xWidth - 0.5
-          dy = ( convert yNo + 0.5 ) * xWidth - 0.5
+          dx = ( fromIntegral xNo + 0.5 ) * xWidth - 0.5
+          dy = ( fromIntegral yNo + 0.5 ) * xWidth - 0.5
 
         #pos @(V 2 Float) #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
         #continue         #= Lit True
@@ -142,7 +142,7 @@ fragment = Program $ entryPoint @"main" @Fragment do
 
     total <- #total
     t <- def @"t" @R
-        ( log ( convert total * xWidth * yWidth ) / log ( convert maxDepth ) :: AST Float )
+        ( log ( fromIntegral total * xWidth * yWidth ) / log ( fromIntegral maxDepth ) :: AST Float )
 
     let col = gradient t (Lit sunset)
 

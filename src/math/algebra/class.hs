@@ -5,6 +5,7 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
@@ -309,15 +310,6 @@ deriving via Base Double instance RealFloat Double
 deriving via Base CFloat  instance RealFloat CFloat
 deriving via Base CDouble instance RealFloat CDouble
 
-type family Arr (domCod :: (Type,Type)) = (arr :: Type) | arr -> domCod where
-  Arr '(dom, cod) = dom -> cod
-
-class Convert (c :: (Type,Type)) where
-  convert :: Arr c
-
-instance Convert '(a,a) where
-  convert = id
-
 -- constraint for integer types,
 -- no methods
 class Semiring a => Integral a where
@@ -356,6 +348,16 @@ instance Unsigned CUShort where
 instance Unsigned CUInt   where
 instance Unsigned CULong  where
 instance Unsigned CULLong where
+
+
+type family Arr (domCod :: (Type,Type)) = (arr :: Type) | arr -> domCod where
+  Arr '(dom, cod) = dom -> cod
+
+class Convert (c :: (Type,Type)) where
+  convert :: Arr c
+
+instance Convert '(a,a) where
+  convert = id
 
 -- fromIntegral conversions
 instance (Prelude.Integral a, Prelude.Num b) => Convert '(Base a, b) where
@@ -482,45 +484,6 @@ deriving via '(Base Int16 , Double) instance Convert '(Int16 , Double)
 deriving via '(Base Int32 , Double) instance Convert '(Int32 , Double)
 deriving via '(Base Int64 , Double) instance Convert '(Int64 , Double)
 
-
--- truncation conversions
-instance (Prelude.RealFrac a, Prelude.Integral b) => Convert '(a, Base b) where
-  convert = Base . Prelude.truncate
-
--- to unsigned integers
-deriving via '(Half  , Base Word8 ) instance Convert '(Half  , Word8 )
-deriving via '(Half  , Base Word16) instance Convert '(Half  , Word16)
-deriving via '(Half  , Base Word32) instance Convert '(Half  , Word32)
-deriving via '(Half  , Base Word64) instance Convert '(Half  , Word64)
-deriving via '(Half  , Base Word  ) instance Convert '(Half  , Word  )
-deriving via '(Float , Base Word8 ) instance Convert '(Float , Word8 )
-deriving via '(Float , Base Word16) instance Convert '(Float , Word16)
-deriving via '(Float , Base Word32) instance Convert '(Float , Word32)
-deriving via '(Float , Base Word64) instance Convert '(Float , Word64)
-deriving via '(Float , Base Word  ) instance Convert '(Float , Word  )
-deriving via '(Double, Base Word8 ) instance Convert '(Double, Word8 )
-deriving via '(Double, Base Word16) instance Convert '(Double, Word16)
-deriving via '(Double, Base Word32) instance Convert '(Double, Word32)
-deriving via '(Double, Base Word64) instance Convert '(Double, Word64)
-deriving via '(Double, Base Word  ) instance Convert '(Double, Word  )
--- to signed integers
-deriving via '(Half  , Base Int8  ) instance Convert '(Half  , Int8  )
-deriving via '(Half  , Base Int16 ) instance Convert '(Half  , Int16 )
-deriving via '(Half  , Base Int32 ) instance Convert '(Half  , Int32 )
-deriving via '(Half  , Base Int64 ) instance Convert '(Half  , Int64 )
-deriving via '(Half  , Base Int   ) instance Convert '(Half  , Int   )
-deriving via '(Float , Base Int8  ) instance Convert '(Float , Int8  )
-deriving via '(Float , Base Int16 ) instance Convert '(Float , Int16 )
-deriving via '(Float , Base Int32 ) instance Convert '(Float , Int32 )
-deriving via '(Float , Base Int64 ) instance Convert '(Float , Int64 )
-deriving via '(Float , Base Int   ) instance Convert '(Float , Int   )
-deriving via '(Double, Base Int8  ) instance Convert '(Double, Int8  )
-deriving via '(Double, Base Int16 ) instance Convert '(Double, Int16 )
-deriving via '(Double, Base Int32 ) instance Convert '(Double, Int32 )
-deriving via '(Double, Base Int64 ) instance Convert '(Double, Int64 )
-deriving via '(Double, Base Int   ) instance Convert '(Double, Int   )
-
-
 -- floating conversions
 instance Convert '(Half  , Float ) where
   convert = Half.fromHalf
@@ -534,3 +497,72 @@ instance Convert '(Double, Half  ) where
   convert = Half.toHalf . Float.double2Float
 instance Convert '(Double, Float ) where
   convert = Float.double2Float
+
+fromIntegral :: (Convert '(a,b), Integral a) => a -> b
+fromIntegral = convert
+
+realToFrac :: (Convert '(a,b), Floating a, DivisionRing b) => a -> b
+realToFrac = convert
+
+-- truncation/rounding/etc
+class Rounding (c :: (Type,Type)) where
+  -- | Truncate (towards 0).
+  truncate :: Arr c
+  round    :: Arr c
+  floor    :: Arr c
+  ceiling  :: Arr c
+
+instance (Prelude.RealFrac a, Prelude.Integral b) => Rounding '(a, Base b) where
+  truncate = Base . Prelude.truncate
+  round    = Base . Prelude.round
+  floor    = Base . Prelude.floor
+  ceiling  = Base . Prelude.ceiling
+
+instance (Prelude.RealFrac a, Prelude.Num b) => Rounding '(Base a, b) where
+  truncate = Prelude.fromIntegral . Prelude.truncate @_ @Int64 . runBase
+  round    = Prelude.fromIntegral . Prelude.round    @_ @Int64 . runBase
+  floor    = Prelude.fromIntegral . Prelude.floor    @_ @Int64 . runBase
+  ceiling  = Prelude.fromIntegral . Prelude.ceiling  @_ @Int64 . runBase
+
+-- to unsigned integers
+deriving via '(Half  , Base Word8 ) instance Rounding '(Half  , Word8 )
+deriving via '(Half  , Base Word16) instance Rounding '(Half  , Word16)
+deriving via '(Half  , Base Word32) instance Rounding '(Half  , Word32)
+deriving via '(Half  , Base Word64) instance Rounding '(Half  , Word64)
+deriving via '(Half  , Base Word  ) instance Rounding '(Half  , Word  )
+deriving via '(Float , Base Word8 ) instance Rounding '(Float , Word8 )
+deriving via '(Float , Base Word16) instance Rounding '(Float , Word16)
+deriving via '(Float , Base Word32) instance Rounding '(Float , Word32)
+deriving via '(Float , Base Word64) instance Rounding '(Float , Word64)
+deriving via '(Float , Base Word  ) instance Rounding '(Float , Word  )
+deriving via '(Double, Base Word8 ) instance Rounding '(Double, Word8 )
+deriving via '(Double, Base Word16) instance Rounding '(Double, Word16)
+deriving via '(Double, Base Word32) instance Rounding '(Double, Word32)
+deriving via '(Double, Base Word64) instance Rounding '(Double, Word64)
+deriving via '(Double, Base Word  ) instance Rounding '(Double, Word  )
+-- to signed integers
+deriving via '(Half  , Base Int8  ) instance Rounding '(Half  , Int8  )
+deriving via '(Half  , Base Int16 ) instance Rounding '(Half  , Int16 )
+deriving via '(Half  , Base Int32 ) instance Rounding '(Half  , Int32 )
+deriving via '(Half  , Base Int64 ) instance Rounding '(Half  , Int64 )
+deriving via '(Half  , Base Int   ) instance Rounding '(Half  , Int   )
+deriving via '(Float , Base Int8  ) instance Rounding '(Float , Int8  )
+deriving via '(Float , Base Int16 ) instance Rounding '(Float , Int16 )
+deriving via '(Float , Base Int32 ) instance Rounding '(Float , Int32 )
+deriving via '(Float , Base Int64 ) instance Rounding '(Float , Int64 )
+deriving via '(Float , Base Int   ) instance Rounding '(Float , Int   )
+deriving via '(Double, Base Int8  ) instance Rounding '(Double, Int8  )
+deriving via '(Double, Base Int16 ) instance Rounding '(Double, Int16 )
+deriving via '(Double, Base Int32 ) instance Rounding '(Double, Int32 )
+deriving via '(Double, Base Int64 ) instance Rounding '(Double, Int64 )
+deriving via '(Double, Base Int   ) instance Rounding '(Double, Int   )
+-- to floating point
+deriving via '(Base Half  , Half  ) instance Rounding '(Half  , Half  )
+deriving via '(Base Half  , Float ) instance Rounding '(Half  , Float )
+deriving via '(Base Half  , Double) instance Rounding '(Half  , Double)
+deriving via '(Base Float , Half  ) instance Rounding '(Float , Half  )
+deriving via '(Base Float , Float ) instance Rounding '(Float , Float )
+deriving via '(Base Float , Double) instance Rounding '(Float , Double)
+deriving via '(Base Double, Half  ) instance Rounding '(Double, Half  )
+deriving via '(Base Double, Float ) instance Rounding '(Double, Float )
+deriving via '(Base Double, Double) instance Rounding '(Double, Double)

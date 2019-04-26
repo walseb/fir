@@ -132,10 +132,10 @@ data MatPrimOp
 
 data ConvPrimOp
   = Convert
-  -- -- | CTruncate
-  -- -- | CRound
-  -- -- | CCeiling
-  -- -- | CFloor
+  | CTruncate
+  | CRound
+  | CCeiling
+  | CFloor
   deriving Show
 
 data GeomPrimOp
@@ -303,7 +303,22 @@ convOp Convert (Integer Signed   v) (Integer Signed   w)
   | v /= w = ( SConvert, Integer Signed   w)
 convOp Convert (Integer Unsigned v) (Integer Unsigned w)
   | v /= w = ( UConvert, Integer Unsigned w)
-convOp _ ty1 ty2 = error $ "unsupported conversion from " ++ show ty1 ++ " to " ++ show ty2
+convOp CTruncate (Floating _) (Integer Signed   w) = ( ConvertFToS, Integer Signed   w )
+convOp CTruncate (Floating _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
+convOp CTruncate (Floating v) (Floating w)
+  | v == w    = ( Trunc, Floating w )
+  | otherwise = error $ "unsupported truncation between floating point types of different widths"
+convOp CRound    (Floating v) (Floating w)
+  | v == w    = ( Round, Floating w )
+  | otherwise = error $ "unsupported rounding between floating point types of different widths"
+convOp CFloor    (Floating v) (Floating w)
+  | v == w    = ( Floor, Floating w )
+  | otherwise = error $ "unsupported floor operation between floating point types of different widths"
+convOp CCeiling (Floating v) (Floating w)
+  | v == w    = ( Ceil, Floating w )
+  | otherwise = error $ "unsupported ceiling operation between floating point types of different widths"
+convOp cOp a b
+  = error $ "unsupported operation " ++ show cOp ++ " from type " ++ show a ++ " to type " ++ show b
 
 geomOp :: GeomPrimOp -> (Operation, PrimTy)
 geomOp EmitGeometryVertex   = ( EmitVertex  , Unit )

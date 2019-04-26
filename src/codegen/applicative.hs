@@ -422,16 +422,32 @@ vectorisePrimOp = case opSing @_ @_ @op @a of
   Just SBitOr   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitOr   )
   Just SBitXor  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitXor  )
   Just SBitNot  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitNot  )
-  Just bsr@SBitShiftRightArithmetic -> 
+  Just bsr@SBitShiftRightArithmetic ->
     case bsr of
         (_ :: SPrimOp '(b,s) SPIRV.BitShiftRightArithmetic)
           -> Just . UAST $ primOp @'(V n b, V n s) @('Vectorise SPIRV.BitShiftRightArithmetic)
-  Just bsl@SBitShiftLeft -> 
+  Just bsl@SBitShiftLeft ->
     case bsl of
         (_ :: SPrimOp '(b,s) SPIRV.BitShiftLeft)
           -> Just . UAST $ primOp @'(V n b, V n s) @('Vectorise SPIRV.BitShiftLeft)
-  Just conv@SConvert -> 
+  Just conv@SConvert ->
     case conv of
         (_ :: SPrimOp '(x,y) SPIRV.Convert)
           -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.Convert)
+  Just trunc@STruncate ->
+    case trunc of
+        (_ :: SPrimOp '(x,y) SPIRV.CTruncate)
+          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CTruncate)
+  Just rd@SRound ->
+    case rd of
+        (_ :: SPrimOp '(x,y) SPIRV.CRound)
+          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CRound)
+  Just fl@SFloor ->
+    case fl of
+        (_ :: SPrimOp '(x,y) SPIRV.CFloor)
+          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CFloor)
+  Just cl@SCeiling ->
+    case cl of
+        (_ :: SPrimOp '(x,y) SPIRV.CCeiling)
+          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CCeiling)
   _ -> Nothing

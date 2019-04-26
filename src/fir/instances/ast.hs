@@ -40,6 +40,9 @@ module FIR.Instances.AST
     ASTFunctor(fmapAST)
   , ASTApplicative(pureAST, (<**>)), (<$$>)
 
+  -- helper typeclass to avoid conversions when 'id' suffices
+  , WhichConversion(conversion)
+
     -- patterns for vectors
   , pattern Vec2, pattern Vec3, pattern Vec4
 
@@ -70,7 +73,7 @@ import Data.Kind
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Type.Equality
-  ( (:~:)(Refl), testEquality, type (==) )
+  ( type (==) )
 import Data.Word
   ( Word16 )
 import GHC.TypeLits
@@ -82,8 +85,6 @@ import GHC.TypeNats
   , type (+), type (-)
   , type (<=), CmpNat
   )
-import Type.Reflection
-  ( typeRep )
 
 -- fir
 import Control.Type.Optic
@@ -131,8 +132,8 @@ import Math.Algebra.Class
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
   , Floating(..), RealFloat(..)
-  , Integral
-  , Convert(..)
+  , Integral, Unsigned
+  , Convert(..), Rounding(..)
   )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
@@ -224,7 +225,9 @@ instance (ScalarTy a, ScalarTy s, BitShift '(a,s))
 --
 -- 'DivisionRing', 'Archimedean' (Archimedean ordered group),
 --
--- 'Floating', 'RealFloat' (note: not the "Prelude" type classes).
+-- 'Floating', 'RealFloat' (note: not the "Prelude" type classes)
+--
+-- 'Integral', 'Unsigned'.
 
 instance (ScalarTy a, AdditiveMonoid a) => AdditiveMonoid (AST a) where
   (+)    = primOp @a @SPIRV.Add
@@ -271,21 +274,49 @@ instance (ScalarTy a, Floating a) => Floating (AST a) where
 instance (ScalarTy a, RealFloat a) => RealFloat (AST a) where
   atan2   = primOp @a @SPIRV.FAtan2
 
+instance (ScalarTy a, Integral a) => Integral (AST a) where
+instance (ScalarTy a, Unsigned a) => Unsigned (AST a) where
 
 -- * Numeric conversions
 --
 -- $conversions
--- Instance for 'Convert'.
-instance (ScalarTy a, ScalarTy b, Convert '(a,b))
-         => Convert '(AST a, AST b) where
-  convert = case testEquality (typeRep @a) (typeRep @b) of
-    Just Refl -> id
-    _         -> primOp @'(a,b) @SPIRV.Convert
+-- Instance for 'Convert', 'Rounding'.
 
--- TODO: there should be a way to do this more efficiently,
--- without using type reflection machinery.
--- However this at least avoids writing out
--- a large amount of instances by hand (one for each pair of types).
+-- Helper type class to choose which conversion function to use,
+-- depending on whether @a ~ b@.
+class WhichConversion a b (useIdentity :: Bool) where
+  conversion :: AST a -> AST b
+
+instance (ScalarTy a, ScalarTy b, Convert '(a,b)) => WhichConversion a b 'False where
+  conversion = primOp @'(a,b) @SPIRV.Convert
+instance ScalarTy a => WhichConversion a a 'True where
+  conversion = id
+
+instance ( ScalarTy a, ScalarTy b, WhichConversion a b (a == b) )
+       => Convert '(AST a, AST b) where
+  convert = conversion @a @b @(a==b)
+
+instance {-# OVERLAPPING #-}
+         ( ScalarTy a, Rounding '(a,a) )
+      => Rounding '(AST a, AST a) where
+  truncate = primOp @'(a,a) @SPIRV.CTruncate
+  round    = primOp @'(a,a) @SPIRV.CRound
+  floor    = primOp @'(a,a) @SPIRV.CFloor
+  ceiling  = primOp @'(a,a) @SPIRV.CCeiling
+
+instance ( ScalarTy a, ScalarTy b
+         , Floating a, Integral b
+         , Rounding '(a,a), Rounding '(a,b)
+         )
+       => Rounding '(AST a, AST b) where
+  truncate = primOp @'(a,b) @SPIRV.CTruncate
+  round    = primOp @'(a,b) @SPIRV.CTruncate @(AST a -> AST b)
+           . primOp @'(a,a) @SPIRV.CRound
+  floor    = primOp @'(a,b) @SPIRV.CTruncate @(AST a -> AST b)
+           . primOp @'(a,a) @SPIRV.CFloor
+  ceiling  = primOp @'(a,b) @SPIRV.CTruncate @(AST a -> AST b)
+           . primOp @'(a,a) @SPIRV.CCeiling
+
 
 -----------------------------------------------
 -- * Optics

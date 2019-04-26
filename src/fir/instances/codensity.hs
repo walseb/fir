@@ -79,7 +79,7 @@ module FIR.Instances.Codensity
 import Prelude hiding
   ( Eq(..), (&&), (||), not
   , Ord(..)
-  , Num(..), Floating(..)
+  , Num(..), Floating(..), RealFrac(..)
   , Integral(..)
   , Fractional(..), fromRational
   , Floating(..), RealFloat(..)
@@ -90,6 +90,8 @@ import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
+import Data.Type.Equality
+  ( type (==) )
 import Data.Word
   ( Word16 )
 import qualified GHC.Stack
@@ -125,7 +127,7 @@ import FIR.Binding
   , Permissions
   )
 import FIR.Instances.AST
-  ( )
+  ( WhichConversion(conversion) ) -- plus instances
 import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
   , Has
@@ -156,7 +158,7 @@ import Math.Algebra.Class
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
   , Floating(..), RealFloat(..)
-  , Convert(..)
+  , Convert(..), Rounding(..)
   )
 import Math.Linear
   ( Semimodule(..), Module(..)
@@ -646,15 +648,25 @@ instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Codensity AST (AST a := 
 -- Numeric conversions
 
 -- $conversions
--- Instance for 'Convert'.
-instance ( ScalarTy a, ScalarTy b, Convert '(a,b)
+-- Instance for 'Convert', 'Rounding'.
+instance ( ScalarTy a, ScalarTy b, WhichConversion a b (a==b)
          , j ~ i, k ~ i, l ~ i
          )
          => Convert '( Codensity AST (AST a := j) i
                      , Codensity AST (AST b := l) k
                      ) where
-  convert = ixFmap convert
+  convert = ixFmap (conversion @a @b @(a==b))
 
+instance ( ScalarTy a, ScalarTy b, Rounding '(AST a, AST b)
+         , j ~ i, k ~ i, l ~ i
+         )
+         => Rounding '( Codensity AST (AST a := j) i
+                      , Codensity AST (AST b := l) k
+                      ) where
+  truncate = ixFmap truncate
+  round    = ixFmap round
+  floor    = ixFmap floor
+  ceiling  = ixFmap ceiling
 
 -- Vectors
 

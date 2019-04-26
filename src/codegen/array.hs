@@ -47,7 +47,7 @@ import FIR.Instances.Codensity
   , locally, while
   )
 import FIR.Instances.Bindings
-  ( Has, Get, Put
+  ( Has, CanGet, CanPut
   , AddBinding
   )
 import FIR.ASTState
@@ -74,12 +74,12 @@ createArray :: forall n arrName ixName a i j ctx eps.
              , PrimTy a
              , i ~ ( 'ASTState '[ arrName ':-> Var RW (Array n a) ] ctx eps )
              , j ~ AddBinding ixName (Var RW Word32) i
-             , Get ixName j ~ Word32
-             , Put ixName j ~ Word32
              , Has ixName j ~ Word32
              , Has arrName j ~ Array n a
-             , Get arrName j ~ Array n a
-             , Put arrName j ~ Array n a
+             , CanGet ixName  j
+             , CanPut ixName  j
+             , CanGet arrName j
+             , CanPut arrName j
              )
           => ( AST Word32 -> AST a ) 
           -> AST ( (Array n a := i) i )

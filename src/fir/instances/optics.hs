@@ -291,7 +291,8 @@ instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a 
          , Gettable o2
          , empty ~ '[]
          , ks ~ js
-         , a ~ Binding.Get k i -- this is the additional line that helps type inference
+         , a ~ Binding.Has k i -- this is the additional line that helps type inference
+         , Binding.CanGet k i
          ) => Gettable ( ((Name_ k :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
 instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a b).
@@ -299,7 +300,8 @@ instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a 
          , Settable o2
          , empty ~ '[]
          , ks ~ js
-         , a ~ Binding.Put k i -- ditto
+         , a ~ Binding.Has k i -- ditto
+         , Binding.CanPut k i
          ) => Settable ( ((Name_ k :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
 
@@ -325,7 +327,8 @@ type Viewer (g :: Optic is s a) = ListVariadic (is `Postpend` s) a
 
 -- bindings
 instance ( KnownSymbol k
-         , r ~ Binding.Get k i
+         , r ~ Binding.Has k i
+         , Binding.CanGet k i
          , empty ~ '[]
          )
       => Gettable (Name_ k :: Optic empty (i :: ASTState) r) where
@@ -643,7 +646,8 @@ type Setter   (g :: Optic is s a) = ListVariadic   (is `Postpend` a `Postpend` s
 
 -- bindings
 instance ( KnownSymbol k
-         , r ~ Binding.Put k i
+         , r ~ Binding.Has k i
+         , Binding.CanPut k i
          , empty ~ '[]
          )
       => Settable (Name_ k :: Optic empty (i :: ASTState) r ) where

@@ -410,6 +410,12 @@ pattern ReturnValue       = Code 254
 pattern Unreachable       :: Operation
 pattern Unreachable       = Code 255
 -- GLSL extended instructions
+pattern Round         :: Operation
+pattern Round         = ExtCode GLSL 1
+pattern RoundEven     :: Operation
+pattern RoundEven     = ExtCode GLSL 2
+pattern Trunc         :: Operation
+pattern Trunc         = ExtCode GLSL 3
 pattern FAbs          :: Operation
 pattern FAbs          = ExtCode GLSL 4
 pattern SAbs          :: Operation
@@ -418,6 +424,12 @@ pattern FSign         :: Operation
 pattern FSign         = ExtCode GLSL 6
 pattern SSign         :: Operation
 pattern SSign         = ExtCode GLSL 7
+pattern Floor         :: Operation
+pattern Floor         = ExtCode GLSL 8
+pattern Ceil          :: Operation
+pattern Ceil          = ExtCode GLSL 9
+pattern Fract         :: Operation
+pattern Fract         = ExtCode GLSL 10
 pattern Sin           :: Operation
 pattern Sin           = ExtCode GLSL 13
 pattern Cos           :: Operation

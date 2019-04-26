@@ -1,11 +1,13 @@
 {-# LANGUAGE DerivingVia        #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module Deriving.Base where
+module Deriving.Base
+  ( Base(Base, runBase) )
+  where
 
 import qualified Prelude
 
-newtype Base a = Base a
+newtype Base a = Base { runBase :: a }
 
 deriving via a instance Prelude.Eq a  => Prelude.Eq  (Base a)
 deriving via a instance Prelude.Ord a => Prelude.Ord (Base a)

@@ -51,7 +51,7 @@ import Math.Algebra.Class
   , Archimedean(..)
   , DivisionRing(..)
   , Floating(..), RealFloat(..)
-  , Convert(..)
+  , Convert(..), Rounding(..)
   )
 import qualified SPIRV.PrimOp as SPIRV
 
@@ -116,7 +116,11 @@ data SPrimOp (a :: k) (op :: opKind) :: Type where
   SLog     :: ScalarTy a => SPrimOp a SPIRV.FLog
   SSqrt    :: ScalarTy a => SPrimOp a SPIRV.FSqrt
   SInvsqrt :: ScalarTy a => SPrimOp a SPIRV.FInvsqrt
-  SConvert :: (ab ~ '(a,b), ScalarTy a, ScalarTy b) => SPrimOp (ab :: (Type,Type)) SPIRV.Convert
+  SConvert   :: (ab ~ '(a,b), ScalarTy a, ScalarTy b) => SPrimOp (ab :: (Type,Type)) SPIRV.Convert
+  STruncate  :: (ab ~ '(a,b), ScalarTy a, ScalarTy b) => SPrimOp (ab :: (Type,Type)) SPIRV.CTruncate
+  SRound     :: (ab ~ '(a,b), ScalarTy a, ScalarTy b) => SPrimOp (ab :: (Type,Type)) SPIRV.CRound
+  SFloor     :: (ab ~ '(a,b), ScalarTy a, ScalarTy b) => SPrimOp (ab :: (Type,Type)) SPIRV.CFloor
+  SCeiling   :: (ab ~ '(a,b), ScalarTy a, ScalarTy b) => SPrimOp (ab :: (Type,Type)) SPIRV.CCeiling
 
 -------------------------------------------------------------------------------
 -- instances
@@ -396,6 +400,30 @@ instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.Convert '(a,b) where
   op = convert
   opName = SPIRV.ConvOp SPIRV.Convert (scalarTy @a) (scalarTy @b)
   opSing = Just SConvert
+instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.CTruncate '(a,b) where
+  type PrimOpConstraint SPIRV.CTruncate '(a,b) = Rounding '(a,b)
+  type PrimOpType SPIRV.CTruncate '(a,b) = a -> b
+  op = truncate
+  opName = SPIRV.ConvOp SPIRV.CTruncate (scalarTy @a) (scalarTy @b)
+  opSing = Just STruncate
+instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.CRound '(a,b) where
+  type PrimOpConstraint SPIRV.CRound '(a,b) = Rounding '(a,b)
+  type PrimOpType SPIRV.CRound '(a,b) = a -> b
+  op = round
+  opName = SPIRV.ConvOp SPIRV.CRound (scalarTy @a) (scalarTy @b)
+  opSing = Just SRound
+instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.CFloor '(a,b) where
+  type PrimOpConstraint SPIRV.CFloor '(a,b) = Rounding '(a,b)
+  type PrimOpType SPIRV.CFloor '(a,b) = a -> b
+  op = floor
+  opName = SPIRV.ConvOp SPIRV.CFloor (scalarTy @a) (scalarTy @b)
+  opSing = Just SFloor
+instance ( ScalarTy a, ScalarTy b ) => PrimOp SPIRV.CCeiling '(a,b) where
+  type PrimOpConstraint SPIRV.CCeiling '(a,b) = Rounding '(a,b)
+  type PrimOpType SPIRV.CCeiling '(a,b) = a -> b
+  op = ceiling
+  opName = SPIRV.ConvOp SPIRV.CCeiling (scalarTy @a) (scalarTy @b)
+  opSing = Just SCeiling
 
 -- geometry primitive instructions
 instance PrimOp SPIRV.EmitGeometryVertex (i :: ASTState) where
@@ -501,6 +529,26 @@ instance ( KnownNat n, ScalarTy a, ScalarTy b ) => PrimOp ('Vectorise SPIRV.Conv
   type PrimOpType ('Vectorise SPIRV.Convert) '(V n a, V n b) = V n a -> V n b
   op = fmap convert
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Convert @'(a,b))) (val @n) (scalarTy @a)
+instance ( KnownNat n, ScalarTy a, ScalarTy b ) => PrimOp ('Vectorise SPIRV.CTruncate) '(V n a, V n b) where
+  type PrimOpConstraint ('Vectorise SPIRV.CTruncate) '(V n a, V n b) = Rounding '(a,b)
+  type PrimOpType ('Vectorise SPIRV.CTruncate) '(V n a, V n b) = V n a -> V n b
+  op = fmap truncate
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CTruncate @'(a,b))) (val @n) (scalarTy @a)
+instance ( KnownNat n, ScalarTy a, ScalarTy b ) => PrimOp ('Vectorise SPIRV.CRound) '(V n a, V n b) where
+  type PrimOpConstraint ('Vectorise SPIRV.CRound) '(V n a, V n b) = Rounding '(a,b)
+  type PrimOpType ('Vectorise SPIRV.CRound) '(V n a, V n b) = V n a -> V n b
+  op = fmap round
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CRound @'(a,b))) (val @n) (scalarTy @a)
+instance ( KnownNat n, ScalarTy a, ScalarTy b ) => PrimOp ('Vectorise SPIRV.CFloor) '(V n a, V n b) where
+  type PrimOpConstraint ('Vectorise SPIRV.CFloor) '(V n a, V n b) = Rounding '(a,b)
+  type PrimOpType ('Vectorise SPIRV.CFloor) '(V n a, V n b) = V n a -> V n b
+  op = fmap floor
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CFloor @'(a,b))) (val @n) (scalarTy @a)
+instance ( KnownNat n, ScalarTy a, ScalarTy b ) => PrimOp ('Vectorise SPIRV.CCeiling) '(V n a, V n b) where
+  type PrimOpConstraint ('Vectorise SPIRV.CCeiling) '(V n a, V n b) = Rounding '(a,b)
+  type PrimOpType ('Vectorise SPIRV.CCeiling) '(V n a, V n b) = V n a -> V n b
+  op = fmap ceiling
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CCeiling @'(a,b))) (val @n) (scalarTy @a)
 
 instance ( KnownNat n, ScalarTy a ) => PrimOp ('Vectorise SPIRV.FSin) (V n a) where
   type PrimOpConstraint ('Vectorise SPIRV.FSin) (V n a) = Floating a

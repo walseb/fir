@@ -223,6 +223,8 @@ import FIR.AST
 import FIR.Binding
 import FIR.Definition
 import FIR.Instances.AST
+  hiding
+    ( WhichConversion(..) ) -- internal helper
 import FIR.Instances.Codensity
 import FIR.Instances.Images
 import FIR.Instances.Optics
@@ -293,8 +295,8 @@ instance TH.Lift Text where
 -- | Utility function to run IO actions at compile time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.
 --
--- __Usage__: in a module which imports this module and shaders @vertexShader@, @fragmentShader@
--- (bearing in mind the TH staging restriction), write:
+-- __Usage example__: in a module which imports this module and shaders
+-- @vertexShader@, @fragmentShader@ (bearing in mind the TH staging restriction), write:
 --
 -- > shaderCompilationResult =
 -- >   $( runCompilationsTH
