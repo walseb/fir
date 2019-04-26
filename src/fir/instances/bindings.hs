@@ -28,6 +28,7 @@ module FIR.Instances.Bindings
   , LookupImageProperties
   , ValidImageRead
   , ValidImageWrite
+  , Embeddable
   , DefiniteState
   , ProvidedSymbol, ProvidedStage, ProvidedOptic
   )
@@ -627,6 +628,45 @@ type family AllowedWriteOps (ops :: [OperandName]) :: Constraint where
                  :<>: Text " cannot be used in conjunction \
                            \with an image write operation."
                 )
+
+-------------------------------------------------
+-- * Constraints for 'FIR.Instances.Codensity.embed'.
+
+type family Embeddable (i :: ASTState) (j :: ASTState) :: Constraint where
+  Embeddable ('ASTState i_bds i_ctx i_eps) ('ASTState j_bds i_ctx i_eps)
+    = Subset i_bds j_bds
+  Embeddable ('ASTState i_bds TopLevel i_eps) ('ASTState j_bds i_ctx i_eps)
+    = Subset i_bds j_bds
+  Embeddable ('ASTState _ i_ctx i_eps) ('ASTState _ j_ctx i_eps)
+    = TypeError
+      (      Text "'embed': cannot embed computation with function context "
+        :<>: ShowType i_ctx
+        :<>: Text " into computation with function context "
+        :<>: ShowType j_ctx
+        :<>: Text "."
+      )
+  Embeddable ('ASTState _ _ i_eps) ('ASTState _ _ j_eps)
+    = TypeError
+      (      Text "'embed': cannot embed computation with entry points "
+        :<>: ShowType i_eps
+        :<>: Text " into computation with entry points "
+        :<>: ShowType j_eps
+        :<>: Text "."
+      )
+
+type family Subset (is :: BindingsMap) (js :: BindingsMap) :: Constraint where
+  Subset '[]       _ = ()
+  Subset (i ': is) js
+    = If (i `Elem` js)
+        ( Subset is js )
+        ( TypeError
+           ( Text "'embed': cannot embed computation."
+            :$$: Text "Binding " :<>: ShowType i
+            :<>: Text " is missing in larger context "
+            :<>: ShowType js
+            :<>: Text "."
+           )
+        )
 
 -------------------------------------------------
 -- * Checking for ambiguous type variables.

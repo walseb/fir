@@ -115,8 +115,8 @@ library
       , FIR.Prim.Struct
       , FIR.Prim.Op
       , FIR.Program
-      , FIR.Synonyms
       , FIR.Swizzle
+      , FIR.Synonyms
       , FIR.Temp
       , Math.Algebra.Class
       , Math.Algebra.GradedSemigroup

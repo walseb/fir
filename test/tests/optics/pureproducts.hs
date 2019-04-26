@@ -76,8 +76,8 @@ v2 = view @(Index 2 :*: Index 0) v1
 m1 :: M 4 4 Float
 m1 = identity
 
-m2 :: M 2 4 Float
-m2 = view @(Row 2 :*: Row 1) m1
+m2 :: M 4 2 Float
+m2 = view @(Col 2 :*: Col 1) m1
 
 -- doesn't work, expects return type 'V 8 Float'
 --m3 :: M 4 2 Float

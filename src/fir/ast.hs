@@ -76,6 +76,7 @@ import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
   , ValidEntryPoint, EntryPointStartState, AddEntryPoint
+  , Embeddable
   )
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
@@ -90,6 +91,8 @@ import FIR.Prim.Singletons
   , PrimFunc, primFuncName
   , KnownArity
   )
+import Math.Algebra.GradedSemigroup
+  ( GradedSemigroup(Grade, (:<!>:)) )
 import Math.Linear
   ( V, M )
 import qualified SPIRV.PrimOp as SPIRV
@@ -132,9 +135,8 @@ data AST :: Type -> Type where
         )
       => Proxy k  -- ^ Variable name.
       -> Proxy ps -- ^ Permissions (read,write,...).
-      -> AST (    (a := i) i
-               -> (a := AddBinding k (Var ps a) i) i
-             )
+      -> AST ( a -> (a := AddBinding k (Var ps a) i) i )
+
   -- | Defining a new function.
   --
   -- Meaning of type variables:
@@ -227,6 +229,8 @@ data AST :: Type -> Type where
 
   -- | Encapsulate local state.
   Locally :: AST ( (a := j) i -> (a := i) i )
+  -- | Embed a computation into one with larger starte.
+  Embed :: Embeddable i j => AST ( (a := i) i -> (a := j) j )
 
   -- functor/applicative operations
   Fmap :: forall f a b. ( PrimFunc f, PrimTy a, KnownArity b )
@@ -240,6 +244,8 @@ data AST :: Type -> Type where
            => Proxy n
            -> Proxy a
            -> AST ( NatVariadic n a ( V n a ) )
+  GradedMappend :: ( GradedSemigroup g k, a ~ Grade k g i, b ~ Grade k g j )
+    => AST ( a -> b -> Grade k g (i :<!>: j) )
 
   -- Newtype wrapping/unwrapping.
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
@@ -305,6 +311,7 @@ toTreeArgs If       as = return (Node "If"       as)
 toTreeArgs IfM      as = return (Node "IfM"      as)
 toTreeArgs While    as = return (Node "While"    as)
 toTreeArgs Locally  as = return (Node "Locally"  as)
+toTreeArgs Embed    as = return (Node "Embed"    as)
 toTreeArgs Return   as = return (Node "Return"   as)
 toTreeArgs Bind     as = return (Node "Bind"     as)
 toTreeArgs Mat      as = return (Node "Mat"      as)
@@ -315,6 +322,7 @@ toTreeArgs Pair     as = return (Node "Pair"     as)
 toTreeArgs Fst      as = return (Node "Fst"      as)
 toTreeArgs Snd      as = return (Node "Snd"      as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
+toTreeArgs GradedMappend    as = return (Node "GradedMappend" as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
 toTreeArgs (Use    _ o    ) as = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Assign _ o    ) as = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)

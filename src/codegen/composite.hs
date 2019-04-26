@@ -7,6 +7,7 @@ module CodeGen.Composite
   ( compositeConstruct
   , compositeInsert, compositeExtract
   , accessedTy
+  , vectorShuffle, vectorSwizzle
   )
   where
 
@@ -16,6 +17,10 @@ import Data.Word
 
 -- containers
 import qualified Data.Map.Strict as Map
+
+-- mtl
+import Control.Monad.Except
+  ( throwError )
 
 -- text-utf8
 import qualified "text-utf8" Data.Text as Text
@@ -133,3 +138,33 @@ accessedTy (Just i:is) (SPIRV.Struct        {eltTys})
     where i' = fromIntegral i
 accessedTy _ _
   = Nothing
+
+----------------------------------------------------------------------------
+-- vector shuffle/swizzle
+
+vectorShuffle :: ( (ID, SPIRV.PrimTy), [Word32] )
+              -> ( (ID, SPIRV.PrimTy), [Word32] )
+              -> CGMonad (ID, SPIRV.PrimTy)
+vectorShuffle ((u_ID, SPIRV.Vector n s), is) ((v_ID, SPIRV.Vector _ t), js)
+  | s /= t = throwError "vectorShuffle: incompatible vector components"
+  | otherwise =
+    do
+      v <- fresh
+      let indices = is ++ map (+n) js
+          shuffleTy = SPIRV.Vector ( fromIntegral (length is + length js) ) s
+      shuffleTyID <- typeID shuffleTy
+      liftPut $ putInstruction Map.empty
+        Instruction
+          { operation = SPIRV.Op.VectorShuffle
+          , resTy     = Just shuffleTyID
+          , resID     = Just v
+          , args      = Arg u_ID
+                      $ Arg v_ID
+                      $ toArgs indices
+          }
+      pure (v, shuffleTy)
+vectorShuffle _ _
+  = throwError "vectorShuffle used on non-vectors"
+
+vectorSwizzle :: (ID, SPIRV.PrimTy) -> [Word32] -> CGMonad (ID, SPIRV.PrimTy)
+vectorSwizzle v is = vectorShuffle (v, is) (v, [])

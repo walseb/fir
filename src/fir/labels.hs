@@ -71,7 +71,7 @@ import FIR.Binding
 import FIR.Instances.Bindings
   ( AddBinding, Has, Get, Put )
 import FIR.Instances.Codensity
-  ( CanDefine(def), use, assign, modifying )
+  ( def, use, assign, modifying )
 import FIR.ASTState
   ( ASTState )
 import FIR.Prim.Singletons
@@ -127,7 +127,6 @@ infixr 1 .=
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , PrimTy a
-        , CanDefine k RW a i (AST a)
         )
      => Label k a
      -> AST a
@@ -139,7 +138,6 @@ _ #= a = def @k @RW a
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , PrimTy a
-        , CanDefine k R a i (AST a)
         )
      => Label k a
      -> AST a

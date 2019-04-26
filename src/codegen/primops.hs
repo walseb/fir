@@ -33,10 +33,11 @@ import qualified SPIRV.PrimTy    as SPIRV
 
 primOp :: SPIRV.PrimOp -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
 primOp prim as =
-  do
+  let (op,retTy) = SPIRV.opAndReturnType prim
+  in do
       case op of
         SPIRV.Op.ExtCode extInst _
-          -> void (extInstID extInst)
+          -> void (extInstID extInst) -- ensure extended instruction set is declared
         _ -> pure ()
 
       extInsts <- use _knownExtInsts
@@ -62,5 +63,3 @@ primOp prim as =
               , args = toArgs (map fst as)
               }
           pure (v, retTy)
-
-    where (op,retTy) = SPIRV.opAndReturnType prim

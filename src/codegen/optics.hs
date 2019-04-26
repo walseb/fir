@@ -32,6 +32,8 @@ import Control.Arrow
   ( first )
 import Control.Monad
   ( unless )
+import Data.Word
+  ( Word32 )
 
 -- lens
 import Control.Lens
@@ -55,7 +57,9 @@ import CodeGen.Application
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.Composite
-  ( compositeConstruct, compositeExtract, compositeInsert )
+  ( compositeConstruct, compositeExtract, compositeInsert
+  , vectorSwizzle
+  )
 import CodeGen.Instruction
   ( ID )
 import CodeGen.Monad
@@ -248,6 +252,15 @@ combinedIndices (SSucc is) (SSucc js) (k1k2 `ConsAST` ks)
 ----------------------------------------------------------------------------
 -- code generation for optics
 
+-- check whether a vector swizzle operation can be used
+swizzleIndices :: SPIRV.PrimTy -> [OpticalOperationTree] -> Maybe [Word32]
+swizzleIndices (SPIRV.Vector _ _) = traverse simpleIndex
+  where
+    simpleIndex :: OpticalOperationTree -> Maybe Word32
+    simpleIndex (Access _ (CTInds [i]) `Then` Done) = Just i
+    simpleIndex _ = Nothing
+swizzleIndices _ = const Nothing
+
 loadThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 loadThroughAccessChain' (basePtrID, SPIRV.PointerTy _ eltTy) Done
@@ -257,6 +270,12 @@ loadThroughAccessChain' basePtr ( Access _ is `Then` ops )
       newBasePtr <- accessChain basePtr is
       loadThroughAccessChain' newBasePtr ops
 loadThroughAccessChain' basePtr ( Combine cb trees )
+  -- special case: can we use a vector swizzle operation?
+  | Just is <- swizzleIndices cb trees
+  = do
+      base <- loadThroughAccessChain' basePtr Done
+      vectorSwizzle base is
+  | otherwise
   = do
       components <- traverse (fmap fst . loadThroughAccessChain' basePtr) trees
       compositeConstruct cb components
@@ -285,6 +304,10 @@ extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _ _) `Then` _ )
         )
       loadThroughAccessChain' (basePtrID, ptrTy) ops
 extractUsingGetter' base ( Combine cb trees )
+  -- special case: can we use a vector swizzle operation?
+  | Just is <- swizzleIndices cb trees
+  = vectorSwizzle base is
+  | otherwise
   = do
       components <- traverse (fmap fst . extractUsingGetter' base) trees
       compositeConstruct cb components

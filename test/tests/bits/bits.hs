@@ -28,6 +28,6 @@ program = Program $ entryPoint @"main" @Vertex do
 
     a <- get @"x" .&. get @"y"
     
-    b <- def @"b" @R (get @"z" .|. get @"w")
+    b <- def @"b" @R =<< (get @"z" .|. get @"w")
 
     put @"out" $ (a `shiftL` (3 :: AST Word32)) `xor` (a `shiftR` b) `xor` (complement b)

@@ -7,10 +7,10 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs               #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -84,12 +84,11 @@ import GHC.TypeNats
   )
 import Type.Reflection
   ( typeRep )
-import Unsafe.Coerce
-  ( unsafeCoerce )
 
 -- fir
 import Control.Type.Optic
   ( Optic(..), Index
+  , Product, ProductIfDisjoint
   , Gettable, ReifiedGetter(view)
   , Settable, ReifiedSetter(set)
   , Contained(..), ContainerKind, DegreeKind, LabelKind
@@ -98,9 +97,11 @@ import Control.Type.Optic
 import Data.Function.Variadic
   ( NatVariadic, ListVariadic )
 import Data.Type.List
-  ( type (:++:), KnownLength(sLength) )
+  ( KnownLength(sLength)
+  , type (:++:), Zip, Postpend
+  )
 import Data.Type.Map
-  ( (:->)((:->)), Key, Value )
+  ( (:->)((:->)), Key )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal, toAST, fromAST)
@@ -108,6 +109,8 @@ import FIR.AST
   )
 import FIR.Instances.Optics
   ( KnownOptic(opticSing)
+  , (%:*:), (%:.:)
+  , ValidAnIndexOptic
   , StructElemFromIndex
   )
 import FIR.Prim.Array
@@ -115,8 +118,8 @@ import FIR.Prim.Array
 import FIR.Prim.Op
   ( Vectorise(Vectorise) )
 import FIR.Prim.Singletons
-  ( PrimTy, PrimTyMap
-  , ScalarTy
+  ( PrimTy
+  , ScalarTy, IntegralTy
   , SPrimFunc(..), PrimFunc(..)
   , KnownArity
   )
@@ -134,7 +137,6 @@ import Math.Algebra.Class
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
-  , FreeGradedSemigroup(..)
   )
 import Math.Linear
   ( Semimodule(..), Module(..)
@@ -286,158 +288,21 @@ instance (ScalarTy a, ScalarTy b, Convert '(a,b))
 -- a large amount of instances by hand (one for each pair of types).
 
 -----------------------------------------------
--- * Graded semigroups
---
--- $semigroups
--- Instances for graded semigroups (TODO).
-
--- ** Vectors.
-instance GradedSemigroup (AST (V 0 a)) Nat where
-  type Grade Nat (AST (V 0 a)) i = AST (V i a)
-  type i :<!>: j = i + j
-  (<!>) :: AST (V i a) -> AST (V j a) -> AST (V (i+j) a)
-  (<!>) = error "TODO: add graded semigroup operation to AST (vector composite construct)."
-
-instance GeneratedGradedSemigroup (AST (V 0 a)) Nat () where
-  type GenType    (AST (V 0 a)) ()  _  = AST a
-  type GenDeg Nat (AST (V 0 a)) () '() = 1
-  generator = unsafeCoerce
-
-instance FreeGradedSemigroup (AST (V 0 a)) Nat () where
-  type ValidDegree (AST (V 0 a)) n = KnownNat n
-  (>!<) = error "TODO: add graded semigroup operation to AST (vector composite extract)."
-  generated = unsafeCoerce
-
--- ** Matrices.
-instance KnownNat m => GradedSemigroup (AST (M m 0 a)) Nat where
-  type Grade Nat (AST (M m 0 a)) i = AST (M m i a)
-  type i :<!>: j = i + j
-  (<!>) :: AST (M m i a) -> AST (M m j a) -> AST (M m (i+j) a)
-  (<!>) = error "TODO: add graded semigroup operation to AST (matrix composite construct)."
-
-instance KnownNat m => GeneratedGradedSemigroup (AST (M m 0 a)) Nat () where
-  type GenType    (AST (M m 0 a)) ()  _  = AST (V m a)
-  type GenDeg Nat (AST (M m 0 a)) () '() = 1
-  generator = unsafeCoerce
-
-instance KnownNat m => FreeGradedSemigroup (AST (M m 0 a)) Nat () where
-  type ValidDegree (AST (M m 0 a)) n = KnownNat n
-  (>!<) = error "TODO: add graded semigroup operation to AST (matrix composite extract)."
-  generated = unsafeCoerce
-
--- ** Arrays.
-instance GradedSemigroup (AST (Array 0 a)) Nat where
-  type Grade Nat (AST (Array 0 a)) l = AST (Array l a)
-  type l1 :<!>: l2 = l1 + l2
-  (<!>) = error "TODO: add graded semigroup operation to AST (array composite construct)"
-
-instance GeneratedGradedSemigroup (AST (Array 0 a)) Nat () where
-  type GenType    (AST (Array 0 a)) ()  _  = AST a
-  type GenDeg Nat (AST (Array 0 a)) () '() = 1
-  generator = error "TODO: add graded semigroup operation to AST (array singleton composite construct)."
-
-instance FreeGradedSemigroup (AST (Array 0 a)) Nat () where
-  type ValidDegree (AST (Array 0 a)) n = KnownNat n
-  (>!<) = error "TODO: add graded semigroup operation to AST (array composite extract)"
-  generated = error "TODO: add graded semigroup operation to AST (array composite extract)."
-
--- ** Structs.
-instance GradedSemigroup (AST (Struct '[])) [Symbol :-> Type] where
-  type Grade [Symbol :-> Type] (AST (Struct '[])) as = AST (Struct as)
-  type as :<!>: bs = as :++: bs
-  (<!>) = error "TODO: add graded semigroup operation to AST (struct composite construct)"
-
-instance GeneratedGradedSemigroup (AST (Struct '[])) [Symbol :-> Type] (Symbol :-> Type) where
-  type GenType                   (AST (Struct '[])) (Symbol :-> Type) kv = AST (Value kv)
-  type GenDeg  [Symbol :-> Type] (AST (Struct '[])) (Symbol :-> Type) kv = '[ kv ]
-  generator = error "TODO: add graded semigroup operation to AST (struct singleton composite construct)."
-
-instance FreeGradedSemigroup (AST (Struct '[])) [Symbol :-> Type] (Symbol :-> Type) where
-  type ValidDegree (AST (Struct '[])) as = PrimTyMap as
-  (>!<) = error "TODO: add graded semigroup operation to AST (struct composite extract)"
-  generated = error "TODO: add graded semigroup operation to AST (struct composite extract)."
-
------------------------------------------------
 -- * Optics
 
--- ** Products
---
--- $products
--- Instances for product optics.
+class KnownOptic optic => KnownASTOptic astoptic optic | astoptic -> optic where
 
-type instance ContainerKind (AST (V n a)) = Type
-type instance DegreeKind    (AST (V n a)) = Nat
-type instance LabelKind     (AST (V n a)) = ()
+-- ** Simple instances
 
-type instance ContainerKind (AST (M m n a)) = Type
-type instance DegreeKind    (AST (M m n a)) = Nat
-type instance LabelKind     (AST (M m n a)) = ()
+-- *** Name
 
-type instance ContainerKind (AST (Struct as)) = Type
-type instance DegreeKind    (AST (Struct as)) = [Symbol :-> Type]
-type instance LabelKind     (AST (Struct as)) = (Symbol :-> Type)
-
-type instance ContainerKind (AST (Array n a)) = Type
-type instance DegreeKind    (AST (Array n a)) = Nat
-type instance LabelKind     (AST (Array n a)) = ()
-
-type instance ContainerKind (AST (RuntimeArray a)) = Type
-type instance DegreeKind    (AST (RuntimeArray a)) = ()
-type instance LabelKind     (AST (RuntimeArray a)) = ()
-
-$(Prelude.pure [])
-
-instance Contained (AST (V n a)) where
-  type Container  (AST (V n a))   = AST (V 0 a)
-  type DegreeOf   (AST (V n a))   = n
-  type LabelOf    (AST (V n a)) _ = '()
-  type Overlapping  (AST (V n a)) k _
-    = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
-                :$$: Text "Maybe you intended to use a swizzle?"
-                )
-
-instance KnownNat m => Contained (AST (M m n a)) where
-  type Container (AST (M m n a))   = AST (M m 0 a)
-  type DegreeOf  (AST (M m n a))   = n
-  type LabelOf   (AST (M m n a)) _ = '()
-  type Overlapping (AST (M m n a)) k _
-    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
-
-instance Contained (AST (Struct as)) where
-  type Container (AST (Struct as)) = (AST (Struct '[]))
-  type DegreeOf  (AST (Struct as)) = as
-  type LabelOf   (AST (Struct as)) (Name_  k :: Optic _ (AST (Struct as)) (AST a))
-    = k ':-> a
-  type LabelOf   (AST (Struct as)) (Index_ i :: Optic _ (AST (Struct as)) (AST a))
-    = Key ( StructElemFromIndex
-              (Text "key: ")
-              i as i as
-          )
-      ':-> a
-  type Overlapping (AST (Struct as)) k i
-    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
-
--- ** Equalisers
---
--- $equalisers
--- Instances for equaliser optics
-
-instance (PrimTy a, KnownNat n) => MonoContained (AST (V n a)) where
-  type MonoType (AST (V n a)) = AST a
-  setAll a _ = pureAST a
-instance (PrimTy a, KnownNat n, KnownNat m) => MonoContained (AST (M m n a)) where
-  type MonoType (AST (M m n a)) = AST a
-  setAll a _ = pureAST a
-instance MonoContained (Struct as) => MonoContained (AST (Struct as)) where
-  type MonoType (AST (Struct as)) = AST (MonoType (Struct as))
-  setAll = error "TODO: structure 'setAll'"
-
-
--- ** Getters
---
--- $getters
--- Instances for getters.
-
+instance ( empty ~ '[]
+         , KnownSymbol k
+         , r ~ AST a
+         , KnownOptic (Name_ k :: Optic empty s a)
+         )
+       => KnownASTOptic (Name_ k :: Optic empty (AST s) r) (Name_ k :: Optic '[] s a)
+       where
 instance ( KnownSymbol k
          , empty ~ '[]
          , Gettable (Name_ k :: Optic '[] s a)
@@ -459,55 +324,6 @@ instance ( KnownSymbol k
        $ View
             sLength
             ( opticSing @(Name_ k :: Optic '[] s a) )
-
-instance ( Integral ty
-         , ix ~ '[AST ty]
-         , Gettable (RTOptic_ :: Optic '[ty] s a)
-         , r ~ AST a
-         )
-      => Gettable (RTOptic_ :: Optic ix (AST s) r)
-      where
-instance ( Integral ty
-         , ix ~ '[AST ty]
-         , Gettable (RTOptic_ :: Optic '[ty] s a)
-         , ReifiedGetter (RTOptic_ :: Optic '[ty] s a)
-         , ListVariadic '[] a ~ a
-         , KnownOptic (RTOptic_ :: Optic '[ty] s a)
-         , r ~ AST a
-         )
-      => ReifiedGetter (RTOptic_ :: Optic ix (AST s) r)
-      where
-  view = fromAST
-       $ View
-            sLength
-            ( opticSing @(RTOptic_ :: Optic '[ty] s a) )
-instance ( KnownNat i
-         , empty ~ '[]
-         , Gettable (Index_ i :: Optic '[] s a)
-         , r ~ AST a
-         )
-      => Gettable (Index_ i :: Optic empty (AST s) r)
-      where
-instance ( KnownNat i
-         , empty ~ '[]
-         , Gettable (Index_ i :: Optic '[] s a)
-         , ReifiedGetter (Index_ i :: Optic '[] s a)
-         , ListVariadic '[] a ~ a
-         , KnownOptic (Index_ i :: Optic '[] s a)
-         , r ~ AST a
-         )
-      => ReifiedGetter (Index_ i :: Optic empty (AST s) r)
-      where
-  view = fromAST
-       $ View
-            sLength
-            ( opticSing @(Index_ i :: Optic '[] s a) )
-
--- ** Setters
---
--- $setters
--- Instances for setters.
-
 instance ( KnownSymbol k
          , empty ~ '[]
          , Settable (Name_ k :: Optic '[] s a)
@@ -530,6 +346,37 @@ instance ( KnownSymbol k
             sLength
             ( opticSing @(Name_ k :: Optic '[] s a) )
 
+-- *** Run-time index
+
+instance ( Integral ty, IntegralTy ty
+         , ix' ~ '[ AST ty ]
+         , r ~ AST a
+         , ValidAnIndexOptic '[ty] s a
+         , PrimTy s, PrimTy a
+         )
+       => KnownASTOptic (RTOptic_ :: Optic ix' (AST s) r) (RTOptic_ :: Optic '[ty] s a)
+       where
+instance ( Integral ty
+         , ix ~ '[AST ty]
+         , Gettable (RTOptic_ :: Optic '[ty] s a)
+         , r ~ AST a
+         )
+      => Gettable (RTOptic_ :: Optic ix (AST s) r)
+      where
+instance ( Integral ty
+         , ix ~ '[AST ty]
+         , Gettable (RTOptic_ :: Optic '[ty] s a)
+         , ReifiedGetter (RTOptic_ :: Optic '[ty] s a)
+         , ListVariadic '[] a ~ a
+         , KnownOptic (RTOptic_ :: Optic '[ty] s a)
+         , r ~ AST a
+         )
+      => ReifiedGetter (RTOptic_ :: Optic ix (AST s) r)
+      where
+  view = fromAST
+       $ View
+            sLength
+            ( opticSing @(RTOptic_ :: Optic '[ty] s a) )
 instance ( Integral ty
          , ix ~ '[AST ty]
          , Settable (RTOptic_ :: Optic '[ty] s a)
@@ -551,6 +398,37 @@ instance ( Integral ty
        $ Set
             sLength
             ( opticSing @(RTOptic_ :: Optic '[ty] s a) )
+
+-- *** Compile-time index
+
+instance ( empty ~ '[]
+         , KnownNat i
+         , r ~ AST a
+         , KnownOptic (Index_ i :: Optic empty s a)
+         )
+       => KnownASTOptic (Index_ i :: Optic empty (AST s) r) (Index_ i :: Optic '[] s a)
+       where
+instance ( KnownNat i
+         , empty ~ '[]
+         , Gettable (Index_ i :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => Gettable (Index_ i :: Optic empty (AST s) r)
+      where
+instance ( KnownNat i
+         , empty ~ '[]
+         , Gettable (Index_ i :: Optic '[] s a)
+         , ReifiedGetter (Index_ i :: Optic '[] s a)
+         , ListVariadic '[] a ~ a
+         , KnownOptic (Index_ i :: Optic '[] s a)
+         , r ~ AST a
+         )
+      => ReifiedGetter (Index_ i :: Optic empty (AST s) r)
+      where
+  view = fromAST
+       $ View
+            sLength
+            ( opticSing @(Index_ i :: Optic '[] s a) )
 instance ( KnownNat i
          , empty ~ '[]
          , Settable (Index_ i :: Optic '[] s a)
@@ -572,6 +450,300 @@ instance ( KnownNat i
        $ Set
             sLength
             ( opticSing @(Index_ i :: Optic '[] s a) )
+
+
+-- ** Composite instances
+
+-- *** Containers
+--
+-- $containers
+-- Container instances, for product optics
+
+type instance ContainerKind (AST (V n a)) = Type
+type instance DegreeKind    (AST (V n a)) = Nat
+type instance LabelKind     (AST (V n a)) = ()
+
+type instance ContainerKind (AST (M m n a)) = Type
+type instance DegreeKind    (AST (M m n a)) = Nat
+type instance LabelKind     (AST (M m n a)) = ()
+
+type instance ContainerKind (AST (Struct as)) = Type
+type instance DegreeKind    (AST (Struct as)) = [Symbol :-> Type]
+type instance LabelKind     (AST (Struct as)) = (Symbol :-> Type)
+
+type instance ContainerKind (AST (Array n a)) = Type
+type instance DegreeKind    (AST (Array n a)) = Nat
+type instance LabelKind     (AST (Array n a)) = ()
+
+$(Prelude.pure [])
+
+instance Contained (AST (V n a)) where
+  type Container  (AST (V n a))   = AST (V 0 a)
+  type DegreeOf   (AST (V n a))   = n
+  type LabelOf    (AST (V n a)) _ = '()
+  type Overlapping  (AST (V n a)) k _
+    = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
+                :$$: Text "Maybe you intended to use a swizzle?"
+                )
+
+instance PrimTy a => GradedSemigroup (AST (V 0 a)) Nat where
+  type Grade Nat (AST (V 0 a)) i = AST (V i a)
+  type i :<!>: j = i + j
+  (<!>) :: AST (V i a) -> AST (V j a) -> AST (V (i+j) a)
+  (<!>) = fromAST GradedMappend
+
+instance PrimTy a => GeneratedGradedSemigroup (AST (V 0 a)) Nat () where
+  type GenType (AST (V 0 a)) () _
+    = TypeError ( Text "Cannot construct AST for internal length 1 vector." )
+  type GenDeg Nat (AST (V 0 a)) () '() = 1
+  generator = error "unreachable"
+
+instance KnownNat m => Contained (AST (M m n a)) where
+  type Container (AST (M m n a))   = AST (M m 0 a)
+  type DegreeOf  (AST (M m n a))   = n
+  type LabelOf   (AST (M m n a)) _ = '()
+  type Overlapping (AST (M m n a)) k _
+    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
+
+instance KnownNat m => GradedSemigroup (AST (M m 0 a)) Nat where
+  type Grade Nat (AST (M m 0 a)) i = AST (M m i a)
+  type i :<!>: j = i + j
+  (<!>) :: AST (M m i a) -> AST (M m j a) -> AST (M m (i+j) a)
+  (<!>) = fromAST GradedMappend
+
+instance KnownNat m => GeneratedGradedSemigroup (AST (M m 0 a)) Nat () where
+  type GenType (AST (M m 0 a)) () _
+    = TypeError ( Text "Cannot construct AST for internal matrix with a single column." )
+  type GenDeg Nat (AST (M m 0 a)) () '() = 1
+  generator = error "unreachable"
+
+instance Contained (AST (Struct as)) where
+  type Container (AST (Struct as)) = (AST (Struct '[]))
+  type DegreeOf  (AST (Struct as)) = as
+  type LabelOf   (AST (Struct as)) (Name_  k :: Optic _ (AST (Struct as)) (AST a))
+    = k ':-> a
+  type LabelOf   (AST (Struct as)) (Index_ i :: Optic _ (AST (Struct as)) (AST a))
+    = Key ( StructElemFromIndex
+              (Text "key: ")
+              i as i as
+          )
+      ':-> a
+  type Overlapping (AST (Struct as)) k i
+    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
+
+instance GradedSemigroup (AST (Struct '[])) [Symbol :-> Type] where
+  type Grade [Symbol :-> Type] (AST (Struct '[])) as = AST (Struct as)
+  type as :<!>: bs = as :++: bs
+  (<!>) :: AST (Struct as) -> AST (Struct bs) -> AST (Struct (as :++: bs))
+  (<!>) = fromAST GradedMappend
+
+instance GeneratedGradedSemigroup
+            (AST (Struct '[]))
+            [Symbol :-> Type]
+            (Symbol :-> Type)
+            where
+  type GenType (AST (Struct '[])) (Symbol :-> Type) kv
+    = TypeError ( Text "Internal error: superfluous construction of size 1 struct." )
+  type GenDeg [Symbol :-> Type] (AST (Struct '[])) (Symbol :-> Type) kv = '[ kv ]
+  generator = error "unreachable"
+
+instance Contained (AST (Array n a)) where
+  type Container (AST (Array n a))   = AST (Array 0 a)
+  type DegreeOf  (AST (Array n a))   = n
+  type LabelOf   (AST (Array n a)) _ = '()
+  type Overlapping (AST (Array n a)) k _
+        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+
+instance GradedSemigroup (AST (Array 0 a)) Nat where
+  type Grade Nat (AST (Array 0 a)) l = AST (Array l a)
+  type l1 :<!>: l2 = l1 + l2
+  (<!>) :: forall l1 l2. AST (Array l1 a) -> AST (Array l2 a) -> AST (Array (l1+l2) a)
+  (<!>) = fromAST GradedMappend
+
+instance GeneratedGradedSemigroup (AST (Array 0 a)) Nat () where
+  type GenType (AST (Array 0 a)) () _
+    = TypeError ( Text "Internal error: superfluous construction of size 1 array." )
+  type GenDeg Nat (AST (Array 0 a)) () '() = 1
+  generator = error "unreachable"
+
+instance
+  ( TypeError ( Text "Cannot recombine runtime arrays.") )
+  => Contained (AST (RuntimeArray a)) where
+    type Container (AST (RuntimeArray a)) = TypeError ( Text "Cannot recombine runtime arrays.")
+    type DegreeOf  (AST (RuntimeArray a)) = TypeError ( Text "Cannot recombine runtime arrays.")
+    type LabelOf (AST (RuntimeArray a)) _ = TypeError ( Text "Cannot recombine runtime arrays.")
+    type Overlapping (AST (RuntimeArray a)) _ _ = TypeError ( Text "Cannot recombine runtime arrays.")
+
+
+-- *** Equalisers
+--
+-- $equalisers
+-- Monomorphic containers, for equalisers.
+
+instance (PrimTy a, KnownNat n) => MonoContained (AST (V n a)) where
+  type MonoType (AST (V n a)) = AST a
+  setAll a _ = pureAST a
+instance (PrimTy a, KnownNat n, KnownNat m) => MonoContained (AST (M m n a)) where
+  type MonoType (AST (M m n a)) = AST a
+  setAll a _ = pureAST a
+instance MonoContained (Struct as) => MonoContained (AST (Struct as)) where
+  type MonoType (AST (Struct as)) = AST (MonoType (Struct as))
+  setAll = error "TODO: structure 'setAll'"
+
+-- *** Compound instance resolution
+
+-- **** Composites
+
+instance {-# OVERLAPPING #-}
+         forall is js ks s x y
+                (o1 :: Optic is (AST s) x) (o2 :: Optic js x y)
+                is' js' ks' a b
+                (o1' :: Optic is' s a) (o2' :: Optic js' a b)
+                .
+         ( KnownASTOptic o1 o1'
+         , KnownASTOptic o2 o2'
+         , ks  ~ ( is  :++: js  )
+         , ks' ~ ( is' :++: js' )
+         , KnownLength ks'
+         , x ~ AST a
+         , y ~ AST b
+         )
+         => KnownASTOptic
+             ( (o1  `ComposeO` o2 ) :: Optic ks (AST s) y )
+             ( (o1' `ComposeO` o2') :: Optic ks'     s  b )
+         where
+instance {-# OVERLAPPING #-}
+         forall is js ks s x y
+                (o1 :: Optic is (AST s) x) (o2 :: Optic js x y)
+                is' js' ks' a b
+                (o1' :: Optic is' s a) (o2' :: Optic js' a b)
+                .
+         ( Gettable o1
+         , Gettable o2
+         , Gettable o1'
+         , Gettable o2'
+         , KnownASTOptic o1 o1'
+         , KnownASTOptic o2 o2'
+         , ks  ~ ( is  :++: js  )
+         , ks' ~ ( is' :++: js' )
+         , KnownLength ks'
+         , x ~ AST a
+         , y ~ AST b
+         , Syntactic (ListVariadic (ks `Postpend` AST s) y)
+         , Internal (ListVariadic (ks `Postpend` AST s) y)
+            ~ (ListVariadic (ks' `Postpend` s) b)
+         )
+         => ReifiedGetter ( (o1 `ComposeO` o2) :: Optic ks (AST s) y )
+         where
+  view = fromAST
+       $ View sLength ( opticSing @o1' %:.: opticSing @o2' )
+instance {-# OVERLAPPING #-}
+         forall is js ks s x y
+                (o1 :: Optic is (AST s) x) (o2 :: Optic js x y)
+                is' js' ks' a b
+                (o1' :: Optic is' s a) (o2' :: Optic js' a b)
+                .
+         ( Settable o1
+         , Settable o2
+         , Settable o1'
+         , Settable o2'
+         , KnownASTOptic o1 o1'
+         , KnownASTOptic o2 o2'
+         , ks  ~ ( is  :++: js  )
+         , ks' ~ ( is' :++: js' )
+         , KnownLength ks'
+         , x ~ AST a
+         , y ~ AST b
+         , Syntactic (ListVariadic (ks `Postpend` y `Postpend` AST s) (AST s))
+         , Internal (ListVariadic (ks `Postpend` y `Postpend` AST s) (AST s))
+            ~ (ListVariadic (ks' `Postpend` b `Postpend` s) s)
+         )
+         => ReifiedSetter ( (o1 `ComposeO` o2) :: Optic ks (AST s) y )
+         where
+  set = fromAST
+      $ Set sLength ( opticSing @o1' %:.: opticSing @o2' )
+
+-- **** Products
+
+instance {-# OVERLAPPING #-}
+         forall is js ks s x y z
+                (o1 :: Optic is (AST s) x) (o2 :: Optic js (AST s) y)
+                is' js' ks' a b c
+                (o1' :: Optic is' s a) (o2' :: Optic js' s b)
+                .
+         ( KnownASTOptic o1 o1'
+         , KnownASTOptic o2 o2'
+         , ks  ~ Zip is  js
+         , ks' ~ Zip is' js'
+         , KnownLength ks'
+         , x ~ AST a
+         , y ~ AST b
+         , z ~ Product o1  o2
+         , c ~ Product o1' o2'
+         , PrimTy c
+         )
+         => KnownASTOptic
+              ( (o1  `ProductO` o2 ) :: Optic ks (AST s) z )
+              ( (o1' `ProductO` o2') :: Optic ks'     s  c )
+         where
+instance {-# OVERLAPPING #-}
+         forall is js ks s x y z
+                (o1 :: Optic is (AST s) x) (o2 :: Optic js (AST s) y)
+                is' js' ks' a b c
+                (o1' :: Optic is' s a) (o2' :: Optic js' s b)
+                .
+         ( Gettable o1
+         , Gettable o2
+         , Gettable o1'
+         , Gettable o2'
+         , KnownASTOptic o1 o1'
+         , KnownASTOptic o2 o2'
+         , ks  ~ Zip is  js
+         , ks' ~ Zip is' js'
+         , KnownLength ks'
+         , x ~ AST a
+         , y ~ AST b
+         , z ~ Product o1  o2
+         , c ~ Product o1' o2'
+         , PrimTy c
+         , Syntactic (ListVariadic (ks `Postpend` AST s) z)
+         , Internal (ListVariadic (ks `Postpend` AST s) z)
+            ~ (ListVariadic (ks' `Postpend` s) c)
+         )
+         => ReifiedGetter ( (o1 `ProductO` o2) :: Optic ks (AST s) z )
+         where
+  view = fromAST
+       $ View sLength ( opticSing @o1' %:*: opticSing @o2' )
+instance {-# OVERLAPPING #-}
+         forall is js ks s x y z
+                (o1 :: Optic is (AST s) x) (o2 :: Optic js (AST s) y)
+                is' js' ks' a b c
+                (o1' :: Optic is' s a) (o2' :: Optic js' s b)
+                .
+         ( Settable o1
+         , Settable o2
+         , Settable o1'
+         , Settable o2'
+         , KnownASTOptic o1 o1'
+         , KnownASTOptic o2 o2'
+         , ks  ~ Zip is  js
+         , ks' ~ Zip is' js'
+         , KnownLength ks'
+         , x ~ AST a
+         , y ~ AST b
+         , z ~ Product o1  o2
+         , c ~ Product o1' o2'
+         , z ~ ProductIfDisjoint o1  o2
+         , c ~ ProductIfDisjoint o1' o2'
+         , PrimTy c
+         , Syntactic (ListVariadic (ks `Postpend` z `Postpend` AST s) (AST s))
+         , Internal (ListVariadic (ks `Postpend` z `Postpend` AST s) (AST s))
+            ~ (ListVariadic (ks' `Postpend` c `Postpend` s) s)
+         )
+         => ReifiedSetter ( (o1 `ProductO` o2) :: Optic ks (AST s) z )
+         where
+  set = fromAST
+      $ Set sLength ( opticSing @o1' %:*: opticSing @o2' )
 
 -----------------------------------------------
 -- * Functor functionality

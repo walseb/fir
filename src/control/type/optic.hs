@@ -190,7 +190,7 @@ module Control.Type.Optic
 
     -- ** Product of optics
   , (:*:)
-  , Product
+  , Product, ProductIfDisjoint
     -- $product_instances
 
   ) where
@@ -210,7 +210,7 @@ import GHC.TypeNats
 
 -- fir
 import Data.Type.List
-  ( type (:++:), Zip )
+  ( type (:++:), Zip, Postpend )
 import Data.Function.Variadic
   ( ListVariadic )
 import Math.Algebra.GradedSemigroup
@@ -292,7 +292,7 @@ type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
 -- | Type-level getter.
 class Gettable (optic :: Optic is (s :: k) a) | optic -> is k s a where
 
-type  Getter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[s]) a
+type  Getter (optic :: Optic is (s :: Type) a) = ListVariadic (is `Postpend` s) a
 
 -- | Type-level getter which can be turned into a value-level getter.
 class Gettable optic => ReifiedGetter optic where
@@ -301,7 +301,7 @@ class Gettable optic => ReifiedGetter optic where
 -- | Type-level setter.
 class Settable (optic :: Optic is (s :: k) a) | optic -> is k s a where
 
-type  Setter (optic :: Optic is (s :: Type) a) = ListVariadic (is :++: '[a,s]) s
+type  Setter (optic :: Optic is (s :: Type) a) = ListVariadic (is `Postpend` a `Postpend` s) s
 
 -- | Type-level setter which can be turned into a value-level setter.
 class Settable optic => ReifiedSetter optic where
@@ -473,9 +473,9 @@ instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a 
   view = composeGetters @is @js @s @a @b (view @o1) (view @o2)
 
 class ComposeGetters is js s a b where
-  composeGetters :: ListVariadic (is :++: '[s]) a
-                 -> ListVariadic (js :++: '[a]) b
-                 -> ListVariadic ((is :++: js) :++: '[s]) b
+  composeGetters :: ListVariadic (is `Postpend` s) a
+                 -> ListVariadic (js `Postpend` a) b
+                 -> ListVariadic ((is :++: js) `Postpend` s) b
 instance (a ~ ListVariadic '[] a) => ComposeGetters '[] '[] s a b where
   composeGetters view1 view2 = view2 . view1
 instance ComposeGetters is js s a b => ComposeGetters (i ': is) js s a b where
@@ -496,10 +496,10 @@ instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a 
   set = composeSetters @is @js @s @a @b (view @o1) (set @o1) (set @o2)
 
 class ComposeSetters is js s a b where
-  composeSetters :: ListVariadic (is :++: '[s]) a
-                 -> ListVariadic (is :++: '[a,s]) s
-                 -> ListVariadic (js :++: '[b,a]) a
-                 -> ListVariadic ((is :++: js) :++: '[b,s]) s
+  composeSetters :: ListVariadic (is `Postpend` s) a
+                 -> ListVariadic (is `Postpend` a `Postpend` s) s
+                 -> ListVariadic (js `Postpend` b `Postpend` a) a
+                 -> ListVariadic ((is :++: js) `Postpend` b `Postpend` s) s
 instance (a ~ ListVariadic '[] a) => ComposeSetters '[] '[] s a b where
   composeSetters view1 set1 set2 b s
     = set1 (set2 b (view1 s)) s
@@ -718,9 +718,9 @@ type family Disjoint
   Disjoint _ _ = 'True
 
 class MultiplyGetters is js s a b c lka lkb (mla :: Maybe lka) (mlb :: Maybe lkb) | c -> lka lkb where
-  multiplyGetters :: ListVariadic (is :++: '[s]) a
-                  -> ListVariadic (js :++: '[s]) b
-                  -> ListVariadic (Zip is js :++: '[s]) c
+  multiplyGetters :: ListVariadic (is `Postpend` s) a
+                  -> ListVariadic (js `Postpend` s) b
+                  -> ListVariadic (Zip is js `Postpend` s) c
 
 instance ( Contained c
          , GradedSemigroup (Container c) (DegreeKind c)
@@ -743,6 +743,8 @@ instance ( Contained c
                   )
          , lka ~ LabelKind c
          , lkb ~ LabelKind c
+         , ValidDegree (Container c) (DegreeOf a `WithKind` DegreeKind c)
+         , ValidDegree (Container c) (DegreeOf b `WithKind` DegreeKind c)
          )
       => MultiplyGetters '[] '[] s a b c lka lkb 'Nothing 'Nothing where
   multiplyGetters view1 view2 s
@@ -771,6 +773,8 @@ instance ( Contained c
                   ((DegreeOf a `WithKind` DegreeKind c) :<!>: hdb)
          , lka ~ LabelKind c
          , lkb ~ LabelKind c
+         , ValidDegree (Container c) (DegreeOf a `WithKind` DegreeKind c)
+         , ValidDegree (Container c) hdb
          )
       => MultiplyGetters '[] '[] s a b c lka lkb 'Nothing ('Just lb) where
   multiplyGetters view1 view2 s
@@ -805,6 +809,8 @@ instance ( Contained c
                   (hda :<!>: (DegreeOf b `WithKind` DegreeKind c))
          , lka ~ LabelKind c
          , lkb ~ LabelKind c
+         , ValidDegree (Container c) hda
+         , ValidDegree (Container c) (DegreeOf b `WithKind` DegreeKind c)
          )
       => MultiplyGetters '[] '[] s a b c lka lkb ('Just la) 'Nothing where
   multiplyGetters view1 view2 s
@@ -841,6 +847,8 @@ instance ( Contained c
                   (hda :<!>: hdb)
          , lka ~ LabelKind c
          , lkb ~ LabelKind c
+         , ValidDegree (Container c) hda
+         , ValidDegree (Container c) hdb
          )
       => MultiplyGetters '[] '[] s a b c lka lkb ('Just la) ('Just lb) where
   multiplyGetters view1 view2 s
@@ -864,17 +872,17 @@ instance MultiplyGetters is        js        s a b c lka lkb mla mlb
       => MultiplyGetters (i ': is) (j ': js) s a b c lka lkb mla mlb where
   multiplyGetters view1 view2 (i,j)
     = multiplyGetters @is @js @s @a @b @c @lka @lkb @mla @mlb (view1 i) (view2 j)
-      :: ListVariadic (Zip is js :++: '[s]) c
+      :: ListVariadic (Zip is js `Postpend` s) c
 instance MultiplyGetters '[] js        s a b c lka lkb mla mlb
       => MultiplyGetters '[] (j ': js) s a b c lka lkb mla mlb where
   multiplyGetters view1 view2 j
     = multiplyGetters @'[] @js @s @a @b @c @lka @lkb @mla @mlb view1 (view2 j)
-      :: ListVariadic (Zip '[] js :++: '[s]) c
+      :: ListVariadic (Zip '[] js `Postpend` s) c
 instance MultiplyGetters is        '[] s a b c lka lkb mla mlb
       => MultiplyGetters (i ': is) '[] s a b c lka lkb mla mlb where
   multiplyGetters view1 view2 i
     = multiplyGetters @is @'[] @s @a @b @c @lka @lkb @mla @mlb (view1 i) view2
-      :: ListVariadic (Zip is '[] :++: '[s]) c
+      :: ListVariadic (Zip is '[] `Postpend` s) c
 
 instance forall is js ks (s :: Type) a b c
                (o1 :: Optic is s a) (o2 :: Optic js s b)
@@ -910,9 +918,9 @@ instance forall is js ks (s :: Type) a b c
 
 
 class MultiplySetters is js s a b c lka lkb (mla :: Maybe lka) (mlb :: Maybe lkb) | c -> lka lkb where
-  multiplySetters :: ListVariadic (is :++: '[a,s]) s
-                  -> ListVariadic (js :++: '[b,s]) s
-                  -> ListVariadic (Zip is js :++: '[c,s]) s
+  multiplySetters :: ListVariadic (is `Postpend` a `Postpend` s) s
+                  -> ListVariadic (js `Postpend` b `Postpend` s) s
+                  -> ListVariadic (Zip is js `Postpend` c `Postpend` s) s
 
 instance ( Contained c
          , GradedSemigroup (Container c) (DegreeKind c)
@@ -1040,17 +1048,17 @@ instance MultiplySetters is        js        s a b c lka lkb mla mlb
       => MultiplySetters (i ': is) (j ': js) s a b c lka lkb mla mlb where
   multiplySetters set1 set2 (i,j)
     = multiplySetters @is @js @s @a @b @c @lka @lkb @mla @mlb (set1 i) (set2 j)
-      :: ListVariadic (Zip is js :++: '[c,s]) s
+      :: ListVariadic (Zip is js `Postpend` c `Postpend` s) s
 instance MultiplySetters '[] js        s a b c lka lkb mla mlb
       => MultiplySetters '[] (j ': js) s a b c lka lkb mla mlb where
   multiplySetters set1 set2 j
     = multiplySetters @'[] @js @s @a @b @c @lka @lkb @mla @mlb set1 (set2 j)
-      :: ListVariadic (Zip '[] js :++: '[c,s]) s
+      :: ListVariadic (Zip '[] js `Postpend` c `Postpend` s) s
 instance MultiplySetters is        '[] s a b c lka lkb mla mlb
       => MultiplySetters (i ': is) '[] s a b c lka lkb mla mlb where
   multiplySetters set1 set2 i
     = multiplySetters @is @'[] @s @a @b @c @lka @lkb @mla @mlb (set1 i) set2
-      :: ListVariadic (Zip is '[] :++: '[c,s]) s
+      :: ListVariadic (Zip is '[] `Postpend` c `Postpend` s) s
 
 instance forall is js ks (s :: Type) a b c
                (o1 :: Optic is s a) (o2 :: Optic js s b)

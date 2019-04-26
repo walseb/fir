@@ -36,6 +36,7 @@ import Data.ByteString.Lazy
 import Data.Map
   ( Map )
 import qualified Data.Map.Strict as Map
+import qualified Data.Set        as Set
 
 -- mtl
 import Control.Monad.Except
@@ -67,7 +68,7 @@ import CodeGen.Binary
 import CodeGen.CFG
   ( block, branch, branchConditional )
 import CodeGen.Composite
-  ( compositeConstruct )
+  ( compositeConstruct, compositeExtract )
 import CodeGen.Debug
   ( debug, putSrcInfo )
 import CodeGen.Functions
@@ -419,6 +420,42 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                                <> Text.pack ( show x )
                                )
         (compositeConstruct compositeTy . map fst) =<< traverseASTs codeGen as
+codeGen (GradedMappend :$ (a :: AST a) :$ (b :: AST b))
+  = do
+      (a_ID, a_ty) <- codeGen a
+      (b_ID, b_ty) <- codeGen b
+      case (a_ty, b_ty) of
+        ( SPIRV.Vector i (SPIRV.Scalar s), SPIRV.Vector j (SPIRV.Scalar t)) ->
+          if s /= t
+          then throwError "codeGen: graded semigroup operation on incompatible vectors"
+          else compositeConstruct (SPIRV.Vector (i+j) (SPIRV.Scalar s)) [a_ID, b_ID]
+        ( SPIRV.Matrix m n s, SPIRV.Matrix m' n' s' ) ->
+          if m /= m' || s /= s'
+          then throwError "codeGen: graded semigroup operation on incompatible matrices"
+          else do
+            cols1 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..n -1]
+            cols2 <- traverse ( \i -> fst <$> compositeExtract [i] (b_ID, b_ty) ) [0..n'-1]
+            compositeConstruct (SPIRV.Matrix m (n+n') s) (cols1 ++ cols2)
+        ( SPIRV.Struct as _ _, SPIRV.Struct bs _ _ ) ->
+          do
+            let lg  = fromIntegral (length as)
+                lg' = fromIntegral (length bs)
+            elts1 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg -1]
+            elts2 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg'-1]
+            compositeConstruct
+              ( SPIRV.Struct (as ++ bs) Set.empty SPIRV.NotForBuiltins )
+              ( elts1 ++ elts2 )
+        ( SPIRV.Array lg eltTy _ _, SPIRV.Array lg' eltTy' _ _ ) ->
+          if eltTy /= eltTy'
+          then throwError "codeGen: graded semigroup operation on incompatible arrays"
+          else do
+            -- should probably use a loop instead of this, but nevermind
+            elts1 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg -1]
+            elts2 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg'-1]
+            compositeConstruct
+              ( SPIRV.Array (lg + lg') eltTy Set.empty SPIRV.NotForBuiltins )
+              ( elts1 ++ elts2 )
+        _ -> throwError "codeGen: unsupported graded mappend operation"
 -- functor / applicative operations
 codeGen (Idiomatic idiom)
   = idiomatic idiom
@@ -430,20 +467,13 @@ codeGen (Coerce :$ a) = codeGen a
 codeGen (Locally :$ a)
   = do
         bindingsBefore <- use _localBindings
-        localBlock <- fresh
-        branch localBlock
-
-        block localBlock
         cg <- codeGen a
-        outsideBlock <- fresh
-        branch outsideBlock
-
-        block outsideBlock
         assign _localBindings bindingsBefore
         pure cg
-
+codeGen (Embed :$ a)
+  = codeGen a
 codeGen (If :$ c :$ t :$ f)
- = codeGen (IfM :$ c :$ (Return :$ t) :$ (Return :$ f))
+  = codeGen (IfM :$ c :$ (Return :$ t) :$ (Return :$ f))
 codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
   = do  headerBlock <- fresh
         trueBlock   <- fresh

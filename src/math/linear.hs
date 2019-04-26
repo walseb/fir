@@ -648,29 +648,34 @@ deriving via '(V m (V n x), V m (V n y), V m (V n z))
 ------------------------------------------------------------------
 -- graded semigroup for matrices
 
-instance KnownNat n => GradedSemigroup (M 0 n a) Nat where
-  type Grade Nat (M 0 n a) i = M i n a
+instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
+  type Grade Nat (M m 0 a) i = M m i a
   type i :<!>: j = i + j
-  (<!>) :: M i n a -> M j n a -> M (i+j) n a
-  (M m1) <!> (M m2) = M (m1 <!> m2)
+  (<!>) :: M m i a -> M m j a -> M m (i+j) a
+  (M cs) <!> (M ds) = M ( liftA2 (<!>) cs ds )
 
-instance KnownNat n => GeneratedGradedSemigroup (M 0 n a) Nat () where
-  type GenType    (M 0 n a) ()  _  = V n a
-  type GenDeg Nat (M 0 n a) () '() = 1
-  generator :: V n a -> M (GenDeg Nat (M 0 n a) () unit) n a
-  generator = unsafeCoerce ( M . rowMatrix :: V n a -> M 1 n a )
+instance KnownNat m => GeneratedGradedSemigroup (M m 0 a) Nat () where
+  type GenType    (M m 0 a) ()  _  = V m a
+  type GenDeg Nat (M m 0 a) () '() = 1
+  generator :: V m a -> M m (GenDeg Nat (M m 0 a) () unit) a
+  generator = unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a )
   --          ^^^^
   -- same comment as for the instance for vectors, GHC cannot deduce @unit ~ '()@
 
-instance KnownNat n => FreeGradedSemigroup (M 0 n a) Nat () where
-  type ValidDegree (M 0 n a) i = KnownNat i
-  (>!<) :: forall i j. (KnownNat i, KnownNat j) => M (i+j) n a -> ( M i n a, M j n a )
-  (>!<) (M m) =
-    let (v1,v2) = (>!<) m
-    in (M v1, M v2)
-  generated :: M (GenDeg Nat (M 0 n a) () unit) n a -> V n a
-  generated = unsafeCoerce ( ( \(M (v :. Nil)) -> v ) :: M 1 n a -> V n a )
-  --           ^^^^   ditto
+instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
+  type ValidDegree (M m 0 a) i = KnownNat i
+  (>!<) :: forall i j. (KnownNat i, KnownNat j)
+        => M m (i+j) a -> ( M m i a, M m j a )
+  (>!<) (M m) = case go m of { (m1, m2) -> ( M m1, M m2 ) }
+    where go :: V k (V (i+j) a) -> (V k (V i a), V k (V j a))
+          go Nil = ( Nil, Nil )
+          go (c :. cs) = case ( (>!<) c, go cs ) of
+              ( ( ci, cj ), (cis, cjs) ) -> (ci :. cis, cj :. cjs)
+  generated :: M m (GenDeg Nat (M m 0 a) () unit) a -> V m a
+  -- same comment again...
+  generated = unsafeCoerce go
+    where go :: M m 1 a -> V m a
+          go (M v) = headV (distribute v)
 
 ------------------------------------------------------------------
 -- type classes for matrix operations

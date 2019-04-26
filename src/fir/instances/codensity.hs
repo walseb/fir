@@ -29,17 +29,16 @@ orphan instances for types of the form @Codensity AST (AST a := j) i@
 
 module FIR.Instances.Codensity
   ( -- * Monadic control operations
-    when, unless, locally, while
+    when, unless, locally, embed, while
 
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
+    -- *** Constants / variables
+  , def
     -- *** Functions
   , fundef
     -- *** Entry points
   , entryPoint
-    -- *** Constants, variables
-    -- $vardef
-  , CanDefine(def)
 
     -- ** Optics
     -- *** General functions: use, assign, modifying
@@ -134,6 +133,7 @@ import FIR.Instances.Bindings
   , ValidEntryPoint, EntryPointStartState, AddEntryPoint
   , LookupImageProperties
   , ValidImageRead, ValidImageWrite
+  , Embeddable
   , ProvidedSymbol, ProvidedOptic
   )
 import FIR.Instances.Images
@@ -194,6 +194,10 @@ unless b action
 locally :: forall i j a. Codensity AST (AST a := j) i -> Codensity AST (AST a := i) i
 locally = fromAST Locally
 
+embed :: forall i j a. Embeddable i j
+      => Codensity AST (AST a := i) i -> Codensity AST (AST a := j) j
+embed = fromAST Embed
+
 while :: ( GHC.Stack.HasCallStack
          , i' ~ i, i'' ~ i
          , l ~ (AST () := j)
@@ -224,6 +228,24 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 -- Stateful operations (with indexed monadic state)
 
 -- Defining functions and variables.
+
+-- | Define a new variable.
+--
+-- Type-level arguments:
+--
+-- *@k@: name to use for definition,
+-- *@ps@: 'FIR.Binding.Permission's (readable, writable, ...),
+-- *@a@: type of definition,
+-- *@i@: state at start of definition (usually inferred).
+def :: forall k ps a i.
+       ( GHC.Stack.HasCallStack
+       , KnownSymbol k
+       , Known Permissions ps
+       , PrimTy a
+       )
+    => AST a -- ^ Initial value.
+    -> Codensity AST (AST a := AddBinding k (Var ps a) i) i
+def = fromAST ( Def @k @ps @a @i Proxy Proxy )
 
 -- | Define a new function.
 --
@@ -278,52 +300,6 @@ entryPoint :: forall name stage stageInfo j_bds i.
                 ( AST () := AddEntryPoint name stageInfo i )
                 i
 entryPoint = fromAST ( Entry @name @stage @stageInfo @j_bds @i Proxy Proxy ) . toAST
-
--- $vardef
--- For defining constants/variables, we want an extra layer of flexiblity:
---
---  - declare a new variable with a given pure value,
---  - declare a new variable with a given monadic value.
---
--- This allows for convenient syntax to avoid excessive inlining, e.g.
---
---     @ a <- def \@"a" \@R ( get \@"x" - get \@"y" ) @
---
--- This ensures that the expression @ get \@"x" - get \@"y" @
--- does not get inlined into each use-site of @a@.
-
--- | Typeclass to provide sufficiently overloaded variable definition.
---
--- Type-level arguments:
---
--- *@k@: name to use for definition,
--- *@ps@: 'FIR.Binding.Permission's (readable, writable, ...),
--- *@a@: underlying type of the variable (inferred if the provided value is monomorphic),
--- *@i@: state at start of definition (usually inferred).
-class ( KnownSymbol k
-      , Known Permissions ps
-      , PrimTy a
-      )
-   => CanDefine k ps a i ma | ma -> a where
-  def :: GHC.Stack.HasCallStack => ma -> Codensity AST ( AST a := AddBinding k (Var ps a) i ) i
-
-instance ( KnownSymbol k
-         , Known Permissions ps
-         , PrimTy a
-         , i' ~ i, i'' ~ i
-         )
-      => CanDefine k ps a i (Codensity AST (AST a := i') i'') where
-  def :: GHC.Stack.HasCallStack
-      => Codensity AST ( AST a := i ) i
-      -> Codensity AST ( AST a := AddBinding k (Var ps a) i ) i
-  def = fromAST ( Def @k @ps @a @i Proxy Proxy ) . toAST
-
-instance ( KnownSymbol k
-         , Known Permissions ps
-         , PrimTy a
-         )
-      => CanDefine k ps a i (AST a) where
-  def = def @k @ps @a @i @(Codensity AST (AST a := i) i) . ixPure
 
 -- Optics.
 

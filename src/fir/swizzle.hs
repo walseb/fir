@@ -13,9 +13,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ViewPatterns           #-}
 
-module FIR.Swizzle
-  ( Swizzle )
-  where
+module FIR.Swizzle ( Swizzle ) where
 
 -- base
 import Data.Kind
@@ -29,7 +27,6 @@ import GHC.TypeLits
   , TypeError, ErrorMessage(..)
   )
 
-
 -- fir
 import Control.Type.Optic
   ( Optic(..), Index )
@@ -42,10 +39,6 @@ import Data.Type.String
   )
 import FIR.AST
   ( AST )
-import FIR.Instances.AST
-  ( )
-import FIR.Instances.Optics
-  ( )
 import Math.Linear
   ( V )
 

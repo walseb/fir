@@ -73,6 +73,7 @@ sLengthVal SZero     = 0
 sLengthVal (SSucc i) = 1 + sLengthVal i
 
 
+infixl 4 `Postpend`
 -- Non-injective type family for post-pending.
 --
 -- Prefer using 'Data.Type.Snoc.Snoc' to retain injectivity.

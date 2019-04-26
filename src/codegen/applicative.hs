@@ -90,7 +90,7 @@ import FIR.AST
   , primOp
   )
 import FIR.Instances.AST
-  ( ) -- 'PrimFunc' instances
+  ( ) -- 'PrimFunc' instances, optic instances
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Op

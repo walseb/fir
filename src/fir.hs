@@ -116,8 +116,8 @@ module FIR
   , FIR.Prim.Struct.Struct(End,(:&))
   , FIR.Program.Procedure
   , FIR.Program.Program(Program)
-  , module FIR.Synonyms
   , FIR.Swizzle.Swizzle
+  , module FIR.Synonyms
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Bits
@@ -231,12 +231,12 @@ import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct
 import FIR.Program
+import FIR.Swizzle
 import FIR.Synonyms
   hiding
-    ( Row_, Col__, Ix_, Ix__
+    ( Col_, Col__, Ix_, Ix__
     , RowRes, ColRes, DiagRes, EntryRes
     ) -- internal helpers
-import FIR.Swizzle
 import Math.Algebra.Class
 import Math.Algebra.GradedSemigroup
 import Math.Logic.Bits

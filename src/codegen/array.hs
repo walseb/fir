@@ -43,8 +43,7 @@ import FIR.Binding
 import FIR.Instances.AST
   ( )
 import FIR.Instances.Codensity
-  ( CanDefine(def)
-  , get, put, assign
+  ( def, get, put, assign
   , locally, while
   )
 import FIR.Instances.Bindings
@@ -69,8 +68,8 @@ import FIR.Prim.Singletons
 -- This __unsafely__ assumes that @ixName@ is not already defined
 -- in the current state.
 createArray :: forall n arrName ixName a i j ctx eps.
-             ( CanDefine ixName RW Word32 i (AST Word32)
-             , KnownNat n
+             ( KnownNat n
+             , KnownSymbol ixName
              , KnownSymbol arrName
              , PrimTy a
              , i ~ ( 'ASTState '[ arrName ':-> Var RW (Array n a) ] ctx eps )
@@ -85,7 +84,7 @@ createArray :: forall n arrName ixName a i j ctx eps.
           => ( AST Word32 -> AST a ) 
           -> AST ( (Array n a := i) i )
 createArray arrayFunction = toAST $ locally @i @j do
-  def @ixName @RW @Word32 @i @(AST Word32) 0
+  def @ixName @RW @Word32 @i 0
   while ( get @ixName < pure (Lit arrayLg) ) do
     i <- get @ixName
     assign @(Name arrName :.: (AnIndex Word32 :: Optic _ (Array n a) _))

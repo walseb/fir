@@ -1025,8 +1025,8 @@ instance Contained (V n a) where
                 )
 
 instance KnownNat n => Contained (M m n a) where
-  type Container (M m n a)   = M 0 n a
-  type DegreeOf  (M m n a)   = m
+  type Container (M m n a)   = M m 0 a
+  type DegreeOf  (M m n a)   = n
   type LabelOf   (M m n a) _ = '()
   type Overlapping (M m n a) k _
     = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
