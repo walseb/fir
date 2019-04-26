@@ -85,7 +85,7 @@ import FIR.AST
 import FIR.Instances.Optics
   ( SOptic(..) )
 import FIR.Prim.Singletons
-  ( SPrimTy(..), primTy, sPrimTy )
+  ( SPrimTy(..), primTy )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 
@@ -178,8 +178,7 @@ setUsingSetter base val sOptic is
 -- optical trees
 
 data OpticalOperation where
-  Access :: SPIRV.PrimTy -> Indices -> OpticalOperation
-    --        ^^^-- type of 'part'
+  Access :: Indices -> OpticalOperation
   Join   :: OpticalOperation
 
 infixr 5 `Then`
@@ -195,15 +194,15 @@ operationTree :: forall k is (s :: k) a (optic :: Optic is s a).
                  ASTs is -> SOptic optic -> CGMonad OpticalOperationTree
 operationTree _ SId    = pure Done
 operationTree _ SJoint = pure (Join `Then` Done)
-operationTree (i `ConsAST` _) (SAnIndex _ a _)
-  = (`Then` Done) . Access (sPrimTy a) . RTInds Unsafe . (:[]) . fst <$> codeGen i
-operationTree _ (SIndex s a n)
+operationTree (i `ConsAST` _) SAnIndex {}
+  = (`Then` Done) . Access . RTInds Unsafe . (:[]) . fst <$> codeGen i
+operationTree _ (SIndex s _ n)
   -- if accessing a runtime array, a compile-time index may be unsafe
   | SRuntimeArray <- s
-    = (`Then` Done) . Access (sPrimTy a) . RTInds Unsafe . (:[]) . fst <$> codeGen (Lit n)
+    = (`Then` Done) . Access . RTInds Unsafe . (:[]) . fst <$> codeGen (Lit n)
   -- otherwise, a compile time index is guaranteed to be in-bounds
   | otherwise
-    = pure $ Access (sPrimTy a) ( CTInds [n] ) `Then` Done
+    = pure $ Access ( CTInds [n] ) `Then` Done
 operationTree is (SComposeO lg1 opt1 opt2)
   = do  let (is1, is2) = composedIndices lg1 is
         ops1 <- operationTree is1 opt1
@@ -215,10 +214,10 @@ operationTree is (SComposeO lg1 opt1 opt2)
           continue Done ops2 = ops2
           continue (Combine cb trees) ops2
             = Combine cb $ map (`continue` ops2) trees
-          continue (Access _ (CTInds is1) `Then` Done) (Access a2 (CTInds is2) `Then` ops2)
-            = Access a2 (CTInds (is1 ++ is2)) `Then` ops2
-          continue (Access _ (RTInds safe1 is1) `Then` Done) (Access a2 (RTInds safe2 is2) `Then` ops2)
-            = Access a2 (RTInds (safe1 <> safe2) (is1 ++ is2)) `Then` ops2
+          continue (Access (CTInds is1) `Then` Done) (Access (CTInds is2) `Then` ops2)
+            = Access  (CTInds (is1 ++ is2)) `Then` ops2
+          continue (Access (RTInds safe1 is1) `Then` Done) (Access (RTInds safe2 is2) `Then` ops2)
+            = Access (RTInds (safe1 <> safe2) (is1 ++ is2)) `Then` ops2
           continue (op1 `Then` ops1) ops2 = op1 `Then` continue ops1 ops2
 operationTree is (SProductO lg1 lg2 o1 o2 :: SOptic (optic :: Optic is s a))
   = do  let (is1, is2) = combinedIndices lg1 lg2 is
@@ -257,7 +256,7 @@ swizzleIndices :: SPIRV.PrimTy -> [OpticalOperationTree] -> Maybe [Word32]
 swizzleIndices (SPIRV.Vector _ _) = traverse simpleIndex
   where
     simpleIndex :: OpticalOperationTree -> Maybe Word32
-    simpleIndex (Access _ (CTInds [i]) `Then` Done) = Just i
+    simpleIndex (Access (CTInds [i]) `Then` Done) = Just i
     simpleIndex _ = Nothing
 swizzleIndices _ = const Nothing
 
@@ -265,7 +264,7 @@ loadThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 loadThroughAccessChain' (basePtrID, SPIRV.PointerTy _ eltTy) Done
   = loadInstruction eltTy basePtrID
-loadThroughAccessChain' basePtr ( Access _ is `Then` ops )
+loadThroughAccessChain' basePtr ( Access is `Then` ops )
   = do
       newBasePtr <- accessChain basePtr is
       loadThroughAccessChain' newBasePtr ops
@@ -287,11 +286,11 @@ extractUsingGetter'
   :: (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 extractUsingGetter' base Done
   = pure base
-extractUsingGetter' base ( Access _ (CTInds is) `Then` ops )
+extractUsingGetter' base ( Access (CTInds is) `Then` ops )
   = do
       newBase <- compositeExtract is base
       extractUsingGetter' newBase ops
-extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _ _) `Then` _ )
+extractUsingGetter' (baseID, baseTy) ops@( Access (RTInds _ _) `Then` _ )
   -- run-time indices: revert to loading through pointers
   = do
       let ptrTy = SPIRV.PointerTy Storage.Function baseTy
@@ -319,7 +318,7 @@ storeThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad ()
 storeThroughAccessChain' (basePtrID, _) (valID, _) Done
   = storeInstruction basePtrID valID
-storeThroughAccessChain' basePtr val ( Access _ is `Then` ops)
+storeThroughAccessChain' basePtr val ( Access is `Then` ops)
   = do
       newBasePtr <- accessChain basePtr is
       storeThroughAccessChain' newBasePtr val ops
@@ -334,7 +333,7 @@ insertUsingSetter'
 -- deal with some simple cases first
 insertUsingSetter' varName _ val Done
   = assign ( _localBinding varName ) (Just val)
-insertUsingSetter' varName base val ( Access _ (CTInds is) `Then` Done )
+insertUsingSetter' varName base val ( Access (CTInds is) `Then` Done )
   = assign ( _localBinding varName ) . Just
       =<< compositeInsert val base is
 -- in more complex situations, revert to storing through pointers
@@ -360,7 +359,7 @@ setUsingSetter'
   -> CGMonad (ID, SPIRV.PrimTy)
 setUsingSetter' _ val Done
   = pure val
-setUsingSetter' base val ( Access _ (CTInds is) `Then` Done )
+setUsingSetter' base val ( Access (CTInds is) `Then` Done )
   = compositeInsert val base is
 -- in more complex situations, revert to using load/store
 setUsingSetter' (baseID, baseTy) val ops
