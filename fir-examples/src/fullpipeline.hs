@@ -104,7 +104,7 @@ fullPipeline :: IO ()
 fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err)
+    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err )
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
   enableSDLLogging
@@ -124,8 +124,8 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
           (  Vulkan.set @"geometryShader"     Vulkan.VK_TRUE
           &* Vulkan.set @"tessellationShader" Vulkan.VK_TRUE
           )
-  device           <- logMsg "Creating logical device"       *> createLogicalDevice  physicalDevice queueFamilyIndex features
-  surface          <- logMsg "Creating SDL surface"          *> createSurface window vulkanInstance
+  device  <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex features
+  surface <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
 
   assertSurfacePresentable physicalDevice queueFamilyIndex surface
 
@@ -178,6 +178,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
                   Vulkan.VK_IMAGE_TYPE_2D
                   extent3D
                   colFmt
+                  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
                   Vulkan.VK_IMAGE_TILING_LINEAR -- host visible image needs linear tiling
                   (     Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
                     .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
@@ -190,6 +191,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
                   Vulkan.VK_IMAGE_TYPE_2D
                   extent3D
                   depthFmt
+                  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
                   Vulkan.VK_IMAGE_TILING_OPTIMAL
                   Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
                   [ ]

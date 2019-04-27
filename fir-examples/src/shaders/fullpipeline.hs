@@ -174,11 +174,11 @@ fragment = Program $ entryPoint @"main" @Fragment do
 -- compiling
 
 vertPath, tescPath, tesePath, geomPath, fragPath :: FilePath
-vertPath = "src/shaders/fullpipeline_vert.spv"
-tescPath = "src/shaders/fullpipeline_tesc.spv"
-tesePath = "src/shaders/fullpipeline_tese.spv"
-geomPath = "src/shaders/fullpipeline_geom.spv"
-fragPath = "src/shaders/fullpipeline_frag.spv"
+vertPath = "shaders/fullpipeline_vert.spv"
+tescPath = "shaders/fullpipeline_tesc.spv"
+tesePath = "shaders/fullpipeline_tese.spv"
+geomPath = "shaders/fullpipeline_geom.spv"
+fragPath = "shaders/fullpipeline_frag.spv"
 
 compileVertexShader :: IO ( Either Text Text )
 compileVertexShader = compile vertPath [] vertex

@@ -367,11 +367,12 @@ createImage
   -> Vulkan.VkImageType
   -> Vulkan.VkExtent3D
   -> Vulkan.VkFormat
+  -> Vulkan.VkImageLayout
   -> Vulkan.VkImageTiling
   -> Vulkan.VkImageUsageBitmask Vulkan.FlagMask
   -> [ Vulkan.VkMemoryPropertyFlags ]
   -> m (Vulkan.VkImage, Vulkan.VkDeviceMemory)
-createImage physicalDevice device imageType extent fmt tiling usage reqs
+createImage physicalDevice device imageType extent fmt layout tiling usage reqs
   = let createInfo :: Vulkan.VkImageCreateInfo
         createInfo =
           Vulkan.createVk
@@ -389,7 +390,7 @@ createImage physicalDevice device imageType extent fmt tiling usage reqs
             &* Vulkan.set @"sharingMode" Vulkan.VK_SHARING_MODE_EXCLUSIVE
             &* Vulkan.set @"queueFamilyIndexCount" 0
             &* Vulkan.set @"pQueueFamilyIndices"   Vulkan.VK_NULL
-            &* Vulkan.set @"initialLayout"         Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+            &* Vulkan.set @"initialLayout"         layout
             )
     in do
       image <- managedVulkanResource
@@ -453,6 +454,88 @@ createImageView dev image viewType fmt aspect =
     managedVulkanResource
       ( Vulkan.vkCreateImageView  dev ( Vulkan.unsafePtr createInfo ) )
       ( Vulkan.vkDestroyImageView dev )
+
+cmdTransitionImageLayout
+  :: MonadManaged m
+  => Vulkan.VkCommandBuffer
+  -> Vulkan.VkImage
+  -> Vulkan.VkImageLayout
+  -> Vulkan.VkImageLayout
+  -> (Vulkan.VkPipelineStageFlags, Vulkan.VkAccessFlags)
+  -> (Vulkan.VkPipelineStageFlags, Vulkan.VkAccessFlags)
+  -> m ()
+cmdTransitionImageLayout
+  commandBuffer
+  image
+  oldLayout newLayout
+  (srcStage, srcMask) (dstStage, dstMask)
+  = let
+      subresourceRange :: Vulkan.VkImageSubresourceRange
+      subresourceRange =
+        Vulkan.createVk
+          (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+          &* Vulkan.set @"baseMipLevel"   0
+          &* Vulkan.set @"levelCount"     1
+          &* Vulkan.set @"baseArrayLayer" 0
+          &* Vulkan.set @"layerCount"     1
+          )
+
+      imageBarrier :: Vulkan.VkImageMemoryBarrier
+      imageBarrier =
+        Vulkan.createVk
+          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+          &* Vulkan.set @"pNext" Vulkan.vkNullPtr
+          &* Vulkan.set @"srcAccessMask" srcMask
+          &* Vulkan.set @"dstAccessMask" dstMask
+          &* Vulkan.set @"oldLayout"     oldLayout
+          &* Vulkan.set @"newLayout"     newLayout
+          &* Vulkan.set @"image"               image
+          &* Vulkan.set @"subresourceRange"    subresourceRange
+          &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
+          &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
+          )
+
+    in cmdPipelineBarrier
+        commandBuffer
+        srcStage
+        dstStage
+        []
+        []
+        [ imageBarrier ]
+
+createSampler
+  :: MonadManaged m
+  => Vulkan.VkDevice
+  -> Vulkan.VkFilter
+  -> Vulkan.VkFilter
+  -> m Vulkan.VkSampler
+createSampler dev magFilter minFilter =
+  let
+    createInfo :: Vulkan.VkSamplerCreateInfo
+    createInfo =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO
+        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
+        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"magFilter" magFilter
+        &* Vulkan.set @"minFilter" minFilter
+        &* Vulkan.set @"mipmapMode" 0
+        &* Vulkan.set @"addressModeU" 1 --
+        &* Vulkan.set @"addressModeV" 1 -- mirrorred repeat
+        &* Vulkan.set @"addressModeW" 1 --
+        &* Vulkan.set @"mipLodBias" 0
+        &* Vulkan.set @"anisotropyEnable" Vulkan.VK_FALSE
+        &* Vulkan.set @"maxAnisotropy" 0
+        &* Vulkan.set @"compareEnable" Vulkan.VK_FALSE
+        &* Vulkan.set @"compareOp" 7
+        &* Vulkan.set @"minLod" 0
+        &* Vulkan.set @"maxLod" 1
+        &* Vulkan.set @"borderColor" 0 -- floating point transparent black
+        )
+
+  in managedVulkanResource
+       ( Vulkan.vkCreateSampler  dev ( Vulkan.unsafePtr createInfo ) )
+       ( Vulkan.vkDestroySampler dev )
 
 
 createCommandPool

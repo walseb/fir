@@ -81,7 +81,7 @@ offscreen :: IO ()
 offscreen = runManaged do
 
   case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err)
+    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err )
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
   vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance []
@@ -124,6 +124,7 @@ offscreen = runManaged do
       Vulkan.VK_IMAGE_TYPE_2D
       extent3D
       colFmt
+      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
       Vulkan.VK_IMAGE_TILING_OPTIMAL
       (     Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
         .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
@@ -140,6 +141,7 @@ offscreen = runManaged do
       Vulkan.VK_IMAGE_TYPE_2D
       extent3D
       colFmt
+      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
       Vulkan.VK_IMAGE_TILING_LINEAR -- host visible image needs linear tiling
       Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
       [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
@@ -150,6 +152,7 @@ offscreen = runManaged do
       Vulkan.VK_IMAGE_TYPE_2D
       extent3D
       depthFmt
+      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
       Vulkan.VK_IMAGE_TILING_OPTIMAL
       Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
       [ ]

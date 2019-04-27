@@ -13,7 +13,6 @@ module Shaders.JuliaSet where
 -- base
 import GHC.TypeNats
   ( KnownNat )
-import qualified Prelude
 
 -- text-utf8
 import "text-utf8" Data.Text
@@ -152,8 +151,8 @@ fragment = Program $ entryPoint @"main" @Fragment do
 -- compiling
 
 vertPath, fragPath :: FilePath
-vertPath = "src/shaders/juliaset_vert.spv"
-fragPath = "src/shaders/juliaset_frag.spv"
+vertPath = "shaders/juliaset_vert.spv"
+fragPath = "shaders/juliaset_frag.spv"
 
 compileVertexShader :: IO ( Either Text Text )
 compileVertexShader = compile vertPath [] vertex

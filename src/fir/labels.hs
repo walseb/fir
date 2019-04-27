@@ -69,7 +69,7 @@ import FIR.AST
 import FIR.Binding
   ( Var, R, RW )
 import FIR.Instances.Bindings
-  ( AddBinding, Has, Get, Put )
+  ( AddBinding, Has, CanGet, CanPut )
 import FIR.Instances.Codensity
   ( def, use, assign, modifying )
 import FIR.ASTState
@@ -107,8 +107,8 @@ instance ( KnownSymbol k
 -- in the context of an indexed state monad.
 instance ( KnownSymbol k
          , PrimTy a
-         , a ~ Get k i
          , a ~ Has k i
+         , CanGet k i
          , r ~ (AST a := i)
          , usage ~ 'Use k i
          )
@@ -148,8 +148,8 @@ _ #=! a = def @k @R a
 (.=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
-        , a ~ Put k i
         , a ~ Has k i
+        , CanPut k i
         , PrimTy a
         )
      => Label k a
@@ -161,9 +161,9 @@ _ .= a = assign @(Name k :: Optic '[] i a) a
 (%=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
-        , a ~ Put k i
-        , a ~ Get k i
         , a ~ Has k i
+        , CanGet k i
+        , CanPut k i
         )
      => Label k a
      -> (AST a -> AST a)

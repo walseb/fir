@@ -89,6 +89,7 @@ module FIR
   , Control.Type.Optic.Name
   , Control.Type.Optic.ReifiedGetter(view)
   , Control.Type.Optic.ReifiedSetter(set)
+  , Control.Type.Optic.ReifiedLens(over)
   , (Data.Type.Map.:->)((:->))
   , FIR.AST.AST((:$), Lit, Pair, Ops)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
@@ -107,13 +108,11 @@ module FIR
   , module FIR.Instances.Codensity
   , module FIR.Instances.Images
   , module FIR.Instances.Optics
-  , FIR.Prim.Array.Array
-  , FIR.Prim.Array.mkArray
-  , FIR.Prim.Array.RuntimeArray(MkRuntimeArray)
+  , module FIR.Prim.Array
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
   , FIR.Prim.Image.GatherInfo(..)
-  , FIR.Prim.Struct.Struct(End,(:&))
+  , module FIR.Prim.Struct
   , FIR.Program.Procedure
   , FIR.Program.Program(Program)
   , FIR.Swizzle.Swizzle

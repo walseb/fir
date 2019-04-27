@@ -14,6 +14,7 @@
 
 module FIR.Prim.Struct
   ( Struct(..)
+  , headS, tailS
   , foldrStruct
   , traverseStruct
   )
@@ -54,6 +55,11 @@ data Struct :: [Symbol :-> Type] -> Type where
   End  :: Struct '[]
   (:&) :: forall k a as. a -> Struct as -> Struct ((k ':-> a) ': as)
 
+headS :: Struct ((k ':-> a) ': as) -> a
+headS (a :& _) = a
+
+tailS :: Struct ((k ':-> a) ': as) -> Struct as
+tailS (_ :& as) = as
 
 instance PrimTyMap as => Eq (Struct as) where
   s1 == s2 = case primTyMapSing @as of

@@ -165,6 +165,7 @@ module Control.Type.Optic
     -- ** Getters and setters
   , Gettable, Getter, ReifiedGetter(view)
   , Settable, Setter, ReifiedSetter(set)
+  , ReifiedLens(over)
     -- $kind_synonyms
   , Whole, Part, Indices
 
@@ -307,6 +308,11 @@ type  Setter (optic :: Optic is (s :: Type) a) = ListVariadic (is `Postpend` a `
 class Settable optic => ReifiedSetter optic where
   set :: Setter optic
 
+type Over (optic :: Optic is (s :: Type) a) = ListVariadic (is `Postpend` (a -> a) `Postpend` s) s
+
+class ( ReifiedSetter optic, ReifiedGetter optic ) => ReifiedLens optic where
+  over :: Over optic
+
 -- $kind_synonyms
 --
 -- Synonyms that allow kind variables to remain invisible.
@@ -409,6 +415,31 @@ instance (empty ~ '[], a ~ ListVariadic '[] a)
 instance (empty ~ '[], a ~ ListVariadic '[] a)
        => ReifiedSetter (Id_ :: Optic empty a a) where
   set = const
+
+--------------------------
+-- $lens_instances
+--
+-- Combine a getter and a setter into a lens.
+
+class GetterAndSetter is s a where
+  getAndSet
+    :: ListVariadic (is `Postpend` s) a
+    -> ListVariadic (is `Postpend` a `Postpend` s) s
+    -> ListVariadic (is `Postpend` (a -> a) `Postpend` s) s
+
+instance ( s ~ ListVariadic '[] s, a ~ ListVariadic '[] a ) => GetterAndSetter '[] s a where
+ getAndSet view1 set1 f s = set1 ( f (view1 s) ) s
+
+instance GetterAndSetter is s a => GetterAndSetter (i ': is) s a where
+  getAndSet view1 set1 i
+    = getAndSet @is @s @a (view1 i) (set1 i)
+
+instance forall is s a (optic :: Optic is s a).
+                ( ReifiedGetter optic, ReifiedSetter optic
+                , GetterAndSetter is s a
+                )
+            => ReifiedLens optic where
+  over = getAndSet @is @s @a (view @optic) (set @optic)
 
 --------------------------
 -- $equaliser_instances

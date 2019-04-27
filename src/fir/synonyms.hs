@@ -58,6 +58,7 @@ import SPIRV.ScalarTy
   ( Signedness(..) )
 import SPIRV.Image
   ( Dimensionality(..)
+  , HasDepth(..)
   , Arrayness(..)
   , MultiSampling(..)
   , Normalisation(..)
@@ -89,19 +90,19 @@ type Texture1D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float (FormatDefault fmt) OneD   Nothing NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties Float (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 type Texture2D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float (FormatDefault fmt) TwoD   Nothing NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties Float (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 type Texture3D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float (FormatDefault fmt) ThreeD Nothing NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties Float (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 
 type Texture decs props

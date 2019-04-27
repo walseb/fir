@@ -5,7 +5,7 @@ category:            Graphics
 author:              Sam Derbyshire
 maintainer:          sam.derbyshire@gmail.com
 build-type:          Simple
-cabal-version:       >=1.10
+cabal-version:       >= 1.10
 description:
   This package contains some example Vulkan scenes,
   using shaders compiled by __FIR__.
@@ -26,9 +26,12 @@ library
       FullPipeline
     , JuliaSet
     , Offscreen
+    , Texture
     , Shaders.FullPipeline
     , Shaders.JuliaSet
     , Shaders.Offscreen
+    , Shaders.Texture
+    , Foreign.Storable.Struct
     , Vulkan.Backend
     , Vulkan.Buffer
     , Vulkan.Memory
@@ -63,6 +66,8 @@ library
         >= 4.17
     , transformers
         >= 0.5.6
+    , storable-record
+        >= 0.0.3.3
     , storable-tuple
         >= 0.0.3.3
 
