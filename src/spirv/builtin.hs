@@ -117,7 +117,7 @@ readBuiltin "gl_InstanceIndex"             = Just InstanceIndex
 readBuiltin _ = Nothing
 
 instance Put Builtin where
-  sizeOf _ = 1
+  wordCount _ = 1
 
   put Position                  = put @Word32  0
   put PointSize                 = put @Word32  1

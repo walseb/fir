@@ -121,13 +121,13 @@ instance Put (ExecutionMode Word32) where
   put (MaxPatchVertices _)
     = error "Cannot put custom 'MaxPatchVertices' execution mode."
 
-  sizeOf Invocations      {} = 2
-  sizeOf LocalSize        {} = 4
-  sizeOf LocalSizeHint    {} = 4
-  sizeOf OutputVertices   {} = 2
-  sizeOf VecTypeHint      {} = 2
-  sizeOf MaxPatchVertices {} = error "Cannot compute size of custom 'MaxPatchVertices' execution mode."
-  sizeOf _                   = 1
+  wordCount Invocations      {} = 2
+  wordCount LocalSize        {} = 4
+  wordCount LocalSizeHint    {} = 4
+  wordCount OutputVertices   {} = 2
+  wordCount VecTypeHint      {} = 2
+  wordCount MaxPatchVertices {} = error "Cannot compute size of custom 'MaxPatchVertices' execution mode."
+  wordCount _                   = 1
 
 instance Demotable (ExecutionMode Nat) where
   type Demote (ExecutionMode Nat) = ExecutionMode Word32

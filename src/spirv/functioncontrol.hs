@@ -32,7 +32,7 @@ noFunctionControl = ( Nothing, Nothing )
 type NoFunctionControl = ( '( 'Nothing, 'Nothing ) :: FunctionControl )
 
 instance Put FunctionControl where
-  sizeOf _ = 1
+  wordCount _ = 1
   put ( i, s ) = put w
     where w :: Word32
           w = wi + ws

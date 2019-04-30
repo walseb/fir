@@ -12,6 +12,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 
 module FullPipeline ( fullPipeline ) where
 
@@ -26,7 +27,7 @@ import Data.Coerce
 import Data.Traversable
   ( for )
 import Data.Word
-  ( Word8 )
+  ( Word8, Word32 )
 import qualified Foreign
 import qualified Foreign.C
 import qualified Foreign.Marshal
@@ -48,10 +49,6 @@ import Control.Monad.Managed
 -- sdl2
 import qualified SDL
 import qualified SDL.Event
-
--- storable-tuple
-import Foreign.Storable.Tuple
-  ( )
 
 -- text-utf8
 import "text-utf8" Data.Text
@@ -76,7 +73,12 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
-  ( runCompilationsTH )
+  ( runCompilationsTH
+  , Poke(poke)
+  , Alignment(Extended)
+  , Struct(..)
+  , (:->)((:->))
+  )
 import Math.Linear
 
 -- fir-examples
@@ -244,26 +246,26 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let
 
-    phi :: Foreign.C.CFloat
+    phi :: Float
     phi = 0.5 + sqrt 1.25
 
-    icosahedronVerts :: [ V 2 ( V 3 Foreign.C.CFloat) ]
+    icosahedronVerts :: [ Struct '[ "pos" ':-> V 3 Float, "col" ':-> V 3 Float ] ]
     icosahedronVerts =
-      [ V2 ( V3    0     1    phi  ) ( V3 0    1    0    )
-      , V2 ( V3    0   (-1)   phi  ) ( V3 0    0.75 0.25 )
-      , V2 ( V3    0     1  (-phi) ) ( V3 0    0.25 0.75 )
-      , V2 ( V3    0   (-1) (-phi) ) ( V3 0    0    1    )
-      , V2 ( V3    1    phi    0   ) ( V3 1    0    0    )
-      , V2 ( V3  (-1)   phi    0   ) ( V3 0.75 0.25 0    )
-      , V2 ( V3    1  (-phi)   0   ) ( V3 0.25 0.75 0    )
-      , V2 ( V3  (-1) (-phi)   0   ) ( V3 0    1    0    )
-      , V2 ( V3   phi    0     1   ) ( V3 1    0    0    )
-      , V2 ( V3   phi    0   (-1)  ) ( V3 0.75 0    0.25 )
-      , V2 ( V3 (-phi)   0     1   ) ( V3 0.25 0    0.75 )
-      , V2 ( V3 (-phi)   0   (-1)  ) ( V3 0    0    1    )
+      [ ( V3    0     1    phi  ) :& ( V3 0    1    0    ) :& End
+      , ( V3    0   (-1)   phi  ) :& ( V3 0    0.75 0.25 ) :& End
+      , ( V3    0     1  (-phi) ) :& ( V3 0    0.25 0.75 ) :& End
+      , ( V3    0   (-1) (-phi) ) :& ( V3 0    0    1    ) :& End
+      , ( V3    1    phi    0   ) :& ( V3 1    0    0    ) :& End
+      , ( V3  (-1)   phi    0   ) :& ( V3 0.75 0.25 0    ) :& End
+      , ( V3    1  (-phi)   0   ) :& ( V3 0.25 0.75 0    ) :& End
+      , ( V3  (-1) (-phi)   0   ) :& ( V3 0    1    0    ) :& End
+      , ( V3   phi    0     1   ) :& ( V3 1    0    0    ) :& End
+      , ( V3   phi    0   (-1)  ) :& ( V3 0.75 0    0.25 ) :& End
+      , ( V3 (-phi)   0     1   ) :& ( V3 0.25 0    0.75 ) :& End
+      , ( V3 (-phi)   0   (-1)  ) :& ( V3 0    0    1    ) :& End
       ]
 
-    icosahedronIndices :: [ Foreign.Word32 ]
+    icosahedronIndices :: [ Word32 ]
     icosahedronIndices
       = [ 0,  1,  8
         , 0, 10,  1
@@ -292,14 +294,16 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
   (indexBuffer, _) <- createIndexBuffer physicalDevice device icosahedronIndices
 
   let initialMVP = modelViewProjection initialObserver Nothing
-      initialOrig :: V 4 Foreign.C.CFloat
+      initialOrig :: V 4 Float
       initialOrig = V4 0 0 0 1 ^*! initialMVP
 
   (ubo, uboPtr)
     <- createUniformBuffer
           physicalDevice
           device
-          (initialMVP, initialOrig)
+          ( initialMVP :& initialOrig :& End
+              :: Struct '[ "mvp" ':-> M 4 4 Float, "origin" ':-> V 4 Float ]
+          )
 
   updateDescriptorSet device descriptorSet ubo
 
@@ -516,13 +520,13 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
     assign _observer observer
 
     let mvp = modelViewProjection observer (Just orientation)
-        origin = V4 0 0 0 1 ^*! mvp
+        origin = mvp !*^ V4 0 0 0 1
 
     when ( locate action )
       ( liftIO $ putStrLn ( show observer ) )
 
     -- update MVP
-    liftIO ( Foreign.poke uboPtr (mvp, origin) )
+    liftIO ( poke @_ @Extended uboPtr (mvp :& origin :& End) )
 
     ----------------
     -- rendering
@@ -568,7 +572,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/example1.png" imageData
+        writePng "screenshots/fullpipeline.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 

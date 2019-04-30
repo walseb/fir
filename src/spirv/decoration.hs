@@ -128,22 +128,22 @@ instance Put (Decoration Word32) where
   put (InputAttachmentIndex i) = put @Word32 43 *> put i
   put (Alignment            i) = put @Word32 44 *> put i
 
-  sizeOf (SpecId               _) = 2
-  sizeOf (ArrayStride          _) = 2
-  sizeOf (MatrixStride         _) = 2
-  sizeOf (Builtin              _) = 2
-  sizeOf (Stream               _) = 2
-  sizeOf (Location             _) = 2
-  sizeOf (Component            _) = 2
-  sizeOf (Index                _) = 2
-  sizeOf (Binding              _) = 2
-  sizeOf (DescriptorSet        _) = 2
-  sizeOf (Offset               _) = 2
-  sizeOf (XfbBuffer            _) = 2
-  sizeOf (XfbStride            _) = 2
-  sizeOf (InputAttachmentIndex _) = 2
-  sizeOf (Alignment            _) = 2
-  sizeOf _ = 1
+  wordCount (SpecId               _) = 2
+  wordCount (ArrayStride          _) = 2
+  wordCount (MatrixStride         _) = 2
+  wordCount (Builtin              _) = 2
+  wordCount (Stream               _) = 2
+  wordCount (Location             _) = 2
+  wordCount (Component            _) = 2
+  wordCount (Index                _) = 2
+  wordCount (Binding              _) = 2
+  wordCount (DescriptorSet        _) = 2
+  wordCount (Offset               _) = 2
+  wordCount (XfbBuffer            _) = 2
+  wordCount (XfbStride            _) = 2
+  wordCount (InputAttachmentIndex _) = 2
+  wordCount (Alignment            _) = 2
+  wordCount _ = 1
 
 instance Demotable (Decoration Nat) where
   type Demote (Decoration Nat) = Decoration Word32

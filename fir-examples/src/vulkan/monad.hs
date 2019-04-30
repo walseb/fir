@@ -13,7 +13,6 @@ import Control.Monad
 import Control.Monad.IO.Class
   ( MonadIO, liftIO )
 import qualified Foreign
-import qualified Foreign.C
 import qualified Foreign.Marshal
 
 -- lens
@@ -76,10 +75,10 @@ initialState
 _observer :: Lens' RenderState Observer
 _observer = lens observer ( \s v -> s { observer = v } )
 
-_position :: Lens' Observer (V 3 Foreign.C.CFloat)
+_position :: Lens' Observer (V 3 Float)
 _position = lens position ( \s v -> s { position = v } )
 
-_angles :: Lens' Observer (V 2 Foreign.C.CFloat)
+_angles :: Lens' Observer (V 2 Float)
 _angles = lens angles ( \s v -> s { angles = v } )
 
 _input :: Lens' RenderState Input

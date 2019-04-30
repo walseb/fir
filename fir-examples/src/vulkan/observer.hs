@@ -27,7 +27,6 @@ import Data.Maybe
   ( fromMaybe )
 import Data.Monoid
   ( Any(..), Sum(..) )
-import Foreign.C
 import GHC.TypeNats
   ( KnownNat )
 
@@ -44,7 +43,6 @@ import Math.Linear
   , norm, normalise
   , (^+^), (*^), (-^)
   , (!*!)
-  , transpose
   , perspective, lookAt
   )
 import Math.Quaternion
@@ -63,22 +61,22 @@ pattern Quit = MkQuit (Any True)
 data Input = Input
   { keysDown    :: [SDL.Scancode]
   , keysPressed :: [SDL.Scancode]
-  , mousePos    :: V 2 Foreign.C.CFloat
-  , mouseRel    :: V 2 Foreign.C.CFloat
+  , mousePos    :: V 2 Float
+  , mouseRel    :: V 2 Float
   , quitEvent   :: Quit
   } deriving Show
 
 data Action = Action
-  { movement       :: V 3 (Sum Foreign.C.CFloat)
-  , look           :: V 2 (Sum Foreign.C.CFloat)
+  { movement       :: V 3 (Sum Float)
+  , look           :: V 2 (Sum Float)
   , shouldQuit     :: Quit
   , locate         :: Bool
   , takeScreenshot :: Bool
   } deriving Show
 
 data Observer = Observer
-  { position :: V 3 (Foreign.C.CFloat)
-  , angles   :: V 2 (Foreign.C.CFloat)
+  { position :: V 3 Float
+  , angles   :: V 2 Float
   } deriving Show
 
 
@@ -99,11 +97,11 @@ initialObserver
       , angles   = pure 0
       }
 
-p, n :: Foreign.C.CFloat
+p, n :: Float
 p =   1
 n = (-1)
 
-strafeDir :: SDL.Scancode -> V 3 Foreign.C.CFloat
+strafeDir :: SDL.Scancode -> V 3 Float
 strafeDir SDL.ScancodeW      = V3 0 0 p
 strafeDir SDL.ScancodeS      = V3 0 0 n
 strafeDir SDL.ScancodeA      = V3 n 0 0
@@ -126,10 +124,10 @@ normaliseStrafing v
   | otherwise     = normalise v
 
 
-strafe :: [SDL.Scancode] -> V 3 (Sum Foreign.C.CFloat)
+strafe :: [SDL.Scancode] -> V 3 (Sum Float)
 strafe = coerce
        . (0.05 *^)
-       . normaliseStrafing @3 @Foreign.C.CFloat
+       . normaliseStrafing @3 @Float
        . coerce
        . foldMap (fmap Sum . strafeDir)
 
@@ -168,7 +166,7 @@ interpretInput Input { .. } =
       takeScreenshot = SDL.ScancodeF12   `elem` keysPressed
   in Action { .. }
 
-move :: Observer -> Action -> (Observer, Quaternion Foreign.C.CFloat)
+move :: Observer -> Action -> (Observer, Quaternion Float)
 move  Observer { position = oldPosition, angles = oldAngles }
       Action   { .. }
   = let angles@(V2 x y) = oldAngles ^+^ fmap getSum look
@@ -176,7 +174,7 @@ move  Observer { position = oldPosition, angles = oldAngles }
         position = oldPosition ^+^ rotate orientation (fmap getSum movement)
     in (Observer { .. }, orientation)
 
-modelViewProjection :: Observer -> Maybe (Quaternion (Foreign.C.CFloat)) -> M 4 4 Foreign.C.CFloat
+modelViewProjection :: Observer -> Maybe (Quaternion Float) -> M 4 4 Float
 modelViewProjection Observer { angles = V2 x y, position } mbOrientation
   = let orientation
           = fromMaybe
@@ -187,4 +185,4 @@ modelViewProjection Observer { angles = V2 x y, position } mbOrientation
         view    = lookAt ( position ^+^ forward ) position up
         projection = perspective ( pi / 2 ) ( 16 / 9 ) 0.1 100000
                    
-    in transpose ( projection !*! view )
+    in projection !*! view

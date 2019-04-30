@@ -27,7 +27,7 @@ import Data.Coerce
 import Data.Traversable
   ( for )
 import Data.Word
-  ( Word8 )
+  ( Word8, Word32 )
 import qualified Foreign
 import qualified Foreign.C
 import qualified Foreign.Marshal
@@ -52,10 +52,6 @@ import Control.Monad.Managed
 -- sdl2
 import qualified SDL
 import qualified SDL.Event
-
--- storable-tuple
-import Foreign.Storable.Tuple
-  ( )
 
 -- text-utf8
 import "text-utf8" Data.Text
@@ -83,13 +79,13 @@ import FIR
   ( runCompilationsTH
   , (:->)((:->))
   , Struct(..)
+  , Poke(poke)
+  , Alignment(Extended)
   )
 import Math.Linear
 
 -- fir-examples
 import Shaders.Texture
-import Foreign.Storable.Struct
-  ( ) -- storable instance for structs
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
@@ -369,27 +365,27 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let
 
-    p, m :: Foreign.C.CFloat
+    p, m :: Float
     p = 1
     m = (-1)
 
-    cubeVerts :: [ Struct '[ "position" ':-> V 3 Foreign.C.CFloat
-                           , "colour"   ':-> V 3 Foreign.C.CFloat
-                           , "uv"       ':-> V 2 Foreign.C.CFloat
+    cubeVerts :: [ Struct '[ "position" ':-> V 3 Float
+                           , "colour"   ':-> V 3 Float
+                           , "uv"       ':-> V 2 Float
                            ]
                  ]
     cubeVerts =
-      [ V3 m m m :& V3 1 1 1 :& V2 0 0 :& End --
+      [ V3 m m m :& V3 1 1 1 :& V2 0 0 :& End
       , V3 m m p :& V3 1 1 0 :& V2 1 0 :& End
-      , V3 m p m :& V3 1 0 1 :& V2 0 1 :& End --
-      , V3 m p p :& V3 1 0 0 :& V2 1 1 :& End --
-      , V3 p m m :& V3 0 1 1 :& V2 1 0 :& End --
-      , V3 p m p :& V3 0 1 0 :& V2 0 0 :& End --
-      , V3 p p m :& V3 0 0 1 :& V2 1 1 :& End --
-      , V3 p p p :& V3 0 0 0 :& V2 0 1 :& End --
+      , V3 m p m :& V3 1 0 1 :& V2 0 1 :& End
+      , V3 m p p :& V3 1 0 0 :& V2 1 1 :& End
+      , V3 p m m :& V3 0 1 1 :& V2 1 0 :& End
+      , V3 p m p :& V3 0 1 0 :& V2 0 0 :& End
+      , V3 p p m :& V3 0 0 1 :& V2 1 1 :& End
+      , V3 p p p :& V3 0 0 0 :& V2 0 1 :& End
       ]
 
-    cubeIndices :: [ Foreign.Word32 ]
+    cubeIndices :: [ Word32 ]
     cubeIndices
       = [ 0, 1, 2
         , 1, 3, 2
@@ -409,15 +405,11 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
   (indexBuffer, _) <- createIndexBuffer physicalDevice device cubeIndices
 
-  let initialMVP = modelViewProjection initialObserver Nothing
-      initialOrig :: V 4 Foreign.C.CFloat
-      initialOrig = V4 0 0 0 1 ^*! initialMVP
-
   (ubo, uboPtr)
     <- createUniformBuffer
           physicalDevice
           device
-          (initialMVP, initialOrig)
+          ( modelViewProjection initialObserver Nothing )
 
   updateDescriptorSet device descriptorSet ubo (logoImageView, logoSampler)
 
@@ -597,13 +589,12 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
     assign _observer observer
 
     let mvp = modelViewProjection observer (Just orientation)
-        origin = V4 0 0 0 1 ^*! mvp
 
     when ( locate action )
       ( liftIO $ putStrLn ( show observer ) )
 
     -- update MVP
-    liftIO ( Foreign.poke uboPtr (mvp, origin) )
+    liftIO ( poke @_ @Extended uboPtr mvp )
 
     ----------------
     -- rendering

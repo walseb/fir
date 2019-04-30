@@ -62,7 +62,7 @@ class Put a where
   put    :: a -> Binary.PutM ()
   -- | Memory footprint, as a multiple of __32 bits__
   -- (/not/ the usual 8 bits as in 'Foreign.Storable.sizeOf').
-  sizeOf :: a -> Word32
+  wordCount :: a -> Word32
 
 ---------------------------------------------------------------------------
 -- $instances
@@ -77,47 +77,47 @@ class Put a where
 
 instance Put Word8 where
   put = Binary.putWord32le . fromIntegral
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Word16 where
   put = Binary.putWord32le . fromIntegral
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Word32 where
   put = Binary.putWord32le
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Word64 where
   put = Binary.putWord64le
-  sizeOf _ = 2
+  wordCount _ = 2
 
 instance Put Int8 where
   put = Binary.putInt32le . fromIntegral
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Int16 where
   put = Binary.putInt32le . fromIntegral
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Int32 where
   put = Binary.putInt32le
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Int64 where
   put = Binary.putInt64le
-  sizeOf _ = 2
+  wordCount _ = 2
 
 instance Put Half where
   put = Binary.put . Half.fromHalf
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Float where
   put = Binary.IEEE754.putFloat32le
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put Double where
   put = Binary.IEEE754.putFloat64le
-  sizeOf _ = 2
+  wordCount _ = 2
 
 -- | @C@-style string
 instance Put Text where
@@ -127,7 +127,7 @@ instance Put Text where
         pad = 4 - (n `mod` 4)
     in Binary.putByteString bs
     <> (pad `stimes` Binary.putWord8 0)
-  sizeOf lit
+  wordCount lit
     = let n = fromIntegral $ ByteString.length ( Text.encodeUtf8 lit )
       in 1 + (n `div` 4)
 
@@ -140,4 +140,4 @@ newtype PutWord32Enum a = PutWord32Enum { runPutWord32Enum :: a }
 
 instance Enum a => Put (PutWord32Enum a) where
   put = put @Word32 . fromIntegral . fromEnum . runPutWord32Enum
-  sizeOf _ = 1
+  wordCount _ = 1

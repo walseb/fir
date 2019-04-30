@@ -45,14 +45,13 @@ import Control.Monad.Trans.Class
 
 -- fir
 import CodeGen.Instruction
-  ( Args(..), putArgs, toArgs
+  ( Args(..), toArgs
   , ID(..), Instruction(..)
-  , wordCount
   )
 import CodeGen.Monad
   ( note )
 import Data.Binary.Class.Put
-  ( Put(put) )
+  ( Put(put, wordCount) )
 import Data.Map.Traverse
   ( traverseWithKey_ )
 import qualified SPIRV.Capability    as SPIRV
@@ -79,7 +78,7 @@ putInstruction extInsts
         in do put @Word32 ( Bits.shift n 16 + fromIntegral opCode)
               traverse_ put opResTy
               traverse_ put opResID
-              putArgs opArgs
+              put opArgs
 
            
       SPIRV.Op.ExtCode ext extOpCode ->

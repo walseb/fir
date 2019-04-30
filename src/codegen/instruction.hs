@@ -14,12 +14,9 @@ import Control.Category
 import Data.Word
   ( Word32 )
 
--- binary
-import qualified Data.Binary.Put as Binary
-
 -- fir
 import Data.Binary.Class.Put
-  ( Put(put, sizeOf) )
+  ( Put(..) )
 import qualified SPIRV.Operation as SPIRV
 
 ----------------------------------------------------------------------------
@@ -36,14 +33,12 @@ foldrArgs :: (forall a. (Show a, Put a) => a -> b -> b) -> b -> Args -> b
 foldrArgs _ b0 EndArgs    = b0
 foldrArgs f b0 (Arg a as) = f a ( foldrArgs f b0 as )
 
-putArgs :: Args -> Binary.Put
-putArgs = foldrArgs (put >>> (>>)) (pure ())
+instance Put Args where
+  put = foldrArgs (put >>> (>>)) (pure ())
+  wordCount = foldrArgs ( (+) . wordCount ) 0
 
 arity :: Num a => Args -> a
 arity = foldrArgs (const (+1)) 0
-
-wordCount :: Args -> Word32
-wordCount = foldrArgs ( (+) . sizeOf ) 0
 
 toArgs :: ( Show a, Put a, Foldable t ) => t a -> Args
 toArgs = foldr Arg EndArgs

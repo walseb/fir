@@ -108,6 +108,9 @@ module FIR
   , module FIR.Instances.Codensity
   , module FIR.Instances.Images
   , module FIR.Instances.Optics
+  , FIR.Layout.Poke(..)
+  , FIR.Layout.pokeArray
+  , FIR.Layout.Alignment(..)
   , module FIR.Prim.Array
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
@@ -219,6 +222,7 @@ import Control.Type.Optic
 import Data.Type.Known
 import Data.Type.Map
 import FIR.AST
+import FIR.ASTState
 import FIR.Binding
 import FIR.Definition
 import FIR.Instances.AST
@@ -227,7 +231,7 @@ import FIR.Instances.AST
 import FIR.Instances.Codensity
 import FIR.Instances.Images
 import FIR.Instances.Optics
-import FIR.ASTState
+import FIR.Layout
 import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct

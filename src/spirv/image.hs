@@ -89,7 +89,7 @@ instance Known HasDepth DepthImage where
 instance Put (Maybe HasDepth) where
   put (Just d) = put         d
   put Nothing  = put @Word32 2
-  sizeOf _ = 1
+  wordCount _ = 1
 
 data Arrayness
   = NonArrayed
@@ -126,7 +126,7 @@ instance Put (Maybe ImageUsage) where
   put Nothing        = put @Word32 0
   put (Just Sampled) = put @Word32 1
   put (Just Storage) = put @Word32 2
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Demotable ImageUsage where
   type Demote ImageUsage = ImageUsage
@@ -326,12 +326,12 @@ instance Put (ImageFormat Word32) where
   put format = case fromFormat format of
     Just i  -> put         i
     Nothing -> put @Word32 0
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put (Maybe (ImageFormat Word32)) where
   put (Just format) = put         format
   put Nothing       = put @Word32 0
-  sizeOf _ = 1
+  wordCount _ = 1
 
 data SamplerAddressing
   = ClampToEdge
@@ -342,12 +342,12 @@ data SamplerAddressing
 
 instance Put SamplerAddressing where
   put = put @Word32 . fromIntegral . succ . fromEnum
-  sizeOf _ = 1
+  wordCount _ = 1
 
 instance Put (Maybe SamplerAddressing) where
   put (Just addr) = put         addr
   put Nothing     = put @Word32 0
-  sizeOf _ = 1
+  wordCount _ = 1
 
 data FilterMode
   = Nearest

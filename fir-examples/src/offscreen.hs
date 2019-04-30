@@ -12,6 +12,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 
 module Offscreen ( offscreen ) where
 
@@ -24,7 +25,7 @@ import Data.Bits
 import Data.Coerce
   ( coerce )
 import Data.Word
-  ( Word8 )
+  ( Word8, Word32 )
 import qualified Foreign
 import qualified Foreign.C
 import qualified Foreign.Marshal
@@ -56,9 +57,12 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
-  ( runCompilationsTH )
+  ( runCompilationsTH
+  , Struct(..)
+  , (:->)((:->))
+  )
 import Math.Linear
-  ( V, pattern V2, pattern V3 )
+  ( V, pattern V3 )
 
 -- fir-examples
 import Shaders.Offscreen
@@ -198,26 +202,26 @@ offscreen = runManaged do
 
   let
 
-    phi :: Foreign.C.CFloat
+    phi :: Float
     phi = 0.5 + sqrt 1.25
 
-    icosahedronVerts :: [ V 2 ( V 3 Foreign.C.CFloat) ]
+    icosahedronVerts :: [ Struct '[ "pos" ':-> V 3 Float, "col" ':-> V 3 Float ] ]
     icosahedronVerts =
-      [ V2 ( V3    0     1    phi  ) ( V3 0    1    0    )
-      , V2 ( V3    0   (-1)   phi  ) ( V3 0    0.75 0.25 )
-      , V2 ( V3    0     1  (-phi) ) ( V3 0    0.25 0.75 )
-      , V2 ( V3    0   (-1) (-phi) ) ( V3 0    0    1    )
-      , V2 ( V3    1    phi    0   ) ( V3 1    0    0    )
-      , V2 ( V3  (-1)   phi    0   ) ( V3 0.75 0.25 0    )
-      , V2 ( V3    1  (-phi)   0   ) ( V3 0.25 0.75 0    )
-      , V2 ( V3  (-1) (-phi)   0   ) ( V3 0    1    0    )
-      , V2 ( V3   phi    0     1   ) ( V3 1    0    0    )
-      , V2 ( V3   phi    0   (-1)  ) ( V3 0.75 0    0.25 )
-      , V2 ( V3 (-phi)   0     1   ) ( V3 0.25 0    0.75 )
-      , V2 ( V3 (-phi)   0   (-1)  ) ( V3 0    0    1    )
+      [ ( V3    0     1    phi  ) :& ( V3 0    1    0    ) :& End
+      , ( V3    0   (-1)   phi  ) :& ( V3 0    0.75 0.25 ) :& End
+      , ( V3    0     1  (-phi) ) :& ( V3 0    0.25 0.75 ) :& End
+      , ( V3    0   (-1) (-phi) ) :& ( V3 0    0    1    ) :& End
+      , ( V3    1    phi    0   ) :& ( V3 1    0    0    ) :& End
+      , ( V3  (-1)   phi    0   ) :& ( V3 0.75 0.25 0    ) :& End
+      , ( V3    1  (-phi)   0   ) :& ( V3 0.25 0.75 0    ) :& End
+      , ( V3  (-1) (-phi)   0   ) :& ( V3 0    1    0    ) :& End
+      , ( V3   phi    0     1   ) :& ( V3 1    0    0    ) :& End
+      , ( V3   phi    0   (-1)  ) :& ( V3 0.75 0    0.25 ) :& End
+      , ( V3 (-phi)   0     1   ) :& ( V3 0.25 0    0.75 ) :& End
+      , ( V3 (-phi)   0   (-1)  ) :& ( V3 0    0    1    ) :& End
       ]
 
-    icosahedronIndices :: [ Foreign.Word32 ]
+    icosahedronIndices :: [ Word32 ]
     icosahedronIndices
       = [ 0,  1,  8
         , 0, 10,  1

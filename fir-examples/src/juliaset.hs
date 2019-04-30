@@ -26,7 +26,7 @@ import Data.Coerce
 import Data.Traversable
   ( for )
 import Data.Word
-  ( Word8 )
+  ( Word8, Word32 )
 import qualified Foreign
 import qualified Foreign.C
 import qualified Foreign.Marshal
@@ -73,7 +73,10 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
-  ( runCompilationsTH )
+  ( runCompilationsTH
+  , Poke(poke)
+  , Alignment(Extended)
+  )
 import Math.Linear
   ( V, pattern V2, pattern V3
   , (^+^), (*^)
@@ -213,7 +216,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let
 
-    viewportVertices :: [ V 3 Foreign.C.CFloat ]
+    viewportVertices :: [ V 3 Float ]
     viewportVertices =
       [ V3 (-1) (-1) 0
       , V3 (-1)   1  0
@@ -221,7 +224,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
       , V3   1   1   0
       ]
 
-    viewportIndices :: [ Foreign.Word32 ]
+    viewportIndices :: [ Word32 ]
     viewportIndices
       = [ 0, 1, 2
         , 2, 1, 3
@@ -464,7 +467,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
     -- simulation
 
     -- update MVP
-    liftIO ( Foreign.poke mousePosUniformPtr pos )
+    liftIO ( poke @_ @Extended mousePosUniformPtr pos )
 
     ----------------
     -- rendering

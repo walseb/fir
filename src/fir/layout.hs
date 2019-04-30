@@ -1,22 +1,50 @@
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PackageImports      #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PackageImports        #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module FIR.Layout where
 
 -- base
+import Control.Monad
+  ( foldM_ )
+import Data.Int
+  ( Int8, Int16, Int32, Int64 )
+import Data.Kind
+  ( Type )
 import Data.Word
-  ( Word32 )
+  ( Word8, Word16, Word32, Word64 )
+import Foreign.Ptr
+  ( Ptr, castPtr, plusPtr )
+import qualified Foreign.Storable as Storable
+import GHC.TypeLits
+  ( Symbol )
+import GHC.TypeNats
+  ( KnownNat, type (<=) )
 
 -- containers
 import qualified Data.Set as Set
+
+-- distributive
+import Data.Distributive
+  ( Distributive(distribute) )
+
+-- half
+import Numeric.Half
+  ( Half )
 
 -- mtl
 import Control.Monad.Except
@@ -28,6 +56,22 @@ import "text-utf8" Data.Text
 import qualified "text-utf8" Data.Text as Text
 
 -- fir
+import Data.Type.Known
+  ( knownValue )
+import Data.Type.Map
+  ( (:->)((:->)) )
+import FIR.Prim.Array
+  ( Array(..) )
+import FIR.Prim.Singletons
+  ( ScalarTy
+  , PrimTyMap(..), SPrimTyMap(..)
+  )
+import qualified FIR.Prim.Singletons as Prim
+  ( PrimTy )
+import FIR.Prim.Struct
+  ( Struct(..) )
+import Math.Linear
+  ( V, M(unM) )
 import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV
 import           SPIRV.PrimTy
@@ -45,6 +89,268 @@ import qualified SPIRV.Storage    as Storage
 -- - SPIR-V specification, 2.18.1 "Memory Layout",
 -- - Vulkan specification, 14.5.2 "Descriptor Set Interface",
 -- - Vulkan specification, 14.5.4 "Offset and Stride Assignment".
+
+--------------------------------------------------------------------------------------------
+
+data Alignment = Base | Extended | Packed
+  deriving ( Eq, Show )
+
+class Poke a (ali :: Alignment) where
+  sizeOf    :: Word32
+  alignment :: Word32
+  poke :: Ptr a -> a -> IO ()
+
+pokeArray :: forall a ali. Poke a ali => Ptr a -> [a] -> IO ()
+pokeArray ptr vals0 = go vals0 0
+  where go [] _         = return ()
+        go (val:vals) n = do
+          poke @a @ali ( ptr `plusPtr` n ) val
+          go vals (n + fromIntegral (sizeOf @a @ali))
+
+nextAligned :: Word32 -> Word32 -> Word32
+nextAligned size ali
+  = case size `mod` ali of
+         0 -> size
+         x -> size + ali - x
+
+instance Poke Word8 ali where
+  sizeOf    = 1
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Word16 ali where
+  sizeOf = 2
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Word32 ali where
+  sizeOf    = 4
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Word64 ali where
+  sizeOf    = 8
+  alignment = 8
+  poke = Storable.poke
+
+instance Poke Int8 ali where
+  sizeOf    = 1
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Int16 ali where
+  sizeOf    = 2
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Int32 ali where
+  sizeOf    = 4
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Int64 ali where
+  sizeOf    = 8
+  alignment = 8
+  poke = Storable.poke
+
+instance Poke Half ali where
+  sizeOf    = 2
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Float ali where
+  sizeOf    = 4
+  alignment = 4
+  poke = Storable.poke
+
+instance Poke Double ali where
+  sizeOf    = 8
+  alignment = 8
+  poke = Storable.poke
+
+instance (Poke a Base, ScalarTy a, KnownNat n, 1 <= n) => Poke (V n a) Base where
+  sizeOf    = knownValue @n * sizeOf @a @Base
+  alignment = sizeOf @a @Base
+            * ( 2 ^ ceiling @Float @Word32 (logBase 2 (fromIntegral (knownValue @n))) )
+  poke ptr v
+    = foldM_
+        ( \accPtr elt -> poke @a @Base accPtr elt *> pure (accPtr `plusPtr` off) )
+        ( castPtr ptr )
+        v
+    where
+      off :: Int
+      off = fromIntegral ( sizeOf @a @Base )
+
+instance (Poke a Extended, ScalarTy a, KnownNat n, 1 <= n) => Poke (V n a) Extended where
+  sizeOf    = knownValue @n * sizeOf @a @Extended
+  alignment = sizeOf @a @Extended
+            * ( 2 ^ ceiling @Float @Word32 (logBase 2 (fromIntegral (knownValue @n))) )
+  poke ptr v
+    = foldM_
+        ( \accPtr elt -> poke @a @Extended accPtr elt *> pure (accPtr `plusPtr` off) )
+        ( castPtr ptr )
+        v
+    where
+      off :: Int
+      off = fromIntegral ( sizeOf @a @Extended )
+
+instance (Poke a Packed, ScalarTy a, KnownNat n, 1 <= n) => Poke (V n a) Packed where
+  sizeOf    = knownValue @n * sizeOf @a @Packed
+  alignment = sizeOf @a @Packed
+  poke ptr v
+    = foldM_
+        ( \accPtr elt -> poke @a @Packed accPtr elt *> pure (accPtr `plusPtr` off) )
+        ( castPtr ptr )
+        v
+    where
+      off :: Int
+      off = fromIntegral ( sizeOf @a @Packed )
+
+instance (Poke (V m a) ali, ScalarTy a, KnownNat n, KnownNat m, 1 <= n, 1 <= m)
+       => Poke (M m n a) ali where
+  sizeOf    = knownValue @n * sizeOf @(V m a) @ali
+  alignment = alignment @(V m a) @ali
+  poke ptr mat
+    = foldM_
+        ( \accPtr col -> poke @(V m a) @ali accPtr col *> pure (accPtr `plusPtr` colSize) )
+        ( castPtr ptr )
+        ( distribute . unM $ mat )
+    where
+      colSize = fromIntegral $ sizeOf @(V m a) @ali
+
+instance (Poke a Base, Prim.PrimTy a, KnownNat n, 1 <= n)
+       => Poke (Array n a) Base where
+  sizeOf    = knownValue @n * sizeOf @a @Base
+  alignment = alignment @a @Base
+  poke ptr (MkArray arr)
+    = foldM_
+        ( \accPtr elt -> poke @a @Base accPtr elt *> pure (accPtr `plusPtr` off) )
+        ( castPtr ptr )
+        arr
+    where
+      off :: Int
+      off = fromIntegral $ nextAligned (sizeOf @a @Base) (alignment @(Array n a) @Base)
+
+instance (Poke a Extended, Prim.PrimTy a, KnownNat n, 1 <= n)
+       => Poke (Array n a) Extended where
+  sizeOf    = knownValue @n
+            * ( nextAligned (sizeOf @a @Extended) (alignment @(Array n a) @Extended) )
+  alignment = roundUp16 $ alignment @a @Extended
+  poke ptr (MkArray arr)
+    = foldM_
+        ( \accPtr elt -> poke @a @Extended accPtr elt *> pure (accPtr `plusPtr` off) )
+        ( castPtr ptr )
+        arr
+    where
+      off :: Int
+      off = fromIntegral $ nextAligned (sizeOf @a @Extended) (alignment @(Array n a) @Extended)
+
+data PokeDict :: [Symbol :-> Type] -> Alignment -> Type where
+  VacuousPoke :: PokeDict '[] ali
+  PokeDict :: (Poke a ali, PokeStruct as ali) => PokeDict ( (k ':-> a) ': as ) ali
+class PokeStruct as ali where
+  pokeDict :: PokeDict as ali
+instance PokeStruct '[] ali where
+  pokeDict = VacuousPoke
+instance (Poke a ali, PokeStruct as ali) => PokeStruct ( (k ':-> a) ': as ) ali where
+  pokeDict = PokeDict
+
+instance (PrimTyMap as, PokeStruct as Base) => Poke (Struct as) Base where
+  sizeOf = go @as (alignment @(Struct as) @Base)
+    where
+      go :: forall xs. (PrimTyMap xs, PokeStruct xs Base) => Word32 -> Word32
+      go ali = case primTyMapSing @xs of
+        SNil -> 0
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case pokeDict @xs @Base of
+              PokeDict -> nextAligned (sizeOf @b @Base) ali + go @bs ali
+  alignment = go @as
+    where
+      go :: forall xs. (PrimTyMap xs, PokeStruct xs Base) => Word32
+      go = case primTyMapSing @xs of
+        SNil -> 1
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case pokeDict @xs @Base of
+              PokeDict -> max (alignment @b @Base) (alignment @(Struct bs) @Base)
+  poke = go @as (alignment @(Struct as) @Base)
+    where
+      go :: forall xs x. (PrimTyMap xs, PokeStruct xs Base) => Word32 -> Ptr x -> Struct xs -> IO ()
+      go ali ptr struct = case primTyMapSing @xs of
+        SNil  -> pure ()
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case (struct, pokeDict @xs @Base) of
+              ( b :& bs, PokeDict ) ->
+                let
+                  off :: Int
+                  off = fromIntegral $ nextAligned (sizeOf @b @Base) ali
+                in poke @b @Base (castPtr ptr) b *> poke @(Struct bs) @Base (ptr `plusPtr` off) bs
+
+instance (PrimTyMap as, PokeStruct as Extended) => Poke (Struct as) Extended where
+  sizeOf = go @as (alignment @(Struct as) @Extended)
+    where
+      go :: forall xs. (PrimTyMap xs, PokeStruct xs Extended) => Word32 -> Word32
+      go ali = case primTyMapSing @xs of
+        SNil -> 0
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case pokeDict @xs @Extended of
+              PokeDict -> nextAligned (sizeOf @b @Extended) ali + go @bs ali
+  alignment = roundUp16 ( go @as )
+    where
+      go :: forall xs. (PrimTyMap xs, PokeStruct xs Extended) => Word32
+      go = case primTyMapSing @xs of
+        SNil -> 1
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case pokeDict @xs @Extended of
+              PokeDict -> max (alignment @b @Extended) (alignment @(Struct bs) @Extended)
+  poke = go @as (alignment @(Struct as) @Extended)
+    where
+      go :: forall xs x. (PrimTyMap xs, PokeStruct xs Extended) => Word32 -> Ptr x -> Struct xs -> IO ()
+      go ali ptr struct = case primTyMapSing @xs of
+        SNil  -> pure ()
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case (struct, pokeDict @xs @Extended) of
+              ( b :& bs, PokeDict ) ->
+                let
+                  off :: Int
+                  off = fromIntegral $ nextAligned (sizeOf @b @Extended) ali
+                in poke @b @Extended (castPtr ptr) b *> poke @(Struct bs) @Extended (ptr `plusPtr` off) bs
+
+instance (PrimTyMap as, PokeStruct as Packed) => Poke (Struct as) Packed where
+  sizeOf = go @as 0
+    where
+      go :: forall xs. (PrimTyMap xs, PokeStruct xs Packed) => Word32 -> Word32
+      go off = case primTyMapSing @xs of
+        SNil -> off
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case pokeDict @xs @Packed of
+              PokeDict -> nextAligned off (alignment @b @Packed) + go @bs (sizeOf @b @Packed)
+  alignment =
+    case primTyMapSing @as of
+      SNil -> 1
+      scons@SCons -> case scons of
+        ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+          case pokeDict @as @Packed of
+            PokeDict -> alignment @b @Packed
+  poke = go @as
+    where
+      go :: forall xs x. (PrimTyMap xs, PokeStruct xs Packed) => Ptr x -> Struct xs -> IO ()
+      go ptr struct = case primTyMapSing @xs of
+        SNil  -> pure ()
+        scons@SCons -> case scons of
+          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+            case (struct, pokeDict @xs @Packed) of
+              ( b :& bs, PokeDict ) ->
+                let
+                  off :: Int
+                  off = fromIntegral $ nextAligned (sizeOf @b @Packed) (alignment @(Struct bs) @Packed)
+                in poke @b @Packed (castPtr ptr) b *> poke @(Struct bs) @Packed (ptr `plusPtr` off) bs
 
 --------------------------------------------------------------------------------------------
 
@@ -111,24 +417,33 @@ inferLayout _ _ storageClass ty
   = pure ty
 inferLayout usage decs storageClass (SPIRV.Array lg (SPIRV.Struct as sdecs _) adecs _)
   | storageClass `elem` [ Storage.Input, Storage.Output ]
-  = pure $ SPIRV.Array lg (SPIRV.Struct as (Set.insert SPIRV.Block sdecs) usage ) (Set.union decs adecs) usage
+  = pure $ SPIRV.Array lg (SPIRV.Struct as (Set.insert SPIRV.Block sdecs) usage) (Set.union decs adecs) usage
   | otherwise
-  = ( \elt -> SPIRV.Array lg elt (Set.union decs adecs) SPIRV.NotForBuiltins )
-  . ( \elts -> SPIRV.Struct elts (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins )
-  <$> ( flip layoutStructMembersWith as =<< requiredAlignment storageClass )
+  = do
+      f <- requiredAlignment storageClass
+      ali <- f (SPIRV.Struct as sdecs usage)
+      laidOutMembers <- layoutStructMembersWith f ali as
+      let laidOutStruct = SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins
+      pure ( SPIRV.Array lg laidOutStruct (Set.union decs adecs) SPIRV.NotForBuiltins )
 inferLayout _ decs storageClass (SPIRV.RuntimeArray (SPIRV.Struct as sdecs _) adecs _)
   | storageClass `elem` [ Storage.Input, Storage.Output ]
   = throwError "'inferLayout': cannot use run-time arrays in 'Input'/'Output', must use a uniform or storage buffer."
   | otherwise
-  = ( \elt -> SPIRV.RuntimeArray elt (Set.union decs adecs) SPIRV.NotForBuiltins )
-  . ( \elt -> SPIRV.Struct elt (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins )
-  <$> ( flip layoutStructMembersWith as =<< requiredAlignment storageClass )
-inferLayout usage decs storageClass (SPIRV.Struct as sdecs _)
+  = do
+    f <- requiredAlignment storageClass
+    ali <- f (SPIRV.Struct as sdecs SPIRV.NotForBuiltins)
+    laidOutMembers <- layoutStructMembersWith f ali as
+    let laidOutStruct = SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins
+    pure ( SPIRV.RuntimeArray laidOutStruct (Set.union decs adecs) SPIRV.NotForBuiltins )
+inferLayout usage decs storageClass struct@(SPIRV.Struct as sdecs _)
   | storageClass `elem` [ Storage.Input, Storage.Output ]
   = pure $ SPIRV.Struct as (Set.insert SPIRV.Block (Set.union decs sdecs)) usage
   | otherwise
-  =   ( \elts -> SPIRV.Struct elts (Set.insert SPIRV.Block (Set.union decs sdecs)) SPIRV.NotForBuiltins )
-  <$> ( flip layoutStructMembersWith as =<< requiredAlignment storageClass )
+  = do
+      f <- requiredAlignment storageClass
+      ali <- f struct
+      laidOutMembers <- layoutStructMembersWith f ali as
+      pure ( SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block (Set.union decs sdecs)) SPIRV.NotForBuiltins )
 inferLayout _ _ storageClass ty
   | storageClass `elem` [ Storage.Input, Storage.Output ]
   = pure ty
@@ -183,8 +498,9 @@ layoutWith f arr@(SPIRV.RuntimeArray elt decs usage) = do
   arrStride  <- f arr
   laidOutElt <- layoutWith f elt
   pure ( SPIRV.RuntimeArray laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
-layoutWith f (SPIRV.Struct as decs structUsage) = do
-  laidOutMembers <- layoutStructMembersWith f as
+layoutWith f struct@(SPIRV.Struct as decs structUsage) = do
+  ali <- f struct
+  laidOutMembers <- layoutStructMembersWith f ali as
   pure ( SPIRV.Struct laidOutMembers decs structUsage )
 layoutWith _ ty
   = throwError ( "'layoutWith': unsupported type " <> Text.pack (show ty) <> "." )
@@ -192,9 +508,10 @@ layoutWith _ ty
 layoutStructMembersWith
     :: forall m. MonadError Text m
     => ( SPIRV.PrimTy -> m Word32 )
+    -> Word32
     -> [(Text, SPIRV.PrimTy, SPIRV.Decorations)]
     -> m [(Text, SPIRV.PrimTy, SPIRV.Decorations)]
-layoutStructMembersWith f as = fst <$> go 0 as
+layoutStructMembersWith f ali as = fst <$> go 0 as
   where
     go :: Word32
        ->     [ ( Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
@@ -206,14 +523,14 @@ layoutStructMembersWith f as = fst <$> go 0 as
                 SPIRV.Matrix { cols } -> do
                   stride <- f ty
                   laidOutTy <- layoutWith f ty
-                  pure ( offset + cols * stride
+                  pure ( nextAligned (offset + cols * stride) ali
                        , laidOutTy
                        , Set.fromList [ SPIRV.Offset offset, SPIRV.MatrixStride stride, SPIRV.ColMajor ]
                        )
                 SPIRV.Array { size } -> do
                   eltAlignment <- f ty
                   laidOutTy <- layoutWith f ty
-                  pure ( offset + size * eltAlignment
+                  pure ( nextAligned (offset + size * eltAlignment) ali
                        , laidOutTy
                        , Set.singleton (SPIRV.Offset offset)
                        )
@@ -226,14 +543,14 @@ layoutStructMembersWith f as = fst <$> go 0 as
                 SPIRV.Struct as' _ _ -> do
                   ( _, totalSize ) <- go 0 as'
                   laidOutTy <- layoutWith f ty
-                  pure ( offset + totalSize
+                  pure ( nextAligned (offset + totalSize) ali
                        , laidOutTy -- wasteful duplicated computation here
                        , Set.singleton (SPIRV.Offset offset)
                        )
                 _ -> do
-                  alignment <- f ty
+                  align     <- f ty
                   laidOutTy <- layoutWith f ty
-                  pure ( offset + alignment
+                  pure ( nextAligned (offset + align) ali
                        , laidOutTy
                        , Set.singleton (SPIRV.Offset offset)
                        )

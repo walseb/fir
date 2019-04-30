@@ -17,8 +17,6 @@ import Control.Monad
   ( (>=>) )
 import Data.Coerce
   ( coerce )
-import qualified Foreign
-import qualified Foreign.Marshal
 
 -- managed
 import Control.Monad.Managed
@@ -31,6 +29,10 @@ import qualified Graphics.Vulkan as Vulkan
 import qualified Graphics.Vulkan.Core_1_0 as Vulkan
 import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
+-- fir
+import FIR
+  ( Poke(..), Alignment(Packed, Extended), pokeArray )
+
 -- fir-examples
 import Vulkan.Memory
 import Vulkan.Monad
@@ -38,25 +40,28 @@ import Vulkan.Monad
 -----------------------------------------------------------------------------------------------------
 
 createVertexBuffer
-  :: ( MonadManaged m, Foreign.Storable a )
+  :: forall a m.
+     ( MonadManaged m, Poke a Packed )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
   -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createVertexBuffer = createBufferFromList Vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+createVertexBuffer = createBufferFromList @a @Packed Vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
 
 
 createIndexBuffer
-  :: ( MonadManaged m, Foreign.Storable a )
+  :: forall a m.
+     ( MonadManaged m, Poke a Packed )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
   -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createIndexBuffer = createBufferFromList Vulkan.VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+createIndexBuffer = createBufferFromList @a @Packed Vulkan.VK_BUFFER_USAGE_INDEX_BUFFER_BIT
 
 
 createBufferFromList
-  :: ( MonadManaged m, Foreign.Storable a )
+  :: forall a ali m.
+     ( MonadManaged m, Poke a ali )
   => Vulkan.VkBufferUsageBitmask Vulkan.FlagMask
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
@@ -67,12 +72,13 @@ createBufferFromList usage physicalDevice device elems =
     device
     physicalDevice
     usage
-    ( \memPtr -> Foreign.Marshal.pokeArray memPtr elems )
-    ( fromIntegral ( length elems * Foreign.sizeOf ( head elems ) ) )
+    ( \memPtr -> pokeArray @a @ali memPtr elems )
+    ( fromIntegral ( length elems ) * fromIntegral (sizeOf @a @ali) )
 
 
 createUniformBuffer
-  :: ( MonadManaged m, Foreign.Storable a )
+  :: forall a m.
+     ( MonadManaged m, Poke a Extended )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> a
@@ -82,8 +88,8 @@ createUniformBuffer physicalDevice device bufferData =
     device
     physicalDevice
     Vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
-    ( \memPtr -> Foreign.poke memPtr bufferData )
-    ( fromIntegral ( Foreign.sizeOf bufferData ) )
+    ( \memPtr -> poke @a @Extended memPtr bufferData )
+    ( fromIntegral ( sizeOf @a @Extended ) )
 
 
 createBuffer
@@ -94,7 +100,7 @@ createBuffer
   -> (Vulkan.Ptr a -> IO ())
   -> Vulkan.VkDeviceSize
   -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createBuffer device physicalDevice usage poke sizeInBytes =
+createBuffer device physicalDevice usage poking sizeInBytes =
   let
     createInfo :: Vulkan.VkBufferCreateInfo
     createInfo =
@@ -135,7 +141,7 @@ createBuffer device physicalDevice usage poke sizeInBytes =
              <- coerce <$> allocaAndPeek
                   ( Vulkan.vkMapMemory device memory 0 sizeInBytes 0 >=> throwVkResult )
 
-          poke memPtr
+          poking memPtr
           pure memPtr
       )
       ( \_ -> Vulkan.vkUnmapMemory device memory )
