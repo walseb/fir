@@ -1,3 +1,5 @@
+cabal-version:  3.0
+
 name:           fir
 version:        0.0.1.0
 synopsis:       An EDSL that compiles to SPIR-V for graphics programming on the GPU in Haskell.
@@ -5,48 +7,78 @@ category:       Graphics
 author:         Sam Derbyshire
 maintainer:     Sam Derbyshire
 build-type:     Simple
-cabal-version:  >= 1.10
 description:
+
   __FIR__ is an EDSL for writing GPU shader code in Haskell, compiled to __@SPIR-V@__.
   Requires GHC >= 8.6.
-  .
+
   With this library, shader programs can be written using @do@ notation.
   Such programs are then transformed into abstract syntax trees (ASTs),
   before being compiled to @SPIR-V@ assembly.
-  .
+
   In effect, this replaces @GLSL@ as a shader language.
   This means the Haskell type-system and type-checker are put to use
   in verifying programs at compile time.
-  .
+  Functional idioms, such as functor and applicative operations, are also supported.
+
   See the @fir-examples@ project subdirectory for fleshed out examples,
   including using the @vulkan-api@ package for rendering.
-  .
+
   The exposed modules are:
-  .
-  * __"FIR"__: the main functionality of the library (creating and compiling programs),
-  .
-  * __"FIR.Labels"__: optional imperative-like syntax using /OverloadedLabels/,
-  .
-  * __"Math.Linear"__: vectors, matrices, and operations on them, as used by this library.
-  .
-  * __"Math.Quaternion"__: quaternions and their action by conjugation in 3 dimensions, useful for 3D cameras.
-  .
-  .
+
+  ["FIR"]
+      Re-exports the main functionality of the library: creating and compiling programs.
+
+
+  ["FIR.Labels"]
+      Optional imperative-like syntax using /OverloadedLabels/.
+
+
+  ["Math.Linear"]
+      Vectors, matrices, and operations on them, as used by this library.
+
+
+  ["Math.Quaternion"]
+      Quaternions and their action by conjugation in 3 dimensions, useful for 3D cameras.
+
+
+
   Important types used by this library:
-  .
-  * __@AST a@__: main AST datatype, see "FIR.AST". A value of type @AST a@ can be thought of as (pure) GPU code
-  computing a value of type @a@.
-  * __@Codensity AST (AST a := j) i@__: type of a monadic expression,
-  starting in state @i@ and ending in state @j@.
-  This state is used to keep track of which objects are in scope
-  (such as variables, constants, functions, etc).
-  A value of this type can be thought of as stateful GPU code.
-  Uses McBride-style indexed monads, see "Control.Monad.Indexed".
-  * __@Program defs a@__: a shader program that can be compiled to @SPIR-V@, and returns a value of type @a@.
-  @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc), top-level functions and entry points.
-  See "FIR.Program" or the example shaders.
-  .
-  .
+
+  [@FIR.AST.AST a@]
+
+      Code for a pure value of type @a@, represented internally as an abstract syntax tree.
+
+      Overloaded functions are provided that automatically create and combine terms of this type.
+      For instance, @3 + 5 :: AST Float@ gets desugared to @PrimOp FAdd ( Lit 3.0 ) ( Lit 5.0 )@.
+
+  [@Codensity AST (AST a := j) i@]
+
+      A monadic expression, starting in state @i@ and ending in state @j@.
+      This state is used to keep track of which objects are in scope,
+      allowing for type errors to be thrown on invalid operations
+      (e.g. writing to a read-only variable, image sampling outside a fragment shader, etc).
+
+      A value of type @Codensity AST (AST a := j) i@ can be thought of as stateful GPU code
+      producing a value of type @a@.
+
+      Uses McBride-style indexed monads, see "Control.Monad.Indexed".
+
+  [@Program defs a@]
+
+      A shader program that can be compiled to @SPIR-V@,
+      and which returns a value of type @a@; most often @a ~ ()@.
+
+      @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc),
+      top-level functions, and entry points.
+
+      See "FIR.Program" for the definition, and the example shaders for common usage patterns.
+
+
+  All three of these types can be displayed graphically as a tree, using the 'draw' function.
+  This can assist in understanding inlining behaviour.
+
+
   It is recommended to install the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/),
   as it provides useful executables to manipulate @SPIR-V@ assembly, such as
   @spirv-dis@ for viewing (edit and then recompile with @spirv-as@),
@@ -150,7 +182,7 @@ library
       , tree-view
       , text-utf8
       , vector
-          >= 0.12.0.1
+          >= 0.12.0.3
       , data-binary-ieee754
           >= 0.4.4
       , half

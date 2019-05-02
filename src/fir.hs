@@ -36,10 +36,10 @@ import Math.Linear -- for vectors
 -- Specify the input/output of the shader, with memory locations (and other interface parameters).
 -- This consists of a type-level list of top-level definitions.
 type FragmentDefs
-  =  '[ "in_pos"  ':-> Input      '[ Location 0      ] (V 2 Float)    -- input  (varying) of type V 2 Float and memory location 0
-      , "out_col" ':-> Output     '[ Location 0      ] (V 4 Float)    -- output (varying) of type V 4 Float and memory location 0
-      , "image"   ':-> Texture2D  '[ Binding  0      ] (RGBA8 UNorm)  -- input sampled image
-      , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment       -- fragment shader stage (using standard Cartesian coordinates)
+  =  '[ "in_pos"  ':-> Input      '[ Location 0                 ] (V 2 Float)   -- input  (varying) of type V 2 Float and memory location 0
+      , "out_col" ':-> Output     '[ Location 0                 ] (V 4 Float)   -- output (varying) of type V 4 Float and memory location 0
+      , "image"   ':-> Texture2D  '[ DescriptorSet 0, Binding 0 ] (RGBA8 UNorm) -- input sampled image (provided as binding 0 of descriptor set 0)
+      , "main"    ':-> EntryPoint '[ OriginLowerLeft            ] Fragment      -- fragment shader stage (using standard Cartesian coordinates)
       ]
 
 fragment :: Program FragmentDefs ()

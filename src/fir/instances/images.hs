@@ -53,15 +53,14 @@ As images in @SPIR-V@ form an opaque type, the corresponding
 uninhabited, meaning it is impossible to construct or obtain
 a value of this type. Instead, 'FIR.Prim.Image.Image'
 is used only indirectly.
-If one attempts to directly obtain an 'FIR.Prim.Image.Image':
+Attempting to directly obtain an 'FIR.Prim.Image.Image'
+results in an error:
 
 > img <- use @(Name "imgName")
 >
 >   • Variable named "imgName" refers to an image.
 >     To access image data, use the 'ImageTexel' optic or the 'imageRead' function.
 
-However, the composite optic @ImageTexel "imgName" = Name "imgName" :.: Texel@ __can__ be used,
-with the image type only making a phantomatic apparition.
 
 -}
 

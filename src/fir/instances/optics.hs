@@ -20,6 +20,25 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: FIR.Instances.Optics
+
+This module overloads 'Control.Type.Optic.view',
+'Control.Type.Optic.set', and 'Control.Type.Optic.over'
+to work with the AST,
+in the way of getter/setter instances for types of the form @AST a@.
+
+For instance:
+
+> geometry = Program $ entrypoint @"main" @Geometry do
+>   gl_in <- use @(Name "gl_in") -- geometry shader built-in input (structure array)
+>   let pos0 = view @(Index 0 :.: Name "gl_Position") gl_in
+>   ...
+
+Singletons for optics are also provided, to assist in displaying
+the names of optics, and internally for code generation.
+-}
+
 module FIR.Instances.Optics where
 
 -- base

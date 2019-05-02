@@ -229,11 +229,10 @@ fragment = Program $ entryPoint @"main" @Fragment do
     ~(Vec3 _ w_effective aa_precision) <- use @(Name "ubo" :.: Name "widths")
 
     side <- get @"in_side"
-
-    let
-      -- stroke of effective width w_effective,
-      -- with aa radius around the edges of 1 / aa_precision
-      covered = coverage $ ( abs side - w_effective ) * aa_precision
+    -- stroke of effective width w_effective,
+    -- with aa radius around the edges of 1 / aa_precision
+    overlap <- def @"overlap" @R ( (abs side - w_effective ) * aa_precision )
+    covered <- def @"covered" @R ( coverage overlap )
 
     ( put @"out_colour" . over @(Index 3) ( * covered ) ) =<< get @"in_colour"
 

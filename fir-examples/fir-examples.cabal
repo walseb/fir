@@ -31,7 +31,7 @@ library
     , Shaders.FullPipeline
     , Shaders.JuliaSet
     , Shaders.Offscreen
-    , Shader.Text
+    , Shaders.Text
     , Shaders.Texture
     , Vulkan.Backend
     , Vulkan.Buffer

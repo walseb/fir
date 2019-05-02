@@ -42,6 +42,23 @@ which are then consumed by the infix operators @#=@, @.=@, @%=@ and @#=!@.
 In the last example, the labels are desugared directly into values,
 within the context of the indexed monad of the @do@ block.
 
+The stateful nature of these labels is worth emphasising.
+Consider for instance:
+
+> do
+>    #x @Float #= 0
+>    x <- #x
+>    #x .= 1
+>    x' <- #x
+
+When we write @x <- #x@, the /current/ value of @#x@ is obtained from the state.
+In this example, this means that @x@ will continue to refer to the value @0@,
+even after we set @#x@ to 1. When we retrieve the value of @#x@ after modifying it,
+we then give @x'@ the (immutable) value of @1@.
+
+This subtlety is especially important when working with @while@ loops,
+as one wants to avoid having a constant conditional in the header.
+
 -}
 
 module FIR.Labels
