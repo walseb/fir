@@ -448,13 +448,15 @@ globalID globalName mbStage
                     id
                     ( \ v -> do
                       -- Declare the user-provided decorations for this global.
-                      -- For struct/arrays this applies to the underlying object,
-                      -- whereas for other types it applies directly to the variable ID.
+                      -- For struct/arrays, layout decorations apply to the underlying object.
+                      -- In other situations, we apply the decorations directly to the variable ID.
                       ptrDecs <- case ptrTy of
                         SPIRV.PointerTy _ (SPIRV.Struct       {}) -> pure decs
                         SPIRV.PointerTy _ (SPIRV.Array        {}) -> pure decs
                         SPIRV.PointerTy _ (SPIRV.RuntimeArray {}) -> pure decs
-                        _ -> addDecorations v decs >> pure Set.empty
+                        _                                         -> pure Set.empty
+                      addDecorations v (Set.filter (not . SPIRV.isLayoutDecoration) decs)
+
                       -- Ensure that relevant pointer type is declared when this global variable is first used.
                       -- We must ensure correct layout.
                       -- In this case, this means giving full layout information for the underlying struct,

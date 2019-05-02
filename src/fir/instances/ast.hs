@@ -151,7 +151,7 @@ import Math.Logic.Bits
   ( Bits(..), BitShift(..) )
 import Math.Logic.Class
   ( Eq(..), Boolean(..)
-  , Choose(..), Triple
+  , Choose(..)
   , Ord(..)
   )
 import qualified SPIRV.PrimOp as SPIRV
@@ -175,7 +175,11 @@ instance Boolean (AST Bool) where
   (||)  = primOp @Bool @SPIRV.BoolOr
   not   = primOp @Bool @SPIRV.BoolNot
 
-instance PrimTy a => Choose (AST Bool) (Triple (AST a)) where
+instance ( PrimTy a
+         , x ~ AST a
+         , y ~ AST a
+         )
+       => Choose (AST Bool) '(x, y, AST a) where
   choose = fromAST If
 
 instance ( PrimTy a, Eq a, Logic a ~ Bool )

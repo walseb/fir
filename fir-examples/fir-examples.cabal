@@ -26,10 +26,12 @@ library
       FullPipeline
     , JuliaSet
     , Offscreen
+    , Text
     , Texture
     , Shaders.FullPipeline
     , Shaders.JuliaSet
     , Shaders.Offscreen
+    , Shader.Text
     , Shaders.Texture
     , Vulkan.Backend
     , Vulkan.Buffer

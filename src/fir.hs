@@ -90,6 +90,7 @@ module FIR
   , Control.Type.Optic.ReifiedGetter(view)
   , Control.Type.Optic.ReifiedSetter(set)
   , Control.Type.Optic.ReifiedLens(over)
+  , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
   , FIR.AST.AST((:$), Lit, Pair, Ops)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
@@ -220,6 +221,7 @@ import Control.Arrow.Strength
 import Control.Monad.Indexed
 import Control.Type.Optic
 import Data.Type.Known
+import Data.Type.List
 import Data.Type.Map
 import FIR.AST
 import FIR.ASTState

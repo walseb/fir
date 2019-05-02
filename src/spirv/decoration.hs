@@ -79,6 +79,19 @@ data Decoration a
   | Alignment a
   deriving ( Show, Eq, Ord )
 
+isLayoutDecoration :: Decoration a -> Bool
+isLayoutDecoration dec = case dec of
+  Block          -> True
+  BufferBlock    -> True
+  RowMajor       -> True
+  ColMajor       -> True
+  ArrayStride  _ -> True
+  MatrixStride _ -> True
+  GLSLShared     -> True
+  GLSLPacked     -> True
+  CPacked        -> True
+  _              -> False
+
 type Decorations = Set (Decoration Word32)
 
 instance Put (Decoration Word32) where
