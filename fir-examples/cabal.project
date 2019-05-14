@@ -1,0 +1,11 @@
+packages: .
+          ../../fir
+
+
+source-repository-package
+  type:     git
+  location: git://github.com/haskell-game/sdl2.git
+  tag: b9915270313eb36eca8c6116a23ff31e96b27c7b
+
+constraints:
+  sdl2 +no-linear

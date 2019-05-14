@@ -1,4 +1,4 @@
-cabal-version:  3.0
+cabal-version:  2.4
 
 name:           fir
 version:        0.0.1.0
@@ -156,10 +156,10 @@ library
       , Math.Logic.Class
       , SPIRV.Builtin
       , SPIRV.Capability
+      , SPIRV.Control
       , SPIRV.Decoration
       , SPIRV.ExecutionMode
       , SPIRV.Extension
-      , SPIRV.FunctionControl
       , SPIRV.Image
       , SPIRV.Operation
       , SPIRV.PrimOp
