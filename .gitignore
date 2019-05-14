@@ -3,7 +3,7 @@ dist/
 dist-newstyle/
 .ghc.*
 *.html
-*.project
+*.project.local
 *.tmp
 *.fail
 *.spv
