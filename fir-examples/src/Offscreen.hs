@@ -63,11 +63,11 @@ import Math.Linear
   ( pattern V3 )
 
 -- fir-examples
+import Simulation.Observer
 import Shaders.Offscreen
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Simulation.Observer
 import Vulkan.Pipeline
 
 ----------------------------------------------------------------------------

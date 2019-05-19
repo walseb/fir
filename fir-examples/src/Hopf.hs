@@ -4,6 +4,7 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -13,7 +14,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Bezier ( bezier ) where
+module Hopf ( hopf ) where
 
 -- base
 import Control.Monad
@@ -32,6 +33,8 @@ import Data.Word
 import qualified Foreign
 import qualified Foreign.C
 import qualified Foreign.Marshal
+import GHC.TypeNats
+  ( KnownNat )
 
 -- JuicyPixels
 import Codec.Picture.Types
@@ -63,6 +66,7 @@ import Control.Monad.Trans.State.Lazy
 
 -- vector
 import qualified Data.Vector.Storable as Vector
+import qualified Data.Vector as Array
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
@@ -80,12 +84,18 @@ import FIR
   , Layout(Extended)
   , Struct(..)
   , (:->)((:->))
+  , Array
+  , mkArray
+  , AnIndex
+  , knownValue
   )
+import qualified FIR
 import Math.Linear
+import qualified Math.Quaternion as Quaternion
 
 -- fir-examples
 import Simulation.Observer
-import Shaders.Bezier
+import Shaders.Hopf
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
@@ -100,16 +110,15 @@ shaderCompilationResult
         [ ("Vertex shader"                 , compileVertexShader                 )
         , ("Tessellation control shader"   , compileTessellationControlShader    )
         , ("Tessellation evaluation shader", compileTessellationEvaluationShader )
-        , ("Geometry shader"               , compileGeometryShader               )
         , ("Fragment shader"               , compileFragmentShader               )
         ]
      )
 
 appName :: IsString a => a
-appName = "fir-examples - Bézier curves"
+appName = "fir-examples - Hopf fibration"
 
-bezier :: IO ()
-bezier = ( runManaged . ( `evalStateT` initialState ) ) do
+hopf :: IO ()
+hopf = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
     Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
@@ -131,9 +140,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let features :: Maybe Vulkan.VkPhysicalDeviceFeatures
       features = Just $ Vulkan.createVk
-          (  Vulkan.set @"geometryShader"     Vulkan.VK_TRUE
-          &* Vulkan.set @"tessellationShader" Vulkan.VK_TRUE
-          )
+          ( Vulkan.set @"tessellationShader" Vulkan.VK_TRUE )
   device  <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex features
   surface <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
 
@@ -216,21 +223,21 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
        )
 
   let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
-      clearValues = [ tealClear
+      clearValues = [ blackClear
                     , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
                     ]
         where
-          teal :: Vulkan.VkClearColorValue
-          teal =
+          black :: Vulkan.VkClearColorValue
+          black =
             Vulkan.createVk
-              (  Vulkan.setAt @"float32" @0 0.1
-              &* Vulkan.setAt @"float32" @1 0.5
-              &* Vulkan.setAt @"float32" @2 0.7
+              (  Vulkan.setAt @"float32" @0 0
+              &* Vulkan.setAt @"float32" @1 0
+              &* Vulkan.setAt @"float32" @2 0
               &* Vulkan.setAt @"float32" @3 1
               )
 
-          tealClear :: Vulkan.VkClearValue
-          tealClear = Vulkan.createVk ( Vulkan.set @"color"  teal )
+          blackClear :: Vulkan.VkClearValue
+          blackClear = Vulkan.createVk ( Vulkan.set @"color" black )
 
           depthStencilClear :: Vulkan.VkClearDepthStencilValue
           depthStencilClear = Vulkan.createVk
@@ -252,53 +259,109 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let
 
-    letterT :: [ Struct VertexInput ]
-    letterT
-      = [ V3 (-3) (-6) 0 :& V3 1 0 0 :& End
-        , V3   0  (-8) 0 :& V3 1 0 0 :& End
-        , V3   3  (-6) 0 :& V3 1 0 0 :& End
-        , V3   3  (-5) 0 :& V3 1 0 0 :& End
-        , V3   3  (-4) 0 :& V3 1 0 1 :& End
-        , V3   2  (-4) 0 :& V3 1 0 1 :& End
-        , V3   1  (-4) 0 :& V3 1 0 1 :& End
-        , V3   1  (-2) 0 :& V3 1 0 1 :& End
-        , V3   1    0  0 :& V3 0 0 1 :& End
-        , V3   0    0  0 :& V3 0 0 1 :& End
-        , V3 (-1)   0  0 :& V3 0 0 1 :& End
-        , V3 (-1) (-2) 0 :& V3 0 0 1 :& End
-        , V3 (-1) (-4) 0 :& V3 0 0 0 :& End
-        , V3 (-2) (-4) 0 :& V3 0 0 0 :& End
-        , V3 (-3) (-4) 0 :& V3 0 0 0 :& End
-        , V3 (-3) (-5) 0 :& V3 0 0 0 :& End
-        ]
+    center :: V 3 Float
+    center = V3 0 0 0
 
-    letterT_indices :: [ Word32 ]
-    letterT_indices
-      = concat do
-          i <- 15 : [1,3..13]
-          pure ( map (`mod` 16) [i..i+4] )
+    c1, a1, c2, a2 :: Float
+    c1 = 2
+    a1 = 0.5
+    c2 = 2
+    a2 = 0.25
 
+    torusNormal, t1, t2 :: V 3 Float
+    torusNormal = V3 0 (-1) 0
+    t1 = V3 1 0 0
+    t2 = V3 0 0 1
 
-  (vertexBuffer, _) <- createVertexBuffer physicalDevice device letterT
+    villarceauCenter1, villarceauCenter2 :: Float -> V 3 Float
+    villarceauCenter1 theta = center ^+^ ( a1 * cos theta ) *^ t2 ^+^ ( a1 * sin theta ) *^ t1
+    villarceauCenter2 theta = center ^+^ ( a2 * cos theta ) *^ t2 ^+^ ( a2 * sin theta ) *^ t1    
 
-  (indexBuffer, _) <- createIndexBuffer physicalDevice device letterT_indices
+    villarceauRadius1 :: Float
+    villarceauRadius1 = c1
 
-  let initialObserver' = initialObserver { position = V3 0 (-3.5) (-6) }
-  assign _observer initialObserver'
+    villarceauRadius2 :: Float
+    villarceauRadius2 = c2
 
-  let initialMVP = modelViewProjection initialObserver' Nothing
-      binormal = V4 0 0 (-1) 0
-      lineWidths = V3 0.11 0.1 (recip 0.005)
+    villarceauNormal1 :: Float -> V 3 Float
+    villarceauNormal1 phi = baseNormal ^-^ perp ^+^ rotatedPerp
+      where theta = atan ( a1 / sqrt ( c1*c1 - a1*a1 ) )
+            baseNormal = V3 (sin theta) (cos theta) 0
+            dp = baseNormal ^.^ torusNormal            
+            perp = baseNormal ^-^ dp *^ torusNormal
+            rotatedPerp = Quaternion.rotate (Quaternion.axisAngle torusNormal (-phi)) perp
+
+    villarceauNormal2 :: Float -> V 3 Float
+    villarceauNormal2 phi = baseNormal ^-^ perp ^+^ rotatedPerp
+      where theta = atan ( a2 / sqrt ( c2*c2 - a2*a2 ) )
+            baseNormal = V3 (sin theta) (cos theta) 0
+            dp = baseNormal ^.^ torusNormal            
+            perp = baseNormal ^-^ dp *^ torusNormal
+            rotatedPerp = Quaternion.rotate (Quaternion.axisAngle torusNormal (-phi)) perp
+
+ 
+    toriVerts :: [ Struct RawVertexInput ]
+    toriVerts = generateToriVerts1 8 <> generateToriVerts2 8
+
+    generateToriVerts1 :: Int -> [ Struct RawVertexInput ]
+    generateToriVerts1 n =
+      [ villarceauCenter1 (k * ang) :& villarceauRadius1 :& villarceauNormal1 (k * ang) :& 0.015 :& gradient (k / (fromIntegral n)) sunset :& End
+      | k' <- [0.. (n-1)], let ang = (2 * pi) / (fromIntegral n), let k = fromIntegral k'
+      ]
+
+    generateToriVerts2 :: Int -> [ Struct RawVertexInput ]
+    generateToriVerts2 n =
+      [ villarceauCenter2 (k * ang) :& villarceauRadius2 :& villarceauNormal2 (k * ang) :& 0.015 :& gradient (0.999 - k / (fromIntegral n)) bluee :& End
+      | k' <- [0.. (n-1)], let ang = (2 * pi) / (fromIntegral n), let k = fromIntegral k'
+      ]   
+
+    gradient :: forall n. KnownNat n
+         => Float
+         -> (Array n (V 4 Float))
+         -> (V 4 Float)
+    gradient t colors
+      =   ( (1-s) *^ ( FIR.view @(AnIndex _)  i    colors ) )
+      ^+^ (    s  *^ ( FIR.view @(AnIndex _) (i+1) colors ) )
+      where n :: Float
+            n =  fromIntegral $ knownValue @n
+            i :: Word32
+            i = floor ( (n-1) * t )
+            s :: Float
+            s = (n-1) * t - fromIntegral i
+    
+    
+    sunset :: Array 3 (V 4 Float)
+    sunset = mkArray . Array.fromList $ fmap (fmap (\n -> n / 255))
+           [ V4 224  28  11 255
+           , V4 224 154  11 255
+           , V4 224  28  11 255
+           ]  
+
+    bluee :: Array 3 (V 4 Float)
+    bluee = mkArray . Array.fromList $ fmap (fmap (\n -> n / 255))
+           [ V4 138 43  226 255
+           , V4 30  144 255 255
+           , V4 138 43  226 255
+           ]       
+    
+    toriIndices :: [ Word32 ]
+    toriIndices
+      = [ 0 .. fromIntegral (length toriVerts) - 1 ]
+
+  (vertexBuffer, _) <- createVertexBuffer physicalDevice device toriVerts
+
+  (indexBuffer, _) <- createIndexBuffer physicalDevice device toriIndices
+
+  let initialMVP = modelViewProjection initialObserver Nothing
+      initialOrig :: V 4 Float
+      initialOrig = V4 0 0 0 1 ^*! initialMVP
 
   (ubo, uboPtr)
     <- createUniformBuffer
           physicalDevice
           device
-          ( initialMVP :& binormal :& lineWidths :& End
-              :: Struct '[ "mvp"      ':-> M 4 4 Float
-                         , "binormal" ':-> V 4 Float
-                         , "widths"   ':-> V 3 Float
-                         ]
+          ( initialMVP :& initialOrig :& End
+              :: Struct '[ "mvp" ':-> M 4 4 Float, "origin" ':-> V 4 Float ]
           )
 
   updateDescriptorSet device descriptorSet ubo
@@ -351,7 +414,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
           Vulkan.vkCmdDrawIndexed
             commandBuffer
-            ( fromIntegral ( length letterT_indices ) )
+            ( fromIntegral ( length toriIndices ) )
             1
             0
             0
@@ -516,13 +579,13 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
     assign _observer observer
 
     let mvp = modelViewProjection observer (Just orientation)
+        origin = mvp !*^ V4 0 0 0 1
 
     when ( locate action )
-      ( liftIO $ putStrLn ( show observer  ) )
+      ( liftIO $ putStrLn ( show observer ) )
 
     -- update MVP
-    liftIO $ poke @_ @Extended uboPtr
-      ( mvp :& V4 0 0 (-1) 0 :& lineWidths :& End )
+    liftIO ( poke @_ @Extended uboPtr (mvp :& origin :& End) )
 
     ----------------
     -- rendering
@@ -552,8 +615,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
         memPtr :: Vulkan.Ptr Word8
           <- coerce <$> allocaAndPeek
-                ( Vulkan.vkMapMemory device screenshotImageMemory
-                    0 maxBound Vulkan.VK_ZERO_FLAGS
+                ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                 )
 
@@ -569,7 +631,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/bezier.png" imageData
+        writePng "screenshots/hopf.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 
@@ -655,7 +717,7 @@ createRenderPass dev colorFormat depthFormat =
     dependency1 =
       Vulkan.createVk
         (  Vulkan.set @"srcSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
-        &* Vulkan.set @"dstSubpass"    Vulkan.VK_ZERO_FLAGS
+        &* Vulkan.set @"dstSubpass"    0
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"srcAccessMask" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -668,7 +730,7 @@ createRenderPass dev colorFormat depthFormat =
     dependency2 :: Vulkan.VkSubpassDependency
     dependency2 =
       Vulkan.createVk
-        (  Vulkan.set @"srcSubpass"    Vulkan.VK_ZERO_FLAGS
+        (  Vulkan.set @"srcSubpass"    0
         &* Vulkan.set @"dstSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"srcAccessMask"
@@ -714,8 +776,8 @@ createDescriptorSetLayout device = do
         &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
         &* Vulkan.set @"descriptorCount" 1
         &* Vulkan.set @"stageFlags"
-              (   Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT
-              .|. Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT
+              (   Vulkan.VK_SHADER_STAGE_VERTEX_BIT
+              .|. Vulkan.VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
               )
         &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
         )
@@ -775,7 +837,8 @@ allocateDescriptorSet dev descriptorPool layout0 = do
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"descriptorPool" descriptorPool
-        &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts" [ layout0 ]
+        &* Vulkan.set @"descriptorSetCount" 1
+        &* Vulkan.setListRef @"pSetLayouts" [ layout0 ]
         )
 
   manageBracket

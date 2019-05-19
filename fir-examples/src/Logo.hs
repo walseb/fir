@@ -94,11 +94,11 @@ import Math.Quaternion
   ( rotate, axisAngle )
 
 -- fir-examples
+import Simulation.Observer
 import Shaders.Logo
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Simulation.Observer
 import Vulkan.Pipeline
 import Vulkan.SDL
 

@@ -86,11 +86,11 @@ import Math.Linear
   )
 
 -- fir-examples
+import Simulation.Observer
 import Shaders.JuliaSet
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Simulation.Observer
 import Vulkan.Pipeline
 import Vulkan.SDL
 
