@@ -63,19 +63,19 @@ import CodeGen.Instruction
   , Instruction
   )
 import FIR.Builtin
-  ( stageBuiltins, builtinDecorations )
+  ( modelBuiltins, builtinDecorations )
 import FIR.ASTState
   ( FunctionContext(TopLevel), VLFunctionContext ) -- value-level function context
 import FIR.Prim.Singletons
   ( AConstant )
-import qualified SPIRV.Capability      as SPIRV
-import qualified SPIRV.Control         as SPIRV
-import qualified SPIRV.Decoration      as SPIRV
-import qualified SPIRV.ExecutionMode   as SPIRV
-import qualified SPIRV.Extension       as SPIRV
-import qualified SPIRV.Image           as SPIRV
-import qualified SPIRV.PrimTy          as SPIRV
-import qualified SPIRV.Stage           as SPIRV
+import qualified SPIRV.Capability    as SPIRV
+import qualified SPIRV.Control       as SPIRV
+import qualified SPIRV.Decoration    as SPIRV
+import qualified SPIRV.ExecutionMode as SPIRV
+import qualified SPIRV.Extension     as SPIRV
+import qualified SPIRV.Image         as SPIRV
+import qualified SPIRV.PrimTy        as SPIRV
+import qualified SPIRV.Stage         as SPIRV
 
 ----------------------------------------------------------------------------
 -- * Code generation state and context
@@ -97,51 +97,51 @@ data CGState
       , functionContext     :: VLFunctionContext
 
       -- | Capability requirements that have been declared.
-      , neededCapabilities  :: Set                     SPIRV.Capability
+      , neededCapabilities  :: Set                             SPIRV.Capability
 
       -- | IDs of all used extended instruction sets.
-      , knownExtInsts       :: Map SPIRV.ExtInst       ID
+      , knownExtInsts       :: Map SPIRV.ExtInst               ID
 
       -- | IDs of constant text literals.
-      , knownStringLits     :: Map Text                ID
+      , knownStringLits     :: Map Text                        ID
 
       -- | IDs which have been annotated with a name / member name.
-      , names               :: Set                     (ID, Either Text (Word32, Text))
+      , names               :: Set                             (ID, Either Text (Word32, Text))
 
       -- | Entry point IDs.
-      , entryPoints         :: Map (Text, SPIRV.Stage) ID
+      , entryPoints         :: Map (Text, SPIRV.ExecutionModel) ID
 
       -- | Entry point interfaces, keeping track of which global variables are used.
-      , interfaces          :: Map (Text, SPIRV.Stage) (Map Text ID)
+      , interfaces          :: Map (Text, SPIRV.ExecutionModel) (Map Text ID)
 
       -- | Decorations for IDs.
-      , decorations         :: Map ID                  SPIRV.Decorations
+      , decorations         :: Map ID                          SPIRV.Decorations
 
       -- | Decorations for members of a struct with given ID.
-      , memberDecorations   :: Map (ID, Word32)        SPIRV.Decorations
+      , memberDecorations   :: Map (ID, Word32)                SPIRV.Decorations
 
       -- | Map of all declared types.
-      , knownTypes          :: Map SPIRV.PrimTy        Instruction
+      , knownTypes          :: Map SPIRV.PrimTy                Instruction
 
       -- | Map of all declared constants.
-      , knownConstants      :: Map AConstant           Instruction
+      , knownConstants      :: Map AConstant                   Instruction
 
       -- | Which top-level global (input/output) variables have been used?
-      , usedGlobals         :: Map Text                (ID, SPIRV.PointerTy)
+      , usedGlobals         :: Map Text                        (ID, SPIRV.PointerTy)
 
       -- | Top-level bindings available, such as top-level functions.
-      , knownBindings       :: Map Text                (ID, SPIRV.PrimTy)
+      , knownBindings       :: Map Text                        (ID, SPIRV.PrimTy)
 
       -- | Variables declared by the user in the program.
-      , localBindings       :: Map Text                (ID, SPIRV.PrimTy)
+      , localBindings       :: Map Text                        (ID, SPIRV.PrimTy)
 
       -- | IDs of locally declared variables (floated to the top of the function definition).
-      , localVariables      :: Map ID                  SPIRV.PointerTy
+      , localVariables      :: Map ID                          SPIRV.PointerTy
 
       -- | Pointer ID associated to a given ID.
       -- Used to keep track of auxiliary temporary pointers
       -- (e.g. a pointer created for a runtime access chain operation).
-      , temporaryPointers   :: Map ID                  (ID, PointerState)
+      , temporaryPointers   :: Map ID                          (ID, PointerState)
       }
   deriving Show
 
@@ -191,7 +191,7 @@ data CGContext
 
        -- | User defined entry points.
      , userEntryPoints
-          :: Map (Text, SPIRV.Stage) SPIRV.ExecutionModes
+          :: Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes
 
        -- | User defined images.
      , userImages
@@ -260,26 +260,26 @@ _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
 _usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PointerTy))
 _usedGlobal name = _usedGlobals . at name
 
-_entryPoints :: Lens' CGState (Map (Text, SPIRV.Stage) ID)
+_entryPoints :: Lens' CGState (Map (Text, SPIRV.ExecutionModel) ID)
 _entryPoints = lens entryPoints ( \s v -> s { entryPoints = v } )
 
-_entryPoint :: Text -> SPIRV.Stage -> Lens' CGState (Maybe ID)
+_entryPoint :: Text -> SPIRV.ExecutionModel -> Lens' CGState (Maybe ID)
 _entryPoint name stage = _entryPoints . at (name, stage)
 
-_interfaces :: Lens' CGState (Map (Text, SPIRV.Stage) (Map Text ID))
+_interfaces :: Lens' CGState (Map (Text, SPIRV.ExecutionModel) (Map Text ID))
 _interfaces = lens interfaces ( \s v -> s { interfaces = v } )
 
-_interface :: Text -> SPIRV.Stage -> Lens' CGState (Maybe (Map Text ID))
+_interface :: Text -> SPIRV.ExecutionModel -> Lens' CGState (Maybe (Map Text ID))
 _interface stageName stage = _interfaces . at (stageName, stage)
 
-_interfaceBinding :: Text -> SPIRV.Stage -> Text -> Lens' CGState (Maybe ID)
+_interfaceBinding :: Text -> SPIRV.ExecutionModel -> Text -> Lens' CGState (Maybe ID)
 _interfaceBinding stageName stage varName
   = _interface stageName stage
   . affineTraverse
   . at varName
 
-_builtin :: Text -> SPIRV.StageInfo Word32 stage -> Text -> Lens' CGState (Maybe ID)
-_builtin stageName stageInfo builtinName
+_builtin :: Text -> SPIRV.ExecutionInfo Word32 stage -> Text -> Lens' CGState (Maybe ID)
+_builtin stageName executionInfo builtinName
   = lens
       ( view _interfaceBuiltin )
       ( \s mb_i -> case mb_i of
@@ -289,11 +289,11 @@ _builtin stageName stageInfo builtinName
                   . set ( _decorate   i           ) ( Just decs           )
                   $ s
       )
-  where stage :: SPIRV.Stage
-        stage = SPIRV.stageOf stageInfo
+  where executionModel :: SPIRV.ExecutionModel
+        executionModel = SPIRV.modelOf executionInfo
 
         _interfaceBuiltin :: Lens' CGState (Maybe ID)
-        _interfaceBuiltin = _interfaceBinding stageName stage builtinName
+        _interfaceBuiltin = _interfaceBinding stageName executionModel builtinName
 
         decs :: SPIRV.Decorations
         decs = builtinDecorations builtinName
@@ -303,10 +303,10 @@ _builtin stageName stageInfo builtinName
           fromMaybe
             ( error
               ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
-                  \among builtins for " ++ show stage ++ " stage named " ++ Text.unpack stageName
+                  \among builtins for " ++ show executionModel ++ " named " ++ Text.unpack stageName
               )
             )
-            ( lookup builtinName $ stageBuiltins stageInfo )
+            ( lookup builtinName $ modelBuiltins executionInfo )
 
 
 _decorations :: Lens' CGState (Map ID SPIRV.Decorations)
@@ -385,10 +385,10 @@ _userFunctions = lens userFunctions ( \c v -> c { userFunctions = v } )
 _userFunction :: Text -> Lens' CGContext ( Maybe SPIRV.FunctionControl )
 _userFunction function = _userFunctions . at function
 
-_userEntryPoints :: Lens' CGContext ( Map (Text, SPIRV.Stage) SPIRV.ExecutionModes )
+_userEntryPoints :: Lens' CGContext ( Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes )
 _userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
 
-_userEntryPoint :: Text -> SPIRV.Stage -> Lens' CGContext ( Maybe SPIRV.ExecutionModes )
+_userEntryPoint :: Text -> SPIRV.ExecutionModel -> Lens' CGContext ( Maybe SPIRV.ExecutionModes )
 _userEntryPoint name stage = _userEntryPoints . at (name, stage)
 
 _userImages :: Lens' CGContext ( Map Text SPIRV.Image )

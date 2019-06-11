@@ -140,7 +140,7 @@ data SOptic (optic :: Optic i s a) :: Type where
                  )
               => Proxy k
               -> Proxy props
-              -> SOptic ( (  ( Name_  k :: Optic '[] i (Image props) )
+              -> SOptic ( (  ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
                              `ComposeO`
                              ( RTOptic_ :: Optic
                                             '[ ImageOperands props ops, ImageCoordinates props ops ]
@@ -203,22 +203,23 @@ instance ( KnownNat n
          , PrimTy s
          , PrimTy a
          )
-       => KnownOptic (Index_ n :: Optic empty s a)
+       => KnownOptic (Field_ (n :: Nat) :: Optic empty s a)
        where
   opticSing = SIndex (primTySing @s) (primTySing @a) (fromIntegral . natVal $ Proxy @n)
-instance ( KnownSymbol k
+instance forall (as :: [Symbol :-> Type]) (k :: Symbol) (a :: Type) (empty :: [Type]).
+         ( KnownSymbol k
          , PrimTyMap as
          , PrimTy a
          , HasField k as
          , empty ~ '[]
-         ) => KnownOptic (Name_ k :: Optic empty (Struct as) a)
+         ) => KnownOptic (Field_ (k :: Symbol) :: Optic empty (Struct as) a)
          where
-  opticSing = SIndex (SStruct @as) (primTySing @a) (fieldIndex @k @as)
+  opticSing = SIndex (SStruct @Symbol @as) (primTySing @a) (fieldIndex @k @as)
 instance ( KnownSymbol k
          , empty ~ '[]
          , a ~ Binding.Has k bds
          )
-      => KnownOptic (Name_ k :: Optic empty (bds :: ASTState) a)
+      => KnownOptic (Field_ (k :: Symbol) :: Optic empty (bds :: ASTState) a)
       where
   opticSing = SBinding (Proxy @k)
 instance forall is js ks (s :: Type) a b (o1 :: Optic is s a) (o2 :: Optic js a b).
@@ -238,7 +239,7 @@ instance forall k is js ks (s :: ASTState) x a b
          , KnownOptic o
          , ( ( (o1 `ComposeO` o2) :: Optic ks s b )
              ~
-             ( (Name_ k :: Optic '[] s a) `ComposeO` (o :: Optic ks a b) )
+             ( (Field_ (k :: Symbol) :: Optic '[] s a) `ComposeO` (o :: Optic ks a b) )
             )
          , KnownLength ks
          , ks ~ (is :++: js)
@@ -278,7 +279,7 @@ instance {-# OVERLAPPING #-}
     , imgCds ~ ImageCoordinates props ops
     , r ~ ImageData props ops
     )
-  => KnownOptic ( ( ( Name_ k :: Optic empty i (Image props) )
+  => KnownOptic ( ( ( Field_ (k :: Symbol) :: Optic empty i (Image props) )
                     `ComposeO`
                     ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) r)
                   ) :: Optic '[imgOps, imgCds] (i :: ASTState) r
@@ -312,7 +313,7 @@ instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a 
          , ks ~ js
          , a ~ Binding.Has k i -- this is the additional line that helps type inference
          , Binding.CanGet k i
-         ) => Gettable ( ((Name_ k :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
+         ) => Gettable ( ((Field_ (k :: Symbol) :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
 instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a b).
          ( KnownSymbol k
@@ -321,7 +322,7 @@ instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a 
          , ks ~ js
          , a ~ Binding.Has k i -- ditto
          , Binding.CanPut k i
-         ) => Settable ( ((Name_ k :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
+         ) => Settable ( ((Field_ (k :: Symbol) :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
 
 ----------------------------------------------------------------------
@@ -350,14 +351,14 @@ instance ( KnownSymbol k
          , Binding.CanGet k i
          , empty ~ '[]
          )
-      => Gettable (Name_ k :: Optic empty (i :: ASTState) r) where
+      => Gettable (Field_ (k :: Symbol) :: Optic empty (i :: ASTState) r) where
 
 
 instance
   TypeError (     Text "get: cannot get a binding using a numeric index."
              :$$: Text "Use the binding's name instead."
             )
-  => Gettable (Index_ n :: Optic empty (i :: [Symbol :-> v]) r)
+  => Gettable (Field_ (n :: Nat) :: Optic empty (i :: [Symbol :-> v]) r)
   where
 
 -- arrays
@@ -376,28 +377,28 @@ instance ( KnownNat n, KnownNat i
                  )
          , empty ~ '[]
          )
-      => Gettable (Index_ i :: Optic empty (Array n a) r) where
+      => Gettable (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
 instance ( KnownNat i         
          , r ~ a
          , empty ~ '[]
          , PrimTy a
-         , Gettable (Index_ i :: Optic empty (Array n a) r)
+         , Gettable (Field_ (i :: Nat) :: Optic empty (Array n a) r)
          )
-       => ReifiedGetter (Index_ i :: Optic empty (Array n a) r) where
+       => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
   view (MkArray arr) = arr Array.! (fromIntegral (natVal (Proxy @i)))
 
 instance ( KnownNat i
          , empty ~ '[]
          , r ~ a
          )
-      => Gettable (Index_ i :: Optic empty (RuntimeArray a) r) where
+      => Gettable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
 instance ( KnownNat i         
          , r ~ a
          , empty ~ '[]
          , PrimTy a
-         , Gettable (Index_ i :: Optic empty (RuntimeArray a) r)
+         , Gettable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r)
          )
-       => ReifiedGetter (Index_ i :: Optic empty (RuntimeArray a) r) where
+       => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
   view (MkRuntimeArray arr) = arr Array.! (fromIntegral (natVal (Proxy @i)))
 
 
@@ -434,7 +435,7 @@ instance
                         \using symbolic identifier "
               :<>: ShowType k :<>: Text "."
               )
-    => Gettable (Name_ k :: Optic empty (Array n a) r) where
+    => Gettable (Field_ (k :: Symbol) :: Optic empty (Array n a) r) where
 
 
 instance
@@ -442,7 +443,7 @@ instance
                         \element using symbolic identifier "
               :<>: ShowType k :<>: Text "."
               )
-    => Gettable (Name_ k :: Optic empty (RuntimeArray a) r) where
+    => Gettable (Field_ (k :: Symbol) :: Optic empty (RuntimeArray a) r) where
 
 
 -- structs
@@ -454,7 +455,7 @@ instance ( KnownSymbol k
                  (Lookup k as)
          , empty ~ '[]
          )
-       => Gettable (Name_ k :: Optic empty (Struct as) r) where
+       => Gettable (Field_ (k :: Symbol) :: Optic empty (Struct as) r) where
 instance ( KnownSymbol k
          , r ~ StructElemFromName
                  (Text "get: ")
@@ -463,10 +464,10 @@ instance ( KnownSymbol k
                  (Lookup k ((k ':-> a) ': as))
          , empty ~ '[]
          , a ~ ListVariadic '[] a
-         , Gettable (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
+         , Gettable (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
          )
       => ReifiedGetter
-            (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
+            (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
       where
   view (a :& _) = a
 instance {-# OVERLAPPABLE #-}
@@ -480,24 +481,24 @@ instance {-# OVERLAPPABLE #-}
          , ReifiedGetter
              -- this forces evaluation of r before looking for the constraint
              -- this is needed to have the correct error messages
-             (Name_ (If (r == r) k k) :: Optic '[] (Struct as) r)
+             (Field_ (If (r == r) k k) :: Optic '[] (Struct as) r)
          )
       => ReifiedGetter
-            (Name_ k :: Optic empty (Struct (a ': as)) r)
+            (Field_ (k :: Symbol) :: Optic empty (Struct (a ': as)) r)
       where
-  view (_ :& as) = view @(Name_ (If (r == r) k k) :: Optic '[] (Struct as) r) as
+  view (_ :& as) = view @(Field_ (If (r == r) k k) :: Optic '[] (Struct as) r) as
 
 
 instance ( KnownNat n
          , r ~ Value (StructElemFromIndex (Text "get: ") n as n as)
          , empty ~ '[]
-         ) => Gettable (Index_ n :: Optic empty (Struct as) r) where
+         ) => Gettable (Field_ (n :: Nat) :: Optic empty (Struct as) r) where
 instance ( r ~ Value (StructElemFromIndex (Text "get: ") 0 (a ': as) 0 (a ': as))
          , empty ~ '[]
          , r ~ ListVariadic '[] r
          )
       => ReifiedGetter
-           (Index_ 0 :: Optic empty (Struct (a ': as)) r)
+           (Field_ 0 :: Optic empty (Struct (a ': as)) r)
        where
   view (a :& _) = a
 instance {-# OVERLAPPABLE #-}
@@ -506,12 +507,12 @@ instance {-# OVERLAPPABLE #-}
          , empty ~ '[]
          , ReifiedGetter
              -- as above, force evaluation of r for correct error message
-             (Index_ (If (r == r) (n-1) (n-1)) :: Optic empty (Struct as) r)
+             (Field_ (If (r == r) (n-1) (n-1)) :: Optic empty (Struct as) r)
          )
       => ReifiedGetter
-          (Index_ n :: Optic empty (Struct (a ': as)) r)
+          (Field_ (n :: Nat) :: Optic empty (Struct (a ': as)) r)
       where
-  view (_ :& as) = view @(Index_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) as
+  view (_ :& as) = view @(Field_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) as
 
 instance
     TypeError (    Text "get: attempt to access struct element \
@@ -538,7 +539,7 @@ instance ( KnownNat i
                  )
           , empty ~ '[]
           )
-      => Gettable (Index_ i :: Optic empty (V n a) r) where
+      => Gettable (Field_ (i :: Nat) :: Optic empty (V n a) r) where
 instance ( KnownNat n
          , KnownNat i
          , r ~ If
@@ -558,7 +559,7 @@ instance ( KnownNat n
          , CmpNat i n ~ 'LT
          )
       => ReifiedGetter
-            (Index_ i :: Optic empty (V n a) r)
+            (Field_ (i :: Nat) :: Optic empty (V n a) r)
       where
   view v = at @i v
 
@@ -585,7 +586,7 @@ instance
               :$$: Text "For a vector swizzle, use 'Swizzle' (e.g. Swizzle '[\"x\",\"z\",\"y\"]),"
               :$$: Text "or a synonym such as XZY (limited to X/Y/Z/W)."
               )
-    => Gettable (Name_ k :: Optic empty (V n a) r) where
+    => Gettable (Field_ (k :: Symbol) :: Optic empty (V n a) r) where
 
 
 -- matrices
@@ -606,7 +607,7 @@ instance ( KnownNat n
                   )
          , empty ~ '[]
          )
-      => Gettable (Index_ i :: Optic empty (M m n a) r) where
+      => Gettable (Field_ (i :: Nat) :: Optic empty (M m n a) r) where
 instance ( KnownNat m
          , KnownNat n
          , KnownNat i
@@ -628,7 +629,7 @@ instance ( KnownNat m
          , empty ~ '[]
          )
       => ReifiedGetter
-            (Index_ i :: Optic empty (M m n a) r)
+            (Field_ (i :: Nat) :: Optic empty (M m n a) r)
       where
   view (M rows) = at @i (distribute rows)
 
@@ -654,7 +655,7 @@ instance
                         \using symbolic identifier "
               :<>: ShowType k :<>: Text "."
               )
-    => Gettable (Name_ k :: Optic empty (M m n a) r) where
+    => Gettable (Field_ (k :: Symbol) :: Optic empty (M m n a) r) where
 
 ----------------------------------------------------------------------
 -- setters
@@ -669,7 +670,7 @@ instance ( KnownSymbol k
          , Binding.CanPut k i
          , empty ~ '[]
          )
-      => Settable (Name_ k :: Optic empty (i :: ASTState) r ) where
+      => Settable (Field_ (k :: Symbol) :: Optic empty (i :: ASTState) r ) where
 
   
 
@@ -677,7 +678,7 @@ instance
     TypeError (    Text "set: cannot set binding using a numeric index."
               :$$: Text "Use the binding's name instead."
               )
-    => Settable (Index_ n :: Optic empty (i :: [Symbol :-> v]) r) where
+    => Settable (Field_ (n :: Nat) :: Optic empty (i :: [Symbol :-> v]) r) where
 
 -- arrays
 instance ( KnownNat n, KnownNat i
@@ -695,14 +696,14 @@ instance ( KnownNat n, KnownNat i
                   )
          , empty ~ '[]
          )
-      => Settable (Index_ i :: Optic empty (Array n a) r) where
+      => Settable (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
 instance ( KnownNat i         
          , r ~ a
          , empty ~ '[]
-         , Settable (Index_ i :: Optic empty (Array n a) r)
+         , Settable (Field_ (i :: Nat) :: Optic empty (Array n a) r)
          )
       => ReifiedSetter
-           (Index_ i :: Optic empty (Array n a) r)
+           (Field_ (i :: Nat) :: Optic empty (Array n a) r)
       where
   set a (MkArray arr) = MkArray ( arr Array.// [( fromIntegral (natVal (Proxy @i)), a)] )
 
@@ -710,14 +711,14 @@ instance ( KnownNat i
          , empty ~ '[]
          , r ~ a
          )
-      => Settable (Index_ i :: Optic empty (RuntimeArray a) r) where
+      => Settable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
 instance ( KnownNat i         
          , r ~ a
          , empty ~ '[]
-         , Settable (Index_ i :: Optic empty (RuntimeArray a) r)
+         , Settable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r)
          )
       => ReifiedSetter
-           (Index_ i :: Optic empty (RuntimeArray a) r)
+           (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r)
       where
   set a (MkRuntimeArray arr)
     = MkRuntimeArray ( arr Array.// [( fromIntegral (natVal (Proxy @i)), a)] )
@@ -758,21 +759,21 @@ instance
                         \using symbolic identifier "
               :<>: ShowType k :<>: Text "."
               )
-    => Settable (Name_ k :: Optic empty (Array n a) r) where
+    => Settable (Field_ (k :: Symbol) :: Optic empty (Array n a) r) where
 
 instance
     TypeError (    Text "set: attempt to update run-time array \
                         \element using symbolic identifier "
               :<>: ShowType k :<>: Text "."
               )
-    => Settable (Name_ k :: Optic empty (RuntimeArray a) r) where
+    => Settable (Field_ (k :: Symbol) :: Optic empty (RuntimeArray a) r) where
 
 -- structs
 instance ( KnownSymbol k
          , r ~ StructElemFromName (Text "set: ") k as (Lookup k as)
          , empty ~ '[]
          )
-  => Settable (Name_ k :: Optic empty (Struct as) r) where
+  => Settable (Field_ (k :: Symbol) :: Optic empty (Struct as) r) where
 instance ( KnownSymbol k
          , r ~ StructElemFromName
                   (Text "set: ")
@@ -780,10 +781,10 @@ instance ( KnownSymbol k
                   ((k ':-> a) ': as)
                   (Lookup k ((k ':-> a) ': as))
          , empty ~ '[]
-         , Settable (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
+         , Settable (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
          )
       => ReifiedSetter
-            (Name_ k :: Optic empty (Struct ((k ':-> a) ': as)) r)
+            (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
       where
   set b (_ :& as) = b :& as
 instance {-# OVERLAPPABLE #-}
@@ -797,23 +798,23 @@ instance {-# OVERLAPPABLE #-}
          , ReifiedSetter
              -- this forces evaluation of r before looking for the constraint
              -- this is needed to have the correct error messages
-             (Name_ (If (r == r) k k) :: Optic '[] (Struct as) r)
+             (Field_ (If (r == r) k k) :: Optic '[] (Struct as) r)
          )
       => ReifiedSetter
-            (Name_ k :: Optic empty (Struct (a ': as)) r)
+            (Field_ (k :: Symbol) :: Optic empty (Struct (a ': as)) r)
       where
-  set b (a :& as) = a :& set @(Name_ (If (r == r) k k) :: Optic '[] (Struct as) r) b as
+  set b (a :& as) = a :& set @(Field_ (If (r == r) k k) :: Optic '[] (Struct as) r) b as
 
 instance ( KnownNat n
          , r ~ Value (StructElemFromIndex (Text "set: ") n as n as)
          , empty ~ '[]
-         ) => Settable (Index_ n :: Optic empty (Struct as) r) where
+         ) => Settable (Field_ (n :: Nat) :: Optic empty (Struct as) r) where
 instance ( r ~ Value (StructElemFromIndex (Text "set: ") 0 (a ': as) 0 (a ': as))
          , empty ~ '[]
          , r ~ ListVariadic '[] r
          )
       => ReifiedSetter
-           (Index_ 0 :: Optic empty (Struct (a ': as)) r)
+           (Field_ 0 :: Optic empty (Struct (a ': as)) r)
        where
   set b (_ :& as) = b :& as
 instance {-# OVERLAPPABLE #-}
@@ -822,12 +823,12 @@ instance {-# OVERLAPPABLE #-}
          , empty ~ '[]
          , ReifiedSetter
              -- as above, force evaluation of r for correct error message
-             (Index_ (If (r == r) (n-1) (n-1)) :: Optic empty (Struct as) r)
+             (Field_ (If (r == r) (n-1) (n-1)) :: Optic empty (Struct as) r)
          )
       => ReifiedSetter
-          (Index_ n :: Optic empty (Struct (a ': as)) r)
+          (Field_ (n :: Nat) :: Optic empty (Struct (a ': as)) r)
       where
-  set b (a :& as) = a :& set @(Index_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) b as
+  set b (a :& as) = a :& set @(Field_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) b as
 
 instance
     TypeError (    Text "set: attempt to set struct element \
@@ -853,16 +854,16 @@ instance ( KnownNat i
                   )
          , empty ~ '[]
          )
-      => Settable (Index_ i :: Optic empty (V n a) r) where
+      => Settable (Field_ (i :: Nat) :: Optic empty (V n a) r) where
 
 instance ( KnownNat n, 1 <= n
          , empty ~ '[]
          , r ~ a
          , r ~ ListVariadic '[] r
-         , Settable (Index_ 0 :: Optic empty (V n a) r)
+         , Settable (Field_ 0 :: Optic empty (V n a) r)
          )
       => ReifiedSetter
-           (Index_ 0 :: Optic empty (V n a) r)
+           (Field_ 0 :: Optic empty (V n a) r)
        where
   set b (_ :. as) = b :. as
 instance {-# OVERLAPPABLE #-}
@@ -870,15 +871,15 @@ instance {-# OVERLAPPABLE #-}
          , CmpNat i n ~ 'LT
          , r ~ a
          , empty ~ '[]
-         , Settable (Index_ i :: Optic empty (V n a) r)
+         , Settable (Field_ (i :: Nat) :: Optic empty (V n a) r)
          , ReifiedSetter
              -- as above, force evaluation of r for correct error message
-             (Index_ (If (r == r) (i-1) (i-1)) :: Optic empty (V (n-1) a) r)
+             (Field_ (If (r == r) (i-1) (i-1)) :: Optic empty (V (n-1) a) r)
          )
       => ReifiedSetter
-          (Index_ i :: Optic empty (V n a) r)
+          (Field_ (i :: Nat) :: Optic empty (V n a) r)
       where
-  set b (a :. as) = a :. set @(Index_ (If (r == r) (i-1) (i-1)) :: Optic '[] (V (n-1) a) r) b as
+  set b (a :. as) = a :. set @(Field_ (If (r == r) (i-1) (i-1)) :: Optic '[] (V (n-1) a) r) b as
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -904,7 +905,7 @@ instance
               :$$: Text "For a vector swizzle, use 'Swizzle' (e.g. Swizzle '[\"x\",\"z\",\"y\"]),"
               :$$: Text "or a synonym such as XZY (limited to X/Y/Z/W)."
               )
-    => Settable (Name_ k :: Optic empty (V n a) r) where
+    => Settable (Field_ (k :: Symbol) :: Optic empty (V n a) r) where
 
 -- matrices
 instance ( KnownNat i
@@ -923,21 +924,21 @@ instance ( KnownNat i
                     )
                   )
          )
-      => Settable (Index_ i :: Optic empty (M m n a) r) where
+      => Settable (Field_ (i :: Nat) :: Optic empty (M m n a) r) where
 instance ( KnownNat m, KnownNat n, KnownNat i, 1 <= n
          , empty ~ '[]
          , CmpNat i n ~ 'LT
          , r ~ V m a
-         , Settable (Index_ i :: Optic empty (M m n a) r)
-         , ReifiedSetter ( Index_ i :: Optic '[] (V n (V m a)) (V m a) )
+         , Settable (Field_ (i :: Nat) :: Optic empty (M m n a) r)
+         , ReifiedSetter ( Field_ (i :: Nat) :: Optic '[] (V n (V m a)) (V m a) )
          )
       => ReifiedSetter
-           (Index_ i :: Optic empty (M m n a) r)
+           (Field_ (i :: Nat) :: Optic empty (M m n a) r)
        where
   set c (M m)
     = ( M
       . distribute
-      . set @(Index_ i :: Optic '[] (V n (V m a)) (V m a)) c
+      . set @(Field_ (i :: Nat) :: Optic '[] (V n (V m a)) (V m a)) c
       . distribute
       ) m
 
@@ -965,13 +966,13 @@ instance
                         \using symbolic identifier "
               :<>: ShowType k :<>: Text "."
               )
-    => Settable (Name_ k :: Optic empty (M m n a) r) where
+    => Settable (Field_ (k :: Symbol) :: Optic empty (M m n a) r) where
 
 ----------------------------------------------------------------------
 -- helper type families for structs
 
 type Field ( k :: Symbol )
-  = ( Name_ k
+  = ( Field_ (k :: Symbol)
         :: Optic '[]
             (Struct as)
             (StructElemFromName (Text "optic: ") k as (Lookup k as))
@@ -1020,9 +1021,9 @@ type instance ContainerKind (M m n a) = Type
 type instance DegreeKind    (M m n a) = Nat
 type instance LabelKind     (M m n a) = ()
 
-type instance ContainerKind (Struct as) = [Symbol :-> Type] -> Type
-type instance DegreeKind    (Struct as) = [Symbol :-> Type]
-type instance LabelKind     (Struct as) = (Symbol :-> Type)
+type instance ContainerKind (Struct (as :: [Symbol :-> Type])) = [Symbol :-> Type] -> Type
+type instance DegreeKind    (Struct (as :: [Symbol :-> Type])) = [Symbol :-> Type]
+type instance LabelKind     (Struct (as :: [Symbol :-> Type])) = (Symbol :-> Type)
 
 type instance ContainerKind (Array n a) = Type
 type instance DegreeKind    (Array n a) = Nat
@@ -1054,18 +1055,18 @@ instance KnownNat n => Contained (M m n a) where
   type Overlapping (M m n a) k _
     = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
 
-instance Contained (Struct as) where
-  type Container (Struct as) = Struct
-  type DegreeOf  (Struct as) = as
-  type LabelOf   (Struct as) (Name_  k :: Optic _ (Struct as) a)
+instance Contained (Struct (as :: [Symbol :-> Type])) where
+  type Container (Struct (as :: [Symbol :-> Type])) = ( Struct :: [Symbol:-> Type] -> Type )
+  type DegreeOf  (Struct (as :: [Symbol :-> Type])) = as
+  type LabelOf   (Struct (as :: [Symbol :-> Type])) (Field_ (k :: Symbol) :: Optic _ (Struct as) a)
     = k ':-> a
-  type LabelOf   (Struct as) (Index_ i :: Optic _ (Struct as) a)
+  type LabelOf   (Struct (as :: [Symbol :-> Type])) (Field_ (i :: Nat)    :: Optic _ (Struct as) a)
     = Key ( StructElemFromIndex
               (Text "key: ")
               i as i as
           )
       ':-> a
-  type Overlapping (Struct as) k i
+  type Overlapping (Struct (as :: [Symbol :-> Type])) k i
     = k == Key (StructElemFromIndex (Text "key: ") i as i as)
 
 instance Contained (Array n a) where
@@ -1105,7 +1106,7 @@ instance (KnownNat m, KnownNat n, 1 <= m)
   type MonoType (M m n a) = V m a
   setAll = const . M . distribute . pure
 
-instance MonoContained (Struct ((k ':-> v) ': '[]))
+instance MonoContained (Struct (((k :: Symbol) ':-> v) ': '[]))
       where
   type MonoType (Struct ((k ':-> v) ': '[])) = v
   setAll = const . (:& End)

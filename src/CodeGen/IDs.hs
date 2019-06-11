@@ -19,7 +19,7 @@ import Control.Monad
 import Data.Coerce
   ( coerce )
 import Data.Foldable
-  ( for_ )
+  ( traverse_, for_ )
 import Data.Maybe
   ( fromJust )
 import Data.Semigroup
@@ -76,9 +76,9 @@ import CodeGen.State
   , addMemberDecoration, addMemberDecorations
   )
 import FIR.ASTState
-  ( FunctionContext(InEntryPoint), stageContext )
+  ( FunctionContext(InEntryPoint), executionContext )
 import FIR.Builtin
-  ( stageBuiltins )
+  ( modelBuiltins )
 import FIR.Layout
   ( inferPointerLayout )
 import FIR.Prim.Singletons
@@ -195,7 +195,7 @@ typeID ty =
                 ( traverse (typeID . (\(_,y,_) -> y)) as ) -- return IDs of struct member types
                 ( \eltIDs structTyID ->
                   do
-                    let labelledElts :: [ (Text, Word32, SPIRV.Decorations) ]
+                    let labelledElts :: [ (Maybe Text, Word32, SPIRV.Decorations) ]
                         labelledElts =
                           ( zipWith
                             ( \i (k, _, eltDecs) -> (k, i, eltDecs) )
@@ -205,17 +205,17 @@ typeID ty =
 
                     -- add information: name of each struct field, and decorations
                     for_ labelledElts
-                      ( \ (k,i, eltDecs) -> do
-                        addMemberName structTyID i k
+                      ( \ (mbFieldName, i, eltDecs) -> do
+                        traverse_ ( addMemberName structTyID i ) mbFieldName
                         addMemberDecorations structTyID i eltDecs
                         -- unfortunate workaround for built-in decorations with structs
                         case structUsage of
                           ForInputBuiltins  -> do
-                            for_ ( SPIRV.readBuiltin k )
+                            for_ ( SPIRV.readBuiltin =<< mbFieldName )
                               ( addMemberDecoration structTyID i . SPIRV.Builtin )
                             addName structTyID "gl_in_PerVertex"
                           ForOutputBuiltins -> do
-                            for_ ( SPIRV.readBuiltin k )
+                            for_ ( SPIRV.readBuiltin =<< mbFieldName )
                               ( addMemberDecoration structTyID i . SPIRV.Builtin )
                             addName structTyID "gl_out_PerVertex"
                           NotForBuiltins -> pure ()
@@ -240,13 +240,14 @@ typeID ty =
                ( typeID (SPIRV.Scalar component) )  -- get the type ID of the image 'component' type
                ( \componentID
                    -> mkTyConInstruction
-                        (   Arg componentID
-                          $ Arg dimensionality
-                          $ Arg hasDepth
-                          $ Arg arrayness
-                          $ Arg multiSampling
-                          $ Arg imageUsage -- whether the image is sampled or serves as storage
-                          $ Arg imageFormat EndArgs
+                        ( Arg componentID
+                        $ Arg dimensionality
+                        $ Arg hasDepth
+                        $ Arg arrayness
+                        $ Arg multiSampling
+                        $ Arg imageUsage -- whether the image is sampled or serves as storage
+                        $ Arg imageFormat
+                        EndArgs
                         )
                )
 
@@ -387,11 +388,11 @@ bindingID varName
   = do  ctxt <- use _functionContext
 
         case ctxt of
-          InEntryPoint stageName stageInfo
-            | Just ptrTy <- lookup varName (stageBuiltins stageInfo)
+          InEntryPoint modelName modelInfo
+            | Just ptrTy <- lookup varName (modelBuiltins modelInfo)
               ->
                 do -- this is a built-in variable, use 'builtinID'
-                  builtin <- builtinID stageName stageInfo varName ptrTy
+                  builtin <- builtinID modelName modelInfo varName ptrTy
                   -- note that 'builtinID' sets the necessary decorations for the builtin
                   pure (builtin, SPIRV.pointerTy ptrTy)
           _ ->
@@ -400,7 +401,7 @@ bindingID varName
               mbKnown <- use ( _knownBinding varName )
               mbGlob  <-
                 fmap ( second SPIRV.pointerTy )
-                  <$> globalID varName (stageContext ctxt)
+                  <$> globalID varName (executionContext ctxt)
 
               -- return the binding ID (throwing an error if none was found)
               note
@@ -416,9 +417,9 @@ builtinID :: ( MonadState CGState m
              , MonadError Text    m
              , MonadFresh ID      m
              )
-          => Text -> SPIRV.StageInfo Word32 stage -> Text -> SPIRV.PointerTy -> m ID
-builtinID stageName stageInfo builtinName ptrTy =
-  tryToUse ( _builtin stageName stageInfo builtinName )
+          => Text -> SPIRV.ExecutionInfo Word32 model -> Text -> SPIRV.PointerTy -> m ID
+builtinID modelName modelInfo builtinName ptrTy =
+  tryToUse ( _builtin modelName modelInfo builtinName )
     id
     ( \ v -> do
       -- Ensure that relevant pointer type is declared when this builtin is first used.
@@ -435,8 +436,8 @@ globalID :: ( MonadState  CGState   m
             , MonadError  Text      m
             , MonadFresh  ID        m
             )
-         => Text -> Maybe (Text, SPIRV.Stage) -> m ( Maybe (ID, SPIRV.PointerTy) )
-globalID globalName mbStage
+         => Text -> Maybe (Text, SPIRV.ExecutionModel) -> m ( Maybe (ID, SPIRV.PointerTy) )
+globalID globalName mbModel
   = do mbGlobID <- view ( _userGlobal globalName )
        case mbGlobID of
          Nothing
@@ -465,10 +466,10 @@ globalID globalName mbStage
                       void ( typeID $ SPIRV.pointerTy laidOutPtrTy )
                       pure (v, laidOutPtrTy)
                     )
-                case (mbStage, laidOutPtrTy) of
-                  ( Just (stage, stageName), SPIRV.PointerTy storage _ )
+                case (mbModel, laidOutPtrTy) of
+                  ( Just (model, modelName), SPIRV.PointerTy storage _ )
                     | storage == Storage.Input || storage == Storage.Output
-                      -> assign ( _interfaceBinding stage stageName globalName ) ( Just ident )
+                      -> assign ( _interfaceBinding model modelName globalName ) ( Just ident )
                   _   -> pure ()
                 pure ( Just (ident, laidOutPtrTy) )
 

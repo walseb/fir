@@ -48,14 +48,13 @@ import FIR.Prim.Singletons
 import qualified SPIRV.PrimTy as SPIRV
   ( PrimTy )
 import qualified SPIRV.Stage as SPIRV
-  ( Stage(..), StageInfo(..), stageOf )
 
 -------------------------------------------------------------------
 -- | Data (kind) used to keep track of function context at the type-level.
 data FunctionContext lit nat bindings where
   TopLevel :: FunctionContext lit nat bindings
   InFunction :: lit -> bindings -> FunctionContext lit nat bindings
-  InEntryPoint :: lit -> SPIRV.StageInfo nat stage -> FunctionContext lit nat bindings
+  InEntryPoint :: lit -> SPIRV.ExecutionInfo nat em -> FunctionContext lit nat bindings
 
 deriving instance ( Show lit, Show bindings, Show nat )
           => Show ( FunctionContext lit nat bindings )
@@ -82,10 +81,10 @@ instance ( KnownVars args
   known = InFunction
             ( knownValue @fnName )
             ( knownVars  @args   )
-instance ( Known (SPIRV.StageInfo Nat stage) stageInfo
+instance ( Known (SPIRV.ExecutionInfo Nat stage) stageInfo
          , KnownSymbol stageName
          )
-      => Known TLFunctionContext ('InEntryPoint stageName (stageInfo :: SPIRV.StageInfo Nat stage)) where
+      => Known TLFunctionContext ('InEntryPoint stageName (stageInfo :: SPIRV.ExecutionInfo Nat stage)) where
   known = InEntryPoint
             ( knownValue @stageName )
             ( knownValue @stageInfo )
@@ -93,11 +92,11 @@ instance ( Known (SPIRV.StageInfo Nat stage) stageInfo
 -- | Keeps track of an entry point at the type level:
 --
 --   - a type level symbol for the entry point name,
---   - a type level 'SPIRV.StageInfo' recording the stage as well as additional
+--   - a type level 'SPIRV.ExecutionInfo' recording the stage as well as additional
 --     stage information.
 data EntryPointInfo where
   EntryPointInfo
-    :: Symbol -> SPIRV.StageInfo Nat stage -> EntryPointInfo
+    :: Symbol -> SPIRV.ExecutionInfo Nat stage -> EntryPointInfo
 
 -- | State that is used in the user-facing indexed monad (at the type level).
 -- Consists of:
@@ -119,27 +118,27 @@ data ASTState
 type family EntryPointInfos ( s :: ASTState ) :: [ EntryPointInfo ] where
   EntryPointInfos ('ASTState _ _ eps) = eps
 
-type family StageContext ( s :: ASTState ) :: Maybe SPIRV.Stage where
-  StageContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.StageInfo Nat stage)) _)
+type family ExecutionContext ( s :: ASTState ) :: Maybe SPIRV.ExecutionModel where
+  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage)) _)
     = Just stage
-  StageContext' _
+  ExecutionContext' _
     = Nothing
 
-stageContext :: VLFunctionContext -> Maybe (Text, SPIRV.Stage)
-stageContext (InEntryPoint stageName stageInfo) = Just (stageName, SPIRV.stageOf stageInfo)
-stageContext _ = Nothing
+executionContext :: VLFunctionContext -> Maybe (Text, SPIRV.ExecutionModel)
+executionContext (InEntryPoint stageName stageInfo) = Just (stageName, SPIRV.modelOf stageInfo)
+executionContext _ = Nothing
 
-type family StageContext' ( s :: ASTState ) :: SPIRV.Stage where
-  StageContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.StageInfo Nat stage)) _)
+type family ExecutionContext' ( s :: ASTState ) :: SPIRV.ExecutionModel where
+  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage)) _)
     = stage
-  StageContext' _
+  ExecutionContext' _
     = TypeError
         ( 'Text "Cannot access stage context: not within a stage." )
 
-type family StageInfoContext
+type family ExecutionInfoContext
                 ( s :: ASTState )
-              :: Maybe (SPIRV.StageInfo Nat (StageContext' s))
+              :: Maybe (SPIRV.ExecutionInfo Nat (ExecutionContext' s))
                 where
-  StageInfoContext ('ASTState _ ('InEntryPoint _ info) _)
+  ExecutionInfoContext ('ASTState _ ('InEntryPoint _ info) _)
     = Just info
-  StageInfoContext _ = 'Nothing
+  ExecutionInfoContext _ = 'Nothing

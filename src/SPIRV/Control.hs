@@ -6,7 +6,14 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module SPIRV.Control where
+module SPIRV.Control
+  ( Inlineability(..)
+  , SideEffects(..)
+  , FunctionControl
+  , NoFunctionControl, noFunctionControl
+  , SelectionControl(..)
+  )
+  where
 
 -- base
 import Data.Word

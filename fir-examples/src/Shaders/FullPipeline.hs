@@ -27,13 +27,20 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
+-- pipeline input
+
+type VertexInput
+  = '[ Slot 0 0 ':-> V 3 Float
+     , Slot 1 0 ':-> V 3 Float
+     ]
+
+------------------------------------------------
 -- vertex shader
 
 type VertexDefs =
   '[ "in_position"  ':-> Input  '[ Location 0 ] (V 3 Float)
    , "in_colour"    ':-> Input  '[ Location 1 ] (V 3 Float)
    , "out_colour"   ':-> Output '[ Location 0 ] (V 4 Float)
-   , "origin"       ':-> Output '[ Location 1 ] (V 4 Float)
    , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
                           ( Struct '[ "mvp"    ':-> M 4 4 Float
                                     , "origin" ':-> V 4 Float
@@ -42,8 +49,8 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[ ] Vertex
    ]
 
-vertex :: Program VertexDefs ()
-vertex = Program $ entryPoint @"main" @Vertex do
+vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex = shader @"main" @VertexShader @VertexDefs do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
     mvp <- use @(Name "ubo" :.: Name "mvp")
@@ -56,12 +63,15 @@ vertex = Program $ entryPoint @"main" @Vertex do
 type TessellationControlDefs =
   '[ "in_col"     ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
    , "out_col"    ':-> Output     '[ Location 0 ] (Array 3 (V 4 Float))
-   , "main"       ':-> EntryPoint '[ SpacingEqual, VertexOrderCw, OutputVertices 3 ]
+   , "main"       ':-> EntryPoint '[ SpacingEqual
+                                   , VertexOrderCw
+                                   , OutputVertices 3
+                                   ]
                         TessellationControl
    ]
 
-tessellationControl :: Program TessellationControlDefs ()
-tessellationControl = Program $ entryPoint @"main" @TessellationControl do
+tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs
+tessellationControl = shader do
   
   i <- get @"gl_InvocationID"
   in_pos <- use @(Name "gl_in" :.: AnIndex Word32 :.: Name "gl_Position") i
@@ -91,8 +101,8 @@ type TessellationEvaluationDefs =
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
-tessellationEvaluation :: Program TessellationEvaluationDefs ()
-tessellationEvaluation = Program $ entryPoint @"main" @TessellationEvaluation do
+tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs
+tessellationEvaluation = shader do
   ~(Vec3 u v w) <- get @"gl_TessCoord"
   
   in_cols <- get @"in_cols"
@@ -124,8 +134,8 @@ type GeometryDefs =
                           Geometry
    ]
 
-geometry :: Program GeometryDefs ()
-geometry = Program $ entryPoint @"main" @Geometry do
+geometry :: ShaderStage "main" GeometryShader GeometryDefs
+geometry = shader do
   v0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
   v1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
   v2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
@@ -161,8 +171,8 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: Program FragmentDefs ()
-fragment = Program $ entryPoint @"main" @Fragment do
+fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment = shader do
     col    <- get @"in_colour"
     normal <- get @"normal"
     let
@@ -180,17 +190,27 @@ tesePath = "shaders/fullpipeline_tese.spv"
 geomPath = "shaders/fullpipeline_geom.spv"
 fragPath = "shaders/fullpipeline_frag.spv"
 
-compileVertexShader :: IO ( Either Text Text )
+compileVertexShader :: IO ( Either Text () )
 compileVertexShader = compile vertPath [] vertex
 
-compileTessellationControlShader :: IO ( Either Text Text )
+compileTessellationControlShader :: IO ( Either Text () )
 compileTessellationControlShader = compile tescPath [] tessellationControl
 
-compileTessellationEvaluationShader :: IO ( Either Text Text )
+compileTessellationEvaluationShader :: IO ( Either Text () )
 compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
 
-compileGeometryShader :: IO ( Either Text Text )
+compileGeometryShader :: IO ( Either Text () )
 compileGeometryShader = compile geomPath [] geometry
 
-compileFragmentShader :: IO ( Either Text Text )
+compileFragmentShader :: IO ( Either Text () )
 compileFragmentShader = compile fragPath [] fragment
+
+shaderPipeline :: ShaderPipeline
+shaderPipeline
+  = withStructInput @VertexInput @(PatchesOfSize 3)
+  $  StartPipeline
+  :> (vertex                , vertPath)
+  :> (tessellationControl   , tescPath)
+  :> (tessellationEvaluation, tesePath)
+  :> (geometry              , geomPath)
+  :> (fragment              , fragPath)

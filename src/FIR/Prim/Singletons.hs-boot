@@ -14,16 +14,18 @@ import Data.Kind
   ( Type )
 import Data.Typeable
   ( Typeable )
-import GHC.TypeLits
-  ( Symbol, KnownSymbol )
 
 -- fir
 import Data.Binary.Class.Put
   ( Put )
 import Data.Function.Variadic
   ( ListVariadic )
+import Data.Type.Known
+  ( Known )
 import Data.Type.Map
   ( (:->)((:->)) )
+import {-# SOURCE #-} FIR.Prim.Struct
+  ( StructFieldKind )
 import qualified SPIRV.PrimTy   as SPIRV
 import qualified SPIRV.ScalarTy as SPIRV
 
@@ -52,15 +54,24 @@ class ( PrimTy ty
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
 primTy   :: forall ty. PrimTy   ty => SPIRV.PrimTy
 
-data SPrimTyMap :: [Symbol :-> Type] -> Type where
+data SPrimTyMap :: [fld :-> Type] -> Type where
   SNil  :: SPrimTyMap '[]
-  SCons :: (KnownSymbol k, PrimTy a, PrimTyMap as)
+  SCons :: (StructFieldKind fld, Known fld k, PrimTy a, PrimTyMap as)
         => SPrimTyMap ((k ':-> a) ': as)
 type role SPrimTyMap nominal
 
-class PrimTyMap as where
+class StructFieldKind fld => PrimTyMap (as :: [fld :-> Type]) where
   primTyMapSing :: SPrimTyMap as
 
-instance PrimTyMap '[] where
-instance (KnownSymbol k, PrimTy a, PrimTyMap as)
+instance StructFieldKind fld => PrimTyMap ('[] :: [fld :-> Type]) where
+
+instance forall ( fld :: Type           )
+                ( k   :: fld            )
+                ( a   :: Type           )
+                ( as  :: [fld :-> Type] )
+      . ( StructFieldKind fld
+        , Known fld k
+        , PrimTy a
+        , PrimTyMap as
+        )
        => PrimTyMap ((k ':-> a) ': as) where

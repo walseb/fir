@@ -80,7 +80,7 @@ import GHC.TypeLits
 
 -- fir
 import Control.Type.Optic
-  ( Optic(Name_, RTOptic_, ComposeO)
+  ( Optic(Field_, RTOptic_, ComposeO)
   , Gettable, Settable
   )
 import Data.Type.Known
@@ -113,7 +113,7 @@ type family ImageTexel k :: Optic
                               i (ImageData props ops)
                   where
   ImageTexel k
-    = ( ( ( Name_  k :: Optic '[] i (Image props) )
+    = ( ( ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
           `ComposeO`
           ( RTOptic_ :: Optic
                           '[ ImageOperands props ops, ImageCoordinates props ops]
@@ -149,7 +149,7 @@ instance {-# OVERLAPPING #-}
          , imgCds ~ ImageCoordinates props ops
          , imgData ~ ImageData props ops
          )
-      => Gettable ( ( ( Name_ k :: Optic empty i (Image props))
+      => Gettable ( ( ( Field_ k :: Optic empty i (Image props))
                     `ComposeO`
                       ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData )
                     ) :: Optic '[imgOps, imgCds] i imgData
@@ -176,7 +176,7 @@ instance {-# OVERLAPPING #-}
          , imgCds ~ ImageCoordinates props ops
          , imgData ~ ImageData props ops
          )
-      => Settable ( ( ( Name_ k :: Optic empty i (Image props))
+      => Settable ( ( ( Field_ k :: Optic empty i (Image props))
                     `ComposeO`
                       ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData )
                     ) :: Optic '[imgOps, imgCds] i imgData

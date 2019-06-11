@@ -7,7 +7,11 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
-module SPIRV.Builtin where
+module SPIRV.Builtin
+  ( Builtin(..)
+  , readBuiltin
+  )
+  where
 
 -- base
 import Data.Word

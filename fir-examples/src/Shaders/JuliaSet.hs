@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-missing-local-signatures #-}
+
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE NamedWildCards         #-}
@@ -27,6 +29,12 @@ import FIR.Labels
 import Math.Linear
 
 ------------------------------------------------
+-- pipeline input
+
+type VertexInput
+  = '[ Slot 0 0 ':-> V 3 Float ]
+
+------------------------------------------------
 -- vertex shader
 
 type VertexDefs =
@@ -34,8 +42,8 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[            ] Vertex
    ]
 
-vertex :: Program VertexDefs ()
-vertex = Program $ entryPoint @"main" @Vertex do
+vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex = shader do
     ~(Vec3 x y z) <- get @"in_position"
     put @"gl_Position" (Vec4 x y z 1)
 
@@ -48,7 +56,6 @@ type FragmentDefs =
                           ( Struct '[ "mousePos" ':-> V 2 Float ] )
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
-
 
 
 complexSquare :: AST (V 2 Float) -> AST (V 2 Float)
@@ -93,8 +100,8 @@ xWidth, yWidth :: AST Float
 xWidth = recip . fromIntegral $ xSamples
 yWidth = recip . fromIntegral $ ySamples
 
-fragment :: Program FragmentDefs ()
-fragment = Program $ entryPoint @"main" @Fragment do
+fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment = shader do
 
     ~(Vec4 x y _ _) <- #gl_FragCoord
     ~(Vec2 mx my) <- use @(Name "ubo" :.: Name "mousePos")
@@ -154,8 +161,15 @@ vertPath, fragPath :: FilePath
 vertPath = "shaders/juliaset_vert.spv"
 fragPath = "shaders/juliaset_frag.spv"
 
-compileVertexShader :: IO ( Either Text Text )
+compileVertexShader :: IO ( Either Text () )
 compileVertexShader = compile vertPath [] vertex
 
-compileFragmentShader :: IO ( Either Text Text )
+compileFragmentShader :: IO ( Either Text () )
 compileFragmentShader = compile fragPath [] fragment
+
+shaderPipeline :: ShaderPipeline
+shaderPipeline
+  = withStructInput @VertexInput @(Triangle List)
+  $  StartPipeline
+  :> (vertex  , vertPath)
+  :> (fragment, fragPath)

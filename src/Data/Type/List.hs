@@ -11,6 +11,7 @@ module Data.Type.List
   ( type (:++:)
   , Elem
   , Zip, ExactZip
+  , Replicate
   , Length
   , SLength(SZero, SSucc)
   , KnownLength(sLength), sLengthVal
@@ -23,7 +24,7 @@ module Data.Type.List
 import GHC.TypeLits
   ( TypeError, ErrorMessage(..) )
 import GHC.TypeNats
-  ( Nat, type (+) )
+  ( Nat, type (+), type (-) )
 
 -- fir
 import Data.Type.Snoc -- for re-export
@@ -50,6 +51,10 @@ type family ExactZip (msg :: ErrorMessage) (as :: [k]) (bs :: [k]) :: [k] where
   ExactZip _  '[]        '[]       = '[]
   ExactZip msg (a ': as) (b ': bs) = (a,b) ': ExactZip msg as bs
   ExactZip msg _ _ = TypeError msg
+
+type family Replicate (n :: Nat) (a :: k) :: [k] where
+  Replicate 0 _ = '[]
+  Replicate n a = a ': Replicate (n-1) a
 
 type family Length (as :: [k]) :: Nat where
   Length '[]       = 0

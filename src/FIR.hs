@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PackageImports       #-}
+{-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TemplateHaskell      #-}
@@ -109,9 +110,19 @@ module FIR
   , module FIR.Instances.Codensity
   , module FIR.Instances.Images
   , module FIR.Instances.Optics
+  , FIR.Layout.Layout(..)
   , FIR.Layout.Poke(..)
   , FIR.Layout.pokeArray
-  , FIR.Layout.Alignment(..)
+  , FIR.Pipeline.ShaderPipeline(..)
+  , FIR.Pipeline.withVertexInput, FIR.Pipeline.withStructInput
+  , FIR.Pipeline.ShaderPipelineWithInfo(..)
+  , pipelineInfoShaders
+  , FIR.Pipeline.ShaderStage(ShaderStage)
+  , pipelineShaders
+  , FIR.Pipeline.PrimitiveConnectedness(..)
+  , FIR.Pipeline.PrimitiveTopology(..)
+  , FIR.Pipeline.BindingStrides
+  , FIR.Pipeline.VertexLocationDescriptions
   , module FIR.Prim.Array
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
@@ -132,19 +143,33 @@ module FIR
   , SPIRV.Decoration.Decoration(..)
   , SPIRV.ExecutionMode.ExecutionMode(..)
   , SPIRV.ExecutionMode.InputVertices -- synonym of 'OutputVertices' for tessellation evaluation shaders
-  , SPIRV.Stage.Stage(..)
+  , SPIRV.Stage.Vertex
+  , SPIRV.Stage.TessellationControl
+  , SPIRV.Stage.TessellationEvaluation
+  , SPIRV.Stage.Geometry
+  , SPIRV.Stage.Fragment
+  , SPIRV.Stage.Compute
+  , SPIRV.Stage.Shader(..)
   -- image properties
   , SPIRV.Image.Dimensionality(..)
   , SPIRV.Image.HasDepth(..)
   , SPIRV.Image.Arrayness(..)
   , SPIRV.Image.MultiSampling(..)
   , SPIRV.Image.ImageUsage(..)
+  , SPIRV.Image.ImageFormat(ImageFormat)
   , SNorm, UNorm, F, I, UI
+  , pattern SNorm, pattern UNorm
+  , pattern F, pattern I, pattern UI
   , RGBA32, RGBA16, RGBA8
   , RG32, RG16, RG8
   , R32, R16, R8
   , R11G11B10
   , RGB10A2
+  , pattern RGBA32, pattern RGBA16, pattern RGBA8
+  , pattern RG32, pattern RG16, pattern RG8
+  , pattern R32, pattern R16, pattern R8
+  , pattern R11G11B10
+  , pattern RGB10A2
 
   -- known
   , Data.Type.Known.Known(..)
@@ -235,6 +260,7 @@ import FIR.Instances.Codensity
 import FIR.Instances.Images
 import FIR.Instances.Optics
 import FIR.Layout
+import FIR.Pipeline
 import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct
@@ -273,6 +299,10 @@ instance ( DrawableProgram
       => DrawableProgram (Program defs a)
       where
   draw (Program prog) = draw prog
+instance DrawableProgram (Program defs ())
+      => DrawableProgram (FIR.Pipeline.ShaderStage name stage defs)
+      where
+  draw (FIR.Pipeline.ShaderStage prog) = draw prog
 
 -- | Compiler flags.
 data CompilerFlag
@@ -280,20 +310,26 @@ data CompilerFlag
   | Debug  -- ^ Include additional debug instructions, such as source-code line-number annotations.
   deriving ( Prelude.Eq, Show )
 
--- | Compiles a program, saving the SPIR-V assembly at the given filepath.
-compile :: forall defs a. KnownDefinitions defs
-        => FilePath
-        -> [CompilerFlag]
-        -> Program defs a 
-        -> IO ( Either Text Text )
-compile filePath flags (Program program) = case runCodeGen cgContext (toAST program) of
-    Left  err -> Prelude.pure ( Left err )
-    Right bin
-      ->  do  Monad.unless ( NoCode `elem` flags )
-                ( ByteString.writeFile filePath bin )
-              Prelude.pure ( Right "OK" )
-  where cgContext :: CGContext
-        cgContext = (initialCGContext @defs) { debugMode = Debug `elem` flags }
+-- | Functionality for compiling a program, saving the SPIR-V assembly at the given filepath.
+class CompilableProgram prog where
+  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either Text () )
+
+instance KnownDefinitions defs => CompilableProgram (Program defs a) where
+  compile filePath flags (Program program)
+    = case runCodeGen cgContext (toAST program) of
+        Left  err -> Prelude.pure ( Left err )
+        Right bin
+          ->  do  Monad.unless ( NoCode `elem` flags )
+                    ( ByteString.writeFile filePath bin )
+                  Prelude.pure (Right ())
+      where cgContext :: CGContext
+            cgContext = (initialCGContext @defs) { debugMode = Debug `elem` flags }
+
+instance CompilableProgram (Program defs ())
+      => CompilableProgram (FIR.Pipeline.ShaderStage name stage defs)
+      where
+  compile filePath flags (FIR.Pipeline.ShaderStage prog)
+    = compile filePath flags prog
 
 instance TH.Lift Text where
   lift t = [| Text.pack $(TH.lift $ Text.unpack t) |]
@@ -314,16 +350,16 @@ instance TH.Lift Text where
 -- This will compile the vertexShader @vertexShader@ at filepath @vertPath@,
 -- and similarly for the fragment shader.
 -- These can then be loaded into Vulkan shader modules for use in rendering.
-runCompilationsTH :: [ ( Text, IO (Either Text Text) ) ] -> TH.Q TH.Exp
+runCompilationsTH :: [ ( Text, IO (Either Text ()) ) ] -> TH.Q TH.Exp
 runCompilationsTH namedCompilations
   = TH.lift Prelude.=<< TH.runIO (combineCompilations namedCompilations)
     where
-      combineCompilations :: [ ( Text, IO (Either Text Text) ) ] -> IO (Either Text Text)
+      combineCompilations :: [ ( Text, IO (Either Text ()) ) ] -> IO (Either Text ())
       combineCompilations
-        = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right "OK") )
+        = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right ()) )
         . traverse ( uncurry rightStrength )
 
-      combineResult :: Text -> Either Text Text -> Either Text Text -> Either Text Text
+      combineResult :: Text -> Either Text () -> Either Text () -> Either Text ()
       combineResult _    a           (Right _ ) = a
       combineResult name (Right _)   (Left err) = Left (name <> ": " <> err)
       combineResult name (Left errs) (Left err)

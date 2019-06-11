@@ -67,7 +67,8 @@ data PrimTy where
     , usage :: AggregateUsage
     } -> PrimTy
   Struct ::
-    { eltTys :: [(Text, PrimTy, Decorations)]
+    { eltTys :: [( Maybe Text, PrimTy, Decorations )]
+    -- ^ the (optional) field names are only used to annotate the source code
     , decs   :: Decorations
     , usage  :: AggregateUsage
     } -> PrimTy

@@ -1,9 +1,11 @@
+{-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -11,9 +13,13 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module FIR.Prim.Struct
-  ( Struct(..)
+  ( Struct(End, (:&))
+  , LocationSlot(..)
+  , FieldKind(..)
+  , StructFieldKind(fieldKind)
   , headS, tailS
   , foldrStruct
   , traverseStruct
@@ -27,6 +33,8 @@ import Data.Kind
   ( Type )
 import GHC.TypeLits
   ( Symbol )
+import GHC.TypeNats
+  ( Nat )
 import Unsafe.Coerce
   ( unsafeCoerce )
 
@@ -51,7 +59,7 @@ import {-# SOURCE #-} FIR.Prim.Singletons
 
 infixr 4 :&
 -- order *matters* for structs (memory layout!)
-data Struct :: [Symbol :-> Type] -> Type where
+data Struct :: [fld :-> Type] -> Type where
   End  :: Struct '[]
   (:&) :: forall k a as. a -> Struct as -> Struct ((k ':-> a) ': as)
 
@@ -61,8 +69,25 @@ headS (a :& _) = a
 tailS :: Struct ((k ':-> a) ': as) -> Struct as
 tailS (_ :& as) = as
 
+data LocationSlot n where
+  LocationSlot :: n -> n -> LocationSlot n
+
+data FieldKind (fld :: Type) where
+  NamedField    :: FieldKind Symbol
+  LocationField :: FieldKind (LocationSlot Nat)
+  OtherField    :: FieldKind fld
+
+class StructFieldKind fld where
+  fieldKind :: FieldKind fld
+instance StructFieldKind Symbol where
+  fieldKind = NamedField
+instance StructFieldKind (LocationSlot Nat) where
+  fieldKind = LocationField
+instance {-# OVERLAPPABLE #-} StructFieldKind fld where
+  fieldKind = OtherField
+
 instance PrimTyMap as => Eq (Struct as) where
-  s1 == s2 = case primTyMapSing @as of
+  s1 == s2 = case primTyMapSing @_ @as of
     SNil
       -> True
     SCons {}
@@ -71,7 +96,7 @@ instance PrimTyMap as => Eq (Struct as) where
               -> a == b && as == bs
 
 instance PrimTyMap as => Ord (Struct as) where
-  compare s1 s2 = case primTyMapSing @as of
+  compare s1 s2 = case primTyMapSing @_ @as of
     SNil
       -> EQ
     SCons {}
@@ -82,7 +107,7 @@ instance PrimTyMap as => Ord (Struct as) where
                     un -> un
 
 display :: forall as. PrimTyMap as => Struct as -> String
-display s = case primTyMapSing @as of
+display s = case primTyMapSing @_ @as of
   SNil
     -> ""
   SCons {}
@@ -95,37 +120,37 @@ display s = case primTyMapSing @as of
 instance PrimTyMap as => Show (Struct as) where
   show s = "{ " ++ display s ++ " }" 
 
-instance GradedSemigroup Struct [Symbol :-> Type] where
-  type Grade [Symbol :-> Type] Struct as = Struct as
+instance GradedSemigroup (Struct :: [ fld :-> Type ] -> Type) [fld :-> Type] where
+  type Grade [fld :-> Type] (Struct :: [ fld :-> Type ] -> Type) as = Struct as
   type as :<!>: bs = as :++: bs
   (<!>) :: Struct as -> Struct bs -> Struct (as :++: bs)
   End <!> t = t
   (a :& s) <!> t = a :& ( s <!> t )
 
 instance GeneratedGradedSemigroup
-            Struct
-            [Symbol :-> Type]
-            (Symbol :-> Type)
+            (Struct :: [ fld :-> Type ] -> Type)
+            [fld  :-> Type]
+            (fld  :-> Type)
             where
-  type GenType                  Struct (Symbol :-> Type) kv = Value kv
-  type GenDeg [Symbol :-> Type] Struct (Symbol :-> Type) kv = '[ kv ]
-  generator :: forall (kv :: Symbol :-> Type). Value kv -> Struct '[ kv ]
+  type GenType                (Struct :: [ fld :-> Type ] -> Type) (fld :-> Type) kv = Value kv
+  type GenDeg [fld  :-> Type] (Struct :: [ fld :-> Type ] -> Type) (fld :-> Type) kv = '[ kv ]
+  generator :: forall (kv :: fld :-> Type). Value kv -> Struct '[ kv ]
   generator a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv] )
                 --   ^^^^   GHC cannot deduce that kv ~ Key kv ':-> Value kv
                 -- see [GHC trac #7259](https://gitlab.haskell.org/ghc/ghc/issues/7259)
 
 instance FreeGradedSemigroup
-            Struct
-            [Symbol :-> Type]
-            (Symbol :-> Type)
+            (Struct :: [ fld :-> Type ] -> Type)
+            [fld :-> Type]
+            (fld :-> Type)
             where
-  type ValidDegree Struct as = PrimTyMap as
+  type ValidDegree (Struct :: [ fld :-> Type ] -> Type) as = PrimTyMap as
   (>!<) :: forall as bs. (PrimTyMap as, PrimTyMap bs)
         => Struct (as :++: bs) -> ( Struct as, Struct bs )
   (>!<) End = unsafeCoerce ( End, End )
           --    ^^^^^^   GHC cannot deduce (as ~ '[], bs ~ '[]) from (as :++: bs) ~ '[]
   (>!<) (s :& ss)
-    = case primTyMapSing @as of
+    = case primTyMapSing @_ @as of
         SNil
           -> ( End, s :& ss )
         sCons@SCons
@@ -145,7 +170,7 @@ foldrStruct
     => ( forall a. PrimTy a => a -> b -> b )
     -> b -> Struct as -> b
 foldrStruct f b s =
-  case primTyMapSing @as of
+  case primTyMapSing @_ @as of
     SNil
       -> b
     SCons {}

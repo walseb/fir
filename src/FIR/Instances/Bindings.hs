@@ -44,7 +44,7 @@ import Data.Type.Bool
 import Data.Type.Equality
   ( type (==) )
 import GHC.TypeLits
-  ( Symbol, CmpSymbol
+  ( Symbol
   , TypeError
   , ErrorMessage(..)
   )
@@ -61,13 +61,15 @@ import Data.Type.Map
   , Insert, Remove
   , Lookup, Union
   )
+import Data.Type.Ord
+  ( POrd(Compare) )
 import FIR.Binding
   ( Binding, BindingsMap, FunctionType
   , Permission(Read,Write)
   , Var, Fun
   )
 import FIR.Builtin
-  ( StageBuiltins )
+  ( ModelBuiltins )
 import FIR.ASTState
   ( FunctionContext(..), ASTState(..)
   , EntryPointInfo(..)
@@ -77,7 +79,7 @@ import FIR.Prim.Image
   , OperandName(DepthComparison, BaseOperand)
   )
 import FIR.Prim.Singletons
-  ( Integrality )
+  ( Integrality, ScalarTySing )
 import SPIRV.Image
   ( ImageUsage(Sampled, Storage)
   , ImageFormat(ImageFormat), RequiredFormatUsage
@@ -86,14 +88,14 @@ import SPIRV.Image
   , MultiSampling(..)
   , Operand(LODOperand)
   )
-import qualified SPIRV.Image         as Image
+import qualified SPIRV.Image    as Image
   ( Component(Integer, Floating)
   , Operand(..)
   )
-import qualified SPIRV.ScalarTy      as SPIRV
+import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy(Integer, Floating) )
-import qualified SPIRV.Stage         as SPIRV
-  ( Stage, StageInfo, CmpStage )
+import qualified SPIRV.Stage    as SPIRV
+  ( ExecutionModel, ExecutionInfo )
 
 -------------------------------------------------
 -- | Helper type family for impossible sub-cases.
@@ -321,20 +323,20 @@ type family NoFunctionNameConflict
 
 -- | Indexed monadic state at start of entry point body.
 type family EntryPointStartState
-              ( k        :: Symbol                )
-              ( nfo      :: SPIRV.StageInfo Nat s )
-              ( i        :: ASTState              )
+              ( k        :: Symbol                    )
+              ( nfo      :: SPIRV.ExecutionInfo Nat s )
+              ( i        :: ASTState                  )
               :: ASTState where
   EntryPointStartState k nfo ('ASTState i ctx eps)
-    = 'ASTState (Union i (StageBuiltins nfo)) ('InEntryPoint k nfo) eps
+    = 'ASTState (Union i (ModelBuiltins nfo)) ('InEntryPoint k nfo) eps
 
 -- | Insert new entry point at end of current list of entry points.
 --
 -- Checks that no entry point with the same stage and name has already been defined.
 type family AddEntryPoint
-              ( k     :: Symbol                )
-              ( nfo   :: SPIRV.StageInfo Nat s )
-              ( i     :: ASTState              )
+              ( k     :: Symbol                    )
+              ( nfo   :: SPIRV.ExecutionInfo Nat s )
+              ( i     :: ASTState                  )
               :: ASTState where
   AddEntryPoint k nfo ('ASTState i ctx eps)
     = 'ASTState i 'TopLevel (InsertEntryPointInfo ('EntryPointInfo k nfo) eps)
@@ -348,11 +350,11 @@ type family InsertEntryPointInfo
   InsertEntryPointInfo nfo '[]
     = '[ nfo ]
   InsertEntryPointInfo
-    ( 'EntryPointInfo k (nfo  :: SPIRV.StageInfo Nat s1) )
-    ( 'EntryPointInfo l (nfo2 :: SPIRV.StageInfo Nat s2) ': eps )
+    ( 'EntryPointInfo k (nfo  :: SPIRV.ExecutionInfo Nat s1) )
+    ( 'EntryPointInfo l (nfo2 :: SPIRV.ExecutionInfo Nat s2) ': eps )
     = InsertEntryPointInfoWithComparison
-          ( CmpSymbol k l )
-          ( SPIRV.CmpStage s1 s2 )
+          ( k  `Compare` l  )
+          ( s1 `Compare` s2 )
           ( 'EntryPointInfo k nfo  )
           ( 'EntryPointInfo l nfo2 )
           eps
@@ -366,7 +368,7 @@ type family InsertEntryPointInfoWithComparison
             :: [ EntryPointInfo ]
             where
   InsertEntryPointInfoWithComparison EQ EQ
-      ( 'EntryPointInfo k (_ :: SPIRV.StageInfo Nat s ) )
+      ( 'EntryPointInfo k (_ :: SPIRV.ExecutionInfo Nat s ) )
       _
       _
     = TypeError
@@ -387,15 +389,15 @@ type family InsertEntryPointInfoWithComparison
 --   * a function is defined within the entry point,
 --   * the name of a builtin for this entry point is already in use.
 type family ValidEntryPoint
-              ( k        :: Symbol                )
-              ( nfo      :: SPIRV.StageInfo Nat s )
-              ( i        :: ASTState              )
-              ( l        :: BindingsMap           )
+              ( k        :: Symbol                    )
+              ( nfo      :: SPIRV.ExecutionInfo Nat s )
+              ( i        :: ASTState                  )
+              ( l        :: BindingsMap               )
             :: Constraint where
-  ValidEntryPoint k (nfo :: SPIRV.StageInfo Nat s) ('ASTState i _ _) l
+  ValidEntryPoint k (nfo :: SPIRV.ExecutionInfo Nat s) ('ASTState i _ _) l
     = ( NoEntryPointNameConflict k (Lookup k i)
       , ValidLocalBehaviour s (Remove i l)
-      , BuiltinsDoNotAppearBefore s (StageBuiltins nfo) i
+      , BuiltinsDoNotAppearBefore s (ModelBuiltins nfo) i
       )
 
 type family NoEntryPointNameConflict
@@ -408,13 +410,13 @@ type family NoEntryPointNameConflict
     )
   NoEntryPointNameConflict _ 'Nothing = ()
 
-type ValidLocalBehaviour (s :: SPIRV.Stage) (l :: BindingsMap)
+type ValidLocalBehaviour (s :: SPIRV.ExecutionModel) (l :: BindingsMap)
   = ( ValidLocalBehaviour' s l l :: Constraint )
 
 type family ValidLocalBehaviour'
-              ( s     :: SPIRV.Stage )
-              ( l     :: BindingsMap )
-              ( l_rec :: BindingsMap )
+              ( s     :: SPIRV.ExecutionModel )
+              ( l     :: BindingsMap          )
+              ( l_rec :: BindingsMap          )
               :: Constraint where
   ValidLocalBehaviour' _ _ '[]                         = ()
   ValidLocalBehaviour' s l ((_ ':-> Var _ _) ': l_rec) = ValidLocalBehaviour' s l l_rec
@@ -426,20 +428,20 @@ type family ValidLocalBehaviour'
     )
 
 type family BuiltinsDoNotAppearBefore
-              (s        :: SPIRV.Stage )
-              (builtins :: BindingsMap )
-              (i        :: BindingsMap )
+              ( s        :: SPIRV.ExecutionModel )
+              ( builtins :: BindingsMap          )
+              ( i        :: BindingsMap          )
               :: Constraint where
   BuiltinsDoNotAppearBefore _ '[]                _  = ()
   BuiltinsDoNotAppearBefore s ((b ':-> _) ': bs) i 
     = BuiltinDoesNotAppearBefore s b bs i (Lookup b i)
 
 type family BuiltinDoesNotAppearBefore
-              ( s      :: SPIRV.Stage   )
-              ( b      :: Symbol        )
-              ( bs     :: BindingsMap   )
-              ( i      :: BindingsMap   )
-              ( lookup :: Maybe Binding )
+              ( s   :: SPIRV.ExecutionModel )
+              ( b   :: Symbol               )
+              ( bs  :: BindingsMap          )
+              ( i   :: BindingsMap          )
+              ( lkp :: Maybe Binding        )
               :: Constraint where
   BuiltinDoesNotAppearBefore s _ bs i 'Nothing  = BuiltinsDoNotAppearBefore s bs i
   BuiltinDoesNotAppearBefore s b _  i ('Just _)
@@ -493,10 +495,10 @@ type family ValidImageRead
   ValidImageRead
     ( Properties coords res _ depth _ ms usage fmt )
     ops
-      = ( AllowedIndexing (Integrality coords) ms usage
-        , CheckDepthTest (DepthComparison `Elem` ops) (Integrality coords) depth
-        , CheckLODOperands (Integrality coords) ops
-        , CompatibleFormat (Integrality res) usage fmt
+      = ( AllowedIndexing (Integrality (ScalarTySing coords)) ms usage
+        , CheckDepthTest (DepthComparison `Elem` ops) (Integrality (ScalarTySing coords)) depth
+        , CheckLODOperands (Integrality (ScalarTySing coords)) ops
+        , CompatibleFormat (Integrality (ScalarTySing res)) usage fmt
         )
 
 -- | Check that we can write to an image.
@@ -526,8 +528,8 @@ type family ValidImageWrite
   ValidImageWrite
     ( Properties coords res _ _ _ _ usage fmt )
     ops
-      = ( IntegralIndexing (Integrality coords)
-        , CompatibleFormat (Integrality res) usage fmt
+      = ( IntegralIndexing (Integrality (ScalarTySing coords))
+        , CompatibleFormat (Integrality (ScalarTySing res)) usage fmt
         , AllowedWriteOps ops
         )
 
@@ -715,7 +717,7 @@ type family AssertProvidedSymbol ( k :: Symbol ) (x :: l) :: l where
       x
 
 -- | Check that a shader stage is not ambiguous.
-type family ProvidedStage ( s :: SPIRV.Stage ) :: Constraint where
+type family ProvidedStage ( s :: SPIRV.ExecutionModel ) :: Constraint where
   ProvidedStage s =
     Assert
       ( TypeError

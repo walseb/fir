@@ -1,17 +1,20 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeFamilies          #-}
 
 module SPIRV.ScalarTy
-  ( Width(..), width
+  ( Width(..), width, WidthToNat
   , Signedness(..), signedness
-  , ScalarTy(..)
+  , ScalarTy(..), scalarWidth, ScalarWidth
   ) where
 
 -- base
 import Data.Word
   ( Word32 )
+import GHC.TypeNats
+  ( Nat )
 import Prelude
   hiding ( Integer, Floating )
 
@@ -35,6 +38,12 @@ width W16 = 16
 width W32 = 32
 width W64 = 64
 
+type family WidthToNat (width :: Width) :: Nat where
+  WidthToNat W8  = 8
+  WidthToNat W16 = 16
+  WidthToNat W32 = 32
+  WidthToNat W64 = 64
+
 data Signedness
   = Unsigned
   | Signed
@@ -55,3 +64,11 @@ data ScalarTy where
   Integer  :: Signedness -> Width -> ScalarTy
   Floating ::               Width -> ScalarTy
   deriving ( Show, Eq, Ord )
+
+scalarWidth :: ScalarTy -> Width
+scalarWidth (Integer _ w) = w
+scalarWidth (Floating  w) = w
+
+type family ScalarWidth (sTy :: ScalarTy) :: Width where
+  ScalarWidth (Integer _ w) = w
+  ScalarWidth (Floating  w) = w

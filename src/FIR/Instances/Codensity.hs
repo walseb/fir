@@ -38,7 +38,7 @@ module FIR.Instances.Codensity
     -- *** Functions
   , fundef
     -- *** Entry points
-  , entryPoint
+  , entryPoint, shader
 
     -- ** Optics
     -- *** General functions: use, assign, modifying
@@ -86,14 +86,14 @@ import Prelude hiding
   , Functor(..)
   , Applicative(..)
   )
+import Data.Int
+  ( Int32 )
 import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Type.Equality
   ( type (==) )
-import Data.Word
-  ( Word16 )
 import qualified GHC.Stack
 import GHC.TypeLits
   ( Symbol, KnownSymbol
@@ -117,14 +117,30 @@ import Data.Type.Known
   ( Known )
 import Data.Type.List
   ( KnownLength(sLength), Postpend )
+import Data.Type.Map
+  ( (:->), Union )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal,toAST,fromAST)
   , primOp
   )
+import FIR.ASTState
+  ( FunctionContext(..), ASTState(ASTState)
+  , ExecutionContext, EntryPointInfos
+  , EntryPointInfo(EntryPointInfo)
+  )
 import FIR.Binding
-  ( FunctionType, Var
+  ( BindingsMap
+  , FunctionType, Var
   , Permissions
+  )
+import FIR.Builtin
+  ( ModelBuiltins )
+import FIR.Definition
+  ( Definition
+  , KnownDefinitions
+  , DefinitionEntryPoints
+  , StartBindings, EndBindings
   )
 import FIR.Instances.AST
   ( WhichConversion(conversion) ) -- plus instances
@@ -144,12 +160,14 @@ import FIR.Instances.Optics
   ( User, Assigner, KnownOptic, opticSing
   , StatefulOptic
   )
-import FIR.ASTState
-  ( FunctionContext(..), ASTState(ASTState), StageContext, EntryPointInfos )
+import FIR.Pipeline
+  ( ShaderStage(ShaderStage) )
 import FIR.Prim.Image
   ( ImageProperties, ImageData, ImageCoordinates )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
+import FIR.Program
+  ( Program(Program) )
 import FIR.Synonyms
   ( pattern NoOperands )
 import Math.Algebra.Class
@@ -175,8 +193,7 @@ import Math.Logic.Class
   )
 import qualified SPIRV.PrimOp as SPIRV
   ( GeomPrimOp(..) )
-import SPIRV.Stage
-  ( Stage(..), StageInfo )
+import qualified SPIRV.Stage  as SPIRV
 
 --------------------------------------------------------------------------
 -- * Monadic control operations
@@ -277,22 +294,22 @@ fundef :: forall name as b j_bds i r.
 fundef = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
 
 
--- | Define a new entry point (or shader stage).
+-- | Define a new entry point.
 --
 -- Built-in variables for the relevant shader stage are made available in the entry point body.
 --
 -- Type-level arguments:
 --
 -- *@name@: name of entry point,
--- *@stage@: entry point 'SPIRV.Stage.Stage',
--- *@stageInfo@: entry point 'SPIRV.Stage.StageInfo',
+-- *@stage@: entry point 'SPIRV.Stage.ExecutionModel',
+-- *@stageInfo@: entry point 'SPIRV.Stage.ExecutionInfo' (usually inferred),
 -- *@j_bds@: bindings state at end of entry point body (usually inferred),
 -- *@i@: state at start of entry point body (usually inferred).
 entryPoint :: forall name stage stageInfo j_bds i.
              ( GHC.Stack.HasCallStack
              , KnownSymbol name
-             , Known Stage stage
-             , Known (StageInfo Nat stage) stageInfo
+             , Known SPIRV.ExecutionModel stage
+             , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
              , ValidEntryPoint name stageInfo i j_bds
              )
            => Codensity AST
@@ -302,6 +319,47 @@ entryPoint :: forall name stage stageInfo j_bds i.
                 ( AST () := AddEntryPoint name stageInfo i )
                 i
 entryPoint = fromAST ( Entry @name @stage @stageInfo @j_bds @i Proxy Proxy ) . toAST
+
+
+-- | Define a new shader stage.
+--
+-- This function provides a convenience wrapper around 'entryPoint',
+-- suitable for creating a program containing a single shader and
+-- no top-level functions.
+--
+-- Type-level arguments:
+--
+-- *@name@: name of entry point,
+-- *@shader@: which shader stage to use,
+-- *@defs@: top-level inputs/outputs of shader stage,
+-- *@stage@: entry point 'SPIRV.Stage.ExecutionModel' (deduced from @shader@),
+-- *@stageInfo@: entry point 'SPIRV.Stage.StageInfo' (usually inferred),
+-- *@j_bds@: bindings state at end of shader stage body (usually inferred).
+shader :: forall
+            ( name      :: Symbol                        )
+            ( shader    :: SPIRV.Shader                  )
+            ( defs      :: [Symbol :-> Definition]       )
+            ( stage     :: SPIRV.ExecutionModel          )
+            ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
+            ( j_bds     :: BindingsMap                   )
+       . ( DefinitionEntryPoints defs ~ '[ 'EntryPointInfo name stageInfo ]
+         , StartBindings defs ~ EndBindings defs
+         , GHC.Stack.HasCallStack
+         , KnownDefinitions defs
+         , KnownSymbol name
+         , stage ~ 'SPIRV.Stage ('SPIRV.ShaderStage shader)
+         , Known SPIRV.Shader shader
+         , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
+         , ValidEntryPoint name stageInfo ('ASTState (EndBindings defs) 'TopLevel '[]) j_bds
+         )
+       => Codensity AST
+          ( AST () := 'ASTState j_bds (InEntryPoint name stageInfo) '[] )
+          ( 'ASTState (Union (StartBindings defs) (ModelBuiltins stageInfo)) (InEntryPoint name stageInfo) '[] )
+       -> ShaderStage name shader defs
+shader
+  = ShaderStage @name @shader @defs
+  . Program @defs @()
+  . entryPoint @name @stage @stageInfo @j_bds
 
 -- Optics.
 
@@ -421,13 +479,13 @@ imageWrite = assign @(ImageTexel k) NoOperands
 
 -- | Geometry shader: write the current output values at the current vertex index.
 emitVertex :: forall (i :: ASTState).
-              ( StageContext i ~ Just Geometry )
+              ( ExecutionContext i ~ Just SPIRV.Geometry )
            => Codensity AST ( AST () := i ) i
 emitVertex = primOp @i @SPIRV.EmitGeometryVertex
 
 -- | Geometry shader: end the current primitive and pass to the next one.
 endPrimitive :: forall (i :: ASTState).
-                ( StageContext i ~ Just Geometry )
+                ( ExecutionContext i ~ Just SPIRV.Geometry )
              =>  Codensity AST ( AST () := i ) i
 endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
 
@@ -543,7 +601,7 @@ instance ( ScalarTy a, Ord a, Logic a ~ Bool
          , x ~ (AST a := i)
          )
   => Ord (Codensity AST x i) where
-  type Ordering (Codensity AST x i) = Codensity AST (AST Word16 := i) i
+  type Ordering (Codensity AST x i) = Codensity AST (AST Int32 := i) i
   compare = ixLiftA2 compare
   (<=) = ixLiftA2 (<=)
   (>=) = ixLiftA2 (>=)

@@ -68,14 +68,14 @@ import Prelude hiding
   , Applicative(..)
   )
 import qualified Prelude
+import Data.Int
+  ( Int32 )
 import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Type.Equality
   ( type (==) )
-import Data.Word
-  ( Word16 )
 import GHC.TypeLits
   ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(..)
@@ -190,7 +190,7 @@ instance ( PrimTy a, Eq a, Logic a ~ Bool )
 
 instance ( ScalarTy a, Ord a, Logic a ~ Bool ) 
   => Ord (AST a) where
-  type Ordering (AST a) = AST Word16
+  type Ordering (AST a) = AST Int32
   compare = error "todo"
   (<=) = primOp @a @SPIRV.LTE
   (>=) = primOp @a @SPIRV.GTE
@@ -334,52 +334,52 @@ class KnownOptic optic => KnownASTOptic astoptic optic | astoptic -> optic where
 instance ( empty ~ '[]
          , KnownSymbol k
          , r ~ AST a
-         , KnownOptic (Name_ k :: Optic empty s a)
+         , KnownOptic (Field_ k :: Optic empty s a)
          )
-       => KnownASTOptic (Name_ k :: Optic empty (AST s) r) (Name_ k :: Optic '[] s a)
+       => KnownASTOptic (Field_ k :: Optic empty (AST s) r) (Field_ k :: Optic '[] s a)
        where
 instance ( KnownSymbol k
          , empty ~ '[]
-         , Gettable (Name_ k :: Optic '[] s a)
+         , Gettable (Field_ k :: Optic '[] s a)
          , r ~ AST a
          )
-      => Gettable (Name_ k :: Optic empty (AST s) r)
+      => Gettable (Field_ k :: Optic empty (AST s) r)
       where
 instance ( KnownSymbol k
          , empty ~ '[]
-         , Gettable (Name_ k :: Optic '[] s a)
-         , ReifiedGetter (Name_ k :: Optic '[] s a)
+         , Gettable (Field_ k :: Optic '[] s a)
+         , ReifiedGetter (Field_ k :: Optic '[] s a)
          , ListVariadic '[] a ~ a
-         , KnownOptic (Name_ k :: Optic '[] s a)
+         , KnownOptic (Field_ k :: Optic '[] s a)
          , r ~ AST a
          )
-      => ReifiedGetter (Name_ k :: Optic empty (AST s) r)
+      => ReifiedGetter (Field_ k :: Optic empty (AST s) r)
       where
   view = fromAST
        $ View
             sLength
-            ( opticSing @(Name_ k :: Optic '[] s a) )
+            ( opticSing @(Field_ k :: Optic '[] s a) )
 instance ( KnownSymbol k
          , empty ~ '[]
-         , Settable (Name_ k :: Optic '[] s a)
+         , Settable (Field_ k :: Optic '[] s a)
          , r ~ AST a
          )
-      => Settable (Name_ k :: Optic empty (AST s) r)
+      => Settable (Field_ k :: Optic empty (AST s) r)
       where
 instance ( KnownSymbol k
          , empty ~ '[]
-         , Settable (Name_ k :: Optic '[] s a)
-         , ReifiedSetter (Name_ k :: Optic '[] s a)
+         , Settable (Field_ k :: Optic '[] s a)
+         , ReifiedSetter (Field_ k :: Optic '[] s a)
          , ListVariadic '[] s ~ s
-         , KnownOptic (Name_ k :: Optic '[] s a)
+         , KnownOptic (Field_ k :: Optic '[] s a)
          , r ~ AST a
          )
-      => ReifiedSetter (Name_ k :: Optic empty (AST s) r)
+      => ReifiedSetter (Field_ k :: Optic empty (AST s) r)
       where
   set = fromAST
        $ Set
             sLength
-            ( opticSing @(Name_ k :: Optic '[] s a) )
+            ( opticSing @(Field_ k :: Optic '[] s a) )
 
 -- *** Run-time index
 
@@ -439,52 +439,52 @@ instance ( Integral ty
 instance ( empty ~ '[]
          , KnownNat i
          , r ~ AST a
-         , KnownOptic (Index_ i :: Optic empty s a)
+         , KnownOptic (Field_ i :: Optic empty s a)
          )
-       => KnownASTOptic (Index_ i :: Optic empty (AST s) r) (Index_ i :: Optic '[] s a)
+       => KnownASTOptic (Field_ i :: Optic empty (AST s) r) (Field_ i :: Optic '[] s a)
        where
 instance ( KnownNat i
          , empty ~ '[]
-         , Gettable (Index_ i :: Optic '[] s a)
+         , Gettable (Field_ i :: Optic '[] s a)
          , r ~ AST a
          )
-      => Gettable (Index_ i :: Optic empty (AST s) r)
+      => Gettable (Field_ i :: Optic empty (AST s) r)
       where
 instance ( KnownNat i
          , empty ~ '[]
-         , Gettable (Index_ i :: Optic '[] s a)
-         , ReifiedGetter (Index_ i :: Optic '[] s a)
+         , Gettable (Field_ i :: Optic '[] s a)
+         , ReifiedGetter (Field_ i :: Optic '[] s a)
          , ListVariadic '[] a ~ a
-         , KnownOptic (Index_ i :: Optic '[] s a)
+         , KnownOptic (Field_ i :: Optic '[] s a)
          , r ~ AST a
          )
-      => ReifiedGetter (Index_ i :: Optic empty (AST s) r)
+      => ReifiedGetter (Field_ i :: Optic empty (AST s) r)
       where
   view = fromAST
        $ View
             sLength
-            ( opticSing @(Index_ i :: Optic '[] s a) )
+            ( opticSing @(Field_ i :: Optic '[] s a) )
 instance ( KnownNat i
          , empty ~ '[]
-         , Settable (Index_ i :: Optic '[] s a)
+         , Settable (Field_ i :: Optic '[] s a)
          , r ~ AST a
          )
-      => Settable (Index_ i :: Optic empty (AST s) r)
+      => Settable (Field_ i :: Optic empty (AST s) r)
       where
 instance ( KnownNat i
          , empty ~ '[]
-         , Settable (Index_ i :: Optic '[] s a)
-         , ReifiedSetter (Index_ i :: Optic '[] s a)
+         , Settable (Field_ i :: Optic '[] s a)
+         , ReifiedSetter (Field_ i :: Optic '[] s a)
          , ListVariadic '[] s ~ s
-         , KnownOptic (Index_ i :: Optic '[] s a)
+         , KnownOptic (Field_ i :: Optic '[] s a)
          , r ~ AST a
          )
-      => ReifiedSetter (Index_ i :: Optic empty (AST s) r)
+      => ReifiedSetter (Field_ i :: Optic empty (AST s) r)
       where
   set = fromAST
        $ Set
             sLength
-            ( opticSing @(Index_ i :: Optic '[] s a) )
+            ( opticSing @(Field_ i :: Optic '[] s a) )
 
 
 -- ** Composite instances
@@ -552,34 +552,34 @@ instance KnownNat m => GeneratedGradedSemigroup (AST (M m 0 a)) Nat () where
   type GenDeg Nat (AST (M m 0 a)) () '() = 1
   generator = error "unreachable"
 
-instance Contained (AST (Struct as)) where
-  type Container (AST (Struct as)) = (AST (Struct '[]))
-  type DegreeOf  (AST (Struct as)) = as
-  type LabelOf   (AST (Struct as)) (Name_  k :: Optic _ (AST (Struct as)) (AST a))
+instance Contained (AST (Struct (as :: [Symbol :-> Type]))) where
+  type Container (AST (Struct (as :: [Symbol :-> Type]))) = (AST (Struct ('[] :: [Symbol :-> Type])))
+  type DegreeOf  (AST (Struct (as :: [Symbol :-> Type]))) = as
+  type LabelOf   (AST (Struct (as :: [Symbol :-> Type]))) (Field_ (k :: Symbol) :: Optic _ (AST (Struct as)) (AST a))
     = k ':-> a
-  type LabelOf   (AST (Struct as)) (Index_ i :: Optic _ (AST (Struct as)) (AST a))
+  type LabelOf   (AST (Struct (as :: [Symbol :-> Type]))) (Field_ (i :: Nat)    :: Optic _ (AST (Struct as)) (AST a))
     = Key ( StructElemFromIndex
               (Text "key: ")
               i as i as
           )
       ':-> a
-  type Overlapping (AST (Struct as)) k i
+  type Overlapping (AST (Struct (as :: [Symbol :-> Type]))) k i
     = k == Key (StructElemFromIndex (Text "key: ") i as i as)
 
-instance GradedSemigroup (AST (Struct '[])) [Symbol :-> Type] where
-  type Grade [Symbol :-> Type] (AST (Struct '[])) as = AST (Struct as)
+instance GradedSemigroup (AST (Struct ('[] :: [Symbol :-> Type]))) [Symbol :-> Type] where
+  type Grade [Symbol :-> Type] (AST (Struct ('[] :: [Symbol :-> Type]))) as = AST (Struct as)
   type as :<!>: bs = as :++: bs
   (<!>) :: AST (Struct as) -> AST (Struct bs) -> AST (Struct (as :++: bs))
   (<!>) = fromAST GradedMappend
 
 instance GeneratedGradedSemigroup
-            (AST (Struct '[]))
+            (AST (Struct ('[] :: [Symbol :-> Type])))
             [Symbol :-> Type]
             (Symbol :-> Type)
             where
-  type GenType (AST (Struct '[])) (Symbol :-> Type) kv
+  type GenType (AST (Struct ('[] :: [Symbol :-> Type]))) (Symbol :-> Type) kv
     = TypeError ( Text "Internal error: superfluous construction of size 1 struct." )
-  type GenDeg [Symbol :-> Type] (AST (Struct '[])) (Symbol :-> Type) kv = '[ kv ]
+  type GenDeg [Symbol :-> Type] (AST (Struct ('[] :: [Symbol :-> Type]))) (Symbol :-> Type) kv = '[ kv ]
   generator = error "unreachable"
 
 instance Contained (AST (Array n a)) where
@@ -621,8 +621,8 @@ instance (PrimTy a, KnownNat n) => MonoContained (AST (V n a)) where
 instance (PrimTy a, KnownNat n, KnownNat m) => MonoContained (AST (M m n a)) where
   type MonoType (AST (M m n a)) = AST a
   setAll a _ = pureAST a
-instance MonoContained (Struct as) => MonoContained (AST (Struct as)) where
-  type MonoType (AST (Struct as)) = AST (MonoType (Struct as))
+instance MonoContained (Struct as) => MonoContained (AST (Struct (as :: [Symbol :-> Type]))) where
+  type MonoType (AST (Struct (as :: [Symbol :-> Type]))) = AST (MonoType (Struct as))
   setAll = error "TODO: structure 'setAll'"
 
 -- *** Compound instance resolution

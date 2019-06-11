@@ -31,7 +31,7 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
-  ( Poke(..), Alignment(Packed, Extended), pokeArray )
+  ( Poke(..), Layout(Base, Extended, Locations), pokeArray )
 
 -- fir-examples
 import Vulkan.Memory
@@ -41,22 +41,26 @@ import Vulkan.Monad
 
 createVertexBuffer
   :: forall a m.
-     ( MonadManaged m, Poke a Packed )
+     ( MonadManaged m, Poke a Locations )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
   -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createVertexBuffer = createBufferFromList @a @Packed Vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+createVertexBuffer
+  = createBufferFromList @a @Locations
+      Vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
 
 
 createIndexBuffer
   :: forall a m.
-     ( MonadManaged m, Poke a Packed )
+     ( MonadManaged m, Poke a Base )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
   -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createIndexBuffer = createBufferFromList @a @Packed Vulkan.VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+createIndexBuffer
+  = createBufferFromList @a @Base
+      Vulkan.VK_BUFFER_USAGE_INDEX_BUFFER_BIT
 
 
 createBufferFromList

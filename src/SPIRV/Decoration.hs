@@ -10,7 +10,12 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
-module SPIRV.Decoration where
+module SPIRV.Decoration
+  ( Decoration(..)
+  , Decorations
+  , isLayoutDecoration
+  )
+  where
 
 -- base
 import Data.Word
@@ -35,7 +40,7 @@ data Decoration a
   = RelaxedPrecision
   | SpecId a
   | Block
-  | BufferBlock
+  --   | BufferBlock -- deprecated
   | RowMajor
   | ColMajor
   | ArrayStride  a
@@ -82,7 +87,7 @@ data Decoration a
 isLayoutDecoration :: Decoration a -> Bool
 isLayoutDecoration dec = case dec of
   Block          -> True
-  BufferBlock    -> True
+  --BufferBlock    -> True
   RowMajor       -> True
   ColMajor       -> True
   ArrayStride  _ -> True
@@ -98,7 +103,7 @@ instance Put (Decoration Word32) where
   put RelaxedPrecision         = put @Word32  0
   put (SpecId i)               = put @Word32  1 *> put i
   put Block                    = put @Word32  2
-  put BufferBlock              = put @Word32  3
+  --put BufferBlock              = put @Word32  3
   put RowMajor                 = put @Word32  4
   put ColMajor                 = put @Word32  5
   put (ArrayStride  i)         = put @Word32  6 *> put i
@@ -167,8 +172,8 @@ instance Known Nat i => Known (Decoration Nat) (SpecId i) where
   known = SpecId ( knownValue @i )
 instance Known (Decoration Nat) Block where
   known = Block
-instance Known (Decoration Nat) BufferBlock where
-  known = BufferBlock
+--instance Known (Decoration Nat) BufferBlock where
+--  known = BufferBlock
 instance Known (Decoration Nat) RowMajor where
   known = RowMajor
 instance Known (Decoration Nat) ColMajor where

@@ -65,21 +65,31 @@ import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Storage       as SPIRV
   ( StorageClass(..) )
 import SPIRV.Stage
-  ( StageInfo(..) )
+  ( TessellationMode(..)
+  , GeometryInputMode(..)
+  , ShaderInfo(..)
+  , ExecutionInfo(..)
+  , VertexInfo
+  , TessellationControlInfo
+  , TessellationEvaluationInfo
+  , GeometryInfo
+  , FragmentInfo
+  , ComputeInfo
+  )
 
 --------------------------------------------------------------------------
 
-type StageBuiltins (info :: StageInfo Nat stage)
-  = ( InsertionSort ( StageBuiltins' info ) :: BindingsMap )
+type ModelBuiltins (info :: ExecutionInfo Nat stage)
+  = ( InsertionSort ( ModelBuiltins' info ) :: BindingsMap )
 
-type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding ] where
-  StageBuiltins' VertexInfo
+type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Binding ] where
+  ModelBuiltins' VertexInfo
     = '[ "gl_VertexID"       ':-> Var R Word32
        , "gl_InstanceID"     ':-> Var R Word32
        , "gl_Position"       ':-> Var W ( V 4 Float )
        , "gl_PointSize"      ':-> Var W Float
        ]
-  StageBuiltins' (TessellationControlInfo inputSize outputSize)
+  ModelBuiltins' (TessellationControlInfo inputSize outputSize _)
     = '[ "gl_InvocationID"   ':-> Var R Word32
        , "gl_PatchVertices"  ':-> Var R Word32
        , "gl_PrimitiveID"    ':-> Var R Word32
@@ -102,7 +112,7 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
        , "gl_TessLevelOuter" ':-> Var W ( Array 4 Float )
        , "gl_TessLevelInner" ':-> Var W ( Array 2 Float )
        ]
-  StageBuiltins' (TessellationEvaluationInfo inputSize)
+  ModelBuiltins' (TessellationEvaluationInfo inputSize _)
     = '[ "gl_TessCoord"      ':-> Var R ( V 3 Float )
        , "gl_PatchVertices"  ':-> Var R Word32
        , "gl_PrimitiveID"    ':-> Var R Word32
@@ -117,7 +127,7 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
        , "gl_Position"       ':-> Var W ( V 4 Float )
        , "gl_PointSize"      ':-> Var W Float
        ]
-  StageBuiltins' (GeometryInfo inputSize)
+  ModelBuiltins' (GeometryInfo inputSize _)
     = '[ "gl_PrimitiveID"    ':-> Var R Word32
        , "gl_InvocationID"   ':-> Var R Word32
        , "gl_in"
@@ -133,7 +143,7 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
        , "gl_Layer"          ':-> Var W Word32
        , "gl_ViewportIndex"  ':-> Var W Word32
        ]
-  StageBuiltins' FragmentInfo
+  ModelBuiltins' FragmentInfo
     = '[ "gl_Layer"          ':-> Var R Word32
        , "gl_ViewportIndex"  ':-> Var R Word32
        , "gl_FragCoord"      ':-> Var R ( V 4 Float )
@@ -143,7 +153,7 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
        , "gl_SamplePosition" ':-> Var R ( V 2 Float )
        , "gl_FragDepth"      ':-> Var W Float
        ]
-  StageBuiltins' GLComputeInfo
+  ModelBuiltins' ComputeInfo
     = '[ "gl_NumWorkgroups"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupSize"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupID"          ':-> Var R ( V 3 Word32 )
@@ -151,7 +161,8 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
        , "gl_GlobalInvocationID"   ':-> Var R ( V 3 Word32 )
        , "gl_LocalInvocationIndex" ':-> Var R Word32
        ]
-  StageBuiltins' KernelInfo
+  {-
+  ModelBuiltins' KernelInfo
     = '[ "gl_NumWorkgroups"             ':-> Var R Word32
        , "gl_WorkgroupSize"             ':-> Var R Word32
        , "gl_WorkgroupID"               ':-> Var R Word32
@@ -170,28 +181,34 @@ type family StageBuiltins' (info :: StageInfo Nat stage) :: [ Symbol :-> Binding
        , "gl_SubgroupID"                ':-> Var R Word32
        , "gl_SubgroupLocalInvocationID" ':-> Var R Word32
        ]
+  -}
 
-stageBuiltins :: StageInfo Word32 stage -> [ (Text, SPIRV.PointerTy) ]
-stageBuiltins VertexInfo
-  = builtinPointer ( knownInterface @(StageBuiltins' VertexInfo) )
-stageBuiltins (TessellationControlInfo inputSize outputSize)
+shaderBuiltins :: ShaderInfo Word32 shader -> [ (Text, SPIRV.PointerTy) ]
+shaderBuiltins VertexShaderInfo
+  = builtinPointer ( knownInterface @(ModelBuiltins' VertexInfo) )
+shaderBuiltins (TessellationControlShaderInfo inputSize outputSize _)
   = case ( someNatVal (fromIntegral inputSize), someNatVal (fromIntegral outputSize) ) of
       ( SomeNat ( _ :: Proxy inputSize ), SomeNat ( _ :: Proxy outputSize ) )
-        -> builtinPointer ( knownInterface @(StageBuiltins' (TessellationControlInfo inputSize outputSize)) )
-stageBuiltins (TessellationEvaluationInfo inputSize)
+        -> builtinPointer ( knownInterface @(ModelBuiltins' (TessellationControlInfo inputSize outputSize 'Nothing)) )
+shaderBuiltins (TessellationEvaluationShaderInfo inputSize _)
   = case someNatVal (fromIntegral inputSize) of
       SomeNat ( _ :: Proxy inputSize )
-        -> builtinPointer ( knownInterface @(StageBuiltins' (TessellationEvaluationInfo inputSize)) )
-stageBuiltins (GeometryInfo inputSize)
+        -> builtinPointer ( knownInterface @(ModelBuiltins' (TessellationEvaluationInfo inputSize 'ModeTriangles)) ) -- dummy mode that is not used
+shaderBuiltins (GeometryShaderInfo inputSize _)
   = case someNatVal (fromIntegral inputSize) of
       SomeNat ( _ :: Proxy inputSize )
-        -> builtinPointer ( knownInterface @(StageBuiltins' (GeometryInfo inputSize)) )
-stageBuiltins FragmentInfo
-  = builtinPointer ( knownInterface @(StageBuiltins' FragmentInfo) )
-stageBuiltins GLComputeInfo
-  = builtinPointer ( knownInterface @(StageBuiltins' GLComputeInfo) )
-stageBuiltins KernelInfo
-  = builtinPointer ( knownInterface @(StageBuiltins' KernelInfo) )
+        -> builtinPointer ( knownInterface @(ModelBuiltins' (GeometryInfo inputSize 'InputModeTriangles)) ) -- another dummy
+shaderBuiltins FragmentShaderInfo
+  = builtinPointer ( knownInterface @(ModelBuiltins' FragmentInfo) )
+shaderBuiltins ComputeShaderInfo
+  = builtinPointer ( knownInterface @(ModelBuiltins' ComputeInfo) )
+
+modelBuiltins :: ExecutionInfo Word32 model -> [ (Text, SPIRV.PointerTy) ]
+modelBuiltins (ShaderExecutionInfo shaderInfo) = shaderBuiltins shaderInfo
+{-
+modelBuiltins KernelInfo
+  = builtinPointer ( knownInterface @(ModelBuiltins' KernelInfo) )
+-}
 
 builtinPointer
     :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
@@ -206,7 +223,7 @@ builtinPointer = map
          in case runExcept $ inferPointerLayout usage Set.empty (SPIRV.PointerTy storage ty) of
               Left err ->
                 error
-                  ( "'stageBuiltins' bug: cannot infer layout of builtins.\n\
+                  ( "'modelBuiltins' bug: cannot infer layout of builtins.\n\
                     \Reason provided: " <> Text.unpack err
                   )
               Right laidOutPtr -> laidOutPtr

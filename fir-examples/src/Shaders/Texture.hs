@@ -27,6 +27,15 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
+-- pipeline input
+
+type VertexInput
+  = '[ Slot 0 0 ':-> V 3 Float -- position
+     , Slot 1 0 ':-> V 3 Float -- colour
+     , Slot 2 0 ':-> V 2 Float -- UV coordinates
+     ]
+
+------------------------------------------------
 -- vertex shader
 
 type VertexDefs =
@@ -40,8 +49,8 @@ type VertexDefs =
    , "main"        ':-> EntryPoint '[] Vertex
    ]
 
-vertex :: Program VertexDefs ()
-vertex = Program $ entryPoint @"main" @Vertex do
+vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex = shader do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
     uv  <- get @"in_uv"
@@ -63,9 +72,8 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: Program FragmentDefs ()
-fragment = Program do
-  entryPoint @"main" @Fragment do
+fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment = shader do
     col <- get @"in_colour"
     uv  <- get @"in_uv"
     -- naughty texture flipping trick
@@ -87,8 +95,15 @@ vertPath, fragPath :: FilePath
 vertPath = "shaders/texture_vert.spv"
 fragPath = "shaders/texture_frag.spv"
 
-compileVertexShader :: IO ( Either Text Text )
+compileVertexShader :: IO ( Either Text () )
 compileVertexShader = compile vertPath [] vertex
 
-compileFragmentShader :: IO ( Either Text Text )
+compileFragmentShader :: IO ( Either Text () )
 compileFragmentShader = compile fragPath [] fragment
+
+shaderPipeline :: ShaderPipeline
+shaderPipeline
+  = withStructInput @VertexInput @(Triangle List)
+  $  StartPipeline
+  :> (vertex  , vertPath)
+  :> (fragment, fragPath)

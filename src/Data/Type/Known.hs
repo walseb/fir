@@ -67,6 +67,11 @@ instance (Demotable k, Demotable l) => Demotable (k,l) where
 instance (Known k a, Known l b) => Known (k,l) '(a,b) where
   known = ( known @k @a, known @l @b )
 
+instance (Demotable k, Demotable l, Demotable m) => Demotable (k,l,m) where
+  type Demote (k,l,m) = (Demote k, Demote l, Demote m)
+instance (Known k a, Known l b, Known m c) => Known (k,l,m) '(a,b,c) where
+  known = ( known @k @a, known @l @b, known @m @c )
+
 instance Demotable k => Demotable (Maybe k) where
   type Demote (Maybe k) = Maybe (Demote k)
 instance Demotable k => Known (Maybe k) 'Nothing where

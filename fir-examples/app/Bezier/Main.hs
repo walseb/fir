@@ -1,6 +1,6 @@
 module Main where
 
-import Text
+import Bezier
 
 main :: IO ()
-main = text
+main = bezier

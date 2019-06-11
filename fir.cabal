@@ -1,5 +1,4 @@
-cabal-version:  2.4
-
+cabal-version:  3.0
 name:           fir
 version:        0.0.1.0
 synopsis:       An EDSL that compiles to SPIR-V for graphics programming on the GPU in Haskell.
@@ -27,7 +26,7 @@ description:
   The exposed modules are:
 
   ["FIR"]
-      Re-exports the main functionality of the library: creating and compiling programs.
+      Re-exports the main functionality of the library: writing and compiling programs.
 
 
   ["FIR.Labels"]
@@ -55,7 +54,7 @@ description:
   [@Codensity AST (AST a := j) i@]
 
       A monadic expression, starting in state @i@ and ending in state @j@.
-      This state is used to keep track of which objects are in scope,
+      This state is used to keep track of information at the type level,
       allowing for type errors to be thrown on invalid operations
       (e.g. writing to a read-only variable, image sampling outside a fragment shader, etc).
 
@@ -127,6 +126,8 @@ library
       , Data.Type.List
       , Data.Type.Map
       , Data.Type.Maybe
+      , Data.Type.Nat
+      , Data.Type.Ord
       , Data.Type.Snoc
       , Data.Type.String
       , Deriving.Base
@@ -141,6 +142,7 @@ library
       , FIR.Instances.Images
       , FIR.Instances.Optics
       , FIR.Layout
+      , FIR.Pipeline
       , FIR.Prim.Array
       , FIR.Prim.Image
       , FIR.Prim.Singletons

@@ -98,7 +98,7 @@ import Math.Linear
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 import qualified SPIRV.Stage  as SPIRV
-  ( Stage, StageInfo )
+  ( ExecutionModel, ExecutionInfo )
 
 ------------------------------------------------------------
 -- main AST data type
@@ -174,8 +174,8 @@ data AST :: Type -> Type where
   Entry :: forall name stage stageInfo j_bds i.
            ( GHC.Stack.HasCallStack
            , KnownSymbol name
-           , Known SPIRV.Stage stage
-           , Known (SPIRV.StageInfo Nat stage) stageInfo
+           , Known SPIRV.ExecutionModel stage
+           , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
            , ValidEntryPoint name stageInfo i j_bds
            )
          => Proxy name      -- ^ Entry point name.
@@ -330,7 +330,7 @@ toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")
 toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
-toTreeArgs (Entry  _ (_ :: Proxy (stageInfo :: SPIRV.StageInfo Nat stage) )) as
+toTreeArgs (Entry  _ (_ :: Proxy (stageInfo :: SPIRV.ExecutionInfo Nat stage) )) as
   = return (Node ("Entry @" ++ show (knownValue @stage)) as)
 toTreeArgs (Lit (a :: ty)) as
   = return (Node ("Lit @(" ++ show (primTyVal @ty) ++ ") " ++ show a ) as)

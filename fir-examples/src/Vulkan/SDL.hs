@@ -1,10 +1,13 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 
 module Vulkan.SDL where
@@ -13,8 +16,16 @@ module Vulkan.SDL where
 import Control.Monad
   ( void )
 import Control.Monad.IO.Class
-  ( MonadIO )
+  ( MonadIO, liftIO )
 import qualified Foreign
+import Foreign.Ptr
+  ( castPtr )
+
+-- JuicyPixels
+import qualified Codec.Picture as JP
+  ( readImage, convertRGBA8
+  , imageWidth, imageHeight, imageData
+  )
 
 -- managed
 import Control.Monad.Managed
@@ -22,12 +33,16 @@ import Control.Monad.Managed
 
 -- sdl2
 import qualified SDL
+import qualified SDL.Internal.Types as SDL
 import qualified SDL.Raw
 import qualified SDL.Video.Vulkan
 
 -- text
 import "text" Data.Text
   ( Text )
+
+-- vector
+import qualified Data.Vector.Storable as Vector
 
 -- vulkan-api
 import qualified Graphics.Vulkan as Vulkan
@@ -53,13 +68,38 @@ createWindow :: MonadManaged m => Text -> m SDL.Window
 createWindow title =
   manageBracket
     ( SDL.createWindow
-        title
-        SDL.defaultWindow
-          { SDL.windowGraphicsContext = SDL.VulkanContext
-          , SDL.windowInitialSize = SDL.V2 1920 1080
-          }
+              title
+              SDL.defaultWindow
+                { SDL.windowGraphicsContext = SDL.VulkanContext
+                , SDL.windowInitialSize = SDL.V2 1920 1080
+                }
     )
     SDL.destroyWindow
+
+setWindowIcon :: MonadIO m => SDL.Window -> FilePath -> m ()
+setWindowIcon (SDL.Window window) iconPath = liftIO $
+  fmap JP.convertRGBA8 <$> JP.readImage iconPath
+  >>= \case
+    Left _
+      -> putStrLn $ "Could not load icon from filepath \"" <> iconPath <> "\"."
+    Right icon
+      -> let
+           iconWidth  = JP.imageWidth  icon
+           iconHeight = JP.imageHeight icon
+           iconData   = JP.imageData   icon
+         in do
+          SDL.Raw.setWindowIcon window
+            =<<
+            ( Vector.unsafeWith iconData \ iconDataPtr ->
+              SDL.Raw.createRGBSurfaceFrom
+                ( castPtr iconDataPtr )
+                ( fromIntegral iconWidth  )
+                ( fromIntegral iconHeight )
+                32
+                ( 4 * fromIntegral iconWidth )
+                0x000000ff 0x0000ff00 0x00ff0000 0xff000000
+            )
+          putStrLn $ "Set window icon using \"" <> iconPath <> "\"."
 
 createSurface
   :: MonadIO m

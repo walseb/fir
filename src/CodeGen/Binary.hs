@@ -145,40 +145,38 @@ putMemoryModel
                     EndArgs
         }
 
-putEntryPoint :: SPIRV.Stage -> Text -> ID -> Map Text ID -> Binary.Put
-putEntryPoint stage stageName entryPointID interface
+putEntryPoint :: SPIRV.ExecutionModel -> Text -> ID -> Map Text ID -> Binary.Put
+putEntryPoint model modelName entryPointID interface
   = putInstruction Map.empty
       Instruction
         { operation = SPIRV.Op.EntryPoint
         -- slight kludge to account for unusual parameters for OpEntryPoint
         -- instead of result type, resTy field holds the ExecutionModel value
-        , resTy     = Just stageID
+        , resTy     = Just . ID $ SPIRV.executionModelID model
         , resID     = Just entryPointID
-        , args      = Arg stageName
-                    $ toArgs interface -- 'Map Text ID' has the right traversable instance
+        , args      = Arg modelName
+                    $ toArgs interface -- 'Map Text ID' has the appropriate traversable instance
         }
-    where stageID :: ID
-          stageID = ID . fromIntegral . fromEnum $ stage
 
 putEntryPoints
-  :: Map (Text, SPIRV.Stage) ID
-  -> Map (Text, SPIRV.Stage) (Map Text ID)
+  :: Map (Text, SPIRV.ExecutionModel) ID
+  -> Map (Text, SPIRV.ExecutionModel) (Map Text ID)
   -> ExceptT Text Binary.PutM ()
 putEntryPoints entryPointIDs
   = traverseWithKey_
-      ( \(stageName, stage) interface -> do
+      ( \(modelName, model) interface -> do
         entryPointID
           <- note
-              (  "putEntryPoints: " <> Text.pack (show stage)
-              <> " entry point named \"" <> stageName
+              (  "putEntryPoints: " <> Text.pack (show model)
+              <> " entry point named \"" <> modelName
               <> "\" not bound to any ID."
               )
-              ( Map.lookup (stageName, stage) entryPointIDs )
-        lift ( putEntryPoint stage stageName entryPointID interface )
+              ( Map.lookup (modelName, model) entryPointIDs )
+        lift ( putEntryPoint model modelName entryPointID interface )
       )
 
-putStageExecutionModes :: ID -> SPIRV.ExecutionModes -> Binary.Put
-putStageExecutionModes stageID
+putModelExecutionModes :: ID -> SPIRV.ExecutionModes -> Binary.Put
+putModelExecutionModes modelID
   = traverse_
       ( \case
           SPIRV.MaxPatchVertices {} -> pure () -- custom execution mode that doesn't exist in SPIR-V
@@ -187,26 +185,26 @@ putStageExecutionModes stageID
               { operation = SPIRV.Op.ExecutionMode
               , resTy     = Nothing
               , resID     = Nothing
-              , args      = Arg stageID
+              , args      = Arg modelID
                           $ Arg mode EndArgs
               }
       )
 
 putExecutionModes
-  :: Map (Text, SPIRV.Stage) ID
-  -> Map (Text, SPIRV.Stage) SPIRV.ExecutionModes
+  :: Map (Text, SPIRV.ExecutionModel) ID
+  -> Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes
   -> ExceptT Text Binary.PutM ()
 putExecutionModes entryPointIDs
   = traverseWithKey_
-      ( \(stageName, stage) executionModes -> do
+      ( \(modelName, model) executionModes -> do
         entryPointID
           <- note
-              (  "putExecutionModes: " <> Text.pack (show stage)
-              <> " entry point named \"" <> stageName
+              (  "putExecutionModes: " <> Text.pack (show model)
+              <> " entry point named \"" <> modelName
               <> "\" not bound to any ID."
               )
-              ( Map.lookup (stageName, stage) entryPointIDs )
-        lift ( putStageExecutionModes entryPointID executionModes )
+              ( Map.lookup (modelName, model) entryPointIDs )
+        lift ( putModelExecutionModes entryPointID executionModes )
       )
 
 putKnownStringLits :: Map Text ID -> Binary.Put

@@ -199,7 +199,7 @@ load (loadeeName, loadeeID) (SPIRV.PointerTy storage ty)
           | storage == Storage.Input
           -- add this variable to the interface of the entry point
           -> assign
-                ( _interfaceBinding entryPointName (SPIRV.stageOf stageInfo) loadeeName )
+                ( _interfaceBinding entryPointName (SPIRV.modelOf stageInfo) loadeeName )
                 ( Just loadeeID )
         _ -> pure ()
       loadInstruction ty loadeeID
@@ -227,7 +227,7 @@ store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
           | storage == Storage.Output
           -- add this variable to the interface of the entry point
           -> assign
-                ( _interfaceBinding entryPointName (SPIRV.stageOf stageInfo) storeeName )
+                ( _interfaceBinding entryPointName (SPIRV.modelOf stageInfo) storeeName )
                 ( Just pointerID )
         _ -> pure ()
       storeInstruction pointerID storeeID

@@ -87,9 +87,9 @@ inFunctionContext :: Text -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a 
 inFunctionContext functionName as
   = inContext ( InFunction functionName as ) as
 
-inEntryPointContext :: Text -> SPIRV.StageInfo Word32 stage -> CGMonad a -> CGMonad a
-inEntryPointContext stageName stageInfo
-  = inContext ( InEntryPoint stageName stageInfo ) []
+inEntryPointContext :: Text -> SPIRV.ExecutionInfo Word32 model -> CGMonad a -> CGMonad a
+inEntryPointContext modelName modelInfo
+  = inContext ( InEntryPoint modelName modelInfo ) []
 
 inContext :: forall a. VLFunctionContext -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
 inContext context as body
@@ -211,23 +211,23 @@ declareArgument argName (argTy, _)
 
 declareEntryPoint
   :: Text
-  -> SPIRV.StageInfo Word32 stage
+  -> SPIRV.ExecutionInfo Word32 model
   -> CGMonad r
   -> CGMonad ID
-declareEntryPoint stageName stageInfo body
-  = createIDRec ( _knownBinding stageName )
+declareEntryPoint modelName modelInfo body
+  = createIDRec ( _knownBinding modelName )
       ( do unitTyID <- typeID SPIRV.Unit
            fnTyID  <- typeID funTy
            pure (unitTyID, fnTyID)
       )
       ( \(unitTyID,fnTyID) v -> do
         -- declare entry point ID proper
-        assign ( _entryPoint stageName stage ) (Just v)
+        assign ( _entryPoint modelName model ) (Just v)
         -- initialise entry point with empty interface
         -- (loading/storing should add to the interface as needed)
-        assign ( _interface stageName stage ) (Just Map.empty)
+        assign ( _interface modelName model ) (Just Map.empty)
         -- add the required capabilities
-        addCapabilities ( SPIRV.stageCapabilities stage )
+        addCapabilities ( SPIRV.executionModelCapabilities model )
 
         liftPut $ putInstruction Map.empty
           Instruction
@@ -237,7 +237,7 @@ declareEntryPoint stageName stageInfo body
             , args      = Arg SPIRV.noFunctionControl
                         $ Arg fnTyID EndArgs
             }
-        _ <- inEntryPointContext stageName stageInfo body
+        _ <- inEntryPointContext modelName modelInfo body
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Return
@@ -255,8 +255,8 @@ declareEntryPoint stageName stageInfo body
         pure (v, funTy)
       )
   where
-    stage :: SPIRV.Stage
-    stage = SPIRV.stageOf stageInfo
+    model :: SPIRV.ExecutionModel
+    model = SPIRV.modelOf modelInfo
 
     funTy :: SPIRV.PrimTy
     funTy = SPIRV.Function [] SPIRV.Unit

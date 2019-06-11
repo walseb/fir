@@ -18,6 +18,8 @@ module FIR.Definition where
 -- base
 import Data.Kind
   ( Type )
+import Data.Type.Bool
+  ( If, type (&&) )
 import GHC.TypeLits
   ( Symbol
   , TypeError, ErrorMessage(..)
@@ -77,12 +79,12 @@ import qualified SPIRV.Storage         as Storage
 data Definition where
   Global     :: SPIRV.StorageClass -> [ SPIRV.Decoration Nat ] -> Type -> Definition
   Function   :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
-  EntryPoint :: [ SPIRV.ExecutionMode Nat ] -> SPIRV.Stage -> Definition
+  EntryPoint :: [ SPIRV.ExecutionMode Nat ] -> SPIRV.ExecutionModel -> Definition
 
 data Annotate
   = AnnotateGlobal     ( SPIRV.PointerTy, SPIRV.Decorations )
   | AnnotateFunction   SPIRV.FunctionControl
-  | AnnotateEntryPoint ( SPIRV.Stage, SPIRV.ExecutionModes )
+  | AnnotateEntryPoint ( SPIRV.ExecutionModel, SPIRV.ExecutionModes )
 
 instance Demotable Definition where
   type Demote Definition = Annotate
@@ -97,7 +99,7 @@ instance {-# OVERLAPPING #-}
       where
   known = AnnotateGlobal
     ( SPIRV.PointerTy ( knownValue @storage ) imgTy
-    , Set.fromList    ( knownValue @decs )
+    , Set.fromList    ( knownValue @decs    )
     )
         where imgTy :: SPIRV.PrimTy
               imgTy = case knownImage @props of
@@ -110,15 +112,15 @@ instance ( PrimTy ty, Known SPIRV.StorageClass storage, Known [SPIRV.Decoration 
       where
   known = AnnotateGlobal
     ( SPIRV.PointerTy ( knownValue @storage ) ( primTy @ty )
-    , Set.fromList    ( knownValue @decs )
+    , Set.fromList    ( knownValue @decs    )
     )
 
 instance Known SPIRV.FunctionControl control
       => Known Definition ('Function control args res)
       where
-  known = AnnotateFunction (knownValue @control)
+  known = AnnotateFunction ( knownValue @control )
 
-instance ( Known SPIRV.Stage stage, Known [SPIRV.ExecutionMode Nat] modes )
+instance ( Known SPIRV.ExecutionModel stage, Known [SPIRV.ExecutionMode Nat] modes )
       => Known Definition ('EntryPoint modes stage)
       where
   known = AnnotateEntryPoint
@@ -127,10 +129,11 @@ instance ( Known SPIRV.Stage stage, Known [SPIRV.ExecutionMode Nat] modes )
             )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
-  annotations :: ( Map Text                ( SPIRV.PointerTy, SPIRV.Decorations )
-                 , Map Text                SPIRV.FunctionControl
-                 , Map (Text, SPIRV.Stage) SPIRV.ExecutionModes
-                 )
+  annotations
+    :: ( Map Text                         ( SPIRV.PointerTy, SPIRV.Decorations )
+       , Map Text                         SPIRV.FunctionControl
+       , Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes
+       )
 
 instance KnownDefinitions '[] where
   annotations = ( Map.empty, Map.empty, Map.empty )
@@ -145,7 +148,7 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
            AnnotateGlobal     x      -> ( Map.insert k x g, f, e )
            AnnotateFunction   x      -> ( g, Map.insert k x f, e )
            AnnotateEntryPoint (s, x) -> ( g, f, Map.insert l x e )
-              where l :: ( Text, SPIRV.Stage )
+              where l :: ( Text, SPIRV.ExecutionModel )
                     l = (k,s)
 
 type family StartState (defs :: [ Symbol :-> Definition ]) :: ASTState where
@@ -169,9 +172,9 @@ type family DefinitionEntryPoints
     = DefinitionEntryPoints defs
 
 type family DefinitionInsertEntryPointInfo
-              ( k    :: Symbol                            )
-              ( nfo  :: Maybe (SPIRV.StageInfo Nat stage) )
-              ( nfos :: [ EntryPointInfo ]                )
+              ( k    :: Symbol                                )
+              ( nfo  :: Maybe (SPIRV.ExecutionInfo Nat stage) )
+              ( nfos :: [ EntryPointInfo ]                    )
               :: [ EntryPointInfo ]
               where
   DefinitionInsertEntryPointInfo _ 'Nothing _
@@ -224,9 +227,14 @@ type family ValidateGlobal
         (    'Text "Image global expected to point to an image, but points to "
         :<>: ShowType nonImageTy :<>: 'Text " instead."
         )
-  -- TODO: check the decorations provided
-  ValidateGlobal Storage.Uniform _ (Struct as) = Just (Struct as)
-  ValidateGlobal Storage.Uniform _ (Array n (Struct as)) = Just (Array n (Struct as))
+  ValidateGlobal Storage.Uniform decs (Struct as)
+    = If ( ValidUniformDecorations decs (Struct as))
+        ( Just (Struct as) )
+        ( Nothing ) -- unreachable
+  ValidateGlobal Storage.Uniform decs (Array n (Struct as))
+    = If ( ValidUniformDecorations decs (Array n (Struct as)) )
+        ( Just (Array n (Struct as)) )
+        ( Nothing ) -- unreachable
   ValidateGlobal Storage.Uniform _ ty
     = TypeError
         (    'Text "Uniform buffer should be backed by a struct or array containing a struct;"
@@ -236,7 +244,7 @@ type family ValidateGlobal
   ValidateGlobal Storage.StorageBuffer _ (Array n (Struct as)) = Just (Array n (Struct as))
   ValidateGlobal Storage.StorageBuffer _ ty
     = TypeError
-        (    'Text "Uniform buffer should be backed by a struct or array containing a struct;"
+        (    'Text "Uniform storage buffer should be backed by a struct or array containing a struct;"
         :$$: 'Text "found type " :<>: ShowType ty :<>: 'Text " instead."
         )
   -- TODO
@@ -245,6 +253,27 @@ type family ValidateGlobal
   -- TODO
   ValidateGlobal _ _ _ = Nothing
 
+type family ValidUniformDecorations
+              ( decs :: [ SPIRV.Decoration Nat ] )
+              ( ty   :: Type                     )
+            :: Bool
+            where
+  ValidUniformDecorations decs _
+    = HasBinding decs && HasDescriptorSet decs
+
+type family HasBinding ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
+  HasBinding ( SPIRV.Binding _ ': _ ) = 'True
+  HasBinding ( _ ': decs ) = HasBinding decs
+  HasBinding '[]
+    = TypeError
+        ( 'Text "Uniform buffer is missing a 'Binding' decoration." )
+
+type family HasDescriptorSet ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
+  HasDescriptorSet ( SPIRV.DescriptorSet _ ': _ ) = 'True
+  HasDescriptorSet ( _ ': decs ) = HasDescriptorSet decs
+  HasDescriptorSet '[]
+    = TypeError
+        ( 'Text "Uniform buffer is missing a 'DescriptorSet' decoration." )
 
 --------------------------------------------------------------------------
 

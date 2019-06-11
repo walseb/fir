@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
+
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE DataKinds             #-}
@@ -13,10 +15,103 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
-module FIR.Layout where
+{-|
+Module: FIR.Layout
+
+This module is concerned with the memory layout of types for use with Vulkan.
+There are three different situations one needs to account for:
+
+  - uniform buffers must form a struct or array of structs,
+  laid out according to the Extended alignment rules,
+  - push constants and storage buffers must form a struct or array of structs,
+  laid out according to the Base alignment rules,
+  - vertex input data is specified with Location
+  and Component information (see below).
+
+This module automatically performs layout of types according to the above rules.
+
+In the first two situations above, the shader that makes use of such structs
+must provide explicit Offset and Stride decorations. These offsets
+are computed by this module to avoid the user needing to manually specify them.
+
+In the last situation, per-vertex/per-instance data is laid out in locations,
+for use by the vertex shader. Each location holds four components of 4 bytes each.
+The type-system checks the compliance of any user-supplied layout with the SPIR-V and Vulkan specifications,
+in particular checking that the assignment of slots is non-overlapping.
+
+For instance, suppose we want to lay out objects of the following types:
+
+  [@A@] @Array 3 (V 2 Float)@
+
+  [@B@] @Array 2 Float@
+
+  [@C@] @Float@
+
+  [@D@] @V 3 Double@
+
+  [@E@] @Array 2 Double@
+
+  [@F@] @M 2 3 Float@
+
+We can lay out this data by specifying which location slots each type uses.
+Consider for instance the following specification:
+
+>  Struct
+>    '[ Slot 0 0 ':-> Array 3 (V 2 Float)
+>     , Slot 0 2 ':-> Array 2 Float
+>     , Slot 1 3 ':-> Float
+>     , Slot 3 0 ':-> V 3 Double
+>     , Slot 4 2 ':-> Array 2 Double
+>     , Slot 6 0 ':-> M 2 3 Float
+>     ]
+
+We can visualise this layout as follows,
+each row representing a location (each consisting of 4 components):
+
+\[
+\begin{matrix}
+  & 0                & 1                & 2                     & 3                     \\
+0 & \color{brown}{A} & \color{brown}{A} & \color{RoyalBlue}{B}  & \circ                 \\
+1 & \color{brown}{A} & \color{brown}{A} & \color{RoyalBlue}{B}  & \color{purple}{C}     \\
+2 & \color{brown}{A} & \color{brown}{A} & \circ                 & \circ                 \\
+3 & \color{Plum}{D}  & \color{Plum}{D}  & \color{Plum}{D}       & \color{Plum}{D}       \\
+4 & \color{Plum}{D}  & \color{Plum}{D}  & \color{orange}{E}     & \color{orange}{E}     \\
+5 & \circ            & \circ            & \color{orange}{E}     & \color{orange}{E}     \\
+6 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times} \\
+7 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times} \\
+8 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times}
+\end{matrix}
+\]
+
+Here \( \circ \) denotes unused components that are still available for other data,
+whereas \( \times \) denotes unused components that /cannot/ be filled with other data.
+
+Note in particular that matrices use as many locations as they have columns, consuming each location in its entirety.
+
+The specification guarantees that locations 0 to 15 will be available. The availability of further locations
+will depend on the GPU and its implementation of Vulkan.
+
+For further reference, see:
+
+  - SPIR-V specification, 2.16.2 "Validation Rules for Shader Capabilities", bullet point 3,
+  - SPIR-V specification, 2.18.1 "Memory Layout",
+  - Vulkan specification, 14.1.4 "Location Assignment", and 14.1.5 "Component Assignment",
+  - Vulkan specification, 14.5.2 "Descriptor Set Interface", and 14.5.4 "Offset and Stride Assignment".
+
+-}
+
+module FIR.Layout
+  ( Layout(..)
+  , Slots, SlotProvenance(Provenance)
+  , ShowLocation
+  , Poke(..), pokeArray
+  , inferPointerLayout
+  )
+  where
 
 -- base
 import Control.Monad
@@ -24,19 +119,30 @@ import Control.Monad
 import Data.Int
   ( Int8, Int16, Int32, Int64 )
 import Data.Kind
-  ( Type )
+  ( Type, Constraint )
+import Data.Type.Bool
+  ( If, type (&&), type (||) )
+import Data.Type.Equality
+  ( type (==) )
 import Data.Word
   ( Word8, Word16, Word32, Word64 )
 import Foreign.Ptr
   ( Ptr, castPtr, plusPtr )
 import qualified Foreign.Storable as Storable
+  ( poke )
 import GHC.TypeLits
-  ( Symbol )
+  ( Symbol, AppendSymbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats
-  ( KnownNat, type (<=) )
+  ( Nat, KnownNat
+  , type (<=), type (+), type (-), type (*)
+  , Div, Mod
+  )
 
 -- containers
 import qualified Data.Set as Set
+  ( singleton, fromList, insert, union )
 
 -- distributive
 import Data.Distributive
@@ -44,32 +150,51 @@ import Data.Distributive
 
 -- half
 import Numeric.Half
-  ( Half )
+  ( Half, fromHalf )
 
 -- mtl
 import Control.Monad.Except
   ( MonadError, throwError )
 
 -- text-utf8
-import "text-utf8" Data.Text
+import "text-utf8" Data.Text as Text
   ( Text )
 import qualified "text-utf8" Data.Text as Text
+  ( pack )
 
 -- fir
 import Data.Type.Known
-  ( knownValue )
+  ( Demotable(Demote), Known(known), knownValue )
+import Data.Type.List
+  ( type (:++:) )
 import Data.Type.Map
-  ( (:->)((:->)) )
+  ( Map, (:->)((:->))
+  , Insert, ZipValue
+  )
+import Data.Type.Nat
+  ( NextPositivePowerOf2, RoundUp )
+import Data.Type.Ord
+  ( POrd(Compare, Max, (:<=))
+  , PEnum(Succ, Pred, FromEnum, ToEnum, IncFrom)
+  )
+import Data.Type.String
+  ( ShowNat )
 import FIR.Prim.Array
-  ( Array(..) )
+  ( Array(..), RuntimeArray )
 import FIR.Prim.Singletons
-  ( ScalarTy
+  ( ScalarTy, SScalarTy, ScalarWidth
   , PrimTyMap(..), SPrimTyMap(..)
+  , SPrimTy(..), SKPrimTy(..), PrimTySing
+  , primTySing
   )
 import qualified FIR.Prim.Singletons as Prim
   ( PrimTy )
 import FIR.Prim.Struct
-  ( Struct(..) )
+  ( Struct(..)
+  , LocationSlot(LocationSlot)
+  , FieldKind(LocationField)
+  , StructFieldKind(fieldKind)
+  )
 import Math.Linear
   ( V, M(unM) )
 import qualified SPIRV.Decoration as SPIRV
@@ -83,29 +208,89 @@ import qualified SPIRV.Storage    as Storage
 
 --------------------------------------------------------------------------------------------
 
--- For reference, see:
---
--- - SPIR-V specification, 2.16.2 "Validation Rules for Shader Capabilities", bullet point 3,
--- - SPIR-V specification, 2.18.1 "Memory Layout",
--- - Vulkan specification, 14.5.2 "Descriptor Set Interface",
--- - Vulkan specification, 14.5.4 "Offset and Stride Assignment".
-
---------------------------------------------------------------------------------------------
-
-data Alignment = Base | Extended | Packed
+-- | Specification of alignment requirements.
+data Layout
+  = Base      -- ^ Layout used for storage buffers and push constants.
+  | Extended  -- ^ Layout used for uniform buffers.
+  | Locations -- ^ Layout used for vertex binding input data.
   deriving ( Eq, Show )
 
-class Poke a (ali :: Alignment) where
-  sizeOf    :: Word32
+-- | Type-class for data that can be stored in memory,
+-- following the specified alignment requirements.
+class ( KnownNat (SizeOf    lay a)
+      , KnownNat (Alignment lay a)
+      ) => Poke a (lay :: Layout) where
+
+  type SizeOf lay a :: Nat
+  sizeOf :: Word32
+  sizeOf = knownValue @(SizeOf lay a)
+
+  type Alignment lay a :: Nat
   alignment :: Word32
+  alignment = knownValue @(Alignment lay a)
+
   poke :: Ptr a -> a -> IO ()
 
-pokeArray :: forall a ali. Poke a ali => Ptr a -> [a] -> IO ()
-pokeArray ptr vals0 = go vals0 0
-  where go [] _         = return ()
-        go (val:vals) n = do
-          poke @a @ali ( ptr `plusPtr` n ) val
-          go vals (n + fromIntegral (sizeOf @a @ali))
+-- | Annotating a given slot with extra information.
+--
+-- Note: this data-type does not refer to the slot being annotated,
+-- as we use it in a map "[ LocationSlot Nat :-> SlotProvenance ]",
+-- which annotates each slot with extra information.
+data SlotProvenance where
+  Provenance
+    :: LocationSlot Nat -- ^ Provenance (original location slot this slot is based off).
+    -> SKPrimTy  ty     -- ^ Type this slot is being used for.
+    -> SScalarTy scalar -- ^ Underlying scalar type.
+    -> SlotProvenance
+
+instance Demotable (LocationSlot Nat) where
+  type Demote (LocationSlot Nat) = LocationSlot Word32
+
+instance (KnownNat l, KnownNat c) => Known (LocationSlot Nat) ('LocationSlot l c) where
+  known = LocationSlot (knownValue @l) (knownValue @c)
+
+instance POrd (LocationSlot Nat) where
+  type Compare ('LocationSlot l1 c1) ('LocationSlot l2 c2)
+    = Compare '(l1, c1) '(l2, c2) -- lexicographic ordering
+
+type family SuccLocationSlot (slot :: LocationSlot Nat) :: LocationSlot Nat where
+  SuccLocationSlot ('LocationSlot l 3) = 'LocationSlot (l+1) 0
+  SuccLocationSlot ('LocationSlot l c) = 'LocationSlot l (c+1)
+
+type family PredLocationSlot (slot :: LocationSlot Nat) :: LocationSlot Nat where
+  PredLocationSlot ('LocationSlot 0 0) = 'LocationSlot 0 0
+  PredLocationSlot ('LocationSlot l 0) = 'LocationSlot (l-1) 3
+  PredLocationSlot ('LocationSlot l c) = 'LocationSlot l (c-1)
+
+instance PEnum (LocationSlot Nat) where
+  type Succ loc = SuccLocationSlot loc
+  type Pred loc = PredLocationSlot loc
+  type FromEnum ('LocationSlot l c)
+    = 4 * l + c
+  type ToEnum n
+    = 'LocationSlot (n `Div` 4) (n `Mod` 4)
+
+type family NextAligned (size :: Nat) (ali :: Nat) :: Nat where
+  NextAligned size ali = NextAlignedWithRemainder size ali (size `Mod` ali)
+
+type family NextAlignedWithRemainder
+              ( size :: Nat )
+              ( ali  :: Nat )
+              ( rem  :: Nat )
+            :: Nat
+            where
+  NextAlignedWithRemainder size _   0   = size
+  NextAlignedWithRemainder size ali rem = size + ali - rem
+
+roundUp :: Integral a => a -> a -> a
+roundUp n r = (n + r) - ( 1 + ( (n + r - 1) `mod` r ) )
+
+pokeArray :: forall a lay. Poke a lay => Ptr a -> [a] -> IO ()
+pokeArray ptr vals0 = go (fromIntegral $ sizeOf @a @lay) vals0 0
+  where go _ [] _         = return ()
+        go s (val:vals) n = do
+          poke @a @lay ( ptr `plusPtr` n ) val
+          go s vals (n + s)
 
 nextAligned :: Word32 -> Word32 -> Word32
 nextAligned size ali
@@ -113,115 +298,128 @@ nextAligned size ali
          0 -> size
          x -> size + ali - x
 
-instance Poke Word8 ali where
-  sizeOf    = 1
-  alignment = 4
+instance Poke Word8 lay where
+  type SizeOf    lay Word8 = 4
+  type Alignment lay Word8 = 4
+  poke ptr = Storable.poke (castPtr @_ @Word32 ptr) . fromIntegral
+
+instance Poke Word16 lay where
+  type SizeOf    lay Word16 = 4
+  type Alignment lay Word16 = 4
+  poke ptr = Storable.poke (castPtr @_ @Word32 ptr) . fromIntegral
+
+instance Poke Word32 lay where
+  type SizeOf    lay Word32 = 4
+  type Alignment lay Word32 = 4
   poke = Storable.poke
 
-instance Poke Word16 ali where
-  sizeOf = 2
-  alignment = 4
+instance Poke Word64 lay where
+  type SizeOf    lay Word64 = 8
+  type Alignment lay Word64 = 8
   poke = Storable.poke
 
-instance Poke Word32 ali where
-  sizeOf    = 4
-  alignment = 4
+instance Poke Int8 lay where
+  type SizeOf    lay Int8 = 4
+  type Alignment lay Int8 = 4
+  poke ptr = Storable.poke (castPtr @_ @Int32 ptr) . fromIntegral
+
+instance Poke Int16 lay where
+  type SizeOf    lay Int16 = 4
+  type Alignment lay Int16 = 4
+  poke ptr = Storable.poke (castPtr @_ @Int32 ptr) . fromIntegral
+
+instance Poke Int32 lay where
+  type SizeOf    lay Int32 = 4
+  type Alignment lay Int32 = 4
   poke = Storable.poke
 
-instance Poke Word64 ali where
-  sizeOf    = 8
-  alignment = 8
+instance Poke Int64 lay where
+  type SizeOf    lay Int64 = 4
+  type Alignment lay Int64 = 4
   poke = Storable.poke
 
-instance Poke Int8 ali where
-  sizeOf    = 1
-  alignment = 4
+instance Poke Half lay where
+  type SizeOf    lay Half = 4
+  type Alignment lay Half = 4
+  poke ptr = Storable.poke (castPtr @_ @Float ptr) . fromHalf
+
+instance Poke Float lay where
+  type SizeOf    lay Float = 4
+  type Alignment lay Float = 4
   poke = Storable.poke
 
-instance Poke Int16 ali where
-  sizeOf    = 2
-  alignment = 4
+instance Poke Double lay where
+  type SizeOf    lay Double = 8
+  type Alignment lay Double = 8
   poke = Storable.poke
 
-instance Poke Int32 ali where
-  sizeOf    = 4
-  alignment = 4
-  poke = Storable.poke
 
-instance Poke Int64 ali where
-  sizeOf    = 8
-  alignment = 8
-  poke = Storable.poke
-
-instance Poke Half ali where
-  sizeOf    = 2
-  alignment = 4
-  poke = Storable.poke
-
-instance Poke Float ali where
-  sizeOf    = 4
-  alignment = 4
-  poke = Storable.poke
-
-instance Poke Double ali where
-  sizeOf    = 8
-  alignment = 8
-  poke = Storable.poke
-
-instance (Poke a Base, ScalarTy a, KnownNat n, 1 <= n) => Poke (V n a) Base where
-  sizeOf    = knownValue @n * sizeOf @a @Base
-  alignment = sizeOf @a @Base
-            * ( 2 ^ ceiling @Float @Word32 (logBase 2 (fromIntegral (knownValue @n))) )
+instance ( Poke a lay
+         , ScalarTy a
+         , KnownNat n, 1 <= n
+         , KnownNat (SizeOf lay (V n a))
+         , KnownNat (Alignment lay (V n a))
+         ) => Poke (V n a) lay where
+  type SizeOf lay (V n a) = n * SizeOf lay a
+  type Alignment lay (V n a)
+    = SizeOf lay a * NextPositivePowerOf2 n
   poke ptr v
     = foldM_
-        ( \accPtr elt -> poke @a @Base accPtr elt *> pure (accPtr `plusPtr` off) )
+        ( \accPtr elt -> poke @a @lay accPtr elt *> pure (accPtr `plusPtr` off) )
         ( castPtr ptr )
         v
     where
       off :: Int
-      off = fromIntegral ( sizeOf @a @Base )
+      off = fromIntegral ( sizeOf @a @lay )
 
-instance (Poke a Extended, ScalarTy a, KnownNat n, 1 <= n) => Poke (V n a) Extended where
-  sizeOf    = knownValue @n * sizeOf @a @Extended
-  alignment = sizeOf @a @Extended
-            * ( 2 ^ ceiling @Float @Word32 (logBase 2 (fromIntegral (knownValue @n))) )
-  poke ptr v
-    = foldM_
-        ( \accPtr elt -> poke @a @Extended accPtr elt *> pure (accPtr `plusPtr` off) )
-        ( castPtr ptr )
-        v
-    where
-      off :: Int
-      off = fromIntegral ( sizeOf @a @Extended )
-
-instance (Poke a Packed, ScalarTy a, KnownNat n, 1 <= n) => Poke (V n a) Packed where
-  sizeOf    = knownValue @n * sizeOf @a @Packed
-  alignment = sizeOf @a @Packed
-  poke ptr v
-    = foldM_
-        ( \accPtr elt -> poke @a @Packed accPtr elt *> pure (accPtr `plusPtr` off) )
-        ( castPtr ptr )
-        v
-    where
-      off :: Int
-      off = fromIntegral ( sizeOf @a @Packed )
-
-instance (Poke (V m a) ali, ScalarTy a, KnownNat n, KnownNat m, 1 <= n, 1 <= m)
-       => Poke (M m n a) ali where
-  sizeOf    = knownValue @n * sizeOf @(V m a) @ali
-  alignment = alignment @(V m a) @ali
+instance (Poke (V m a) Base, ScalarTy a, KnownNat n, KnownNat m, 1 <= n, 1 <= m)
+       => Poke (M m n a) Base where
+  type SizeOf Base (M m n a)
+    = n * SizeOf Base (V m a)
+  type Alignment Base (M m n a) = Alignment Base (V m a)
   poke ptr mat
     = foldM_
-        ( \accPtr col -> poke @(V m a) @ali accPtr col *> pure (accPtr `plusPtr` colSize) )
+        ( \accPtr col -> poke @(V m a) @Base accPtr col *> pure (accPtr `plusPtr` colSize) )
         ( castPtr ptr )
         ( distribute . unM $ mat )
     where
-      colSize = fromIntegral $ sizeOf @(V m a) @ali
+      colSize = fromIntegral $ sizeOf @(V m a) @Base
+
+instance (Poke (V m a) Extended, ScalarTy a, KnownNat n, KnownNat m, 1 <= n, 1 <= m)
+       => Poke (M m n a) Extended where
+  type SizeOf Extended (M m n a)
+    = n * SizeOf Extended (V m a)
+  type Alignment Extended (M m n a) = Alignment Extended (V m a)
+  poke ptr mat
+    = foldM_
+        ( \accPtr col -> poke @(V m a) @Extended accPtr col *> pure (accPtr `plusPtr` colSize) )
+        ( castPtr ptr )
+        ( distribute . unM $ mat )
+    where
+      colSize = fromIntegral $ sizeOf @(V m a) @Extended
+
+instance ( Poke (V m a) Locations
+         , ScalarTy a
+         , KnownNat n, KnownNat m, 1 <= n, 1 <= m
+         , KnownNat (SizeOf Locations (M m n a))
+         )
+      => Poke (M m n a) Locations where
+ type SizeOf Locations (M m n a)
+   = n * ( SizeOf Locations (V m a) `RoundUp` 16 )
+ type Alignment Locations (M m n a) = 16
+ poke ptr mat
+   = foldM_
+       ( \accPtr col -> poke @(V m a) @Locations accPtr col *> pure (accPtr `plusPtr` colSize) )
+       ( castPtr ptr )
+       ( distribute . unM $ mat )
+   where
+    colSize :: Int
+    colSize = fromIntegral ( sizeOf @(V m a) @Locations ) `roundUp` 16
 
 instance (Poke a Base, Prim.PrimTy a, KnownNat n, 1 <= n)
        => Poke (Array n a) Base where
-  sizeOf    = knownValue @n * sizeOf @a @Base
-  alignment = alignment @a @Base
+  type SizeOf Base (Array n a) = n * SizeOf Base a
+  type Alignment Base (Array n a) = Alignment Base a
   poke ptr (MkArray arr)
     = foldM_
         ( \accPtr elt -> poke @a @Base accPtr elt *> pure (accPtr `plusPtr` off) )
@@ -231,11 +429,17 @@ instance (Poke a Base, Prim.PrimTy a, KnownNat n, 1 <= n)
       off :: Int
       off = fromIntegral $ nextAligned (sizeOf @a @Base) (alignment @(Array n a) @Base)
 
-instance (Poke a Extended, Prim.PrimTy a, KnownNat n, 1 <= n)
+instance ( Poke a Extended
+         , Prim.PrimTy a
+         , KnownNat n, 1 <= n
+         , KnownNat (SizeOf Extended (Array n a))
+         , KnownNat (Alignment Extended (Array n a))
+         )
        => Poke (Array n a) Extended where
-  sizeOf    = knownValue @n
-            * ( nextAligned (sizeOf @a @Extended) (alignment @(Array n a) @Extended) )
-  alignment = roundUp16 $ alignment @a @Extended
+  type SizeOf Extended (Array n a)
+    = n * NextAligned (SizeOf Extended a) (Alignment Extended (Array n a))
+  type Alignment Extended (Array n a)
+    = Alignment Extended a `RoundUp` 16
   poke ptr (MkArray arr)
     = foldM_
         ( \accPtr elt -> poke @a @Extended accPtr elt *> pure (accPtr `plusPtr` off) )
@@ -245,122 +449,322 @@ instance (Poke a Extended, Prim.PrimTy a, KnownNat n, 1 <= n)
       off :: Int
       off = fromIntegral $ nextAligned (sizeOf @a @Extended) (alignment @(Array n a) @Extended)
 
-data PokeDict :: [Symbol :-> Type] -> Alignment -> Type where
-  VacuousPoke :: PokeDict '[] ali
-  PokeDict :: (Poke a ali, PokeStruct as ali) => PokeDict ( (k ':-> a) ': as ) ali
-class PokeStruct as ali where
-  pokeDict :: PokeDict as ali
-instance PokeStruct '[] ali where
-  pokeDict = VacuousPoke
-instance (Poke a ali, PokeStruct as ali) => PokeStruct ( (k ':-> a) ': as ) ali where
+instance (Poke a Locations, Prim.PrimTy a, KnownNat n, 1 <= n)
+       => Poke (Array n a) Locations where
+  type SizeOf Locations (Array n a)
+    = n * SizeOf Locations a
+  type Alignment Locations (Array n a)
+    = Alignment Locations a
+  poke ptr (MkArray arr)
+    = foldM_
+        ( \accPtr elt -> poke @a @Locations accPtr elt *> pure (accPtr `plusPtr` off) )
+        ( castPtr ptr )
+        arr
+    where
+      off :: Int
+      off = fromIntegral $ nextAligned (sizeOf @a @Locations) (alignment @(Array n a) @Locations `roundUp` 16)
+
+
+data PokeDict :: [fld :-> Type] -> Layout -> Type where
+  NoPoke :: PokeDict '[] lay
+  PokeDict :: (Poke a lay, PokeStruct as lay) => PokeDict ( (k ':-> a) ': as ) lay
+class PokeStruct as lay where
+  pokeDict :: PokeDict as lay
+instance PokeStruct '[] lay where
+  pokeDict = NoPoke
+instance (Poke a lay, PokeStruct as lay) => PokeStruct ( (k ':-> a) ': as ) lay where
   pokeDict = PokeDict
 
-instance (PrimTyMap as, PokeStruct as Base) => Poke (Struct as) Base where
-  sizeOf = go @as (alignment @(Struct as) @Base)
-    where
-      go :: forall xs. (PrimTyMap xs, PokeStruct xs Base) => Word32 -> Word32
-      go ali = case primTyMapSing @xs of
-        SNil -> 0
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case pokeDict @xs @Base of
-              PokeDict -> nextAligned (sizeOf @b @Base) ali + go @bs ali
-  alignment = go @as
-    where
-      go :: forall xs. (PrimTyMap xs, PokeStruct xs Base) => Word32
-      go = case primTyMapSing @xs of
-        SNil -> 1
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case pokeDict @xs @Base of
-              PokeDict -> max (alignment @b @Base) (alignment @(Struct bs) @Base)
-  poke = go @as (alignment @(Struct as) @Base)
-    where
-      go :: forall xs x. (PrimTyMap xs, PokeStruct xs Base) => Word32 -> Ptr x -> Struct xs -> IO ()
-      go ali ptr struct = case primTyMapSing @xs of
-        SNil  -> pure ()
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case (struct, pokeDict @xs @Base) of
-              ( b :& bs, PokeDict ) ->
-                let
-                  off :: Int
-                  off = fromIntegral $ nextAligned (sizeOf @b @Base) ali
-                in poke @b @Base (castPtr ptr) b *> poke @(Struct bs) @Base (ptr `plusPtr` off) bs
+structPoke :: forall (fld :: Type) (lay :: Layout) (as :: [fld :-> Type]).
+              ( PrimTyMap as, PokeStruct as lay )
+           => Word32 -> Ptr (Struct as) -> Struct as -> IO ()
+structPoke ali ptr struct = case primTyMapSing @_ @as of
+  SNil -> pure ()
+  scons@SCons -> case scons of
+    ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
+      case (struct, pokeDict @as @lay) of
+        ( b :& bs, PokeDict ) ->
+          let off = fromIntegral $ nextAligned ali (sizeOf @b @lay)
+          in  poke @b @lay (castPtr ptr) b *> structPoke @fld @lay @bs ali (ptr `plusPtr` off) bs
 
-instance (PrimTyMap as, PokeStruct as Extended) => Poke (Struct as) Extended where
-  sizeOf = go @as (alignment @(Struct as) @Extended)
-    where
-      go :: forall xs. (PrimTyMap xs, PokeStruct xs Extended) => Word32 -> Word32
-      go ali = case primTyMapSing @xs of
-        SNil -> 0
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case pokeDict @xs @Extended of
-              PokeDict -> nextAligned (sizeOf @b @Extended) ali + go @bs ali
-  alignment = roundUp16 ( go @as )
-    where
-      go :: forall xs. (PrimTyMap xs, PokeStruct xs Extended) => Word32
-      go = case primTyMapSing @xs of
-        SNil -> 1
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case pokeDict @xs @Extended of
-              PokeDict -> max (alignment @b @Extended) (alignment @(Struct bs) @Extended)
-  poke = go @as (alignment @(Struct as) @Extended)
-    where
-      go :: forall xs x. (PrimTyMap xs, PokeStruct xs Extended) => Word32 -> Ptr x -> Struct xs -> IO ()
-      go ali ptr struct = case primTyMapSing @xs of
-        SNil  -> pure ()
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case (struct, pokeDict @xs @Extended) of
-              ( b :& bs, PokeDict ) ->
-                let
-                  off :: Int
-                  off = fromIntegral $ nextAligned (sizeOf @b @Extended) ali
-                in poke @b @Extended (castPtr ptr) b *> poke @(Struct bs) @Extended (ptr `plusPtr` off) bs
 
-instance (PrimTyMap as, PokeStruct as Packed) => Poke (Struct as) Packed where
-  sizeOf = go @as 0
-    where
-      go :: forall xs. (PrimTyMap xs, PokeStruct xs Packed) => Word32 -> Word32
-      go off = case primTyMapSing @xs of
-        SNil -> off
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case pokeDict @xs @Packed of
-              PokeDict -> nextAligned off (alignment @b @Packed) + go @bs (sizeOf @b @Packed)
-  alignment =
-    case primTyMapSing @as of
-      SNil -> 1
-      scons@SCons -> case scons of
-        ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-          case pokeDict @as @Packed of
-            PokeDict -> alignment @b @Packed
-  poke = go @as
-    where
-      go :: forall xs x. (PrimTyMap xs, PokeStruct xs Packed) => Ptr x -> Struct xs -> IO ()
-      go ptr struct = case primTyMapSing @xs of
-        SNil  -> pure ()
-        scons@SCons -> case scons of
-          ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-            case (struct, pokeDict @xs @Packed) of
-              ( b :& bs, PokeDict ) ->
-                let
-                  off :: Int
-                  off = fromIntegral $ nextAligned (sizeOf @b @Packed) (alignment @(Struct bs) @Packed)
-                in poke @b @Packed (castPtr ptr) b *> poke @(Struct bs) @Packed (ptr `plusPtr` off) bs
+instance ( PrimTyMap as
+         , PokeStruct as Base
+         , KnownNat (SizeOf Base (Struct as))
+         , KnownNat (Alignment Base (Struct as))
+         ) => Poke (Struct as) Base where
+  type SizeOf Base (Struct as)
+    = SumRoundedUpSizes Base (MaximumAlignment Base as) as
+  type Alignment Base (Struct as)
+    = MaximumAlignment Base as
+  poke = structPoke @_ @Base @as (alignment @(Struct as) @Base)
+
+
+instance ( PrimTyMap as
+         , PokeStruct as Extended
+         , KnownNat (SizeOf Extended (Struct as))
+         , KnownNat (Alignment Extended (Struct as))
+         ) => Poke (Struct as) Extended where
+  type SizeOf Extended (Struct as)
+    = SumRoundedUpSizes Extended (MaximumAlignment Extended as) as
+  type Alignment Extended (Struct as)
+    = MaximumAlignment Extended as
+  poke = structPoke @_ @Extended @as (alignment @(Struct as) @Extended)
+
+instance
+  ( TypeError
+      (    'Text "Structure contains insufficient layout information."
+      :$$: 'Text ""
+      :$$: 'Text "To use the 'Locations' layout, location/component information needs to be supplied, such as:"
+      :$$: 'Text "    Struct '[ Slot 0 0 ':-> V 2 Float, Slot 0 2 ':-> V 2 Float ],"
+      :$$: 'Text "where 'Slot l c' refers to the interface slot in location 'l' with component 'c',"
+      :$$: 'Text "with 0 <= l < maxVertexInputAttributes (at least 16), 0 <= b < 4."
+      )
+  )
+  => Poke (Struct (as :: [Symbol :-> Type])) Locations
+  where
+    type SizeOf Locations (Struct (as :: [Symbol :-> Type]))
+      = 0
+    type Alignment Locations (Struct (as :: [Symbol :-> Type]))
+      = 1
+    poke = error "unreachable"
+
+data PokeSlotsDict (as :: [LocationSlot Nat :-> Type]) :: Type where
+  NoSlotsPoke  :: PokeSlotsDict '[]
+  PokeSlotDict :: ( Poke a Locations
+                  , Known (LocationSlot Nat) slot
+                  , PokeSlots as
+                  , NoOverlappingSlots as
+                  , KnownNat (SizeOf    Locations (Struct as))
+                  , KnownNat (Alignment Locations (Struct as))
+                  )
+               => PokeSlotsDict ( (slot ':-> a) ': as )
+
+class PokeSlots (as :: [LocationSlot Nat :-> Type]) where
+  pokeSlotsDict :: PokeSlotsDict as
+instance PokeSlots '[] where
+  pokeSlotsDict = NoSlotsPoke
+instance ( Poke a Locations
+         , Known (LocationSlot Nat) loc
+         , PokeSlots as
+         , NoOverlappingSlots as
+         , KnownNat (SizeOf    Locations (Struct as))
+         , KnownNat (Alignment Locations (Struct as))
+         )
+       => PokeSlots( (loc ':-> a) ': as )
+       where
+  pokeSlotsDict = PokeSlotDict
+
+instance forall (as :: [LocationSlot Nat :-> Type])
+       . ( PrimTyMap as
+         , PokeSlots as
+         , NoOverlappingSlots as
+         , KnownNat (SizeOf Locations (Struct as))
+         , KnownNat (Alignment Locations (Struct as))
+         ) => Poke (Struct as) Locations where
+  type SizeOf Locations (Struct as)
+    = 16 * NbLocationsUsed as
+  type Alignment Locations (Struct as)
+    = 16
+  poke ptr struct = case primTyMapSing @_ @as of
+    SNil -> pure ()
+    scons@SCons -> case scons of
+      ( _ :: SPrimTyMap ((loc ':-> b) ': bs) ) ->
+        case (struct, pokeSlotsDict @as) of
+          ( b :& bs, PokeSlotDict ) ->
+            let LocationSlot l c = knownValue @loc
+                off = fromIntegral $ 16 * l + 4 * c
+            in do
+              -- if we are poking another struct with location information,
+              -- we want to keep the pointer as is as opposed to adding an offset to it
+              case primTySing @b of
+                sStruct@SStruct
+                  | ( _ :: SPrimTy (Struct (cs :: [fld :-> Type]) ) ) <- sStruct
+                  , LocationField <- fieldKind @fld
+                  -> poke @b @Locations (castPtr ptr              ) b
+                _ -> poke @b @Locations (castPtr ptr `plusPtr` off) b
+              poke @(Struct bs) @Locations (castPtr ptr) bs
+
+type family NoOverlappingSlots (as :: [LocationSlot Nat :-> Type]) :: Constraint where
+  NoOverlappingSlots as = SlotsDontOverlap (Slots as)
+
+-- force evaluation of computation of all used slots, throwing a type error if any slots overlapped
+-- the overlap checking is performed in the type family 'AddSlotsCheckingOverlap',
+-- which is recursively called by the type family 'Slots'
+type family SlotsDontOverlap
+                (slots :: [ LocationSlot Nat :-> SlotProvenance ])
+              :: Constraint
+              where
+  SlotsDontOverlap '[]
+    = ()
+  SlotsDontOverlap ( slot ': slots )
+    = ( (() :: Constraint) , (() :: Constraint) ) -- disjoint from the previous equation
+
+type family SlotDoesNotAppear
+                ( slot     :: LocationSlot Nat )
+                ( slotProv :: SlotProvenance   )
+                ( slots    :: [ LocationSlot Nat :-> SlotProvenance ] )
+              :: Bool where
+  SlotDoesNotAppear _ _ '[] = 'True
+  SlotDoesNotAppear slot
+    ( Provenance base1 ( _ :: SKPrimTy ty1 ) _ )
+    ( ( slot ':-> Provenance base2 ( _ :: SKPrimTy ty2 ) _ ) ': _ )
+    = TypeError
+        (    'Text "Overlap at " :<>: 'Text (ShowLocation slot ) :<>: 'Text ":"
+        :$$: 'Text "  - " :<>: ShowType ty1 :<>: 'Text " based at " :<>: 'Text (ShowLocation base1) :<>: 'Text ","
+        :$$: 'Text "  - " :<>: ShowType ty2 :<>: 'Text " based at " :<>: 'Text (ShowLocation base2) :<>: 'Text "."
+        )
+  SlotDoesNotAppear slot prov ( _ ': slots)
+    = SlotDoesNotAppear slot prov slots
+
+type family ShowLocation
+              ( slot :: LocationSlot Nat )
+            :: Symbol
+            where
+  ShowLocation ('LocationSlot l c)
+    = "location " `AppendSymbol` ShowNat l `AppendSymbol` ", component " `AppendSymbol` ShowNat c
+
+type family Slots
+              ( as :: [LocationSlot Nat :-> Type] )
+            :: Map (LocationSlot Nat) SlotProvenance
+            where
+  Slots '[] = '[]
+  Slots ( (slot ':-> ty) ': slots)
+    = AddSlotsCheckingOverlap (EnumSlots slot ty (PrimTySing ty)) (Slots slots)
+
+type family NbLocationsUsed
+              ( as :: [LocationSlot Nat :-> Type] )
+            :: Nat
+            where
+  NbLocationsUsed as = NbLocationsOfSlots (Slots as)
+
+type family NbLocationsOfSlots
+              ( slots :: Map (LocationSlot Nat) SlotProvenance )
+            :: Nat
+            where
+  NbLocationsOfSlots '[] = 0
+  NbLocationsOfSlots ( ( slot ':-> Provenance startLoc ty scalar ) ': slots )
+    = NbLocationsOfSlotsAcc
+        startLoc
+        startLoc
+        ( ( slot ':-> Provenance startLoc ty scalar ) ': slots )
+
+type family NbLocationsOfSlotsAcc
+              ( minLoc :: LocationSlot Nat )
+              ( maxLoc :: LocationSlot Nat )
+              ( slots :: [ LocationSlot Nat :-> SlotProvenance ] )
+            :: Nat
+            where
+  NbLocationsOfSlotsAcc ('LocationSlot minLoc _) ('LocationSlot maxLoc _) '[]
+    = 1 + maxLoc - minLoc
+  NbLocationsOfSlotsAcc minLoc maxLoc ( (loc ':-> _) ': locs )
+    = NbLocationsOfSlotsAcc minLoc (Max maxLoc loc) locs
+
+type family AddSlotsCheckingOverlap
+              ( locs       :: [ LocationSlot Nat :-> SlotProvenance ] )
+              ( slots      :: Map (LocationSlot Nat) SlotProvenance   )
+            :: Map (LocationSlot Nat) SlotProvenance
+            where
+  AddSlotsCheckingOverlap '[] slots = slots
+  AddSlotsCheckingOverlap ( ( loc ':-> prov ) ': locs ) slots
+    = If ( SlotDoesNotAppear loc prov slots )
+        ( AddSlotsCheckingOverlap locs ( Insert loc prov slots ) )
+        ( '[] ) -- unreachable
+
+-- | Simple enumeration of consecutive slots,
+-- as many as the size of the type.
+--
+-- Should not be used for compound types,
+-- where the locations used are not necessarily consecutive.
+type family EnumConsecutiveSlots
+              ( startLoc :: LocationSlot Nat )
+              ( ty       :: Type )
+              :: [ LocationSlot Nat ]
+              where
+  EnumConsecutiveSlots loc ty
+    = IncFrom loc ( Pred ( SizeOf Locations ty `Div` 4 ) )
+
+-- | Enumerate all slots used by a type beginning in a given location.
+type family EnumSlots
+              ( slot :: LocationSlot Nat )
+              ( ty   :: Type             )
+              ( sing :: SKPrimTy ty      )
+            :: Map (LocationSlot Nat) SlotProvenance
+            where
+  EnumSlots _ () SKUnit
+    = TypeError
+        ( 'Text "Vertex binding: unit type not supported." )
+  EnumSlots _ Bool SKBool
+    = TypeError
+        ( 'Text "Vertex binding: booleans not supported. Convert to 'Word32' instead." )
+  EnumSlots ('LocationSlot l c) ty (SKScalar s)
+    = If ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 )
+        ( ( EnumConsecutiveSlots ('LocationSlot l c) ty )
+          `ZipValue`
+          ( Provenance ('LocationSlot l c) (SKScalar s) s )
+        )
+        ( TypeError
+          (    'Text "Vertex binding: cannot position " :<>: ShowType ty :<>: 'Text " at location " :<>: ShowType l
+          :<>: 'Text " with odd component " :<>: ShowType c :<>: 'Text "."
+          )
+        )
+  EnumSlots ('LocationSlot l c) (V n a) (SKVector s)
+    = If ( c == 0 || ( c `Mod` 2 == 0 && n :<= 2 && ScalarWidth s :<= 32 ) )
+       (  ( EnumConsecutiveSlots ('LocationSlot l c) (V n a) )
+          `ZipValue`
+          ( Provenance ('LocationSlot l c) (SKVector s) s )
+       )
+       ( TypeError
+          (    'Text "Vertex binding: cannot position vector " :<>: ShowType (V n a)
+          :<>: 'Text " at location " :<>: ShowType l
+          :<>: 'Text " with component " :<>: ShowType c :<>: 'Text "."
+          )
+       )
+  EnumSlots ('LocationSlot l 0) (M m n a) (SKMatrix s)
+    = ( EnumConsecutiveSlots ('LocationSlot l 0) (M m n a) )
+      `ZipValue`
+      ( Provenance ('LocationSlot l 0) (SKMatrix s) s )
+  EnumSlots ('LocationSlot l c) (M m n a) (SKMatrix _)
+    = TypeError
+        (    'Text "Vertex binding: cannot position matrix at location " :<>: ShowType l
+        :<>: 'Text " with non-zero component " :<>: ShowType c :<>: 'Text "."
+        )
+  EnumSlots loc (Array 0 a) (SKArray _  ) = '[]
+  EnumSlots loc (Array 1 a) (SKArray elt) = EnumSlots loc a elt
+  EnumSlots ('LocationSlot l c) (Array n a) (SKArray elt)
+    =    EnumSlots
+            ('LocationSlot l c)
+            a
+            elt
+    :++: EnumSlots
+            ( 'LocationSlot (l + 1 + ( Pred (SizeOf Locations a) `Div` 4) ) c )
+            ( Array (n-1) a )
+            ( SKArray elt )
+  EnumSlots _ (RuntimeArray _) (SKRuntimeArray _)
+    = TypeError
+        ( 'Text "Vertex binding: runtime arrays not supported." )
+  EnumSlots _ (Struct _) (SKStruct _)
+    = TypeError
+        ( 'Text "Vertex binding: nested structs not (yet?) supported." )
+
+type family SumRoundedUpSizes (lay :: Layout) (ali :: Nat) (as :: [fld :-> Type]) :: Nat where
+  SumRoundedUpSizes _   _   '[]                    = 0
+  SumRoundedUpSizes lay ali ( ( _ ':-> a ) ': as ) =
+    NextAligned (SizeOf lay a) ali + SumRoundedUpSizes lay ali as
+
+type family MaximumAlignment (lay :: Layout) (as :: [fld :-> Type]) :: Nat where
+  MaximumAlignment lay '[] = 1
+  MaximumAlignment Extended ( ( _ ':-> a ) ': as )
+    = Max (Alignment Extended a) (MaximumAlignment Extended as) `RoundUp` 16
+  MaximumAlignment lay ( ( _ ':-> a ) ': as )
+    = Max (Alignment lay a) (MaximumAlignment lay as)
 
 --------------------------------------------------------------------------------------------
 
 maxMemberAlignment
    :: MonadError e m
    => ( SPIRV.PrimTy -> m Word32 ) -> [(ignore1, SPIRV.PrimTy, ignore2)] -> m Word32
-maxMemberAlignment f as = foldr ( \ a b -> max <$> (f . (\ (_,ty,_) -> ty )) a <*> b ) (pure 0) as
-
-roundUp16 :: Word32 -> Word32
-roundUp16 n = ( n `mod` 16 ) + n
+maxMemberAlignment f as = foldr ( \ a b -> max <$> ( f . ( \(_,ty,_) -> ty ) ) a <*> b ) (pure 0) as
 
 scalarAlignment :: MonadError Text m => SPIRV.PrimTy -> m Word32
 scalarAlignment (SPIRV.Scalar (SPIRV.Integer  _ w)) = pure (SPIRV.width w `quot` 8)
@@ -388,9 +792,9 @@ baseAlignment ty
       ( "Layout: cannot compute base alignment of type " <> Text.pack (show ty) <> "." )
 
 extendedAlignment :: MonadError Text m => SPIRV.PrimTy -> m Word32
-extendedAlignment (SPIRV.Array         {eltTy}) = roundUp16 <$> extendedAlignment eltTy
-extendedAlignment (SPIRV.RuntimeArray  {eltTy}) = roundUp16 <$> extendedAlignment eltTy
-extendedAlignment (SPIRV.Struct       {eltTys}) = roundUp16 <$> maxMemberAlignment extendedAlignment eltTys
+extendedAlignment (SPIRV.Array         {eltTy}) = (`roundUp` 16) <$> extendedAlignment eltTy
+extendedAlignment (SPIRV.RuntimeArray  {eltTy}) = (`roundUp` 16) <$> extendedAlignment eltTy
+extendedAlignment (SPIRV.Struct       {eltTys}) = (`roundUp` 16) <$> maxMemberAlignment extendedAlignment eltTys
 extendedAlignment ty                            = baseAlignment ty
 
 requiredAlignment :: MonadError Text m => SPIRV.StorageClass -> m ( SPIRV.PrimTy -> m Word32 )
@@ -509,15 +913,15 @@ layoutStructMembersWith
     :: forall m. MonadError Text m
     => ( SPIRV.PrimTy -> m Word32 )
     -> Word32
-    -> [(Text, SPIRV.PrimTy, SPIRV.Decorations)]
-    -> m [(Text, SPIRV.PrimTy, SPIRV.Decorations)]
+    -> [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
+    -> m [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
 layoutStructMembersWith f ali as = fst <$> go 0 as
   where
     go :: Word32
-       ->     [ ( Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
-       -> m ( [ ( Text, SPIRV.PrimTy, SPIRV.Decorations ) ], Word32 )
-    go offset []                    = pure ( [], offset )
-    go offset ((txt, ty, decs):nxt) = do
+       ->     [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
+       -> m ( [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ], Word32 )
+    go offset []               = pure ( [], offset )
+    go offset ((name, ty, decs):nxt) = do
         (newOffset, laidOutTy, newDecs)
            <- case ty of
                 SPIRV.Matrix { cols } -> do
@@ -554,4 +958,4 @@ layoutStructMembersWith f ali as = fst <$> go 0 as
                        , laidOutTy
                        , Set.singleton (SPIRV.Offset offset)
                        )
-        ( , offset) . ( (txt, laidOutTy, Set.union newDecs decs) : ) . fst <$> go newOffset nxt
+        ( , offset) . ( (name, laidOutTy, Set.union newDecs decs) : ) . fst <$> go newOffset nxt

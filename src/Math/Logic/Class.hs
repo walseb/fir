@@ -72,9 +72,7 @@ ifThenElse :: (GHC.Stack.HasCallStack, Choose b (t :: (Type,Type,Type)))
            => Choosing b t
 ifThenElse = choose
 
-type Triple a = '(a,a,a)
-
-instance Choose Bool (Triple a) where
+instance (x ~ y, x ~ z) => Choose Bool '(x,y,z) where
   choose True  x _ = x
   choose False _ y = y
 

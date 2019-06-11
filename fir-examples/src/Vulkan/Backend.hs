@@ -32,9 +32,6 @@ import Data.Traversable
 import qualified Foreign
 import qualified Foreign.Marshal
 
--- bytestring
-import qualified Data.ByteString
-
 -- managed
 import Control.Monad.Managed
   ( MonadManaged )
@@ -851,26 +848,3 @@ beginCommandBuffer commandBuffer =
 
 endCommandBuffer :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
 endCommandBuffer = liftIO . Vulkan.vkEndCommandBuffer >=> throwVkResult
-
-loadShader :: MonadManaged m => Vulkan.VkDevice -> FilePath -> m Vulkan.VkShaderModule
-loadShader device srcFile = do
-  bytes <-
-    liftIO ( Data.ByteString.readFile srcFile )
-
-  managedVulkanResource
-    ( \a b ->
-        Data.ByteString.useAsCStringLen bytes $ \( bytesPtr, len ) ->
-          let
-            createInfo =
-              Vulkan.createVk
-                (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO
-                &* Vulkan.set @"pNext" Vulkan.VK_NULL
-                &* Vulkan.set @"flags" 0
-                &* Vulkan.set @"pCode"    ( Foreign.castPtr bytesPtr )
-                &* Vulkan.set @"codeSize" ( fromIntegral len )
-                )
-
-          in
-          Vulkan.vkCreateShaderModule device ( Vulkan.unsafePtr createInfo ) a b
-    )
-    ( Vulkan.vkDestroyShaderModule device )

@@ -203,7 +203,12 @@ pattern StorageImageWriteWithoutFormat = Capability 56
 pattern MultiViewport :: Capability
 pattern MultiViewport = Capability 57
 
+-- extensions
+pattern MeshShadingNV :: Capability
+pattern MeshShadingNV = Capability 5266
 
+pattern RayTracingNV :: Capability
+pattern RayTracingNV = Capability 5340
 
 showCapability :: Capability -> String
 showCapability Matrix = "Matrix"
@@ -262,12 +267,14 @@ showCapability GeometryStreams = "GeometryStreams"
 showCapability StorageImageReadWithoutFormat = "StorageImageReadWithoutFormat"
 showCapability StorageImageWriteWithoutFormat = "StorageImageWriteWithoutFormat"
 showCapability MultiViewport = "MultiViewport"
+showCapability MeshShadingNV = "MeshShadingNV"
+showCapability RayTracingNV  = "RayTracingNV"
 showCapability (Capability i) = show i
 
 
 primOpCapabilities :: PrimOp.PrimOp -> [ Capability ]
-primOpCapabilities ( PrimOp.op -> SatConvertSToU ) = [ Kernel ] -- why?
-primOpCapabilities ( PrimOp.op -> SatConvertUToS ) = [ Kernel ] -- why?
+primOpCapabilities ( PrimOp.op -> SatConvertSToU ) = [ Kernel ]
+primOpCapabilities ( PrimOp.op -> SatConvertUToS ) = [ Kernel ]
 primOpCapabilities ( PrimOp.MatOp {}             ) = [ Matrix ]
 primOpCapabilities _                               = [ ]
 

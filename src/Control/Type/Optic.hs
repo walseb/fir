@@ -93,12 +93,14 @@ Multiple indices can be provided in this manner:
     $ M22
         0 1
         2 3
-2
+1
 @
 
-Here we first access the outer layer (the row with index 1, i.e. second of two rows),
-then access the first component of that row.
-The type synonym 'Entry' exists for this purpose: @Entry i j@ denotes the optic @Index i :.: Index j@.
+Here we first access the outer layer (the column with index 1, i.e. second of two columns),
+then access the first component of that column. We always access the column first then the row,
+following the column-major convention.
+The type synonym 'Entry' can also be used: @Entry i j@ stands for @Index i :.: Index j@,
+restricted to work specifically on matrices.
 
 Note that, in a composition, the outermost optic is on the left, and the nesting increases
 as one reads from left to right.
@@ -236,10 +238,8 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
   Joint_   :: Optic is s a
   -- | Optic with indexing information provided at run-time.
   RTOptic_ :: Optic is s a
-  -- | Compile-time index.
-  Index_   :: Nat    -> Optic is s a
-  -- | Compile-time field name.
-  Name_    :: Symbol -> Optic is s a
+  -- | Compile-time field (e.g. numeric index or symbolic field name).
+  Field_   :: fld -> Optic is s a
   -- | Composition of optics.
   ComposeO :: Optic is s a -> Optic js a b -> Optic ks s b
   -- | Product of optics.
@@ -265,11 +265,11 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
 
 
 -- | Run-time index (kind-correct).
-type AnIndex (ix :: Type  ) = (RTOptic_   :: Optic '[ix] s a)
+type AnIndex (ix :: Type  ) = (RTOptic_ :: Optic '[ix] s a)
 -- | Compile-time index (kind-correct).
-type Index   (i  :: Nat   ) = (Index_   i :: Optic '[]   s a)
+type Index   (i  :: Nat   ) = (Field_ i :: Optic '[]   s a)
 -- | Compile-time field name (kind-correct).
-type Name    (k  :: Symbol) = (Name_    k :: Optic '[]   s a)
+type Name    (k  :: Symbol) = (Field_ k :: Optic '[]   s a)
 
 -- | Identity (kind-correct).
 type Id = (Id_ :: Optic '[] a a)
@@ -310,6 +310,7 @@ class Settable optic => ReifiedSetter optic where
 
 type Over (optic :: Optic is (s :: Type) a) = ListVariadic (is `Postpend` (a -> a) `Postpend` s) s
 
+-- | Type-level lens: can be used to modify the part under its focus.
 class ( ReifiedSetter optic, ReifiedGetter optic ) => ReifiedLens optic where
   over :: Over optic
 
@@ -622,8 +623,7 @@ type family LastOptic ( o :: Optic is s a) :: Optic (LastIndices o) (LastAccesse
   LastOptic Joint_             = Joint_
   LastOptic Id_                = Id_
   LastOptic RTOptic_           = RTOptic_
-  LastOptic (Index_ i        ) = Index_ i
-  LastOptic (Name_  k        ) = Name_  k
+  LastOptic (Field_ f        ) = Field_ f
   LastOptic (o1 `ProductO` o2) = o1 `ProductO` o2
   --LastOptic (o :: Optic is s a) = o `WithKind` ( Optic (LastIndices o) (LastAccessee o) a )
 
@@ -717,18 +717,20 @@ type family Disjoint
               ( o2 :: Optic js t b )
             = ( r  :: Bool         )
               where
-  Disjoint (Name_  k) (Name_  k) = False
-  Disjoint (Index_ n) (Index_ n) = False
+  Disjoint (Field_ f) (Field_ f) = False
   Disjoint RTOptic_   _       
     = TypeError (    Text "set: cannot create a product setter involving run-time indexing."
                 :$$: Text "Impossible to verify the required disjointness property."
                 )
   Disjoint o RTOptic_
     = Disjoint RTOptic_ o
-  Disjoint ((Name_ k) :: Optic is s a) ((Index_ n) :: Optic js s b)
+  Disjoint ((Field_ (k :: Symbol)) :: Optic is s a) ((Field_ (n :: Nat)) :: Optic js s b)
     = Not (Overlapping s k n)
-  Disjoint ((Index_ n) :: Optic is s a) ((Name_ k) :: Optic js s b)
+  Disjoint ((Field_ (n :: Nat)) :: Optic is s a) ((Field_ (k :: Symbol)) :: Optic js s b)
     = Not (Overlapping s k n)
+  Disjoint (Field_ (f1 :: fld1)) _
+    = TypeError
+      ( Text "Disjointness check: unsupported optics field kind " :<>: ShowType fld1 )
   Disjoint (o1 `ProductO` o3) (o2 `ProductO` o4)
     =  Disjoint o1 o2
     && Disjoint o1 o4

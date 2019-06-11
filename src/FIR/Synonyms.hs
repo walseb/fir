@@ -52,6 +52,9 @@ import FIR.Prim.Image
   , Image, ImageOperands, GatherInfo(..)
   )
 import qualified FIR.Prim.Image as Op -- for image operands
+  ( ImageOperands(..) )
+import FIR.Prim.Struct
+  ( LocationSlot(LocationSlot) )
 import Math.Linear
   ( V, M )
 import SPIRV.ScalarTy
@@ -84,6 +87,9 @@ type Private         decs ty = Global Storage.Private         decs ty
 -- synonym for function with no function control information
 type Function     as b = Def.Function NoFunctionControl as b
 type Function' fc as b = Def.Function fc as b
+
+-- synonym for interface location slots
+type Slot (l :: Nat) (c :: Nat) = 'LocationSlot l c
 
 -- synonyms for images
 type Texture1D decs fmt

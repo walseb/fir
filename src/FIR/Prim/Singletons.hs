@@ -34,7 +34,7 @@ import GHC.TypeLits
   , TypeError, ErrorMessage(Text, ShowType, (:$$:), (:<>:))
   )
 import GHC.TypeNats
-  ( KnownNat, natVal )
+  ( Nat, KnownNat, natVal )
 
 -- containers
 import qualified Data.Set as Set
@@ -64,7 +64,7 @@ import FIR.Binding
 import FIR.Prim.Array
   ( Array,RuntimeArray )
 import FIR.Prim.Struct
-  ( Struct )
+  ( Struct, FieldKind(NamedField), StructFieldKind(fieldKind) )
 import Math.Algebra.Class
   ( Ring )
 import Math.Linear
@@ -97,22 +97,25 @@ data SScalarTy :: Type -> Type where
   SFloat  :: SScalarTy Float
   SDouble :: SScalarTy Double
 
-type family Integrality (ty :: Type) :: SPIRV.ScalarTy where
-  Integrality Word8  = SPIRV.Integer Unsigned W8
-  Integrality Word16 = SPIRV.Integer Unsigned W16
-  Integrality Word32 = SPIRV.Integer Unsigned W32
-  Integrality Word64 = SPIRV.Integer Unsigned W64
-  Integrality Int8   = SPIRV.Integer Signed   W8
-  Integrality Int16  = SPIRV.Integer Signed   W16
-  Integrality Int32  = SPIRV.Integer Signed   W32
-  Integrality Int64  = SPIRV.Integer Signed   W64
-  Integrality Half   = SPIRV.Floating         W16
-  Integrality Float  = SPIRV.Floating         W32
-  Integrality Double = SPIRV.Floating         W64
-  Integrality ty
-    = TypeError
-        ( Text "Expected a scalar type, but provided " :<>: ShowType ty )
+type family Integrality (sTy :: SScalarTy ty) :: SPIRV.ScalarTy where
+  Integrality SWord8  = SPIRV.Integer Unsigned W8
+  Integrality SWord16 = SPIRV.Integer Unsigned W16
+  Integrality SWord32 = SPIRV.Integer Unsigned W32
+  Integrality SWord64 = SPIRV.Integer Unsigned W64
+  Integrality SInt8   = SPIRV.Integer Signed   W8
+  Integrality SInt16  = SPIRV.Integer Signed   W16
+  Integrality SInt32  = SPIRV.Integer Signed   W32
+  Integrality SInt64  = SPIRV.Integer Signed   W64
+  Integrality SHalf   = SPIRV.Floating         W16
+  Integrality SFloat  = SPIRV.Floating         W32
+  Integrality SDouble = SPIRV.Floating         W64
 
+type family ScalarWidth (sTy :: SScalarTy ty) :: Nat where
+  ScalarWidth sTy
+   = SPIRV.WidthToNat
+        ( SPIRV.ScalarWidth ( Integrality sTy ) )
+
+-- singleton data type
 data SPrimTy :: Type -> Type where
   SUnit   :: SPrimTy ()
   SBool   :: SPrimTy Bool
@@ -126,13 +129,74 @@ data SPrimTy :: Type -> Type where
   SRuntimeArray
           :: PrimTy a
           => SPrimTy (RuntimeArray a)
-  SStruct :: PrimTyMap as
+  SStruct :: forall (fld :: Type) (as :: [fld :-> Type])
+          .  ( StructFieldKind fld, PrimTyMap as )
           => SPrimTy (Struct as)
 
-data SPrimTyMap :: [Symbol :-> Type] -> Type where
+-- singleton data kind, without unpromotable contexts
+data SKPrimTy :: Type -> Type where
+  SKUnit   :: SKPrimTy ()
+  SKBool   :: SKPrimTy Bool
+  SKScalar :: SScalarTy a -> SKPrimTy a
+  SKVector :: SScalarTy a -> SKPrimTy (V n a)
+  SKMatrix :: SScalarTy a -> SKPrimTy (M m n a)
+  SKArray  :: SKPrimTy a -> SKPrimTy (Array n a)
+  SKRuntimeArray
+           :: SKPrimTy a -> SKPrimTy (RuntimeArray a)
+  SKStruct :: SKPrimTyMap as -> SKPrimTy (Struct as)
+
+data SPrimTyMap :: [fld :-> Type] -> Type where
   SNil  :: SPrimTyMap '[]
-  SCons :: (KnownSymbol k, PrimTy a, PrimTyMap as)
+  SCons :: (StructFieldKind fld, Known fld k, PrimTy a, PrimTyMap as)
         => SPrimTyMap ((k ':-> a) ': as)
+
+data SKPrimTyMap :: [fld :-> Type] -> Type where
+  SKNil :: SKPrimTyMap '[]
+  SKCons :: SKPrimTy a -> SKPrimTyMap as -> SKPrimTyMap ((k ':-> a) ': as)
+
+type family ScalarTySing (ty :: Type) :: SScalarTy ty where
+  ScalarTySing Word8  = SWord8
+  ScalarTySing Word16 = SWord16
+  ScalarTySing Word32 = SWord32
+  ScalarTySing Word64 = SWord64
+  ScalarTySing Int8   = SInt8
+  ScalarTySing Int16  = SInt16
+  ScalarTySing Int32  = SInt32
+  ScalarTySing Int64  = SInt64
+  ScalarTySing Half   = SHalf
+  ScalarTySing Float  = SFloat
+  ScalarTySing Double = SDouble
+  ScalarTySing a
+    = TypeError
+      ( Text "Type " :<>: ShowType a :<>: Text " is not a valid scalar type." )
+
+type family PrimTySing (ty :: Type) :: SKPrimTy ty where
+  PrimTySing ()     = SKUnit
+  PrimTySing Bool   = SKBool
+  PrimTySing Word8  = SKScalar SWord8
+  PrimTySing Word16 = SKScalar SWord16
+  PrimTySing Word32 = SKScalar SWord32
+  PrimTySing Word64 = SKScalar SWord64
+  PrimTySing Int8   = SKScalar SInt8
+  PrimTySing Int16  = SKScalar SInt16
+  PrimTySing Int32  = SKScalar SInt32
+  PrimTySing Int64  = SKScalar SInt64
+  PrimTySing Half   = SKScalar SHalf
+  PrimTySing Float  = SKScalar SFloat
+  PrimTySing Double = SKScalar SDouble
+  PrimTySing (V n a) = SKVector (ScalarTySing a)
+  PrimTySing (M m n a) = SKMatrix (ScalarTySing a)
+  PrimTySing (Array n a) = SKArray (PrimTySing a)
+  PrimTySing (RuntimeArray a) = SKRuntimeArray (PrimTySing a)
+  PrimTySing (Struct as) = SKStruct (MapPrimTySing as)
+  PrimTySing ty
+    = TypeError
+        ( Text "Type " :<>: ShowType ty :<>: Text " is not a valid primitive type." )
+
+type family MapPrimTySing (as :: [fld :-> Type]) :: SKPrimTyMap as where
+  MapPrimTySing '[] = SKNil
+  MapPrimTySing ( ( k ':-> a) ': as)
+    = SKCons (PrimTySing a) (MapPrimTySing as)
 
 ------------------------------------------------
 -- function arity
@@ -291,18 +355,26 @@ instance (PrimTy a, KnownNat l) => PrimTy (Array l a) where
 instance PrimTy a => PrimTy (RuntimeArray a) where
   primTySing = SRuntimeArray
 
-class PrimTyMap as where
+class StructFieldKind fld => PrimTyMap (as :: [fld :-> Type]) where
   primTyMapSing :: SPrimTyMap as
 
-instance PrimTyMap '[] where
+instance StructFieldKind fld => PrimTyMap ('[] :: [fld :-> Type]) where
   primTyMapSing = SNil
 
-instance (KnownSymbol k, PrimTy a, PrimTyMap as)
+instance forall ( fld :: Type           )
+                ( k   :: fld            )
+                ( a   :: Type           )
+                ( as  :: [fld :-> Type] )
+      . ( StructFieldKind fld
+        , Known fld k
+        , PrimTy a
+        , PrimTyMap as
+        )
        => PrimTyMap ((k ':-> a) ': as) where
   primTyMapSing = SCons
 
-instance ( Typeable as, PrimTyMap as )
-       => PrimTy (Struct as) where
+instance ( Typeable fld, Typeable as, PrimTyMap as )
+       => PrimTy (Struct (as :: [fld :-> Type])) where
   primTySing = SStruct
 
 
@@ -331,14 +403,22 @@ sPrimTy rtArr@SRuntimeArray = case rtArr of
     -> SPIRV.RuntimeArray (primTy @a) Set.empty SPIRV.NotForBuiltins
 sPrimTy struct@SStruct = case struct of
   ( _ :: SPrimTy (Struct as) )
-    -> SPIRV.Struct (sPrimTyMap (primTyMapSing @as)) Set.empty SPIRV.NotForBuiltins
+    -> SPIRV.Struct (sPrimTyMap (primTyMapSing @_ @as)) Set.empty SPIRV.NotForBuiltins
 
-sPrimTyMap :: SPrimTyMap ty -> [(Text.Text, SPIRV.PrimTy, SPIRV.Decorations)]
+sPrimTyMap :: forall (fld :: Type) (flds :: [fld :-> Type])
+           .  SPrimTyMap flds
+           -> [ (Maybe Text.Text, SPIRV.PrimTy, SPIRV.Decorations) ]
 sPrimTyMap SNil = []
 sPrimTyMap cons@SCons = case cons of
-  ( _ :: SPrimTyMap ((k ':-> a) ': as) )
-    ->   (knownValue @k, primTy @a, Set.empty)
-       : sPrimTyMap (primTyMapSing @as)
+  ( _ :: SPrimTyMap (( f ':-> a ) ': as) )
+    ->  let
+          mbFieldName :: Maybe Text.Text
+          mbFieldName =
+            case fieldKind @fld of
+              NamedField -> Just ( knownValue @f )
+              _          -> Nothing
+        in ( mbFieldName, primTy @a, Set.empty )
+           : sPrimTyMap (primTyMapSing @_ @as)
 
 
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy

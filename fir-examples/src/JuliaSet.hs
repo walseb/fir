@@ -75,10 +75,11 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 import FIR
   ( runCompilationsTH
   , Poke(poke)
-  , Alignment(Extended)
+  , Layout(Extended)
+  , Struct((:&),End)
   )
 import Math.Linear
-  ( V, pattern V2, pattern V3
+  ( pattern V2, pattern V3
   , (^+^), (*^)
   )
 
@@ -88,11 +89,12 @@ import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
 import Vulkan.Observer
+import Vulkan.Pipeline
 import Vulkan.SDL
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either Text Text
+shaderCompilationResult :: Either Text ()
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Vertex shader"  , compileVertexShader   )
@@ -109,7 +111,8 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
   enableSDLLogging
   initializeSDL SDL.AbsoluteLocation
-  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples"
+  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Julia set"
+  setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
   extensionNames <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
@@ -186,19 +189,19 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
        )
 
   let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
-      clearValues = [ pinkClear ]
+      clearValues = [ blackClear ]
         where
-          pink :: Vulkan.VkClearColorValue
-          pink =
+          transparentBlack :: Vulkan.VkClearColorValue
+          transparentBlack =
             Vulkan.createVk
-              (  Vulkan.setAt @"float32" @0 1.0
-              &* Vulkan.setAt @"float32" @1 0.5
-              &* Vulkan.setAt @"float32" @2 0.7
-              &* Vulkan.setAt @"float32" @3 1
+              (  Vulkan.setAt @"float32" @0 0
+              &* Vulkan.setAt @"float32" @1 0
+              &* Vulkan.setAt @"float32" @2 0
+              &* Vulkan.setAt @"float32" @3 0
               )
 
-          pinkClear :: Vulkan.VkClearValue
-          pinkClear = Vulkan.createVk ( Vulkan.set @"color" pink )
+          blackClear :: Vulkan.VkClearValue
+          blackClear = Vulkan.createVk ( Vulkan.set @"color" transparentBlack )
 
   commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
   queue       <- getQueue device 0
@@ -212,16 +215,16 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
   descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
 
   ( graphicsPipeline, pipelineLayout )
-    <- createGraphicsPipeline device renderPass extent descriptorSetLayout
+    <- createGraphicsPipeline device renderPass extent descriptorSetLayout shaderPipeline
 
   let
 
-    viewportVertices :: [ V 3 Float ]
+    viewportVertices :: [ Struct VertexInput ]
     viewportVertices =
-      [ V3 (-1) (-1) 0
-      , V3 (-1)   1  0
-      , V3   1 (-1)  0
-      , V3   1   1   0
+      [ V3 (-1) (-1) 0 :& End
+      , V3 (-1)   1  0 :& End
+      , V3   1 (-1)  0 :& End
+      , V3   1   1   0 :& End
       ]
 
     viewportIndices :: [ Word32 ]
@@ -624,223 +627,6 @@ createRenderPass dev colorFormat =
     managedVulkanResource
       ( Vulkan.vkCreateRenderPass  dev ( Vulkan.unsafePtr createInfo ) )
       ( Vulkan.vkDestroyRenderPass dev )
-
-
-createGraphicsPipeline
-  :: MonadManaged m
-  => Vulkan.VkDevice
-  -> Vulkan.VkRenderPass
-  -> Vulkan.VkExtent2D
-  -> Vulkan.VkDescriptorSetLayout
-  -> m ( Vulkan.VkPipeline, Vulkan.VkPipelineLayout )
-createGraphicsPipeline device renderPass extent layout0 = do
-  pipelineLayout <-
-    let
-      pipelineLayoutCreateInfo :: Vulkan.VkPipelineLayoutCreateInfo
-      pipelineLayoutCreateInfo =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
-          &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"flags" 0
-          &* Vulkan.setListCountAndRef
-                @"setLayoutCount"
-                @"pSetLayouts"
-                [ layout0 ]
-          &* Vulkan.setListCountAndRef
-                @"pushConstantRangeCount"
-                @"pPushConstantRanges"
-                [ ]
-          )
-
-    in
-    managedVulkanResource
-      ( Vulkan.vkCreatePipelineLayout  device ( Vulkan.unsafePtr pipelineLayoutCreateInfo ) )
-      ( Vulkan.vkDestroyPipelineLayout device )
-
-  vertexShader   <- loadShader device vertPath
-  fragmentShader <- loadShader device fragPath
-
-  let
-    rasterizationCreateInfo :: Vulkan.VkPipelineRasterizationStateCreateInfo
-    rasterizationCreateInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
-        &* Vulkan.set @"pNext"                   Vulkan.VK_NULL
-        &* Vulkan.set @"depthClampEnable"        Vulkan.VK_FALSE
-        &* Vulkan.set @"rasterizerDiscardEnable" Vulkan.VK_FALSE
-        &* Vulkan.set @"polygonMode"             Vulkan.VK_POLYGON_MODE_FILL
-        &* Vulkan.set @"lineWidth"               1
-        &* Vulkan.set @"depthBiasEnable"         Vulkan.VK_FALSE
-        &* Vulkan.set @"depthBiasSlopeFactor"    0
-        &* Vulkan.set @"depthBiasClamp"          0
-        &* Vulkan.set @"depthBiasConstantFactor" 0
-        &* Vulkan.set @"frontFace"               Vulkan.VK_FRONT_FACE_COUNTER_CLOCKWISE
-        &* Vulkan.set @"cullMode"                Vulkan.VK_CULL_MODE_BACK_BIT
-        )
-
-    vertexShaderStage =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
-        &* Vulkan.set @"pNext"        Vulkan.VK_NULL
-        &* Vulkan.set @"flags"        0
-        &* Vulkan.setStrRef @"pName"  "main"
-        &* Vulkan.set @"module"       vertexShader
-        &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_VERTEX_BIT
-        )
-
-    fragmentShaderStage =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
-        &* Vulkan.set @"pNext"        Vulkan.VK_NULL
-        &* Vulkan.set @"flags"        0
-        &* Vulkan.setStrRef @"pName"  "main"
-        &* Vulkan.set @"module"       fragmentShader
-        &* Vulkan.set @"stage"        Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT
-        )
-
-    vertexBindingDescription :: Vulkan.VkVertexInputBindingDescription
-    vertexBindingDescription =
-      Vulkan.createVk
-        (  Vulkan.set @"binding"   0
-        &* Vulkan.set @"stride"    ( fromIntegral ( Foreign.sizeOf ( undefined :: V 3 Foreign.C.CFloat ) ) )
-        &* Vulkan.set @"inputRate" Vulkan.VK_VERTEX_INPUT_RATE_VERTEX
-        )
-
-    positionAttributeDescription =
-      Vulkan.createVk
-        (  Vulkan.set @"location" 0
-        &* Vulkan.set @"binding"  0
-        &* Vulkan.set @"format"   Vulkan.VK_FORMAT_R32G32B32_SFLOAT
-        &* Vulkan.set @"offset"   0
-        )
-
-    vertexInputState =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.setListCountAndRef
-                @"vertexBindingDescriptionCount"
-                @"pVertexBindingDescriptions"
-                [ vertexBindingDescription ]
-        &* Vulkan.setListCountAndRef
-                @"vertexAttributeDescriptionCount"
-                @"pVertexAttributeDescriptions"
-                [ positionAttributeDescription ]
-        )
-
-    assemblyStateCreateInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType"    Vulkan.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO
-        &* Vulkan.set @"pNext"    Vulkan.VK_NULL
-        &* Vulkan.set @"topology" Vulkan.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
-        &* Vulkan.set @"primitiveRestartEnable" Vulkan.VK_FALSE
-        )
-
-    viewport =
-      Vulkan.createVk
-        (  Vulkan.set @"x"        0
-        &* Vulkan.set @"y"        0
-        &* Vulkan.set @"width"    ( fromIntegral $ Vulkan.getField @"width"  extent )
-        &* Vulkan.set @"height"   ( fromIntegral $ Vulkan.getField @"height" extent )
-        &* Vulkan.set @"minDepth" 0
-        &* Vulkan.set @"maxDepth" 1
-        )
-
-    scissor =
-      let
-        offset =
-          Vulkan.createVk
-            (  Vulkan.set @"x" 0
-            &* Vulkan.set @"y" 0
-            )
-
-      in
-      Vulkan.createVk
-        (  Vulkan.set @"offset" offset
-        &* Vulkan.set @"extent" extent
-        )
-
-    viewportState =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" 0
-        &* Vulkan.setListCountAndRef @"viewportCount" @"pViewports" [ viewport ]
-        &* Vulkan.setListCountAndRef @"scissorCount"  @"pScissors"  [ scissor  ]
-        )
-
-    multisampleState =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
-        &* Vulkan.set @"minSampleShading"     1
-        &* Vulkan.set @"rasterizationSamples" Vulkan.VK_SAMPLE_COUNT_1_BIT
-        &* Vulkan.set @"pNext"                Vulkan.VK_NULL
-        )
-
-    attachmentState =
-      Vulkan.createVk
-        (  Vulkan.set @"blendEnable"         Vulkan.VK_FALSE
-        &* Vulkan.set @"alphaBlendOp"        Vulkan.VK_BLEND_OP_ADD
-        &* Vulkan.set @"srcColorBlendFactor" Vulkan.VK_BLEND_FACTOR_ONE
-        &* Vulkan.set @"dstColorBlendFactor" Vulkan.VK_BLEND_FACTOR_ZERO
-        &* Vulkan.set @"colorBlendOp"        Vulkan.VK_BLEND_OP_ADD
-        &* Vulkan.set @"srcAlphaBlendFactor" Vulkan.VK_BLEND_FACTOR_ONE
-        &* Vulkan.set @"dstAlphaBlendFactor" Vulkan.VK_BLEND_FACTOR_ZERO
-        &* Vulkan.set @"colorWriteMask"
-             (     Vulkan.VK_COLOR_COMPONENT_R_BIT
-               .|. Vulkan.VK_COLOR_COMPONENT_G_BIT
-               .|. Vulkan.VK_COLOR_COMPONENT_B_BIT
-               .|. Vulkan.VK_COLOR_COMPONENT_A_BIT
-             )
-        )
-
-    colorBlendState =
-      Vulkan.createVk
-        (  Vulkan.set @"sType"   Vulkan.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
-        &* Vulkan.set @"logicOp" Vulkan.VK_LOGIC_OP_COPY
-        &* Vulkan.set @"pNext"   Vulkan.VK_NULL
-        &* Vulkan.setAt @"blendConstants" @0 0
-        &* Vulkan.setAt @"blendConstants" @1 0
-        &* Vulkan.setAt @"blendConstants" @2 0
-        &* Vulkan.setAt @"blendConstants" @3 0
-        &* Vulkan.setListCountAndRef @"attachmentCount" @"pAttachments" [ attachmentState ]
-        )
-
-    createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" 0
-        &* Vulkan.setListCountAndRef
-                @"stageCount"
-                @"pStages"
-                [ vertexShaderStage
-                , fragmentShaderStage
-                ]
-        &* Vulkan.setVkRef @"pVertexInputState"   vertexInputState
-        &* Vulkan.set      @"basePipelineIndex"   0
-        &* Vulkan.set      @"subpass"             0
-        &* Vulkan.set      @"renderPass"          renderPass
-        &* Vulkan.set      @"layout"              pipelineLayout
-        &* Vulkan.setVkRef @"pRasterizationState" rasterizationCreateInfo
-        &* Vulkan.setVkRef @"pInputAssemblyState" assemblyStateCreateInfo
-        &* Vulkan.setVkRef @"pViewportState"      viewportState
-        &* Vulkan.setVkRef @"pMultisampleState"   multisampleState
-        &* Vulkan.setVkRef @"pColorBlendState"    colorBlendState
-        )
-
-  pipeline <-
-    managedVulkanResource
-      ( Vulkan.vkCreateGraphicsPipelines
-          device
-          Vulkan.vkNullPtr
-          1
-          ( Vulkan.unsafePtr createInfo )
-      )
-      ( Vulkan.vkDestroyPipeline device )
-
-  return ( pipeline, pipelineLayout )
-
 
 
 createDescriptorSetLayout

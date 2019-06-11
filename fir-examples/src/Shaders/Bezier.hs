@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Shaders.Text where
+module Shaders.Bezier where
 
 -- text-utf8
 import "text-utf8" Data.Text
@@ -25,6 +25,14 @@ import "text-utf8" Data.Text
 -- fir
 import FIR
 import Math.Linear
+
+------------------------------------------------
+-- pipeline input
+
+type VertexInput
+  = '[ Slot 0 0 ':-> V 3 Float
+     , Slot 1 0 ':-> V 3 Float
+     ]
 
 ------------------------------------------------
 -- vertex shader
@@ -42,8 +50,8 @@ type VertexDefs =
    , "main"        ':-> EntryPoint '[ ] Vertex
    ]
 
-vertex :: Program VertexDefs ()
-vertex = Program $ entryPoint @"main" @Vertex do
+vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex = shader do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
     put @"out_colour"  (Vec4 r g b 1)
@@ -59,8 +67,8 @@ type TessellationControlDefs =
                         TessellationControl
    ]
 
-tessellationControl :: Program TessellationControlDefs ()
-tessellationControl = Program $ entryPoint @"main" @TessellationControl do
+tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs
+tessellationControl = shader do
 
   assign @(Name "gl_TessLevelOuter" :.: Index 0) 1
   assign @(Name "gl_TessLevelOuter" :.: Index 1) 11
@@ -88,8 +96,8 @@ bezier2 t u v w -- could use applicative here
   ^+^ ( 2 * t    * (1 - t)    ) *^ v
   ^+^ (     t**2              ) *^ w
 
-tessellationEvaluation :: Program TessellationEvaluationDefs ()
-tessellationEvaluation = Program $ entryPoint @"main" @TessellationEvaluation do
+tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs
+tessellationEvaluation = shader do
 
   t <- use @(Name "gl_TessCoord" :.: Index 0)
 
@@ -152,8 +160,8 @@ type GeometryDefs =
    ]
 
 
-geometry :: Program GeometryDefs ()
-geometry = Program $ entryPoint @"main" @Geometry do
+geometry :: ShaderStage "main" GeometryShader GeometryDefs
+geometry = shader do
   p0   <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
   p1   <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
   col0 <- use @(Name "in_colors" :.: Index 0)
@@ -224,8 +232,8 @@ coverage d =
        then 1
        else 0.5 + d * ( 0.9123559 * d * d - 1.1547005 )
 
-fragment :: Program FragmentDefs ()
-fragment = Program $ entryPoint @"main" @Fragment do
+fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment = shader do
     ~(Vec3 _ w_effective aa_precision) <- use @(Name "ubo" :.: Name "widths")
 
     side <- get @"in_side"
@@ -241,23 +249,33 @@ fragment = Program $ entryPoint @"main" @Fragment do
 -- compiling
 
 vertPath, tescPath, tesePath, geomPath, fragPath :: FilePath
-vertPath = "shaders/text_vert.spv"
-tescPath = "shaders/text_tesc.spv"
-tesePath = "shaders/text_tese.spv"
-geomPath = "shaders/text_geom.spv"
-fragPath = "shaders/text_frag.spv"
+vertPath = "shaders/bezier_vert.spv"
+tescPath = "shaders/bezier_tesc.spv"
+tesePath = "shaders/bezier_tese.spv"
+geomPath = "shaders/bezier_geom.spv"
+fragPath = "shaders/bezier_frag.spv"
 
-compileVertexShader :: IO ( Either Text Text )
+compileVertexShader :: IO ( Either Text () )
 compileVertexShader = compile vertPath [] vertex
 
-compileTessellationControlShader :: IO ( Either Text Text )
+compileTessellationControlShader :: IO ( Either Text () )
 compileTessellationControlShader = compile tescPath [] tessellationControl
 
-compileTessellationEvaluationShader :: IO ( Either Text Text )
+compileTessellationEvaluationShader :: IO ( Either Text () )
 compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
 
-compileGeometryShader :: IO ( Either Text Text )
+compileGeometryShader :: IO ( Either Text () )
 compileGeometryShader = compile geomPath [] geometry
 
-compileFragmentShader :: IO ( Either Text Text )
+compileFragmentShader :: IO ( Either Text () )
 compileFragmentShader = compile fragPath [] fragment
+
+shaderPipeline :: ShaderPipeline
+shaderPipeline
+  = withStructInput @VertexInput @(PatchesOfSize 5)
+  $  StartPipeline
+  :> (vertex                , vertPath)
+  :> (tessellationControl   , tescPath)
+  :> (tessellationEvaluation, tesePath)
+  :> (geometry              , geomPath)
+  :> (fragment              , fragPath)

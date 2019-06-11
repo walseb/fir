@@ -1,4 +1,4 @@
-cabal-version:       2.4
+cabal-version:       3.0
 name:                fir-examples
 version:             0.0.1.0
 synopsis:            Vulkan example scenes using FIR
@@ -23,21 +23,23 @@ library
     src
 
   exposed-modules:
-      FullPipeline
+      Bezier
+    , FullPipeline
     , JuliaSet
     , Offscreen
-    , Text
     , Texture
+    , Shaders.Bezier
     , Shaders.FullPipeline
     , Shaders.JuliaSet
     , Shaders.Offscreen
-    , Shaders.Text
     , Shaders.Texture
     , Vulkan.Backend
     , Vulkan.Buffer
+    , Vulkan.Formats
     , Vulkan.Memory
     , Vulkan.Monad
     , Vulkan.Observer
+    , Vulkan.Pipeline
     , Vulkan.SDL
 
   build-depends:
@@ -67,7 +69,6 @@ library
         >= 4.17
     , transformers
         >= 0.5.6
-    , deepseq
 
   default-language:
     Haskell2010
@@ -84,77 +85,93 @@ library
   default-extensions:
     NoStarIsType
 
-executable FullPipeline
+
+executable Bezier
 
   main-is:
-    fullPipeline.hs
+    Main.hs
 
   ghc-options:
     -threaded -rtsopts
 
   hs-source-dirs:
-    app
+    app/Bezier
 
   build-depends:
       base
     , fir-examples
+
+  default-language:
+    Haskell2010
+
+executable FullPipeline
+
+  main-is:
+    Main.hs
+
+  ghc-options:
+    -threaded -rtsopts
+
+  hs-source-dirs:
+    app/FullPipeline
+
+  build-depends:
+      base
+    , fir-examples
+
+  default-language:
+    Haskell2010
 
 executable JuliaSet
 
   main-is:
-    juliaSet.hs
+    Main.hs
 
   ghc-options:
     -threaded -rtsopts
 
   hs-source-dirs:
-    app
+    app/JuliaSet
 
   build-depends:
       base
     , fir-examples
+
+  default-language:
+    Haskell2010
 
 executable Offscreen
 
   main-is:
-    offscreen.hs
+    Main.hs
 
   ghc-options:
     -threaded -rtsopts
 
   hs-source-dirs:
-    app
+    app/Offscreen
 
   build-depends:
       base
     , fir-examples
 
-executable Text
-
-  main-is:
-    text.hs
-
-  ghc-options:
-    -threaded -rtsopts
-
-  hs-source-dirs:
-    app
-
-  build-depends:
-      base
-    , fir-examples
+  default-language:
+    Haskell2010
 
 executable Texture
 
   main-is:
-    texture.hs
+    Main.hs
 
   ghc-options:
     -threaded -rtsopts
 
   hs-source-dirs:
-    app
+    app/Texture
 
   build-depends:
       base
     , fir-examples
+
+  default-language:
+    Haskell2010
