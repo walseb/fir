@@ -294,13 +294,13 @@ instance DrawableProgram (AST a) where
 instance DrawableProgram (Codensity AST (AST a := j) i) where
   draw = drawTree . toTree . toAST
 instance ( DrawableProgram
-             ( CodensityProgram (StartState defs) (EndState defs) a )
+             ( CodensityProgram (StartState defs) endState a )
          )
       => DrawableProgram (Program defs a)
       where
   draw (Program prog) = draw prog
-instance DrawableProgram (Program defs ())
-      => DrawableProgram (FIR.Pipeline.ShaderStage name stage defs)
+instance DrawableProgram (CodensityProgram (StartState defs) endState ())
+      => DrawableProgram (FIR.Pipeline.ShaderStage name stage defs endState)
       where
   draw (FIR.Pipeline.ShaderStage prog) = draw prog
 
@@ -325,11 +325,11 @@ instance KnownDefinitions defs => CompilableProgram (Program defs a) where
       where cgContext :: CGContext
             cgContext = (initialCGContext @defs) { debugMode = Debug `elem` flags }
 
-instance CompilableProgram (Program defs ())
-      => CompilableProgram (FIR.Pipeline.ShaderStage name stage defs)
+instance ( KnownDefinitions defs )
+      => CompilableProgram (FIR.Pipeline.ShaderStage name stage defs endState)
       where
   compile filePath flags (FIR.Pipeline.ShaderStage prog)
-    = compile filePath flags prog
+    = compile filePath flags (Program @defs prog)
 
 instance TH.Lift Text where
   lift t = [| Text.pack $(TH.lift $ Text.unpack t) |]

@@ -20,12 +20,13 @@ import Math.Linear
 -- program
 
 type GeometryDefs =
-  '[ "in_color"  ':-> Input      '[ Location 0 ] ( Array 3 (V 4 Float ) )
-   , "out_color" ':-> Output     '[ Location 0 ] ( V 4 Float )
-   , "normal"    ':-> Output     '[ Location 1 ] ( V 3 Float )
+  '[ "in_color"  ':-> Input  '[ Location 0 ] ( Array 3 (V 4 Float ) )
+   , "out_color" ':-> Output '[ Location 0 ] ( V 4 Float )
+   , "normal"    ':-> Output '[ Location 1 ] ( V 3 Float )
    , "main"      ':-> EntryPoint
                          '[ Triangles
-                          , OutputTriangleStrip, OutputVertices 3
+                          , OutputTriangleStrip
+                          , OutputVertices 3
                           ]
                           Geometry
    ]

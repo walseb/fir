@@ -195,7 +195,7 @@ load (loadeeName, loadeeID) (SPIRV.PointerTy storage ty)
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: load operation not allowed at top level"
-        InEntryPoint entryPointName stageInfo
+        InEntryPoint entryPointName stageInfo _
           | storage == Storage.Input
           -- add this variable to the interface of the entry point
           -> assign
@@ -223,7 +223,7 @@ store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
       context <- use _functionContext
       case context of
         TopLevel -> throwError "codeGen: store operation not allowed at top level"
-        InEntryPoint entryPointName stageInfo
+        InEntryPoint entryPointName stageInfo _
           | storage == Storage.Output
           -- add this variable to the interface of the entry point
           -> assign

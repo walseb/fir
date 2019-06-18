@@ -126,6 +126,7 @@ import FIR.AST
   )
 import FIR.ASTState
   ( FunctionContext(..), ASTState(ASTState)
+  , TLInterface, Bindings
   , ExecutionContext, EntryPointInfos
   , EntryPointInfo(EntryPointInfo)
   )
@@ -148,7 +149,9 @@ import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
   , Has
   , ValidFunDef, FunctionDefinitionStartState
-  , ValidEntryPoint, EntryPointStartState, AddEntryPoint
+  , ValidEntryPoint
+  , EntryPointStartState, EntryPointEndState
+  , AddEntryPoint, SetInterface, GetExecutionInfo
   , LookupImageProperties
   , ValidImageRead, ValidImageWrite
   , Embeddable
@@ -296,7 +299,7 @@ fundef = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
 
 -- | Define a new entry point.
 --
--- Built-in variables for the relevant shader stage are made available in the entry point body.
+-- The appropriate built-in variables are made available in the entry point body.
 --
 -- Type-level arguments:
 --
@@ -304,22 +307,32 @@ fundef = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
 -- *@stage@: entry point 'SPIRV.Stage.ExecutionModel',
 -- *@stageInfo@: entry point 'SPIRV.Stage.ExecutionInfo' (usually inferred),
 -- *@j_bds@: bindings state at end of entry point body (usually inferred),
+-- *@j_iface@: interface of entry point (usually inferred),
 -- *@i@: state at start of entry point body (usually inferred).
-entryPoint :: forall name stage stageInfo j_bds i.
+entryPoint :: forall
+               ( name      :: Symbol )
+               ( stage     :: SPIRV.ExecutionModel          )
+               ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
+               ( j_bds     :: BindingsMap )
+               ( j_iface   :: TLInterface )
+               ( i         :: ASTState    )
+             .
              ( GHC.Stack.HasCallStack
              , KnownSymbol name
              , Known SPIRV.ExecutionModel stage
              , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
              , ValidEntryPoint name stageInfo i j_bds
+             , stageInfo ~ GetExecutionInfo name stage i
              )
            => Codensity AST
-                ( AST () := 'ASTState j_bds (InEntryPoint name stageInfo) (EntryPointInfos i) )
-                ( EntryPointStartState name stageInfo i ) -- ^ Entry point body.
+                ( AST () := EntryPointEndState name stageInfo j_bds j_iface i )
+                ( EntryPointStartState name stageInfo i )
            -> Codensity AST
-                ( AST () := AddEntryPoint name stageInfo i )
+                ( AST () := SetInterface name stageInfo ('Just j_iface) i )
                 i
-entryPoint = fromAST ( Entry @name @stage @stageInfo @j_bds @i Proxy Proxy ) . toAST
-
+entryPoint = fromAST
+                ( Entry @name @stage @stageInfo @j_bds @j_iface @i Proxy Proxy )
+           . toAST
 
 -- | Define a new shader stage.
 --
@@ -334,7 +347,10 @@ entryPoint = fromAST ( Entry @name @stage @stageInfo @j_bds @i Proxy Proxy ) . t
 -- *@defs@: top-level inputs/outputs of shader stage,
 -- *@stage@: entry point 'SPIRV.Stage.ExecutionModel' (deduced from @shader@),
 -- *@stageInfo@: entry point 'SPIRV.Stage.StageInfo' (usually inferred),
--- *@j_bds@: bindings state at end of shader stage body (usually inferred).
+-- *@j_bds@: bindings state at end of shader stage body (usually inferred),
+-- *@j_iface@: interface of the entry point (usually inferred),
+-- *@eps@: singleton list consisting of the entry point info for this stage (usually inferred),
+-- *@i@: basic top-level state for the shader (usually inferred).
 shader :: forall
             ( name      :: Symbol                        )
             ( shader    :: SPIRV.Shader                  )
@@ -342,7 +358,12 @@ shader :: forall
             ( stage     :: SPIRV.ExecutionModel          )
             ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
             ( j_bds     :: BindingsMap                   )
-       . ( DefinitionEntryPoints defs ~ '[ 'EntryPointInfo name stageInfo ]
+            ( j_iface   :: TLInterface                   )
+            ( eps       :: [ EntryPointInfo ]            )
+            ( i         :: ASTState                      )
+       . ( DefinitionEntryPoints defs ~ eps
+         , eps ~ '[ 'EntryPointInfo name stageInfo 'Nothing ]
+         , i ~ 'ASTState (StartBindings defs) 'TopLevel eps
          , StartBindings defs ~ EndBindings defs
          , GHC.Stack.HasCallStack
          , KnownDefinitions defs
@@ -350,16 +371,15 @@ shader :: forall
          , stage ~ 'SPIRV.Stage ('SPIRV.ShaderStage shader)
          , Known SPIRV.Shader shader
          , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
-         , ValidEntryPoint name stageInfo ('ASTState (EndBindings defs) 'TopLevel '[]) j_bds
+         , ValidEntryPoint name stageInfo ('ASTState (EndBindings defs) 'TopLevel eps) j_bds
          )
        => Codensity AST
-          ( AST () := 'ASTState j_bds (InEntryPoint name stageInfo) '[] )
-          ( 'ASTState (Union (StartBindings defs) (ModelBuiltins stageInfo)) (InEntryPoint name stageInfo) '[] )
-       -> ShaderStage name shader defs
+          ( AST () := EntryPointEndState name stageInfo j_bds j_iface i )
+          ( EntryPointStartState name stageInfo i )
+       -> ShaderStage name shader defs (SetInterface name stageInfo ('Just j_iface) i)
 shader
-  = ShaderStage @name @shader @defs
-  . Program @defs @()
-  . entryPoint @name @stage @stageInfo @j_bds
+  = ShaderStage
+  . entryPoint @name @stage
 
 -- Optics.
 

@@ -39,7 +39,7 @@ import Data.Proxy
   ( Proxy(Proxy) )
 import qualified GHC.Stack
 import GHC.TypeLits
-  ( KnownSymbol, symbolVal )
+  ( Symbol, KnownSymbol, symbolVal )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal )
 
@@ -70,18 +70,25 @@ import Data.Type.Known
   ( Known, knownValue )
 import Data.Type.List
   ( SLength )
+import FIR.ASTState
+  ( FunctionContext(..), TLInterface
+  , ASTState(..)
+  , EntryPointInfos
+  )
 import FIR.Binding
-  ( FunctionType, Var, Permissions )
+  ( BindingsMap
+  , FunctionType, Var, Permissions
+  )
 import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
-  , ValidEntryPoint, EntryPointStartState, AddEntryPoint
+  , ValidEntryPoint, SetInterface
+  , GetExecutionInfo
+  , EntryPointStartState, EntryPointEndState
   , Embeddable
   )
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
-import FIR.ASTState
-  ( FunctionContext(..), ASTState(..), EntryPointInfos )
 import FIR.Prim.Image
   ( ImageOperands )
 import FIR.Prim.Op
@@ -168,21 +175,30 @@ data AST :: Type -> Type where
   -- Meaning of type variables:
   -- * name: entry point name,
   -- * stage: entry point stage,
-  -- * stageInfo: entry point stage info,
+  -- * stageInfo: entry point stage info (usually inferred),
   -- * j_bds: bindings state at end of entry point definition (usually inferred),
+  -- * j_iface: entry point interface (usually inferred),
   -- * i: monadic state at entry point definition site (usually inferred),
-  Entry :: forall name stage stageInfo j_bds i.
+  Entry :: forall
+             ( name      :: Symbol )
+             ( stage     :: SPIRV.ExecutionModel          )
+             ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
+             ( j_bds     :: BindingsMap )
+             ( j_iface   :: TLInterface )
+             ( i         :: ASTState    )
+           .
            ( GHC.Stack.HasCallStack
            , KnownSymbol name
            , Known SPIRV.ExecutionModel stage
            , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
            , ValidEntryPoint name stageInfo i j_bds
+           , stageInfo ~ GetExecutionInfo name stage i
            )
          => Proxy name      -- ^ Entry point name.
          -> Proxy stageInfo -- ^ Entry point stage info.
-         -> AST ( ( () := 'ASTState j_bds (InEntryPoint name stageInfo) (EntryPointInfos i) )
-                    ( EntryPointStartState name stageInfo i )
-                -> ( () := AddEntryPoint name stageInfo i ) i
+         -> AST (  ( () := EntryPointEndState name stageInfo j_bds j_iface i )
+                   ( EntryPointStartState name stageInfo i )
+                -> ( () := SetInterface name stageInfo ('Just j_iface) i ) i
                 )
 
   -- | /Use/ an optic, returning a monadic value read from the (indexed) state.

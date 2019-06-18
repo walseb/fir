@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedWildCards         #-}
 {-# LANGUAGE OverloadedLabels       #-}
 {-# LANGUAGE PackageImports         #-}
+{-# LANGUAGE PartialTypeSignatures  #-}
 {-# LANGUAGE RebindableSyntax       #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -42,7 +43,7 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[            ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex :: ShaderStage "main" VertexShader VertexDefs _
 vertex = shader do
     ~(Vec3 x y z) <- get @"in_position"
     put @"gl_Position" (Vec4 x y z 1)
@@ -100,7 +101,7 @@ xWidth, yWidth :: AST Float
 xWidth = recip . fromIntegral $ xSamples
 yWidth = recip . fromIntegral $ ySamples
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment :: ShaderStage "main" FragmentShader FragmentDefs _
 fragment = shader do
 
     ~(Vec4 x y _ _) <- #gl_FragCoord

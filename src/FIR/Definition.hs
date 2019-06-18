@@ -44,14 +44,14 @@ import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
 import Data.Type.Map
   ( (:->)((:->)), Insert )
+import FIR.ASTState
+  ( ASTState(ASTState), EntryPointInfo(EntryPointInfo) )
+import qualified FIR.ASTState as ASTState
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
 import FIR.Instances.Bindings
   ( InsertEntryPointInfo )
 import qualified FIR.Binding as Binding
-import FIR.ASTState
-  ( ASTState(ASTState), EntryPointInfo(EntryPointInfo) )
-import qualified FIR.ASTState as ASTState
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Image
@@ -153,14 +153,13 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
 
 type family StartState (defs :: [ Symbol :-> Definition ]) :: ASTState where
   StartState defs
-    = 'ASTState (StartBindings defs) ASTState.TopLevel '[]
-
-type family EndState (defs :: [ Symbol :-> Definition ]) :: ASTState where
-  EndState defs
-    = 'ASTState (EndBindings defs) ASTState.TopLevel (DefinitionEntryPoints defs)
+    = 'ASTState
+         ( StartBindings defs )
+         ASTState.TopLevel
+         ( DefinitionEntryPoints defs )
 
 type family DefinitionEntryPoints
-              ( defs :: [ Symbol :-> Definition ] )
+              ( defs   :: [ Symbol :-> Definition ] )
               :: [ EntryPointInfo ]
               where
   DefinitionEntryPoints '[] = '[]
@@ -168,7 +167,7 @@ type family DefinitionEntryPoints
     = DefinitionInsertEntryPointInfo k
         ( SPIRV.ValidateExecutionModes k stage modes )
         ( DefinitionEntryPoints defs )
-  DefinitionEntryPoints ( _ ': defs )
+  DefinitionEntryPoints ( _ ': defs ) -- not an entry point
     = DefinitionEntryPoints defs
 
 type family DefinitionInsertEntryPointInfo
@@ -183,7 +182,9 @@ type family DefinitionInsertEntryPointInfo
   -- ( this fixes [issue #43](https://gitlab.com/sheaf/fir/issues/43) )
     = TypeError ( 'Text "Invalid entry point execution modes (unreachable)" )
   DefinitionInsertEntryPointInfo k ('Just nfo) nfos
-    = InsertEntryPointInfo ('EntryPointInfo k nfo) nfos
+    = InsertEntryPointInfo
+        ( 'EntryPointInfo k nfo Nothing )
+        nfos
 
 type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   StartBindings '[]

@@ -53,7 +53,7 @@ import FIR.AST
   ( AST )
 import FIR.Definition
   ( Definition, KnownDefinitions
-  , StartState, EndState
+  , StartState
   )
 import FIR.ASTState
   ( ASTState(ASTState) )
@@ -89,8 +89,9 @@ data Program
       ( defs :: [ Symbol :-> Definition ] )
       ( a    :: Type                      )
     :: Type where
-  Program :: ( KnownDefinitions defs )
-          => CodensityProgram (StartState defs) (EndState defs) a
+  Program :: forall defs a endState
+          .  ( KnownDefinitions defs )
+          => CodensityProgram (StartState defs) endState a
           -> Program defs a
 
 programGlobals :: forall bds j ctx eps a.

@@ -56,6 +56,21 @@ instance Demotable Nat where
 instance KnownNat n => Known Nat n where
   known = fromIntegral (natVal @n Proxy)
 
+instance Demotable Bool where
+  type Demote Bool = Bool
+
+instance Known Bool 'False where
+  known = False
+instance Known Bool 'True where
+  known = True
+
+instance Demotable k => Demotable (Maybe k) where
+  type Demote (Maybe k) = Maybe (Demote k)
+instance Demotable k => Known (Maybe k) 'Nothing where
+  known = Nothing
+instance Known k a => Known (Maybe k) ('Just a) where
+  known = Just ( known @k @a )
+
 instance Demotable () where
   type Demote () = ()
 
@@ -71,13 +86,6 @@ instance (Demotable k, Demotable l, Demotable m) => Demotable (k,l,m) where
   type Demote (k,l,m) = (Demote k, Demote l, Demote m)
 instance (Known k a, Known l b, Known m c) => Known (k,l,m) '(a,b,c) where
   known = ( known @k @a, known @l @b, known @m @c )
-
-instance Demotable k => Demotable (Maybe k) where
-  type Demote (Maybe k) = Maybe (Demote k)
-instance Demotable k => Known (Maybe k) 'Nothing where
-  known = Nothing
-instance Known k a => Known (Maybe k) ('Just a) where
-  known = Just ( known @k @a )
 
 instance Demotable k => Demotable [k] where
   type Demote [k] = [Demote k]

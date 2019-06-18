@@ -388,7 +388,7 @@ bindingID varName
   = do  ctxt <- use _functionContext
 
         case ctxt of
-          InEntryPoint modelName modelInfo
+          InEntryPoint modelName modelInfo _
             | Just ptrTy <- lookup varName (modelBuiltins modelInfo)
               ->
                 do -- this is a built-in variable, use 'builtinID'

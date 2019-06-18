@@ -22,6 +22,7 @@ import Data.Type.Ord
 
 infixr 4 :->
 data (:->) k v = k :-> v
+  deriving ( Eq, Show )
 
 -- this synonym should only be used when we are working
 -- with lists that are known to be ordered

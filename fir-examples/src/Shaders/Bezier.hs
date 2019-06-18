@@ -50,7 +50,7 @@ type VertexDefs =
    , "main"        ':-> EntryPoint '[ ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex :: ShaderStage "main" VertexShader VertexDefs _
 vertex = shader do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
@@ -67,7 +67,7 @@ type TessellationControlDefs =
                         TessellationControl
    ]
 
-tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs
+tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs _
 tessellationControl = shader do
 
   assign @(Name "gl_TessLevelOuter" :.: Index 0) 1
@@ -96,7 +96,7 @@ bezier2 t u v w -- could use applicative here
   ^+^ ( 2 * t    * (1 - t)    ) *^ v
   ^+^ (     t**2              ) *^ w
 
-tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs
+tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs _
 tessellationEvaluation = shader do
 
   t <- use @(Name "gl_TessCoord" :.: Index 0)
@@ -160,7 +160,7 @@ type GeometryDefs =
    ]
 
 
-geometry :: ShaderStage "main" GeometryShader GeometryDefs
+geometry :: ShaderStage "main" GeometryShader GeometryDefs _
 geometry = shader do
   p0   <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
   p1   <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
@@ -232,7 +232,7 @@ coverage d =
        then 1
        else 0.5 + d * ( 0.9123559 * d * d - 1.1547005 )
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment :: ShaderStage "main" FragmentShader FragmentDefs _
 fragment = shader do
     ~(Vec3 _ w_effective aa_precision) <- use @(Name "ubo" :.: Name "widths")
 

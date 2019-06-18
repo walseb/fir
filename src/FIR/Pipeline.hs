@@ -59,15 +59,20 @@ import Data.Type.Known
 import Data.Type.List
   ( Replicate )
 import Data.Type.Map
-  ( Map, (:->)((:->)) )
+  ( Map, (:->)((:->))
+  , Values
+  )
 import Data.Type.Ord
   ( POrd(Max) )
 import Data.Type.String
   ( ShowNat )
 import FIR.ASTState
-  ( EntryPointInfo(EntryPointInfo) )
+  ( ASTState(ASTState)
+  , TLInterface, TLInterfaceVariable
+  , EntryPointInfo(EntryPointInfo)
+  )
 import FIR.Definition
-  ( Definition(Global), DefinitionEntryPoints )
+  ( Definition(Global), StartState )
 import FIR.Layout
   ( Layout(Locations)
   , Poke(SizeOf)
@@ -81,7 +86,7 @@ import FIR.Prim.Singletons
 import FIR.Prim.Struct
   ( Struct, LocationSlot(LocationSlot) )
 import FIR.Program
-  ( Program )
+  ( CodensityProgram )
 import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.Image      as SPIRV
   ( ImageFormat(ImageFormat) )
@@ -94,9 +99,6 @@ import qualified SPIRV.Storage    as SPIRV
 
 --------------------------------------------------------------------------
 -- * Graphics pipelines
-
-type InterfaceVariable = ( [SPIRV.Decoration Nat], Type )
-type PipelineStageInfo = ( EntryPointInfo :-> ( [InterfaceVariable], [InterfaceVariable] ) )
 
 data PrimitiveConnectedness
   = List
@@ -143,21 +145,30 @@ instance KnownNat n => Known (PrimitiveTopology Nat) ('PatchesOfSize n) where
 data PipelineInfo where
   TopOfPipe :: PipelineInfo
   Into :: PipelineInfo
-       -> PipelineStageInfo
+       -> EntryPointInfo
        -> PipelineInfo
+
+data ShaderStage
+        ( name     :: Symbol                  )
+        ( stage    :: SPIRV.Shader            )
+        ( defs     :: [Symbol :-> Definition] )
+        ( endState :: ASTState                )
+        where
+  ShaderStage :: forall name stage defs endState.
+                 CodensityProgram (StartState defs) endState ()
+              -> ShaderStage name stage defs endState
 
 data ShaderPipelineWithInfo (info :: PipelineInfo) where
   StartPipeline :: ShaderPipelineWithInfo TopOfPipe
   (:>) :: ( Known SPIRV.Shader shader )
        => ShaderPipelineWithInfo info
-       -> (ShaderStage name shader defs, String)
+       -> (ShaderStage name shader defs endState, String)
        -> ShaderPipelineWithInfo
             ( info `Into`
-              -- TODO: this is not the right thing to do, see (issue #51)(https://gitlab.com/sheaf/fir/issues/51).
-              ( 'EntryPointInfo name (ExecutionInfo shader name (DefinitionEntryPoints defs)) -- TODO: this is needlessly recalculating 'DefinitionEntryPoints'
-                  ':->  '( VariablesWithStorage SPIRV.Input  defs
-                         , VariablesWithStorage SPIRV.Output defs
-                         )
+              ( 'EntryPointInfo
+                    name
+                    (     GetExecutionInfo shader name endState   )
+                    ( 'Just ( GetInterface shader name endState ) )
               )
             )
 
@@ -166,7 +177,7 @@ pipelineInfoShaders = reverse . go []
   where
     go :: [(SPIRV.Shader, String)] -> ShaderPipelineWithInfo info2 -> [(SPIRV.Shader, String)]
     go paths StartPipeline = paths
-    go paths ( info :> ( (_ :: ShaderStage name shader defs) , path) )
+    go paths ( info :> ( (_ :: ShaderStage name shader defs endState) , path) )
       = go ( (knownValue @shader, path) : paths) info
 
 type BindingStrides = [ Nat :-> Nat ]
@@ -236,13 +247,6 @@ withStructInput
 withStructInput = WithVertexInput @bds @descs @top @info Proxy Proxy Proxy
 
 
-data ShaderStage
-        ( name  :: Symbol                  )
-        ( stage :: SPIRV.Shader            )
-        ( defs  :: [Symbol :-> Definition] )
-        where
-  ShaderStage :: forall name stage defs. Program defs () -> ShaderStage name stage defs
-
 -- | Check that a pipeline is valid:
 --
 --  - starts with a vertex shader,
@@ -263,7 +267,7 @@ type family ValidPipelineInfo
 -- | Check that a pipeline starts with a vertex shader.
 type family StartsWithVertex ( info :: PipelineInfo ) :: Constraint where
   StartsWithVertex
-    ( TopOfPipe `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Vertex) ':-> _ ) )
+    ( TopOfPipe `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Vertex) _ ) )
       = ()
   StartsWithVertex ( info `Into` _)
     = StartsWithVertex info
@@ -274,7 +278,7 @@ type family StartsWithVertex ( info :: PipelineInfo ) :: Constraint where
 -- | Check that a pipeline ends with a fragment shader.
 type family EndsWithFragment ( info :: PipelineInfo ) :: Constraint where
   EndsWithFragment
-    ( _ `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Fragment) ':-> _ ) )
+    ( _ `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Fragment) _ ) )
       = ()
   EndsWithFragment _
     = TypeError
@@ -309,28 +313,35 @@ type family ValidInterfaces
 -- | Check that a given pair of shaders sequences correctly.
 type family ValidPipelineInterface
               ( top    :: PrimitiveTopology Nat )
-              ( stage1 :: PipelineStageInfo     )
-              ( stage2 :: PipelineStageInfo     )
+              ( stage1 :: EntryPointInfo     )
+              ( stage2 :: EntryPointInfo     )
             :: Constraint
             where
   ValidPipelineInterface top
-    ( 'EntryPointInfo name1
+    ( 'EntryPointInfo
+        name1
         ( 'SPIRV.ShaderExecutionInfo info1
-            :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader1)))
-    ':-> '( _   , outs1 )
+            :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader1))
+        )
+        ( 'Just '( _, outputs1 ) )
     )
-    ( 'EntryPointInfo name2
+    ( 'EntryPointInfo
+        name2
         ( 'SPIRV.ShaderExecutionInfo info2
-            :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader2)))
-    ':-> '( ins2, _     )
+            :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader2))
+        )
+        ( 'Just '( inputs2, _ ) )
     )
       = ( ValidInterface
-          shader1 info1 name1 outs1
-          shader2 info2 name2 ins2
+          shader1 info1 name1 (Values outputs1)
+          shader2 info2 name2 (Values inputs2 )
         , ValidSequence top
             shader1 info1
             shader2 info2
         )
+  ValidPipelineInterface _ _ _
+    = TypeError
+      ( Text "Missing entry point interface." )
 
 -- | Checks that the sequencing of shaders is valid.
 --
@@ -548,7 +559,7 @@ type family CompatibleTessellationStages
 type family VariablesWithStorage
               ( storage :: SPIRV.StorageClass      )
               ( defs    :: [Symbol :-> Definition] )
-            :: [InterfaceVariable]
+            :: [TLInterfaceVariable]
             where
   VariablesWithStorage storage '[] = '[]
   VariablesWithStorage storage ( ( _ ':-> Global storage decs ty) ': defs )
@@ -556,37 +567,92 @@ type family VariablesWithStorage
   VariablesWithStorage storage ( _ ': defs )
     = VariablesWithStorage storage defs
 
-type family ExecutionInfo
+type family GetExecutionInfo
+              ( shader :: SPIRV.Shader )
+              ( name   :: Symbol       )
+              ( state  :: ASTState     )
+          :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader))
+          where
+  GetExecutionInfo shader name ('ASTState _ _ eps)
+    = GetExecutionInfoOf shader name eps
+
+type family GetExecutionInfoOf
              ( shader :: SPIRV.Shader       )
              ( name   :: Symbol             )
              ( eps    :: [ EntryPointInfo ] )
           :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader))
           where
-  ExecutionInfo shader name '[]
+  GetExecutionInfoOf shader name '[]
     = TypeError
         (      Text "Program does not define a "
           :<>: Text (NamedShader name shader)
           :<>: Text "."
         )
-  ExecutionInfo shader name
+  GetExecutionInfoOf shader name
     ( 'EntryPointInfo
          name
          ( nfo :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader)) )
+         _
     ': _
     )
       = nfo
-  ExecutionInfo shader name ( _ ': eps )
-    = ExecutionInfo shader name eps
+  GetExecutionInfoOf shader name ( _ ': eps )
+    = GetExecutionInfoOf shader name eps
+
+type family GetInterface
+              ( shader :: SPIRV.Shader )
+              ( name   :: Symbol       )
+              ( state  :: ASTState     )
+          :: TLInterface
+          where
+  GetInterface shader name ('ASTState _ _ eps)
+    = GetInterfaceOf shader name eps
+
+type family GetInterfaceOf
+              ( shader :: SPIRV.Shader       )
+              ( name   :: Symbol             )
+              ( eps    :: [ EntryPointInfo ] )
+          :: TLInterface
+          where
+  GetInterfaceOf shader name '[]
+    = TypeError
+        (      Text "Program does not define a "
+          :<>: Text (NamedShader name shader)
+          :<>: Text "."
+        )
+  GetInterfaceOf shader name
+    ( 'EntryPointInfo
+         name
+         _
+         ('Just iface)
+    ': _
+    )
+      = iface
+  GetInterfaceOf shader name
+    ( 'EntryPointInfo
+         name
+         _
+         'Nothing
+    ': _
+    )
+      = TypeError
+        (    Text "Missing interface for "
+        :<>: Text (NamedShader name shader)
+        :<>: Text "."
+        :$$: Text "This might mean the entry point body is missing."
+        )
+  GetInterfaceOf shader name ( _ ': eps )
+    = GetInterfaceOf shader name eps
 
 type family ValidInterface
               ( stage1     :: SPIRV.Shader                )
               ( stageInfo1 :: SPIRV.ShaderInfo Nat stage1 )
               ( stageName1 :: Symbol                      )
-              ( outputs    :: [InterfaceVariable]         )
+              ( outputs    :: [TLInterfaceVariable]       )
               ( stage2     :: SPIRV.Shader                )
               ( stageInfo2 :: SPIRV.ShaderInfo Nat stage2 )
               ( stageName2 :: Symbol                      )
-              ( inputs     :: [InterfaceVariable]         )
+              ( inputs     :: [TLInterfaceVariable]       )
             :: Constraint
             where
   ValidInterface
@@ -621,14 +687,14 @@ type family InputArrayness
     = Nothing
 
 type family MatchingInterface
-              ( stage1          :: SPIRV.Shader        )
-              ( stageName1      :: Symbol              )
-              ( outputArrayness :: Maybe Nat           )
-              ( outputs         :: [InterfaceVariable] )
-              ( stage2          :: SPIRV.Shader        )
-              ( stageName2      :: Symbol              )
-              ( inputArrayness  :: Maybe Nat           )
-              ( inputs          :: [InterfaceVariable] )
+              ( stage1          :: SPIRV.Shader          )
+              ( stageName1      :: Symbol                )
+              ( outputArrayness :: Maybe Nat             )
+              ( outputs         :: [TLInterfaceVariable] )
+              ( stage2          :: SPIRV.Shader          )
+              ( stageName2      :: Symbol                )
+              ( inputArrayness  :: Maybe Nat             )
+              ( inputs          :: [TLInterfaceVariable] )
             :: Constraint
             where
   MatchingInterface
@@ -668,15 +734,15 @@ type family MatchingInterface
             )
 
 type family RemoveMatch
-              ( stage1     :: SPIRV.Shader        )
-              ( stageName1 :: Symbol              )
-              ( arrayness1 :: Maybe Nat           )
-              ( output     :: InterfaceVariable   )
-              ( stage2     :: SPIRV.Shader        )
-              ( stageName2 :: Symbol              )
-              ( arrayness2 :: Maybe Nat           )
-              ( inputs     :: [InterfaceVariable] )
-            :: [InterfaceVariable]
+              ( stage1     :: SPIRV.Shader          )
+              ( stageName1 :: Symbol                )
+              ( arrayness1 :: Maybe Nat             )
+              ( output     :: TLInterfaceVariable   )
+              ( stage2     :: SPIRV.Shader          )
+              ( stageName2 :: Symbol                )
+              ( arrayness2 :: Maybe Nat             )
+              ( inputs     :: [TLInterfaceVariable] )
+            :: [TLInterfaceVariable]
             where
   RemoveMatch
     stage1 name1 Nothing '(decs1, ty1)
@@ -711,17 +777,17 @@ type family RemoveMatch
         stage2 name2 arrayness2 '(decs2, ty2) inputs
 
 type family RemoveThisMatchOrContinue
-              ( mbLocation :: Maybe (Nat, Nat)    )
-              ( stage1     :: SPIRV.Shader        )
-              ( name1      :: Symbol              )
-              ( arrayness1 :: Maybe Nat           )
-              ( output     :: InterfaceVariable   )
-              ( stage2     :: SPIRV.Shader        )
-              ( name2      :: Symbol              )
-              ( arrayness2 :: Maybe Nat           )
-              ( input      :: InterfaceVariable   )
-              ( inputs     :: [InterfaceVariable] )
-          :: [InterfaceVariable]
+              ( mbLocation :: Maybe (Nat, Nat)      )
+              ( stage1     :: SPIRV.Shader          )
+              ( name1      :: Symbol                )
+              ( arrayness1 :: Maybe Nat             )
+              ( output     :: TLInterfaceVariable   )
+              ( stage2     :: SPIRV.Shader          )
+              ( name2      :: Symbol                )
+              ( arrayness2 :: Maybe Nat             )
+              ( input      :: TLInterfaceVariable   )
+              ( inputs     :: [TLInterfaceVariable] )
+          :: [TLInterfaceVariable]
           where
   RemoveThisMatchOrContinue (Just loc)
     stage1 name1 arrayness1 output
@@ -776,15 +842,15 @@ type family ArraynessNote
 
 
 type family Matches
-              ( location   :: (Nat,Nat)         )
-              ( stage1     :: SPIRV.Shader      )
-              ( name1      :: Symbol            )
-              ( arrayness1 :: Maybe Nat         )
-              ( output     :: InterfaceVariable )
-              ( stage2     :: SPIRV.Shader      )
-              ( name2      :: Symbol            )
-              ( arrayness2 :: Maybe Nat         )
-              ( input      :: InterfaceVariable )
+              ( location   :: (Nat,Nat)           )
+              ( stage1     :: SPIRV.Shader        )
+              ( name1      :: Symbol              )
+              ( arrayness1 :: Maybe Nat           )
+              ( output     :: TLInterfaceVariable )
+              ( stage2     :: SPIRV.Shader        )
+              ( name2      :: Symbol              )
+              ( arrayness2 :: Maybe Nat           )
+              ( input      :: TLInterfaceVariable )
             :: Bool
             where
   Matches loc

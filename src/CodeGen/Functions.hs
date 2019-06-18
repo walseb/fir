@@ -74,6 +74,7 @@ import FIR.Binding
 import FIR.ASTState
   ( FunctionContext(..)
   , VLFunctionContext
+  , VLInterface
   )
 import qualified SPIRV.Control   as SPIRV
 import qualified SPIRV.Operation as SPIRV.Op
@@ -87,9 +88,14 @@ inFunctionContext :: Text -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a 
 inFunctionContext functionName as
   = inContext ( InFunction functionName as ) as
 
-inEntryPointContext :: Text -> SPIRV.ExecutionInfo Word32 model -> CGMonad a -> CGMonad a
-inEntryPointContext modelName modelInfo
-  = inContext ( InEntryPoint modelName modelInfo ) []
+inEntryPointContext
+  :: Text
+  -> SPIRV.ExecutionInfo Word32 model
+  -> Maybe VLInterface
+  -> CGMonad a
+  -> CGMonad a
+inEntryPointContext modelName modelInfo mbIface
+  = inContext ( InEntryPoint modelName modelInfo mbIface ) []
 
 inContext :: forall a. VLFunctionContext -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
 inContext context as body
@@ -212,9 +218,10 @@ declareArgument argName (argTy, _)
 declareEntryPoint
   :: Text
   -> SPIRV.ExecutionInfo Word32 model
+  -> Maybe VLInterface
   -> CGMonad r
   -> CGMonad ID
-declareEntryPoint modelName modelInfo body
+declareEntryPoint modelName modelInfo mbIface body
   = createIDRec ( _knownBinding modelName )
       ( do unitTyID <- typeID SPIRV.Unit
            fnTyID  <- typeID funTy
@@ -237,7 +244,7 @@ declareEntryPoint modelName modelInfo body
             , args      = Arg SPIRV.noFunctionControl
                         $ Arg fnTyID EndArgs
             }
-        _ <- inEntryPointContext modelName modelInfo body
+        _ <- inEntryPointContext modelName modelInfo mbIface body
         liftPut $ putInstruction Map.empty
           Instruction
             { operation = SPIRV.Op.Return

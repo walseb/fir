@@ -49,7 +49,7 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[ ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex :: ShaderStage "main" VertexShader VertexDefs _
 vertex = shader @"main" @VertexShader @VertexDefs do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
@@ -70,7 +70,7 @@ type TessellationControlDefs =
                         TessellationControl
    ]
 
-tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs
+tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs _
 tessellationControl = shader do
   
   i <- get @"gl_InvocationID"
@@ -101,7 +101,7 @@ type TessellationEvaluationDefs =
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
-tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs
+tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs _
 tessellationEvaluation = shader do
   ~(Vec3 u v w) <- get @"gl_TessCoord"
   
@@ -134,7 +134,7 @@ type GeometryDefs =
                           Geometry
    ]
 
-geometry :: ShaderStage "main" GeometryShader GeometryDefs
+geometry :: ShaderStage "main" GeometryShader GeometryDefs _
 geometry = shader do
   v0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
   v1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
@@ -171,7 +171,7 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment :: ShaderStage "main" FragmentShader FragmentDefs _
 fragment = shader do
     col    <- get @"in_colour"
     normal <- get @"normal"

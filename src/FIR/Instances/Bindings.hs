@@ -23,8 +23,10 @@ module FIR.Instances.Bindings
   ( Has, CanGet, CanPut
   , AddBinding, AddFunBinding
   , ValidFunDef, FunctionDefinitionStartState
-  , ValidEntryPoint, EntryPointStartState
-  , AddEntryPoint, InsertEntryPointInfo
+  , ValidEntryPoint, AddEntryPoint, SetInterface
+  , EntryPointStartState, EntryPointEndState
+  , InsertEntryPointInfo
+  , GetExecutionInfo
   , LookupImageProperties
   , ValidImageRead
   , ValidImageWrite
@@ -72,7 +74,7 @@ import FIR.Builtin
   ( ModelBuiltins )
 import FIR.ASTState
   ( FunctionContext(..), ASTState(..)
-  , EntryPointInfo(..)
+  , EntryPointInfo(..), TLInterface
   )
 import FIR.Prim.Image
   ( ImageProperties(Properties), Image
@@ -95,7 +97,9 @@ import qualified SPIRV.Image    as Image
 import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy(Integer, Floating) )
 import qualified SPIRV.Stage    as SPIRV
-  ( ExecutionModel, ExecutionInfo )
+  ( ExecutionModel, NamedExecutionModel
+  , ExecutionInfo
+  )
 
 -------------------------------------------------
 -- | Helper type family for impossible sub-cases.
@@ -233,7 +237,7 @@ type family SetFunctionContext
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
-  SetFunctionContext k _ ('ASTState _ ('InEntryPoint stage stageName) _ )
+  SetFunctionContext k _ ('ASTState _ ('InEntryPoint stage stageName _) _ )
     = TypeError
         (    Text "'fundef': unexpected function definition inside entry point."
         :$$: Text "Function " :<>: ShowType k
@@ -262,7 +266,7 @@ type family ValidFunDef
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
-  ValidFunDef k _ ('ASTState _ ('InEntryPoint stage stageName) _ ) _
+  ValidFunDef k _ ('ASTState _ ('InEntryPoint stage stageName _) _ ) _
     = TypeError
         (    Text "'fundef': unexpected function definition inside entry point."
         :$$: Text "Function " :<>: ShowType k
@@ -326,9 +330,32 @@ type family EntryPointStartState
               ( k        :: Symbol                    )
               ( nfo      :: SPIRV.ExecutionInfo Nat s )
               ( i        :: ASTState                  )
-              :: ASTState where
-  EntryPointStartState k nfo ('ASTState i ctx eps)
-    = 'ASTState (Union i (ModelBuiltins nfo)) ('InEntryPoint k nfo) eps
+              :: ASTState
+              where
+  EntryPointStartState k nfo ('ASTState i _ eps)
+    = 'ASTState
+        ( Union i (ModelBuiltins nfo) )       -- bindings at the beginning
+        ( 'InEntryPoint  -- context: now within an entry point
+             k
+             nfo
+             ( 'Just '( '[], '[] ) ) -- initial empty interface
+        )
+        eps
+
+-- | Indexed monadic state at end of entry point body.
+type family EntryPointEndState
+              ( k     :: Symbol                    )
+              ( nfo   :: SPIRV.ExecutionInfo Nat s )
+              ( bds   :: BindingsMap               )
+              ( iface :: TLInterface               )
+              ( i     :: ASTState                  )
+            :: ASTState
+            where
+  EntryPointEndState k nfo bds iface ('ASTState _ _ eps)
+    = 'ASTState
+        bds
+        ( InEntryPoint k nfo ('Just iface) )
+        eps
 
 -- | Insert new entry point at end of current list of entry points.
 --
@@ -336,12 +363,72 @@ type family EntryPointStartState
 type family AddEntryPoint
               ( k     :: Symbol                    )
               ( nfo   :: SPIRV.ExecutionInfo Nat s )
+              ( iface :: TLInterface               )
               ( i     :: ASTState                  )
               :: ASTState where
-  AddEntryPoint k nfo ('ASTState i ctx eps)
-    = 'ASTState i 'TopLevel (InsertEntryPointInfo ('EntryPointInfo k nfo) eps)
+  AddEntryPoint k nfo iface ('ASTState i _ eps)
+    = 'ASTState
+        i
+        'TopLevel
+        ( InsertEntryPointInfo ('EntryPointInfo k nfo ('Just iface)) eps )
 
--- | Auxiliary function for 'AddEntryPoint' which performs the check & appends.
+type family GetExecutionInfo
+              ( k  :: Symbol               )
+              ( em :: SPIRV.ExecutionModel )
+              ( i  :: ASTState             )
+            :: SPIRV.ExecutionInfo Nat em
+            where
+  GetExecutionInfo k em ('ASTState _ _ eps)
+    = GetExecutionInfoOf k em eps
+
+type family GetExecutionInfoOf
+              ( k  :: Symbol               )
+              ( em :: SPIRV.ExecutionModel )
+              ( i  :: [EntryPointInfo]     )
+            :: SPIRV.ExecutionInfo Nat em
+            where
+  GetExecutionInfoOf k em '[]
+    = TypeError
+      (    Text "'GetExecutionInfo': cannot find "
+      :<>: Text (SPIRV.NamedExecutionModel k em)
+      :<>: Text "."
+      )
+  GetExecutionInfoOf k em
+    ( 'EntryPointInfo k (nfo :: SPIRV.ExecutionInfo Nat em) _ ': _ )
+      = nfo
+  GetExecutionInfoOf k em (_ ': eps)
+    = GetExecutionInfoOf k em eps
+
+
+type family SetInterface
+              ( k       :: Symbol                    )
+              ( nfo     :: SPIRV.ExecutionInfo Nat s )
+              ( mbIface :: Maybe TLInterface         )
+              ( i       :: ASTState                  )
+            :: ASTState
+            where
+  SetInterface k (nfo :: SPIRV.ExecutionInfo Nat s) mbIface ('ASTState i fc eps)
+    = 'ASTState i fc ( SetInterfaceOf k s mbIface eps)
+
+type family SetInterfaceOf
+              ( k       :: Symbol               )
+              ( em      :: SPIRV.ExecutionModel )
+              ( mbIface :: Maybe TLInterface    )
+              ( eps     :: [ EntryPointInfo ]   )
+            :: [ EntryPointInfo]
+            where
+  SetInterfaceOf k em  _ '[]
+    = TypeError
+      (    Text "'SetInterface': cannot find "
+      :<>: Text (SPIRV.NamedExecutionModel k em)
+      :<>: Text "."
+      )
+  SetInterfaceOf k em mbIface
+    ( 'EntryPointInfo k (nfo :: SPIRV.ExecutionInfo Nat em) _ ': eps )
+      = 'EntryPointInfo k nfo mbIface ': eps
+  SetInterfaceOf k em mbIface (ep ': eps)
+    = ep ': SetInterfaceOf k em mbIface eps
+
 type family InsertEntryPointInfo
               ( nfo   :: EntryPointInfo     )
               ( eps   :: [ EntryPointInfo ] )
@@ -350,13 +437,13 @@ type family InsertEntryPointInfo
   InsertEntryPointInfo nfo '[]
     = '[ nfo ]
   InsertEntryPointInfo
-    ( 'EntryPointInfo k (nfo  :: SPIRV.ExecutionInfo Nat s1) )
-    ( 'EntryPointInfo l (nfo2 :: SPIRV.ExecutionInfo Nat s2) ': eps )
+    ( 'EntryPointInfo k (nfo  :: SPIRV.ExecutionInfo Nat s1) iface )
+    ( 'EntryPointInfo l (nfo2 :: SPIRV.ExecutionInfo Nat s2) iface2 ': eps )
     = InsertEntryPointInfoWithComparison
           ( k  `Compare` l  )
           ( s1 `Compare` s2 )
-          ( 'EntryPointInfo k nfo  )
-          ( 'EntryPointInfo l nfo2 )
+          ( 'EntryPointInfo k nfo  iface  )
+          ( 'EntryPointInfo l nfo2 iface2 )
           eps
 
 type family InsertEntryPointInfoWithComparison
@@ -368,7 +455,7 @@ type family InsertEntryPointInfoWithComparison
             :: [ EntryPointInfo ]
             where
   InsertEntryPointInfoWithComparison EQ EQ
-      ( 'EntryPointInfo k (_ :: SPIRV.ExecutionInfo Nat s ) )
+      ( 'EntryPointInfo k (_ :: SPIRV.ExecutionInfo Nat s ) _ )
       _
       _
     = TypeError
@@ -380,7 +467,6 @@ type family InsertEntryPointInfoWithComparison
     = If ( cmpName == LT || ( cmpName == EQ && cmpStage == LT ) )
         ( nfo1 ': nfo2 ': nfos )
         ( nfo2 ': InsertEntryPointInfo nfo1 nfos )
-
 
 -- | Check that an entry point definition is valid.
 --

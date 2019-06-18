@@ -228,7 +228,7 @@ codeGen (Entry (_ :: Proxy name) (_ :: Proxy stageInfo) :$ body)
         stageInfo = knownValue @stageInfo
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
-      entryPointID <- declareEntryPoint name stageInfo (codeGen body)
+      entryPointID <- declareEntryPoint name stageInfo Nothing (codeGen body) -- TODO
       pure ( entryPointID, SPIRV.Function [] SPIRV.Unit )
 
 codeGen (OpticUse (AnIndexedOptic singOptic is))

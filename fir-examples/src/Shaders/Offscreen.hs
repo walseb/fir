@@ -46,7 +46,7 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs
+vertex :: ShaderStage "main" VertexShader VertexDefs _
 vertex = shader do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
@@ -64,7 +64,7 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs
+fragment :: ShaderStage "main" FragmentShader FragmentDefs _
 fragment = shader do
     col <- get @"in_colour"
     put @"out_colour" col
