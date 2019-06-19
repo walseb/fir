@@ -429,7 +429,7 @@ builtinID modelName modelInfo builtinName ptrTy =
 
 -- | Get the ID for a user-defined global variable,
 -- adding this global to the list of 'used' global variables if it isn't already there,
--- adding the required decorations,  and (manually) adding this global variable
+-- adding the required decorations, and (manually) adding this global variable
 -- to the relevant stage interface if necessary.
 globalID :: ( MonadState  CGState   m
             , MonadReader CGContext m

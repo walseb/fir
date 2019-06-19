@@ -167,8 +167,12 @@ data ShaderPipelineWithInfo (info :: PipelineInfo) where
             ( info `Into`
               ( 'EntryPointInfo
                     name
-                    (     GetExecutionInfo shader name endState   )
-                    ( 'Just ( GetInterface shader name endState ) )
+                    ( GetExecutionInfo shader name endState )
+                    ( 'Just
+                        '( VariablesWithStorage SPIRV.Input  defs
+                         , VariablesWithStorage SPIRV.Output defs
+                         )
+                    )
               )
             )
 
@@ -559,11 +563,11 @@ type family CompatibleTessellationStages
 type family VariablesWithStorage
               ( storage :: SPIRV.StorageClass      )
               ( defs    :: [Symbol :-> Definition] )
-            :: [TLInterfaceVariable]
+            :: [ Symbol :-> TLInterfaceVariable]
             where
   VariablesWithStorage storage '[] = '[]
-  VariablesWithStorage storage ( ( _ ':-> Global storage decs ty) ': defs )
-    = '(decs, ty) ': VariablesWithStorage storage defs
+  VariablesWithStorage storage ( ( varName ':-> Global storage decs ty) ': defs )
+    = ( varName ':-> '(decs, ty) ) ': VariablesWithStorage storage defs
   VariablesWithStorage storage ( _ ': defs )
     = VariablesWithStorage storage defs
 

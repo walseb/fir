@@ -118,7 +118,7 @@ import Data.Type.Known
 import Data.Type.List
   ( KnownLength(sLength), Postpend )
 import Data.Type.Map
-  ( (:->), Union )
+  ( (:->) )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal,toAST,fromAST)
@@ -126,7 +126,7 @@ import FIR.AST
   )
 import FIR.ASTState
   ( FunctionContext(..), ASTState(ASTState)
-  , TLInterface, Bindings
+  , TLInterface
   , ExecutionContext, EntryPointInfos
   , EntryPointInfo(EntryPointInfo)
   )
@@ -135,8 +135,6 @@ import FIR.Binding
   , FunctionType, Var
   , Permissions
   )
-import FIR.Builtin
-  ( ModelBuiltins )
 import FIR.Definition
   ( Definition
   , KnownDefinitions
@@ -151,7 +149,7 @@ import FIR.Instances.Bindings
   , ValidFunDef, FunctionDefinitionStartState
   , ValidEntryPoint
   , EntryPointStartState, EntryPointEndState
-  , AddEntryPoint, SetInterface, GetExecutionInfo
+  , SetInterface, GetExecutionInfo
   , LookupImageProperties
   , ValidImageRead, ValidImageWrite
   , Embeddable
@@ -169,8 +167,6 @@ import FIR.Prim.Image
   ( ImageProperties, ImageData, ImageCoordinates )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
-import FIR.Program
-  ( Program(Program) )
 import FIR.Synonyms
   ( pattern NoOperands )
 import Math.Algebra.Class

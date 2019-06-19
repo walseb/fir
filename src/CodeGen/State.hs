@@ -88,7 +88,7 @@ data CGState
   = CGState
       {
       -- | Current ID number (increases by 1 each time a new ID is needed).
-      currentID           :: ID
+      currentID             :: ID
 
       -- | ID of the current block in the CFG (if inside a block).
       , currentBlock        :: Maybe ID
