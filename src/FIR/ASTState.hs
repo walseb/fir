@@ -42,13 +42,14 @@ import Data.Type.Known
   , Known(known), knownValue
   )
 import Data.Type.Map
-  ( (:->) )
+  ( Map, (:->) )
 import FIR.Binding
   ( BindingsMap
   , Permissions
   )
 import FIR.Prim.Singletons
   ( KnownVars(knownVars) )
+import qualified SPIRV.Control    as SPIRV
 import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV
   ( PrimTy )
@@ -129,9 +130,21 @@ instance ( Known (SPIRV.ExecutionInfo Nat stage) stageInfo
             ( knownValue     @stageInfo )
             Nothing -- TODO:  ( knownInterface @iface     )
 
+data Definedness
+  = Declared
+  | Defined
+
+-- | Keeps track of a function at the type level.
+data FunctionInfo where
+  FunctionInfo
+    :: BindingsMap
+    -> Type
+    -> SPIRV.FunctionControl
+    -> Definedness
+    -> FunctionInfo
+
 -- | Keeps track of an entry point at the type level:
 --
---   - a type level symbol for the entry point name,
 --   - a type level 'SPIRV.ExecutionInfo' recording the stage as well as additional
 --     stage information,
 --   - the entry point interface (input/output variables which it uses),
@@ -140,7 +153,8 @@ data EntryPointInfo where
   EntryPointInfo
     :: Symbol
     -> SPIRV.ExecutionInfo Nat stage
-    -> Maybe TLInterface
+    -> TLInterface
+    -> Definedness
     -> EntryPointInfo
 
 -- | State that is used in the user-facing indexed monad (at the type level).
@@ -151,24 +165,32 @@ data EntryPointInfo where
 --    and built-in variables,
 --    - a context – whether code in the current indexed monadic state
 --    occurs inside a function or entry-point body – and,
---    - which entry points have been declared, together with
+--    - which functions are to be declared,
+--    whether they have been declared yet,
+--    and some further information (arguments, function control),
+--    - which entry points are to be declared,
+--    whether they have been declared yet, together with
 --    some additional info pertaining to their respective execution modes,
 --    and their interfaces (user defined inputs/outputs).
 data ASTState
   = ASTState
       { bindings    :: BindingsMap
       , context     :: TLFunctionContext
+      , functions   :: Map Symbol FunctionInfo
       , entryPoints :: [ EntryPointInfo ]
       }
 
 type family Bindings ( s :: ASTState) :: BindingsMap where
-  Bindings ('ASTState bds _ _) = bds
+  Bindings ('ASTState bds _ _ _) = bds
+
+type family FunctionInfos ( s :: ASTState ) :: Map Symbol FunctionInfo where
+  FunctionInfos ('ASTState _ _ fs _ ) = fs
 
 type family EntryPointInfos ( s :: ASTState ) :: [ EntryPointInfo ] where
-  EntryPointInfos ('ASTState _ _ eps) = eps
+  EntryPointInfos ('ASTState _ _ _ eps) = eps
 
 type family ExecutionContext ( s :: ASTState ) :: Maybe SPIRV.ExecutionModel where
-  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _)
+  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
     = Just stage
   ExecutionContext' _
     = Nothing
@@ -178,7 +200,7 @@ executionContext (InEntryPoint stageName stageInfo _) = Just (stageName, SPIRV.m
 executionContext _ = Nothing
 
 type family ExecutionContext' ( s :: ASTState ) :: SPIRV.ExecutionModel where
-  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _)
+  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
     = stage
   ExecutionContext' _
     = TypeError
@@ -188,6 +210,6 @@ type family ExecutionInfoContext
                 ( s :: ASTState )
               :: Maybe (SPIRV.ExecutionInfo Nat (ExecutionContext' s))
                 where
-  ExecutionInfoContext ('ASTState _ ('InEntryPoint _ info _) _)
+  ExecutionInfoContext ('ASTState _ ('InEntryPoint _ info _) _ _)
     = Just info
   ExecutionInfoContext _ = 'Nothing

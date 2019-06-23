@@ -153,7 +153,7 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        , "gl_SamplePosition" ':-> Var R ( V 2 Float )
        , "gl_FragDepth"      ':-> Var W Float
        ]
-  ModelBuiltins' ComputeInfo
+  ModelBuiltins' (ComputeInfo _)
     = '[ "gl_NumWorkgroups"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupSize"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupID"          ':-> Var R ( V 3 Word32 )
@@ -200,8 +200,8 @@ shaderBuiltins (GeometryShaderInfo inputSize _)
         -> builtinPointer ( knownInterface @(ModelBuiltins' (GeometryInfo inputSize 'InputModeTriangles)) ) -- another dummy
 shaderBuiltins FragmentShaderInfo
   = builtinPointer ( knownInterface @(ModelBuiltins' FragmentInfo) )
-shaderBuiltins ComputeShaderInfo
-  = builtinPointer ( knownInterface @(ModelBuiltins' ComputeInfo) )
+shaderBuiltins (ComputeShaderInfo _)
+  = builtinPointer ( knownInterface @(ModelBuiltins' (ComputeInfo '(1,1,1))) ) -- yet another
 
 modelBuiltins :: ExecutionInfo Word32 model -> [ (Text, SPIRV.PointerTy) ]
 modelBuiltins (ShaderExecutionInfo shaderInfo) = shaderBuiltins shaderInfo

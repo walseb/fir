@@ -1,11 +1,11 @@
 {-# OPTIONS_HADDOCK ignore-exports #-}
 
-{-# LANGUAGE ConstraintKinds      #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE PolyKinds            #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ConstraintKinds        #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 {-|
 Module: FIR.Instances.Bindings
@@ -22,8 +22,10 @@ or accessing a binding that does not exist.
 module FIR.Instances.Bindings
   ( Has, CanGet, CanPut
   , AddBinding, AddFunBinding
-  , ValidFunDef, FunctionDefinitionStartState
-  , ValidEntryPoint, AddEntryPoint, SetInterface
+  , ValidFunDef, GetFunctionInfo, FunctionTypes
+  , FunctionDefinitionStartState
+  , FunctionDefinitionEndState
+  , ValidEntryPoint, SetInterface
   , EntryPointStartState, EntryPointEndState
   , InsertEntryPointInfo
   , GetExecutionInfo
@@ -59,7 +61,7 @@ import Control.Type.Optic
 import Data.Type.List
   ( Elem )
 import Data.Type.Map
-  ( (:->)((:->))
+  ( Map, (:->)((:->))
   , Insert, Remove
   , Lookup, Union
   )
@@ -74,6 +76,7 @@ import FIR.Builtin
   ( ModelBuiltins )
 import FIR.ASTState
   ( FunctionContext(..), ASTState(..)
+  , Definedness(..), FunctionInfo(..)
   , EntryPointInfo(..), TLInterface
   )
 import FIR.Prim.Image
@@ -112,7 +115,7 @@ type family Unreachable :: k where
 --
 -- Throws a type error if no variable by that name exists.
 type family Has (k :: Symbol) (i :: ASTState) :: Type where
-  Has k ('ASTState bds _ _) = HasBinding k (Lookup k bds)
+  Has k ('ASTState bds _ _ _) = HasBinding k (Lookup k bds)
 
 type family HasBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   HasBinding k 'Nothing
@@ -127,7 +130,7 @@ type family HasBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
 
 -- | Check whether we can 'get' a binding.
 type family CanGet (k :: Symbol) (i :: ASTState) :: Constraint where
-  CanGet k ('ASTState bds _ _) = GetBinding k (Lookup k bds)
+  CanGet k ('ASTState bds _ _ _) = GetBinding k (Lookup k bds)
 
 type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
   GetBinding k 'Nothing
@@ -152,7 +155,7 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
 
 -- | Check whether we can write to a binding.
 type family CanPut (k :: Symbol) (i :: ASTState) :: Constraint where
-  CanPut k ('ASTState bds _ _) = PutBinding k (Lookup k bds)
+  CanPut k ('ASTState bds _ _ _) = PutBinding k (Lookup k bds)
 
 type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
   PutBinding k 'Nothing = TypeError
@@ -187,9 +190,9 @@ type family AddBinding
               ( bd :: Binding  )
               ( s  :: ASTState )
               :: ASTState where
-  AddBinding k bd ('ASTState bds ctx eps)
+  AddBinding k bd ('ASTState bds ctx funs eps)
     = If ( ValidDef k bds )
-        ( 'ASTState (Insert k bd bds) ctx eps )
+        ( 'ASTState (Insert k bd bds) ctx funs eps )
         Unreachable
 
 -- | Check that it is valid to define a new variable with given name.
@@ -208,20 +211,90 @@ type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Bool wh
 
 -- | Indexed monadic state at start of function body.
 --
--- Adds the required function variables to the indexed monadic state.
+-- Adds the required function variables to the map of in-scope bindings.
 type family FunctionDefinitionStartState
               ( k  :: Symbol      )
               ( as :: BindingsMap )
               ( s  :: ASTState    )
-            :: ASTState where
-  FunctionDefinitionStartState k as ('ASTState i ctx eps)
-    = 'ASTState (Union i as) ('InFunction k as) eps
+            = ( j  :: ASTState    )
+            | j -> k as
+            where
+  FunctionDefinitionStartState k as ('ASTState i ctx funs eps)
+    = 'ASTState (Union i as) ('InFunction k as) funs eps
+
+type family FunctionDefinitionEndState
+              ( k   :: Symbol      )
+              ( as  :: BindingsMap )
+              ( bds :: BindingsMap )
+              ( i   :: ASTState    )
+            = ( j   :: ASTState    )
+            | j -> k as bds
+            where
+  FunctionDefinitionEndState k as bds ('ASTState _ _ funs eps)
+    = 'ASTState
+        bds
+        ( 'InFunction k as)
+        funs
+        eps
+
+type family GetFunctionInfo
+              ( k :: Symbol   )
+              ( i :: ASTState )
+            :: FunctionInfo
+            where
+  GetFunctionInfo k ('ASTState _ _ funs _)
+    = GetFunctionInfoFromLookup k (Lookup k funs)
+
+type family FunctionTypes
+              ( k :: Symbol   )
+              ( i :: ASTState )
+           :: ( BindingsMap, Type )
+           where
+  FunctionTypes k i = FunctionTypesFromInfo (GetFunctionInfo k i)
+
+type family FunctionTypesFromInfo
+              ( info :: FunctionInfo )
+            :: ( BindingsMap, Type )
+            where
+  FunctionTypesFromInfo ('FunctionInfo as b _ _) = '( as, b )
+
+type family GetFunctionInfoFromLookup
+              ( k :: Symbol )
+              ( mbFun :: Maybe FunctionInfo )
+            :: FunctionInfo
+            where
+  GetFunctionInfoFromLookup _ (Just info) = info
+  GetFunctionInfoFromLookup k 'Nothing
+    = TypeError
+    (    Text "'fundef': function named " :<>: ShowType k
+    :<>: Text " has not been declared (no function info)."
+    )
 
 -- | Adds a function binding to the indexed monadic state.
 type family AddFunBinding (k :: Symbol) (as :: BindingsMap) (b :: Type) (s :: ixState) :: ASTState where
-  AddFunBinding k as b ('ASTState bds ctx eps)
+  AddFunBinding k as b ('ASTState bds ctx funs eps)
   -- 'ValidFunDef' should have already checked that name 'k' is not already in use
-    = 'ASTState (Insert k (Fun as b) bds) ctx eps
+    = 'ASTState (Insert k (Fun as b) bds) ctx (SetFunctionDefined k funs) eps
+
+type family SetFunctionDefined
+              ( k    :: Symbol                  )
+              ( funs :: Map Symbol FunctionInfo )
+            :: Map Symbol FunctionInfo
+            where
+  SetFunctionDefined k '[]
+    = TypeError
+    (    Text "'fundef': function named " :<>: ShowType k
+    :<>: Text " has not been declared."
+    )
+  SetFunctionDefined k ( ( k ':-> 'FunctionInfo as b fc Declared ) ': funs )
+    = ( k ':-> 'FunctionInfo as b fc Defined ) ': funs
+  SetFunctionDefined k ( ( k ':-> 'FunctionInfo _  _ _  Defined  ) ': _    )
+    = TypeError
+    (    Text "'fundef': function named " :<>: ShowType k
+    :<>: Text " has already been defined."
+    )
+  SetFunctionDefined k ( fun ': funs )
+    = fun ': SetFunctionDefined k funs
 
 -- | Set the monadic context: within a function body.
 type family SetFunctionContext
@@ -229,20 +302,21 @@ type family SetFunctionContext
               ( as :: BindingsMap )
               ( s  :: ASTState    )
               :: ASTState where
-  SetFunctionContext k as ('ASTState bds TopLevel eps)
-    = 'ASTState bds ('InFunction k as) eps
-  SetFunctionContext k _ ('ASTState _ ('InFunction l _) _ )
+  SetFunctionContext k as ('ASTState bds TopLevel funs eps)
+    = 'ASTState bds ('InFunction k as) funs eps
+  SetFunctionContext k _ ('ASTState _ ('InFunction l _) _ _ )
     = TypeError
         (    Text "'fundef': unexpected nested function definition."
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
-  SetFunctionContext k _ ('ASTState _ ('InEntryPoint stage stageName _) _ )
+  SetFunctionContext k _
+    ( 'ASTState _ ('InEntryPoint stageName ( _ :: SPIRV.ExecutionInfo Nat em) _) _ _ )
     = TypeError
         (    Text "'fundef': unexpected function definition inside entry point."
         :$$: Text "Function " :<>: ShowType k
-        :<>: Text " declared inside " :<>: ShowType stage
-        :<>: Text " entry point " :<>: ShowType stageName :<>: Text "."
+        :<>: Text " declared inside " :<>: Text (SPIRV.NamedExecutionModel stageName em)
+        :<>: Text "."
         )
 
 -- | Check that a function definition is valid.
@@ -260,20 +334,22 @@ type family ValidFunDef
       ( l  :: BindingsMap )  -- total bindings at the end of the function definition
     :: Constraint
     where
-  ValidFunDef k _ ('ASTState _ ('InFunction l _) _ ) _
+  ValidFunDef k _ ('ASTState _ ('InFunction l _) _ _ ) _
     = TypeError
         (    Text "'fundef': unexpected nested function definition."
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
-  ValidFunDef k _ ('ASTState _ ('InEntryPoint stage stageName _) _ ) _
-    = TypeError
-        (    Text "'fundef': unexpected function definition inside entry point."
-        :$$: Text "Function " :<>: ShowType k
-        :<>: Text " declared inside " :<>: ShowType stage
-        :<>: Text " entry point " :<>: ShowType stageName :<>: Text "."
-        )
-  ValidFunDef k as ('ASTState i 'TopLevel _) l
+  ValidFunDef k _
+    ( 'ASTState _ ('InEntryPoint stageName ( _ :: SPIRV.ExecutionInfo Nat em) _) _ _ )
+    _
+      = TypeError
+          (    Text "'fundef': unexpected function definition inside entry point."
+          :$$: Text "Function " :<>: ShowType k
+          :<>: Text " declared inside " :<>: Text (SPIRV.NamedExecutionModel stageName em)
+          :<>: Text "."
+          )
+  ValidFunDef k as ('ASTState i 'TopLevel _ _) l
     = ( NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
       , ValidArguments k as (Remove i (Remove as l)) )
         --     │             └━━━━━━┬━━━━━┘
@@ -327,19 +403,21 @@ type family NoFunctionNameConflict
 
 -- | Indexed monadic state at start of entry point body.
 type family EntryPointStartState
-              ( k        :: Symbol                    )
-              ( nfo      :: SPIRV.ExecutionInfo Nat s )
-              ( i        :: ASTState                  )
-              :: ASTState
-              where
-  EntryPointStartState k nfo ('ASTState i _ eps)
+              ( k    :: Symbol                    )
+              ( nfo  :: SPIRV.ExecutionInfo Nat s )
+              ( i    :: ASTState                  )
+            = ( j    :: ASTState                  )
+            | j -> k nfo
+            where
+  EntryPointStartState k nfo ('ASTState i _ funs eps)
     = 'ASTState
-        ( Union i (ModelBuiltins nfo) )       -- bindings at the beginning
-        ( 'InEntryPoint  -- context: now within an entry point
+        ( Union i (ModelBuiltins nfo) ) -- bindings at the beginning
+        ( 'InEntryPoint                 -- context: now within an entry point
              k
              nfo
-             ( 'Just '( '[], '[] ) ) -- initial empty interface
+             ( 'Just '( '[], '[] ) )    -- initial empty interface
         )
+        funs
         eps
 
 -- | Indexed monadic state at end of entry point body.
@@ -349,28 +427,15 @@ type family EntryPointEndState
               ( bds   :: BindingsMap               )
               ( iface :: TLInterface               )
               ( i     :: ASTState                  )
-            :: ASTState
+            = ( j     :: ASTState                  )
+            | j -> k nfo bds iface
             where
-  EntryPointEndState k nfo bds iface ('ASTState _ _ eps)
+  EntryPointEndState k nfo bds iface ('ASTState _ _ funs eps)
     = 'ASTState
         bds
         ( InEntryPoint k nfo ('Just iface) )
+        funs
         eps
-
--- | Insert new entry point at end of current list of entry points.
---
--- Checks that no entry point with the same stage and name has already been defined.
-type family AddEntryPoint
-              ( k     :: Symbol                    )
-              ( nfo   :: SPIRV.ExecutionInfo Nat s )
-              ( iface :: TLInterface               )
-              ( i     :: ASTState                  )
-              :: ASTState where
-  AddEntryPoint k nfo iface ('ASTState i _ eps)
-    = 'ASTState
-        i
-        'TopLevel
-        ( InsertEntryPointInfo ('EntryPointInfo k nfo ('Just iface)) eps )
 
 type family GetExecutionInfo
               ( k  :: Symbol               )
@@ -378,7 +443,7 @@ type family GetExecutionInfo
               ( i  :: ASTState             )
             :: SPIRV.ExecutionInfo Nat em
             where
-  GetExecutionInfo k em ('ASTState _ _ eps)
+  GetExecutionInfo k em ('ASTState _ _ _ eps)
     = GetExecutionInfoOf k em eps
 
 type family GetExecutionInfoOf
@@ -394,27 +459,27 @@ type family GetExecutionInfoOf
       :<>: Text "."
       )
   GetExecutionInfoOf k em
-    ( 'EntryPointInfo k (nfo :: SPIRV.ExecutionInfo Nat em) _ ': _ )
+    ( 'EntryPointInfo k (nfo :: SPIRV.ExecutionInfo Nat em) _ _ ': _ )
       = nfo
   GetExecutionInfoOf k em (_ ': eps)
     = GetExecutionInfoOf k em eps
 
 
 type family SetInterface
-              ( k       :: Symbol                    )
-              ( nfo     :: SPIRV.ExecutionInfo Nat s )
-              ( mbIface :: Maybe TLInterface         )
-              ( i       :: ASTState                  )
+              ( k     :: Symbol                    )
+              ( nfo   :: SPIRV.ExecutionInfo Nat s )
+              ( iface :: TLInterface               )
+              ( i     :: ASTState                  )
             :: ASTState
             where
-  SetInterface k (nfo :: SPIRV.ExecutionInfo Nat s) mbIface ('ASTState i fc eps)
-    = 'ASTState i fc ( SetInterfaceOf k s mbIface eps)
+  SetInterface k (nfo :: SPIRV.ExecutionInfo Nat s) iface ('ASTState i fc funs eps)
+    = 'ASTState i fc funs (SetInterfaceOf k s iface eps)
 
 type family SetInterfaceOf
-              ( k       :: Symbol               )
-              ( em      :: SPIRV.ExecutionModel )
-              ( mbIface :: Maybe TLInterface    )
-              ( eps     :: [ EntryPointInfo ]   )
+              ( k     :: Symbol               )
+              ( em    :: SPIRV.ExecutionModel )
+              ( iface :: TLInterface          )
+              ( eps   :: [ EntryPointInfo ]   )
             :: [ EntryPointInfo]
             where
   SetInterfaceOf k em  _ '[]
@@ -423,11 +488,18 @@ type family SetInterfaceOf
       :<>: Text (SPIRV.NamedExecutionModel k em)
       :<>: Text "."
       )
-  SetInterfaceOf k em mbIface
-    ( 'EntryPointInfo k (nfo :: SPIRV.ExecutionInfo Nat em) _ ': eps )
-      = 'EntryPointInfo k nfo mbIface ': eps
-  SetInterfaceOf k em mbIface (ep ': eps)
-    = ep ': SetInterfaceOf k em mbIface eps
+  SetInterfaceOf k em iface
+    ( 'EntryPointInfo k (nfo :: SPIRV.ExecutionInfo Nat em) _ Declared ': eps )
+      = 'EntryPointInfo k nfo iface Defined ': eps
+  SetInterfaceOf k em iface
+    ( 'EntryPointInfo k (nfo :: SPIRV.ExecutionInfo Nat em) _ Defined ': _ )
+      = TypeError
+      (    Text "'entryPoint': entry point "
+      :<>: Text (SPIRV.NamedExecutionModel k em)
+      :<>: Text " has already been defined."
+      )
+  SetInterfaceOf k em iface (ep ': eps)
+    = ep ': SetInterfaceOf k em iface eps
 
 type family InsertEntryPointInfo
               ( nfo   :: EntryPointInfo     )
@@ -437,13 +509,13 @@ type family InsertEntryPointInfo
   InsertEntryPointInfo nfo '[]
     = '[ nfo ]
   InsertEntryPointInfo
-    ( 'EntryPointInfo k (nfo  :: SPIRV.ExecutionInfo Nat s1) iface )
-    ( 'EntryPointInfo l (nfo2 :: SPIRV.ExecutionInfo Nat s2) iface2 ': eps )
+    ( 'EntryPointInfo k (nfo  :: SPIRV.ExecutionInfo Nat s1) iface  def)
+    ( 'EntryPointInfo l (nfo2 :: SPIRV.ExecutionInfo Nat s2) iface2 def2 ': eps )
     = InsertEntryPointInfoWithComparison
           ( k  `Compare` l  )
           ( s1 `Compare` s2 )
-          ( 'EntryPointInfo k nfo  iface  )
-          ( 'EntryPointInfo l nfo2 iface2 )
+          ( 'EntryPointInfo k nfo  iface  def  )
+          ( 'EntryPointInfo l nfo2 iface2 def2 )
           eps
 
 type family InsertEntryPointInfoWithComparison
@@ -455,7 +527,7 @@ type family InsertEntryPointInfoWithComparison
             :: [ EntryPointInfo ]
             where
   InsertEntryPointInfoWithComparison EQ EQ
-      ( 'EntryPointInfo k (_ :: SPIRV.ExecutionInfo Nat s ) _ )
+      ( 'EntryPointInfo k (_ :: SPIRV.ExecutionInfo Nat s ) _ _ )
       _
       _
     = TypeError
@@ -480,7 +552,7 @@ type family ValidEntryPoint
               ( i        :: ASTState                  )
               ( l        :: BindingsMap               )
             :: Constraint where
-  ValidEntryPoint k (nfo :: SPIRV.ExecutionInfo Nat s) ('ASTState i _ _) l
+  ValidEntryPoint k (nfo :: SPIRV.ExecutionInfo Nat s) ('ASTState i _ _ _) l
     = ( NoEntryPointNameConflict k (Lookup k i)
       , ValidLocalBehaviour s (Remove i l)
       , BuiltinsDoNotAppearBefore s (ModelBuiltins nfo) i
@@ -544,7 +616,7 @@ type family BuiltinDoesNotAppearBefore
 --
 -- Throws a type error if there is no image with given name.
 type family LookupImageProperties (k :: Symbol) (i :: ASTState) :: ImageProperties where
-  LookupImageProperties k ('ASTState i _ _ )
+  LookupImageProperties k ('ASTState i _ _ _)
     = ImagePropertiesFromLookup k i (Lookup k i)
 
 type family ImagePropertiesFromLookup
@@ -665,6 +737,7 @@ type family CheckLODOperands
     = TypeError 
         ( ShowType lod :<>: Text " operand not allowed: using integral coordinates." )
   CheckLODOperands inty ( op ': ops ) = CheckLODOperands inty ops
+  CheckLODOperands _ '[] = ()
 
 type family CompatibleFormat
                 ( inty  :: SPIRV.ScalarTy          )
@@ -715,11 +788,11 @@ type family AllowedWriteOps (ops :: [OperandName]) :: Constraint where
 -- * Constraints for 'FIR.Instances.Codensity.embed'.
 
 type family Embeddable (i :: ASTState) (j :: ASTState) :: Constraint where
-  Embeddable ('ASTState i_bds i_ctx i_eps) ('ASTState j_bds i_ctx i_eps)
-    = Subset i_bds j_bds
-  Embeddable ('ASTState i_bds TopLevel i_eps) ('ASTState j_bds i_ctx i_eps)
-    = Subset i_bds j_bds
-  Embeddable ('ASTState _ i_ctx i_eps) ('ASTState _ j_ctx i_eps)
+  Embeddable ('ASTState i_bds i_ctx i_funs _) ('ASTState j_bds i_ctx j_funs _)
+    = ( SubsetBindings  i_bds  j_bds
+      , SubsetFunctions i_funs j_funs
+      )
+  Embeddable ('ASTState _ i_ctx _ _) ('ASTState _ j_ctx _ _)
     = TypeError
       (      Text "'embed': cannot embed computation with function context "
         :<>: ShowType i_ctx
@@ -727,20 +800,12 @@ type family Embeddable (i :: ASTState) (j :: ASTState) :: Constraint where
         :<>: ShowType j_ctx
         :<>: Text "."
       )
-  Embeddable ('ASTState _ _ i_eps) ('ASTState _ _ j_eps)
-    = TypeError
-      (      Text "'embed': cannot embed computation with entry points "
-        :<>: ShowType i_eps
-        :<>: Text " into computation with entry points "
-        :<>: ShowType j_eps
-        :<>: Text "."
-      )
 
-type family Subset (is :: BindingsMap) (js :: BindingsMap) :: Constraint where
-  Subset '[]       _ = ()
-  Subset (i ': is) js
+type family SubsetBindings (is :: BindingsMap) (js :: BindingsMap) :: Constraint where
+  SubsetBindings '[]       _ = ()
+  SubsetBindings (i ': is) js
     = If (i `Elem` js)
-        ( Subset is js )
+        ( SubsetBindings is js )
         ( TypeError
            ( Text "'embed': cannot embed computation."
             :$$: Text "Binding " :<>: ShowType i
@@ -749,6 +814,38 @@ type family Subset (is :: BindingsMap) (js :: BindingsMap) :: Constraint where
             :<>: Text "."
            )
         )
+
+type family SubsetFunctions
+              ( fs :: Map Symbol FunctionInfo )
+              ( gs :: Map Symbol FunctionInfo )
+            :: Constraint where
+  SubsetFunctions '[] _ = ()
+  SubsetFunctions ( (k ':-> f) ': fs) gs
+    = SubsetFunctionsRec k f (Lookup k gs) fs gs
+
+type family SubsetFunctionsRec
+              ( k  :: Symbol                  )
+              ( f  :: FunctionInfo            )
+              ( g  :: Maybe FunctionInfo      )
+              ( fs :: Map Symbol FunctionInfo )
+              ( gs :: Map Symbol FunctionInfo )
+            :: Constraint where
+  SubsetFunctionsRec k _ Nothing _ _
+    = TypeError
+    ( Text "'embed': cannot embed computation."
+    :$$: Text "Function named " :<>: ShowType k
+    :<>: Text " is missing in larger context."
+    )
+  SubsetFunctionsRec _ f (Just f) fs gs
+    = SubsetFunctions fs gs
+  SubsetFunctions k f (Just f') _ _
+    = TypeError
+    ( Text "'embed': cannot embed computation."
+    :$$: Text "Mismatch between functions of name " :<>: ShowType k
+    :<>: Text "."
+    :$$: Text "  - Smaller context function info: " :<>: ShowType f :<>: Text ","
+    :$$: Text "  - Larger context function info: " :<>: ShowType f' :<>: Text "."
+    )
 
 -------------------------------------------------
 -- * Checking for ambiguous type variables.

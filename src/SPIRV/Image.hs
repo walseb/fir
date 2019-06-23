@@ -35,7 +35,7 @@ import SPIRV.ScalarTy
 
 data Image
   = Image
-      { component      :: ScalarTy -- called the 'Sampled type' in SPIR-V
+      { texelComponent :: ScalarTy -- called the 'Sampled type' in SPIR-V
       , dimensionality :: Dimensionality
       , hasDepth       :: Maybe HasDepth
       , arrayness      :: Arrayness

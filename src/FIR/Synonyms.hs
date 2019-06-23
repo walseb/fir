@@ -96,19 +96,38 @@ type Texture1D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties Float  (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 type Texture2D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties Float  (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 type Texture3D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties Float  (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
+      )
+
+type Image1D decs fmt
+  = Global Storage.UniformConstant
+      decs
+      ( Image
+         (Properties Word32 (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
+      )
+type Image2D decs fmt
+  = Global Storage.UniformConstant
+      decs
+      ( Image
+         (Properties Word32 (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
+      )
+type Image3D decs fmt
+  = Global Storage.UniformConstant
+      decs
+      ( Image
+         (Properties Word32 (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
       )
 
 type Texture decs props
@@ -118,7 +137,7 @@ type Texture decs props
       ( Image props )
 type StorageImage decs props
   = Global
-      Storage.Image
+      Storage.UniformConstant
       decs
       ( Image props )
 
@@ -206,18 +225,18 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes i mat) ) where
               `ProductO` ( Col__ 3 :.: Ix__ i )
             ) :: Optic '[] (AST (M m 4 a)) (AST (V 4 a))
           )
-  Col i = ( (            (Col_ 0 :.: Ix_ i)
+  Row i = ( (            (Col_ 0 :.: Ix_ i)
               `ProductO` (Col_ 1 :.: Ix_ i)
             ) :: Optic '[] (M m 2 a) (V 2 a)
           )
-  Col i = ( ( ( (            ( Col_ 0 :.: Ix_ i )
+  Row i = ( ( ( (            ( Col_ 0 :.: Ix_ i )
                   `ProductO` ( Col_ 1 :.: Ix_ i )
                 ) :: Optic '[] (M m 3 a) (V 2 a)
               )
               `ProductO` ( Col_ 2 :.: Ix_ i )
             ) :: Optic '[] (M m 3 a) (V 3 a)
           )
-  Col i = ( ( ( ( ( (            ( Col_ 0 :.: Ix_ i )
+  Row i = ( ( ( ( ( (            ( Col_ 0 :.: Ix_ i )
                       `ProductO` ( Col_ 1 :.: Ix_ i )
                     ) :: Optic '[] (M m 4 a) (V 2 a)
                   )

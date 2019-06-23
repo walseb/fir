@@ -98,6 +98,7 @@ data SPrimOp (a :: k) (op :: opKind) :: Type where
   SDiv  :: ScalarTy a => SPrimOp a SPIRV.Div
   SMod  :: ScalarTy a => SPrimOp a SPIRV.Mod
   SRem  :: ScalarTy a => SPrimOp a SPIRV.Rem
+  SQuot :: ScalarTy a => SPrimOp a SPIRV.Quot
   SSin     :: ScalarTy a => SPrimOp a SPIRV.FSin
   SCos     :: ScalarTy a => SPrimOp a SPIRV.FCos
   STan     :: ScalarTy a => SPrimOp a SPIRV.FTan
@@ -280,6 +281,12 @@ instance ScalarTy a => PrimOp SPIRV.Rem (a :: Type) where
   op = rem
   opName = SPIRV.NumOp SPIRV.Rem (scalarTy @a)
   opSing = Just SRem
+instance ScalarTy a => PrimOp SPIRV.Quot (a :: Type) where
+  type PrimOpConstraint SPIRV.Quot a = Archimedean a
+  type PrimOpType SPIRV.Quot a = a -> a -> a
+  op = div
+  opName = SPIRV.NumOp SPIRV.Quot (scalarTy @a)
+  opSing = Just SQuot
 
 
 -- floating operations
@@ -521,8 +528,13 @@ instance ( KnownNat n, ScalarTy a ) => PrimOp ('Vectorise SPIRV.Mod) (V n a) whe
 instance ( KnownNat n, ScalarTy a ) => PrimOp ('Vectorise SPIRV.Rem) (V n a) where
   type PrimOpConstraint ('Vectorise SPIRV.Rem) (V n a) = Archimedean a
   type PrimOpType ('Vectorise SPIRV.Rem) (V n a) = V n a -> V n a -> V n a
-  op = liftA2 mod
+  op = liftA2 rem
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Rem @a)) (val @n) (scalarTy @a)
+instance ( KnownNat n, ScalarTy a ) => PrimOp ('Vectorise SPIRV.Quot) (V n a) where
+  type PrimOpConstraint ('Vectorise SPIRV.Quot) (V n a) = Archimedean a
+  type PrimOpType ('Vectorise SPIRV.Quot) (V n a) = V n a -> V n a -> V n a
+  op = liftA2 div
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Quot @a)) (val @n) (scalarTy @a)
 
 instance ( KnownNat n, ScalarTy a, ScalarTy b ) => PrimOp ('Vectorise SPIRV.Convert) '(V n a, V n b) where
   type PrimOpConstraint ('Vectorise SPIRV.Convert) '(V n a, V n b) = Convert '(a,b)

@@ -219,7 +219,7 @@ codeGen (FunDef (_ :: Proxy name) (_ :: Proxy as) (_ :: Proxy b) :$ body)
         name   = knownValue @name
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
-      control <- fromMaybe SPIRV.noFunctionControl <$> view ( _userFunction name )
+      control <- fromMaybe SPIRV.NoFunctionControl <$> view ( _userFunction name )
       funID   <- declareFunction name control as retTy (codeGen body)
       pure ( funID , SPIRV.Function (map (fst . snd) as) retTy )
 

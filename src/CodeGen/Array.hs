@@ -67,12 +67,12 @@ import FIR.Prim.Singletons
 -- Runs in an environment with no local state.
 -- This __unsafely__ assumes that @ixName@ is not already defined
 -- in the current state.
-createArray :: forall n arrName ixName a i j ctx eps.
+createArray :: forall n arrName ixName a i j ctx funs eps.
              ( KnownNat n
              , KnownSymbol ixName
              , KnownSymbol arrName
              , PrimTy a
-             , i ~ ( 'ASTState '[ arrName ':-> Var RW (Array n a) ] ctx eps )
+             , i ~ ( 'ASTState '[ arrName ':-> Var RW (Array n a) ] ctx funs eps )
              , j ~ AddBinding ixName (Var RW Word32) i
              , Has ixName j ~ Word32
              , Has arrName j ~ Array n a

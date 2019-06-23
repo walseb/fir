@@ -60,7 +60,7 @@ import Prelude hiding
   ( Eq(..), (&&), (||), not
   , Ord(..)
   , Num(..), Floating(..)
-  , Integral(..)
+  , Integral(..), floor
   , Fractional(..), fromRational
   , Floating(..)
   , RealFloat(..)
@@ -69,13 +69,15 @@ import Prelude hiding
   )
 import qualified Prelude
 import Data.Int
-  ( Int32 )
+  ( Int8, Int16, Int32, Int64 )
 import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Type.Equality
   ( type (==) )
+import Data.Word
+  ( Word8, Word16, Word32, Word64 )
 import GHC.TypeLits
   ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(..)
@@ -85,6 +87,10 @@ import GHC.TypeNats
   , type (+), type (-)
   , type (<=), CmpNat
   )
+
+-- half
+import Numeric.Half
+  ( Half )
 
 -- fir
 import Control.Type.Optic
@@ -248,12 +254,51 @@ instance (ScalarTy a, Signed a) => Signed (AST a) where
 instance (ScalarTy a, DivisionRing a) => DivisionRing (AST a) where
   (/)    = primOp @a @SPIRV.Div
   fromRational = Lit . fromRational
-instance ( ScalarTy a
-         , Archimedean a
-         , Logic a ~ Bool
-         ) => Archimedean (AST a) where
-  mod    = primOp @a @SPIRV.Mod
-  rem    = primOp @a @SPIRV.Rem
+
+instance Archimedean (AST Word8 ) where
+  mod    = primOp @Word8  @SPIRV.Mod
+  rem    = primOp @Word8  @SPIRV.Rem
+  div    = primOp @Word8  @SPIRV.Quot
+instance Archimedean (AST Word16) where
+  mod    = primOp @Word16 @SPIRV.Mod
+  rem    = primOp @Word16 @SPIRV.Rem
+  div    = primOp @Word16 @SPIRV.Quot
+instance Archimedean (AST Word32) where
+  mod    = primOp @Word32 @SPIRV.Mod
+  rem    = primOp @Word32 @SPIRV.Rem
+  div    = primOp @Word32 @SPIRV.Quot
+instance Archimedean (AST Word64) where
+  mod    = primOp @Word64 @SPIRV.Mod
+  rem    = primOp @Word64 @SPIRV.Rem
+  div    = primOp @Word64 @SPIRV.Quot
+instance Archimedean (AST Int8  ) where
+  mod    = primOp @Int8   @SPIRV.Mod
+  rem    = primOp @Int8   @SPIRV.Rem
+  div    = primOp @Int8   @SPIRV.Quot
+instance Archimedean (AST Int16 ) where
+  mod    = primOp @Int16  @SPIRV.Mod
+  rem    = primOp @Int16  @SPIRV.Rem
+  div    = primOp @Int16  @SPIRV.Quot
+instance Archimedean (AST Int32 ) where
+  mod    = primOp @Int32  @SPIRV.Mod
+  rem    = primOp @Int32  @SPIRV.Rem
+  div    = primOp @Int32  @SPIRV.Quot
+instance Archimedean (AST Int64 ) where
+  mod    = primOp @Int64  @SPIRV.Mod
+  rem    = primOp @Int64  @SPIRV.Rem
+  div    = primOp @Int64  @SPIRV.Quot
+instance Archimedean (AST Half  ) where
+  mod    = primOp @Half   @SPIRV.Mod
+  rem    = primOp @Half   @SPIRV.Rem
+  div a b = floor (a / b)
+instance Archimedean (AST Float ) where
+  mod    = primOp @Float  @SPIRV.Mod
+  rem    = primOp @Float  @SPIRV.Rem
+  div a b = floor (a / b)
+instance Archimedean (AST Double) where
+  mod    = primOp @Double @SPIRV.Mod
+  rem    = primOp @Double @SPIRV.Rem
+  div a b = floor (a / b)
 
 instance (ScalarTy a, Floating a) => Floating (AST a) where
   pi      = Lit pi

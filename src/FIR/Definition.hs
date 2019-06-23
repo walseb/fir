@@ -45,7 +45,11 @@ import Data.Type.Known
 import Data.Type.Map
   ( (:->)((:->)), Insert )
 import FIR.ASTState
-  ( ASTState(ASTState), EntryPointInfo(EntryPointInfo) )
+  ( ASTState(ASTState)
+  , Definedness(Declared)
+  , FunctionInfo(FunctionInfo)
+  , EntryPointInfo(EntryPointInfo)
+  )
 import qualified FIR.ASTState as ASTState
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
@@ -154,9 +158,20 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
 type family StartState (defs :: [ Symbol :-> Definition ]) :: ASTState where
   StartState defs
     = 'ASTState
-         ( StartBindings defs )
+         ( StartBindings         defs )
          ASTState.TopLevel
+         ( DefinitionFunctions   defs )
          ( DefinitionEntryPoints defs )
+
+type family DefinitionFunctions
+              ( defs :: [ Symbol :-> Definition ] )
+              :: [Symbol :-> FunctionInfo]
+              where
+  DefinitionFunctions '[] = '[]
+  DefinitionFunctions ( (k ':-> Function fc as b) ': defs )
+    = Insert k ('FunctionInfo as b fc Declared) (DefinitionFunctions defs)
+  DefinitionFunctions ( _ ': defs ) -- not a function
+    = DefinitionFunctions defs
 
 type family DefinitionEntryPoints
               ( defs   :: [ Symbol :-> Definition ] )
@@ -183,7 +198,7 @@ type family DefinitionInsertEntryPointInfo
     = TypeError ( 'Text "Invalid entry point execution modes (unreachable)" )
   DefinitionInsertEntryPointInfo k ('Just nfo) nfos
     = InsertEntryPointInfo
-        ( 'EntryPointInfo k nfo Nothing )
+        ( 'EntryPointInfo k nfo '( '[], '[] ) 'Declared )
         nfos
 
 type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
@@ -191,6 +206,7 @@ type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bi
     = '[]
   StartBindings ((k ':-> Global storage _ ty) ': defs)
     = Insert k (Variable (StoragePermissions storage) ty) (StartBindings defs)
+  ---- ^^^^^ TODO: we probably don't want to add all of these storage classes to the list of bindings?
   StartBindings ((k ':-> _) ': defs)
     = StartBindings defs
 

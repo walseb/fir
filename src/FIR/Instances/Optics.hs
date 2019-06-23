@@ -105,7 +105,9 @@ import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
 import FIR.Prim.Image
   ( Image, ImageProperties, ImageData
-  , ImageOperands, ImageCoordinates )
+  , ImageOperands, OperandName
+  , ImageCoordinates
+  )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
@@ -272,18 +274,30 @@ instance ( ValidAnIndexOptic is s a, is ~ '[ix], IntegralTy ix, PrimTy s, PrimTy
 
 -- binding + image texel optic... the two parts must always occur together
 instance {-# OVERLAPPING #-}
-    ( KnownSymbol k, Binding.ProvidedSymbol k
-    , Known ImageProperties props
-    , empty ~ '[]
-    , imgOps ~ ImageOperands props ops
-    , imgCds ~ ImageCoordinates props ops
-    , r ~ ImageData props ops
-    )
-  => KnownOptic ( ( ( Field_ (k :: Symbol) :: Optic empty i (Image props) )
-                    `ComposeO`
-                    ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) r)
-                  ) :: Optic '[imgOps, imgCds] (i :: ASTState) r
-                )
+         forall
+           ( k       :: Symbol          )
+           ( i       :: ASTState        )
+           ( props   :: ImageProperties )
+           ( ops     :: [OperandName]   )
+           ( empty   :: [Type]          )
+           ( imgOps  :: Type            )
+           ( imgCds  :: Type            )
+           ( imgData :: Type            )
+         .
+         ( KnownSymbol k
+         , Binding.LookupImageProperties k i ~ props
+         , Known ImageProperties props
+         , imgOps ~ ImageOperands props ops
+         , imgCds ~ ImageCoordinates props ops
+         , imgData ~ ImageData props ops
+         , empty ~ '[]
+         )
+      => KnownOptic
+            ( ( ( Field_ (k :: Symbol) :: Optic empty i (Image props) )
+                `ComposeO`
+                ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData)
+              ) :: Optic '[imgOps, imgCds] i imgData
+            )
   where
   opticSing = SImageTexel (Proxy @k) (Proxy @props)
 

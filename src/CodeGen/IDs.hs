@@ -237,7 +237,7 @@ typeID ty =
 
         SPIRV.PrimTy.Image (SPIRV.Image.Image { .. })
           -> createIDRec _knownPrimTy
-               ( typeID (SPIRV.Scalar component) )  -- get the type ID of the image 'component' type
+               ( typeID (SPIRV.Scalar texelComponent) )  -- get the type ID of the image 'component' type
                ( \componentID
                    -> mkTyConInstruction
                         ( Arg componentID
@@ -245,7 +245,7 @@ typeID ty =
                         $ Arg hasDepth
                         $ Arg arrayness
                         $ Arg multiSampling
-                        $ Arg imageUsage -- whether the image is sampled or serves as storage
+                        $ Arg imageUsage
                         $ Arg imageFormat
                         EndArgs
                         )

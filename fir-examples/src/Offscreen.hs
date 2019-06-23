@@ -89,7 +89,8 @@ offscreen = runManaged do
 
   vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance []
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
-  queueFamilyIndex <- logMsg "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice
+  queueFamilyIndex <- logMsg "Finding suitable queue family"
+      *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]
 
   device           <- logMsg "Creating logical device"       *> createLogicalDevice  physicalDevice queueFamilyIndex Nothing
 
@@ -122,16 +123,22 @@ offscreen = runManaged do
 
   renderPass <- logMsg "Creating a render pass" *> createRenderPass device colFmt depthFmt
 
+  let
+    colorImageInfo, depthImageInfo, screenshotImageInfo :: ImageInfo
+    colorImageInfo =
+      Default2DImageInfo extent3D colFmt
+        ( Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT )
+    depthImageInfo =
+      Default2DImageInfo extent3D depthFmt
+        Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+    screenshotImageInfo =
+      ( Default2DImageInfo extent3D colFmt
+        Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
+      ) { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR }  -- host visible image needs linear tiling
+
   (colorImage, _) <-
     createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
-      extent3D
-      colFmt
-      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-      Vulkan.VK_IMAGE_TILING_OPTIMAL
-      (     Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-        .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-      )
+      colorImageInfo
       [ ]
   colorImageView <-
     createImageView
@@ -141,23 +148,13 @@ offscreen = runManaged do
       Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
   (screenshotImage, screenshotImageMemory) <-
     createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
-      extent3D
-      colFmt
-      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-      Vulkan.VK_IMAGE_TILING_LINEAR -- host visible image needs linear tiling
-      Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
+      screenshotImageInfo
       [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
       , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
       ]
   (depthImage, _) <-
     createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
-      extent3D
-      depthFmt
-      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-      Vulkan.VK_IMAGE_TILING_OPTIMAL
-      Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+      depthImageInfo
       [ ]
   depthImageView <- createImageView device depthImage
     Vulkan.VK_IMAGE_VIEW_TYPE_2D
@@ -630,8 +627,7 @@ allocateDescriptorSet dev descriptorPool layout0 = do
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"descriptorPool" descriptorPool
-        &* Vulkan.set @"descriptorSetCount" 1
-        &* Vulkan.setListRef @"pSetLayouts" [ layout0 ]
+        &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts" [ layout0 ]
         )
 
   manageBracket

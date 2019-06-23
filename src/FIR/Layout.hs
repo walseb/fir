@@ -484,7 +484,7 @@ structPoke ali ptr struct = case primTyMapSing @_ @as of
     ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
       case (struct, pokeDict @as @lay) of
         ( b :& bs, PokeDict ) ->
-          let off = fromIntegral $ nextAligned ali (sizeOf @b @lay)
+          let off = fromIntegral $ nextAligned (sizeOf @b @lay) ali
           in  poke @b @lay (castPtr ptr) b *> structPoke @fld @lay @bs ali (ptr `plusPtr` off) bs
 
 

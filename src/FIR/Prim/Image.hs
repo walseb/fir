@@ -20,7 +20,7 @@ module FIR.Prim.Image
   , Image
   -- ** Type reflection of image properties
   -- $reflection
-  , knownImageComponent
+  , ImageAndCoordinate(..)
   , knownImage
 
   -- * Image operands
@@ -79,10 +79,12 @@ import SPIRV.Image
   , Operand(LODOperand)
   , Projection(..)
   )
-import qualified SPIRV.Image  as SPIRV
+import qualified SPIRV.Image    as SPIRV
   ( Image(..), Operand(..), LODOperand(..) )
-import qualified SPIRV.PrimTy as SPIRV
+import qualified SPIRV.PrimTy   as SPIRV
   ( PrimTy )
+import qualified SPIRV.ScalarTy as SPIRV
+  ( ScalarTy )
 
 --------------------------------------------------
 
@@ -116,34 +118,34 @@ data Image (props :: ImageProperties) where
 
 
 -- newtype to retain injectivity of 'Demote' type family
-newtype ImageAndComponent
-  = ImageAndComponent (SPIRV.Image, SPIRV.PrimTy)
+newtype ImageAndCoordinate
+  = ImageAndCoordinate (SPIRV.Image, SPIRV.ScalarTy)
 
 instance Demotable ImageProperties where
-  type Demote ImageProperties = ImageAndComponent
+  type Demote ImageProperties = ImageAndCoordinate
 
-instance ( ScalarTy                        component
-         , PrimTy                          result
+instance ( ScalarTy                        coordComp
+         , ScalarTy                        texelComp
          , Known Dimensionality            dimensionality
          , Known (Maybe HasDepth)          hasDepth
          , Known Arrayness                 arrayness
          , Known MultiSampling             multiSampling
          , Known ImageUsage                imageUsage
          , Known (Maybe (ImageFormat Nat)) imageFormat
-         , MatchesFormat imageFormat result
+         , MatchesFormat imageFormat texelComp
          )
   => Known ImageProperties
       ( 'Properties
-           component result
+           coordComp texelComp
            dimensionality hasDepth
            arrayness multiSampling
            imageUsage imageFormat
       )
   where
   known
-    = ImageAndComponent
+    = ImageAndCoordinate
         ( SPIRV.Image
-            { SPIRV.component        = scalarTy   @component
+            { SPIRV.texelComponent   = scalarTy   @texelComp
             , SPIRV.dimensionality   = knownValue @dimensionality
             , SPIRV.hasDepth         = knownValue @hasDepth
             , SPIRV.arrayness        = knownValue @arrayness
@@ -151,7 +153,7 @@ instance ( ScalarTy                        component
             , SPIRV.imageUsage = Just (knownValue @imageUsage)
             , SPIRV.imageFormat      = knownValue @imageFormat
             }
-        , primTy @result
+        , scalarTy @coordComp
         )
 
 
@@ -163,17 +165,17 @@ instance ( ScalarTy                        component
 
 -- | Provided image properties at the type-level,
 -- return the component type of the image's texels.
-knownImageComponent :: forall props. Known ImageProperties props
-                          => SPIRV.PrimTy
-knownImageComponent
+knownImageCoordinateComponent :: forall props. Known ImageProperties props
+                          => SPIRV.ScalarTy
+knownImageCoordinateComponent
   = case knownValue @props of
-      ImageAndComponent (_, comp) -> comp
+      ImageAndCoordinate (_, comp) -> comp
 
 -- | Return the 'SPIRV.Image.Image' type with the given properties.
 knownImage :: forall props. Known ImageProperties props => SPIRV.Image
 knownImage
   = case knownValue @props of
-      ImageAndComponent (img, _) -> img
+      ImageAndCoordinate (img, _) -> img
 
 --------------------------------------------------
 -- Image operands

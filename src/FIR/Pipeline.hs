@@ -68,6 +68,7 @@ import Data.Type.String
   ( ShowNat )
 import FIR.ASTState
   ( ASTState(ASTState)
+  , Definedness(Defined)
   , TLInterface, TLInterfaceVariable
   , EntryPointInfo(EntryPointInfo)
   )
@@ -168,11 +169,10 @@ data ShaderPipelineWithInfo (info :: PipelineInfo) where
               ( 'EntryPointInfo
                     name
                     ( GetExecutionInfo shader name endState )
-                    ( 'Just
-                        '( VariablesWithStorage SPIRV.Input  defs
-                         , VariablesWithStorage SPIRV.Output defs
-                         )
-                    )
+                    '( VariablesWithStorage SPIRV.Input  defs
+                     ,  VariablesWithStorage SPIRV.Output defs
+                     )
+                    'Defined
               )
             )
 
@@ -271,7 +271,7 @@ type family ValidPipelineInfo
 -- | Check that a pipeline starts with a vertex shader.
 type family StartsWithVertex ( info :: PipelineInfo ) :: Constraint where
   StartsWithVertex
-    ( TopOfPipe `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Vertex) _ ) )
+    ( TopOfPipe `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Vertex) _ _ ) )
       = ()
   StartsWithVertex ( info `Into` _)
     = StartsWithVertex info
@@ -282,7 +282,7 @@ type family StartsWithVertex ( info :: PipelineInfo ) :: Constraint where
 -- | Check that a pipeline ends with a fragment shader.
 type family EndsWithFragment ( info :: PipelineInfo ) :: Constraint where
   EndsWithFragment
-    ( _ `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Fragment) _ ) )
+    ( _ `Into` ( 'EntryPointInfo _ (_ :: SPIRV.ExecutionInfo Nat SPIRV.Fragment) _ _ ) )
       = ()
   EndsWithFragment _
     = TypeError
@@ -327,14 +327,16 @@ type family ValidPipelineInterface
         ( 'SPIRV.ShaderExecutionInfo info1
             :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader1))
         )
-        ( 'Just '( _, outputs1 ) )
+        '( _, outputs1 )
+        _
     )
     ( 'EntryPointInfo
         name2
         ( 'SPIRV.ShaderExecutionInfo info2
             :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader2))
         )
-        ( 'Just '( inputs2, _ ) )
+        '( inputs2, _ )
+        _
     )
       = ( ValidInterface
           shader1 info1 name1 (Values outputs1)
@@ -343,9 +345,6 @@ type family ValidPipelineInterface
             shader1 info1
             shader2 info2
         )
-  ValidPipelineInterface _ _ _
-    = TypeError
-      ( Text "Missing entry point interface." )
 
 -- | Checks that the sequencing of shaders is valid.
 --
@@ -577,7 +576,7 @@ type family GetExecutionInfo
               ( state  :: ASTState     )
           :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader))
           where
-  GetExecutionInfo shader name ('ASTState _ _ eps)
+  GetExecutionInfo shader name ('ASTState _ _ _ eps)
     = GetExecutionInfoOf shader name eps
 
 type family GetExecutionInfoOf
@@ -597,6 +596,7 @@ type family GetExecutionInfoOf
          name
          ( nfo :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader)) )
          _
+         _
     ': _
     )
       = nfo
@@ -609,7 +609,7 @@ type family GetInterface
               ( state  :: ASTState     )
           :: TLInterface
           where
-  GetInterface shader name ('ASTState _ _ eps)
+  GetInterface shader name ('ASTState _ _ _ eps)
     = GetInterfaceOf shader name eps
 
 type family GetInterfaceOf
@@ -628,23 +628,11 @@ type family GetInterfaceOf
     ( 'EntryPointInfo
          name
          _
-         ('Just iface)
+         iface
+         _
     ': _
     )
       = iface
-  GetInterfaceOf shader name
-    ( 'EntryPointInfo
-         name
-         _
-         'Nothing
-    ': _
-    )
-      = TypeError
-        (    Text "Missing interface for "
-        :<>: Text (NamedShader name shader)
-        :<>: Text "."
-        :$$: Text "This might mean the entry point body is missing."
-        )
   GetInterfaceOf shader name ( _ ': eps )
     = GetInterfaceOf shader name eps
 

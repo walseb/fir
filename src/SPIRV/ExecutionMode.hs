@@ -265,7 +265,6 @@ type family ValidateExecutionModes
          Nothing
   ValidateExecutionModes k TessellationControl modes
     = If (  HasOneOf       k TessellationControl '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
-      --  && HasAtMostOneOf k TessellationControl '[ Triangles, Quads, Isolines, PointMode ] modes
          && HasAtMostOneOf k TessellationControl '[ VertexOrderCw, VertexOrderCcw ] modes
          && PertainTo      k TessellationControl modes
          )
@@ -279,7 +278,6 @@ type family ValidateExecutionModes
         Nothing
   ValidateExecutionModes k TessellationEvaluation modes
     = If (  HasAtMostOneOf k TessellationEvaluation '[ SpacingEqual, SpacingFractionalEven, SpacingFractionalOdd ] modes
-     --    && HasOneOf       k TessellationEvaluation '[ Triangles, Quads, Isolines, PointMode ] modes
          && HasAtMostOneOf k TessellationEvaluation '[ VertexOrderCw, VertexOrderCcw ] modes
          && PertainTo      k TessellationEvaluation modes
          )
@@ -298,7 +296,7 @@ type family ValidateExecutionModes
         Nothing
   ValidateExecutionModes k Compute modes
     = If ( PertainTo k Compute modes )
-        ( Just ComputeInfo )
+        ( Just (ComputeInfo (LocalSizes k Compute modes) ) )
         Nothing
   ValidateExecutionModes k em _
     = TypeError ( Text "Unsupported " :<>: Text (NamedExecutionModel k em) )
@@ -312,7 +310,9 @@ type family Pertains (k :: Symbol) (em :: ExecutionModel) (mode :: m) (ok :: Boo
   Pertains _ _ _ True = True
   Pertains k em mode False
     = TypeError
-        ( Text (NamedExecutionModel k em) :<>: Text " does not support execution mode " :<>: ShowType mode )
+        (    Text (NamedExecutionModel k em) :<>: Text " does not support execution mode "
+        :<>: ShowType mode :<>: Text "."
+        )
 
 type family HasOneOf (k :: Symbol) (em :: ExecutionModel) (oneOf :: [ m ] ) (modes :: [ m ]) :: Bool where
   HasOneOf k em oneOf modes
@@ -465,37 +465,37 @@ type family NoSizes
     = 'True
   NoSizes k em given (InputPoints ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting inputs."
+        (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
         :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputPoints :<>: Text "."
         )
   NoSizes k em given (InputLines ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting inputs."
+        (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
         :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputLines :<>: Text "."
         )
   NoSizes k em given (InputLinesAdjacency ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting inputs."
+        (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
         :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputLinesAdjacency :<>: Text "."
         )
   NoSizes k em given (Triangles ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting inputs."
+        (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
         :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Triangles :<>: Text "."
         )
   NoSizes k em given (InputTrianglesAdjacency ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting inputs."
+        (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
         :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputTrianglesAdjacency :<>: Text "."
         )
   NoSizes k em given (Quads ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting inputs."
+        (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
         :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Quads :<>: Text "."
         )
   NoSizes k em given (Isolines ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting inputs."
+        (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
         :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Isolines :<>: Text "."
         )
   NoSizes k em given ( _ ': modes )
@@ -511,8 +511,41 @@ type family NoOutputVertices
   NoOutputVertices _ _  _        '[] = True
   NoOutputVertices k em givenVerts ( OutputVertices verts ': _ )
     = TypeError
-        (   Text (NamedExecutionModel k em) :<>: Text " conflicting number of output vertices."
+        (   Text (NamedExecutionModel k em) :<>: Text "has conflicting numbers of output vertices."
         :$$:  Text "Provided both " :<>: ShowType givenVerts :<>: Text " and " :<>: ShowType verts :<>: Text "."
         )
   NoOutputVertices k em given ( _ ': modes )
     = NoOutputVertices k em given modes
+
+type family LocalSizes
+              ( k     :: Symbol                )
+              ( em    :: ExecutionModel        )
+              ( modes :: [ ExecutionMode Nat ] )
+            :: (Nat, Nat, Nat)
+            where
+  LocalSizes k em '[]
+    = TypeError
+    ( Text (NamedExecutionModel k em) :<>: Text " is missing 'LocalSize' information." )
+  LocalSizes k em ( LocalSize x y z ': modes )
+    = If ( NoLocalSizes k em '(x,y,z) modes )
+      ( '(x,y,z) )
+      ( '(1,1,1) ) -- unreachable
+  LocalSizes k em ( _ ': modes ) = LocalSizes k em modes
+
+type family NoLocalSizes
+              ( k     :: Symbol                )
+              ( em    :: ExecutionModel        )
+              ( xyz   :: (Nat,Nat,Nat)         )
+              ( modes :: [ ExecutionMode Nat ] )
+            :: Bool
+            where
+  NoLocalSizes _ _ _ '[] = 'True
+  NoLocalSizes k em xyz (LocalSize x' y' z' ': _)
+    = TypeError
+    ( Text (NamedExecutionModel k em) :<>: Text " has conflicting local size information."
+    :$$: Text "Provided both " :<>: ShowType xyz
+    :<>: Text " and " :<>: ShowType '(x',y',z') :<>: Text "."
+    )
+  NoLocalSizes k em xyz ( _ ': modes )
+    = NoLocalSizes k em xyz modes
+

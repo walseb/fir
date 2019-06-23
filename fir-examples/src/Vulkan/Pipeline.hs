@@ -214,6 +214,32 @@ createShaderInfo device shaderStage shaderPath = do
           )
   pure shaderModule
 
+createPipelineLayout
+  :: MonadManaged m
+  => Vulkan.VkDevice
+  -> Vulkan.VkDescriptorSetLayout
+  -> m Vulkan.VkPipelineLayout
+createPipelineLayout device layout0 =
+  managedVulkanResource
+    ( Vulkan.vkCreatePipelineLayout  device ( Vulkan.unsafePtr pipelineLayoutCreateInfo ) )
+    ( Vulkan.vkDestroyPipelineLayout device )
+
+    where
+      pipelineLayoutCreateInfo :: Vulkan.VkPipelineLayoutCreateInfo
+      pipelineLayoutCreateInfo =
+        Vulkan.createVk
+          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
+          &* Vulkan.set @"pNext" Vulkan.VK_NULL
+          &* Vulkan.set @"flags" 0
+          &* Vulkan.setListCountAndRef
+                @"setLayoutCount"
+                @"pSetLayouts"
+                [ layout0 ]
+          &* Vulkan.setListCountAndRef
+                @"pushConstantRangeCount"
+                @"pPushConstantRanges"
+                [ ]
+          )
 
 createGraphicsPipeline
   :: MonadManaged m
@@ -231,27 +257,7 @@ createGraphicsPipeline device renderPass extent layout0
       pipelineWithInfo
   ) = do
     pipelineLayout <-
-      let
-        pipelineLayoutCreateInfo :: Vulkan.VkPipelineLayoutCreateInfo
-        pipelineLayoutCreateInfo =
-          Vulkan.createVk
-            (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
-            &* Vulkan.set @"pNext" Vulkan.VK_NULL
-            &* Vulkan.set @"flags" 0
-            &* Vulkan.setListCountAndRef
-                  @"setLayoutCount"
-                  @"pSetLayouts"
-                  [ layout0 ]
-            &* Vulkan.setListCountAndRef
-                  @"pushConstantRangeCount"
-                  @"pPushConstantRanges"
-                  [ ]
-            )
-  
-      in
-      managedVulkanResource
-        ( Vulkan.vkCreatePipelineLayout  device ( Vulkan.unsafePtr pipelineLayoutCreateInfo ) )
-        ( Vulkan.vkDestroyPipelineLayout device )
+      createPipelineLayout device layout0
 
     let
       shaderPaths :: [(Shader, String)]
@@ -423,3 +429,40 @@ createGraphicsPipeline device renderPass extent layout0
         ( Vulkan.vkDestroyPipeline device )
 
     return ( pipeline, pipelineLayout )
+
+createComputePipeline
+  :: MonadManaged m
+  => Vulkan.VkDevice
+  -> Vulkan.VkDescriptorSetLayout
+  -> FilePath
+  -> m ( Vulkan.VkPipeline, Vulkan.VkPipelineLayout )
+createComputePipeline device layout0 shaderPath = do
+
+  pipelineLayout <-
+    createPipelineLayout device layout0
+
+  computeShader <- createShaderInfo device ComputeShader shaderPath
+
+  let
+    createInfo :: Vulkan.VkComputePipelineCreateInfo
+    createInfo = Vulkan.createVk
+      (  Vulkan.set @"sType"  Vulkan.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO
+      &* Vulkan.set @"pNext"  Vulkan.VK_NULL
+      &* Vulkan.set @"flags"  0
+      &* Vulkan.set @"stage"  computeShader
+      &* Vulkan.set @"layout" pipelineLayout
+      &* Vulkan.set @"basePipelineIndex" 0
+      )
+
+  pipeline <-
+    managedVulkanResource
+      ( Vulkan.vkCreateComputePipelines
+          device
+          Vulkan.vkNullPtr
+          1
+          ( Vulkan.unsafePtr createInfo )
+
+      )
+      ( Vulkan.vkDestroyPipeline device )
+
+  return ( pipeline, pipelineLayout )

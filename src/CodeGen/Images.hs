@@ -4,6 +4,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PackageImports      #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -54,13 +55,12 @@ import CodeGen.Monad
 import CodeGen.State
   ( addCapabilities )
 import Data.Type.Known
-  ( Known )
+  ( Known, knownValue )
 import FIR.Prim.Image
-  ( ImageProperties
-  , ImageOperands(..)
+  ( ImageProperties, ImageAndCoordinate(..)
+  , ImageOperands(..), OperandName
   , GatherInfo(..)
   , knownImage
-  , knownImageComponent
   )
 import qualified SPIRV.Capability as SPIRV
   ( formatCapabilities
@@ -86,8 +86,10 @@ import qualified SPIRV.ScalarTy
 
 
 imageTexel
-      :: forall props ops.
-         ( Known ImageProperties props )
+      :: forall
+            ( props :: ImageProperties )
+            ( ops   :: [OperandName]   )
+      .  ( Known ImageProperties props )
       => (ID, SPIRV.PrimTy)
       -> ImageOperands props ops
       -> ID
@@ -99,24 +101,26 @@ imageTexel (imgID, imgTy) ops coords
           proj   = projection   bm
           dtest  = depthTesting bm
           gathering = gather    bm
-          imgCompTy = knownImageComponent @props
+          ImageAndCoordinate
+            ( SPIRV.Image.Image
+                { SPIRV.texelComponent = texComp
+                , SPIRV.dimensionality = dim
+                , SPIRV.arrayness      = arrayness
+                , SPIRV.multiSampling  = ms
+                , SPIRV.imageFormat    = mbFmt
+                }
+            , coordCompTy
+            ) = knownValue @props
+
           imgResTy = case dtest of
                         DepthTest
                           | not gathering
-                          -> imgCompTy
-                        _ -> SPIRV.Vector 4 imgCompTy
+                          -> SPIRV.Scalar texComp
+                        _ -> SPIRV.Vector 4 (SPIRV.Scalar texComp)
       resTyID <- typeID imgResTy
       v <- fresh
 
-      let SPIRV.Image.Image
-            { SPIRV.component      = component
-            , SPIRV.dimensionality = dim
-            , SPIRV.arrayness      = arrayness
-            , SPIRV.multiSampling  = ms
-            , SPIRV.imageFormat    = mbFmt
-            } = knownImage @props
-
-      sampling <- case component of
+      sampling <- case coordCompTy of
         -- must be using a sampler (accessing with floating-point coordinates)
         SPIRV.ScalarTy.Floating _
           -> do sampledImgID
@@ -214,7 +218,7 @@ writeTexel (imgID, imgTy) ops coords texel
                      )
       liftPut $ putInstruction Map.empty
         Instruction
-          { operation = SPIRV.Op.ImageRead
+          { operation = SPIRV.Op.ImageWrite
           , resTy     = Nothing
           , resID     = Nothing
           , args      = Arg plainImgID

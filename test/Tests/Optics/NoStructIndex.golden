@@ -1,5 +1,5 @@
 
-test\tests\optics\nostructindex.hs:42:17: error:
+test\Tests\Optics\NoStructIndex.hs:42:17: error:
     • get: index 5 out of bounds when accessing struct with fields
       '[ "position" ':-> V 3 Float, "colour" ':-> V 4 Float,
          "size" ':-> Float, "weight" ':-> Float]

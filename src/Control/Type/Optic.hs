@@ -216,6 +216,8 @@ import Data.Type.List
   ( type (:++:), Zip, Postpend )
 import Data.Function.Variadic
   ( ListVariadic )
+import FIR.Prim.Image
+  ( Image )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
@@ -286,6 +288,31 @@ type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
               s
               ( Product o1 o2 )
     )
+
+type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
+  ShowOptic Id_ = Text "Id"
+  ShowOptic Joint_ = Text "Joint"
+  -- special case for image optics
+  ShowOptic
+    ( ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
+    `ComposeO`
+      ( RTOptic_ :: Optic '[ _, _ ] (Image props) _ )
+    )
+      = Text "ImageTexel " :<>: ShowType k
+  ShowOptic (RTOptic_ :: Optic '[ix] s a)
+    = Text "AnIndex (" :<>: ShowType ix :<>: Text ")"
+  ShowOptic (RTOptic_ :: Optic is s a)
+    = Text "SomeIndices (" :<>: ShowType is :<>: Text ")"
+  ShowOptic (Field_ (i :: Nat))
+    = Text "Index " :<>: ShowType i
+  ShowOptic (Field_ (k :: Symbol) :: Optic is (s :: Type) a)
+    = Text "Name " :<>: ShowType k
+  ShowOptic (Field_ (k :: Symbol) :: Optic is (s :: _) a)
+    = Text "Binding " :<>: ShowType k
+  ShowOptic (o1 `ComposeO` o2)
+    = Text "( " :<>: ShowOptic o1 :<>: Text " :.: " :<>: ShowOptic o2 :<>: Text " )"
+  ShowOptic (o1 `ProductO` o2)
+    = Text "( " :<>: ShowOptic o1 :<>: Text " :*: " :<>: ShowOptic o2 :<>: Text " )"
 
 ----------------------------------------------------------------------
 -- Type classes and synonyms.
@@ -603,9 +630,9 @@ type family ProductIfDisjoint
         ( TypeError 
            ( Text "set: cannot create product setter."
             :$$: Text "Setters "
-            :$$: Text "  " :<>: ShowType o1
+            :$$: Text "  " :<>: ShowOptic o1
             :$$: Text "and "
-            :$$: Text "  " :<>: ShowType o2
+            :$$: Text "  " :<>: ShowOptic o2
             :$$: Text "are not disjoint."
            )
         )
@@ -714,7 +741,7 @@ type family Combine
 
 type family Disjoint
               ( o1 :: Optic is s a )
-              ( o2 :: Optic js t b )
+              ( o2 :: Optic js s b )
             = ( r  :: Bool         )
               where
   Disjoint (Field_ f) (Field_ f) = False
@@ -728,9 +755,15 @@ type family Disjoint
     = Not (Overlapping s k n)
   Disjoint ((Field_ (n :: Nat)) :: Optic is s a) ((Field_ (k :: Symbol)) :: Optic js s b)
     = Not (Overlapping s k n)
-  Disjoint (Field_ (f1 :: fld1)) _
+  Disjoint (Field_ (k :: Symbol)) (Field_ (l :: Symbol))
+    = 'True
+  Disjoint (Field_ (i :: Nat)) (Field_ (j :: Nat))
+    = 'True
+  Disjoint (Field_ (f1 :: fld1)) (Field_ (f2 :: fld2))
     = TypeError
-      ( Text "Disjointness check: unsupported optics field kind " :<>: ShowType fld1 )
+      (    Text "Disjointness check: unsupported optics field kinds "
+      :<>: ShowType fld1 :<>: Text " and " :<>: ShowType fld2 :<>: Text "."
+      )
   Disjoint (o1 `ProductO` o3) (o2 `ProductO` o4)
     =  Disjoint o1 o2
     && Disjoint o1 o4

@@ -1,5 +1,5 @@
 
-test\tests\optics\nomatrixindex.hs:36:10: error:
+test\Tests\Optics\NoMatrixIndex.hs:36:10: error:
     • get: matrix column index 4 is out of bounds.
       This matrix has 3 rows, 4 columns.
       Note: indexing starts from 0.

@@ -108,17 +108,25 @@ import FIR.Instances.Bindings
 -- As it is impossible to obtain actual values of type 'FIR.Prim.Image.Image',
 -- it is only the composite optic @ImageTexel k@, understood atomically,
 -- which allows focusing on image texels.
-type family ImageTexel k :: Optic
-                              '[ ImageOperands props ops, ImageCoordinates props ops]
-                              i (ImageData props ops)
-                  where
+type family ImageTexel
+              ( k :: Symbol )
+            = ( optic
+                :: Optic
+                    '[ ImageOperands props ops, ImageCoordinates props ops]
+                    ( i :: ASTState )
+                    ( ImageData props ops )
+              )
+            | optic -> k
+            where
   ImageTexel k
     = ( ( ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
           `ComposeO`
-          ( RTOptic_ :: Optic
-                          '[ ImageOperands props ops, ImageCoordinates props ops]
-                          (Image props)
-                          (ImageData props ops) )
+          ( RTOptic_
+              :: Optic
+                  '[ ImageOperands props ops, ImageCoordinates props ops]
+                  ( Image props )
+                  ( ImageData props ops )
+          )
         ) :: Optic
               '[ ImageOperands props ops, ImageCoordinates props ops]
               i

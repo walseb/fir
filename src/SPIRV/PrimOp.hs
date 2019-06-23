@@ -88,6 +88,7 @@ data NumPrimOp
   -- archimedean ordered group
   | Mod
   | Rem
+  | Quot
   deriving Show
 
 data FloatPrimOp
@@ -239,8 +240,7 @@ numericOp Sign (Integer Signed   w) = ( SSign  , Integer Signed   w )
 numericOp Sign (Integer Unsigned _) = error "'signum' called on unsigned type"
 -- division ring
 numericOp Div  (Floating         w) = ( FDiv   , Floating         w )
-numericOp Div  (Integer Signed   w) = ( SDiv   , Integer Signed   w )
-numericOp Div  (Integer Unsigned w) = ( UDiv   , Integer Unsigned w )
+numericOp Div  (Integer  _       _) = error "internal error: Div used with integral type"
 -- archimedean ordered group
 numericOp Mod  (Floating         w) = ( FMod   , Floating         w )
 numericOp Mod  (Integer Signed   w) = ( SMod   , Integer Signed   w )
@@ -248,6 +248,9 @@ numericOp Mod  (Integer Unsigned w) = ( UMod   , Integer Unsigned w )
 numericOp Rem  (Floating         w) = ( FRem   , Floating         w )
 numericOp Rem  (Integer Signed   w) = ( SRem   , Integer Signed   w )
 numericOp Rem  (Integer Unsigned w) = ( UMod   , Integer Unsigned w ) -- URem pointless for unsigned type
+numericOp Quot (Integer Signed   w) = ( SDiv   , Integer Signed   w )
+numericOp Quot (Integer Unsigned w) = ( UDiv   , Integer Unsigned w )
+numericOp Quot (Floating         _) = error "internal error: Quot used with floating-point type"
 
 floatingOp :: FloatPrimOp -> Operation
 floatingOp FSin     = Sin

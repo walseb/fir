@@ -1,5 +1,5 @@
 
-test\tests\optics\novectorindex.hs:36:17: error:
+test\Tests\Optics\NoVectorIndex.hs:36:17: error:
     • get: vector index 4 is out of bounds.
       Vector dimension is 4.
       Note: indexing starts from 0.

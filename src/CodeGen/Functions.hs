@@ -241,7 +241,7 @@ declareEntryPoint modelName modelInfo mbIface body
             { operation = SPIRV.Op.Function
             , resTy     = Just unitTyID
             , resID     = Just v
-            , args      = Arg SPIRV.noFunctionControl
+            , args      = Arg SPIRV.NoFunctionControl
                         $ Arg fnTyID EndArgs
             }
         _ <- inEntryPointContext modelName modelInfo mbIface body

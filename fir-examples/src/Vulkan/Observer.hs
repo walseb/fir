@@ -6,6 +6,7 @@
 {-# LANGUAGE RebindableSyntax           #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
 
 module Vulkan.Observer
   ( Input(..), nullInput
@@ -16,6 +17,7 @@ module Vulkan.Observer
   , interpretInput
   , move
   , modelViewProjection
+  , camera
   ) where
 
 -- base
@@ -186,3 +188,22 @@ modelViewProjection Observer { angles = V2 x y, position } mbOrientation
         projection = perspective ( pi / 2 ) ( 16 / 9 ) 0.1 100000
                    
     in projection !*! view
+
+camera :: Observer
+       -> Maybe (Quaternion Float)
+       -> Struct
+            '[ "position" ':-> V 3 Float
+             , "right"    ':-> V 3 Float
+             , "up"       ':-> V 3 Float
+             , "forward"  ':-> V 3 Float
+             ]
+camera Observer { angles = V2 x y, position } mbOrientation
+  = let
+      orientation
+        = fromMaybe
+            ( axisAngle (V3 0 (-1) 0) x * axisAngle (V3 1 0 0) y )
+            mbOrientation
+      forward = rotate orientation ( V3 0   0  1 ) -- Vulkan coordinate system
+      up      = rotate orientation ( V3 0 (-1) 0 )
+      right   = rotate orientation ( V3 1   0  0 )
+    in position :& right :& up :& forward :& End

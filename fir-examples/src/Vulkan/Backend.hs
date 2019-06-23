@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
@@ -21,6 +22,8 @@ import Control.Monad.IO.Class
   ( MonadIO, liftIO )
 import Data.Bits
   ( (.&.) )
+import Data.Foldable
+  ( for_ )
 import Data.List
   hiding ( transpose )
 import Data.Maybe
@@ -109,8 +112,12 @@ createPhysicalDevice vk = liftIO do
           ]
 
 
-findQueueFamilyIndex :: MonadIO m => Vulkan.VkPhysicalDevice -> m Int
-findQueueFamilyIndex physicalDevice = liftIO do
+findQueueFamilyIndex
+  :: MonadIO m
+  => Vulkan.VkPhysicalDevice
+  -> [ Vulkan.VkQueueBitmask Vulkan.FlagMask ]
+  -> m Int
+findQueueFamilyIndex physicalDevice requiredFlags = liftIO do
   queueFamilies <- fetchAll ( Vulkan.vkGetPhysicalDeviceQueueFamilyProperties physicalDevice )
 
   let
@@ -122,7 +129,10 @@ findQueueFamilyIndex physicalDevice = liftIO do
         flags :: Vulkan.VkQueueBitmask Vulkan.FlagMask
         flags = Vulkan.getField @"queueFlags" queueFamily
 
-      guard ( flags .&. Vulkan.VK_QUEUE_GRAPHICS_BIT > 0 )
+      for_ requiredFlags
+        ( \f ->
+            guard ( flags .&. f > 0 )
+        )
 
       pure i
 
@@ -285,23 +295,23 @@ createSwapchain physicalDevice device surface surfaceFormat imageUsage = do
     swapchainCreateInfo :: Vulkan.VkSwapchainCreateInfoKHR
     swapchainCreateInfo =
       Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
-        &* Vulkan.set @"pNext" Foreign.nullPtr
-        &* Vulkan.set @"surface" ( Vulkan.VkPtr surface )
-        &* Vulkan.set @"minImageCount"  imageCount
-        &* Vulkan.set @"imageFormat" ( format surfaceFormat )
-        &* Vulkan.set @"imageColorSpace" ( colorSpace surfaceFormat )
-        &* Vulkan.set @"imageExtent" currentExtent
-        &* Vulkan.set @"imageArrayLayers" 1
-        &* Vulkan.set @"imageUsage" imageUsage
-        &* Vulkan.set @"imageSharingMode" Vulkan.VK_SHARING_MODE_EXCLUSIVE
+        (  Vulkan.set @"sType"                 Vulkan.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
+        &* Vulkan.set @"pNext"                 Foreign.nullPtr
+        &* Vulkan.set @"surface"               ( Vulkan.VkPtr surface )
+        &* Vulkan.set @"minImageCount"         imageCount
+        &* Vulkan.set @"imageFormat"           ( format surfaceFormat )
+        &* Vulkan.set @"imageColorSpace"       ( colorSpace surfaceFormat )
+        &* Vulkan.set @"imageExtent"           currentExtent
+        &* Vulkan.set @"imageArrayLayers"      1
+        &* Vulkan.set @"imageUsage"            imageUsage
+        &* Vulkan.set @"imageSharingMode"      Vulkan.VK_SHARING_MODE_EXCLUSIVE
         &* Vulkan.set @"queueFamilyIndexCount" 0
-        &* Vulkan.set @"pQueueFamilyIndices" Vulkan.vkNullPtr
-        &* Vulkan.set @"preTransform" currentTransform
-        &* Vulkan.set @"compositeAlpha" Vulkan.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
-        &* Vulkan.set @"presentMode" Vulkan.VK_PRESENT_MODE_FIFO_KHR
-        &* Vulkan.set @"clipped" Vulkan.VK_TRUE
-        &* Vulkan.set @"oldSwapchain" Vulkan.VK_NULL_HANDLE
+        &* Vulkan.set @"pQueueFamilyIndices"   Vulkan.vkNullPtr
+        &* Vulkan.set @"preTransform"          currentTransform
+        &* Vulkan.set @"compositeAlpha"        Vulkan.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+        &* Vulkan.set @"presentMode"           Vulkan.VK_PRESENT_MODE_FIFO_KHR
+        &* Vulkan.set @"clipped"               Vulkan.VK_TRUE
+        &* Vulkan.set @"oldSwapchain"          Vulkan.VK_NULL_HANDLE
         )
 
   swapchain <-
@@ -357,19 +367,41 @@ createFramebuffer dev renderPass extent attachments =
       ( Vulkan.vkDestroyFramebuffer dev )
 
 
+data ImageInfo
+  = ImageInfo
+  { imageType        :: Vulkan.VkImageType
+  , imageExtent      :: Vulkan.VkExtent3D
+  , imageFormat      :: Vulkan.VkFormat
+  , imageLayout      :: Vulkan.VkImageLayout
+  , imageMipLevels   :: Vulkan.Word32
+  , imageArrayLayers :: Vulkan.Word32
+  , imageSamples     :: Vulkan.VkSampleCountFlagBits
+  , imageTiling      :: Vulkan.VkImageTiling
+  , imageUsage       :: Vulkan.VkImageUsageBitmask Vulkan.FlagMask
+  }
+
+pattern Default2DImageInfo :: Vulkan.VkExtent3D -> Vulkan.VkFormat -> Vulkan.VkImageUsageBitmask Vulkan.FlagMask -> ImageInfo
+pattern Default2DImageInfo extent3D fmt usage
+  = ImageInfo
+  { imageType        = Vulkan.VK_IMAGE_TYPE_2D
+  , imageExtent      = extent3D
+  , imageFormat      = fmt
+  , imageLayout      = Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+  , imageMipLevels   = 1
+  , imageArrayLayers = 1
+  , imageSamples     = Vulkan.VK_SAMPLE_COUNT_1_BIT
+  , imageTiling      = Vulkan.VK_IMAGE_TILING_OPTIMAL
+  , imageUsage       = usage
+  }
+
 createImage
   :: MonadManaged m
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
-  -> Vulkan.VkImageType
-  -> Vulkan.VkExtent3D
-  -> Vulkan.VkFormat
-  -> Vulkan.VkImageLayout
-  -> Vulkan.VkImageTiling
-  -> Vulkan.VkImageUsageBitmask Vulkan.FlagMask
+  -> ImageInfo
   -> [ Vulkan.VkMemoryPropertyFlags ]
   -> m (Vulkan.VkImage, Vulkan.VkDeviceMemory)
-createImage physicalDevice device imageType extent fmt layout tiling usage reqs
+createImage physicalDevice device ImageInfo { .. } reqs
   = let createInfo :: Vulkan.VkImageCreateInfo
         createInfo =
           Vulkan.createVk
@@ -377,17 +409,17 @@ createImage physicalDevice device imageType extent fmt layout tiling usage reqs
             &* Vulkan.set @"pNext"       Vulkan.vkNullPtr
             &* Vulkan.set @"flags"       0
             &* Vulkan.set @"imageType"   imageType
-            &* Vulkan.set @"format"      fmt
-            &* Vulkan.set @"extent"      extent
-            &* Vulkan.set @"mipLevels"   1
-            &* Vulkan.set @"arrayLayers" 1
-            &* Vulkan.set @"samples"     Vulkan.VK_SAMPLE_COUNT_1_BIT
-            &* Vulkan.set @"tiling"      tiling
-            &* Vulkan.set @"usage"       usage
+            &* Vulkan.set @"format"      imageFormat
+            &* Vulkan.set @"extent"      imageExtent
+            &* Vulkan.set @"mipLevels"   imageMipLevels
+            &* Vulkan.set @"arrayLayers" imageArrayLayers
+            &* Vulkan.set @"samples"     imageSamples
+            &* Vulkan.set @"tiling"      imageTiling
+            &* Vulkan.set @"usage"       imageUsage
             &* Vulkan.set @"sharingMode" Vulkan.VK_SHARING_MODE_EXCLUSIVE
             &* Vulkan.set @"queueFamilyIndexCount" 0
             &* Vulkan.set @"pQueueFamilyIndices"   Vulkan.VK_NULL
-            &* Vulkan.set @"initialLayout"         layout
+            &* Vulkan.set @"initialLayout"         imageLayout
             )
     in do
       image <- managedVulkanResource

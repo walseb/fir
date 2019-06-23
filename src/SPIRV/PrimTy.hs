@@ -47,7 +47,7 @@ data PrimTy where
   Boolean :: PrimTy
   Scalar  :: ScalarTy -> PrimTy
   Vector  ::
-    { size :: Word32
+    { size  :: Word32
     , eltTy :: PrimTy
     } -> PrimTy
   Matrix ::

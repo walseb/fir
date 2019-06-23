@@ -94,9 +94,9 @@ data Program
           => CodensityProgram (StartState defs) endState a
           -> Program defs a
 
-programGlobals :: forall bds j ctx eps a.
+programGlobals :: forall bds j ctx funs eps a.
                   KnownInterface bds
-               => CodensityProgram ('ASTState bds ctx eps) j a -> Map Text SPIRV.PrimTy
+               => CodensityProgram ('ASTState bds ctx funs eps) j a -> Map Text SPIRV.PrimTy
 programGlobals _ = Map.fromList
                  . map ( second ( \ (ty, storage) -> SPIRV.Pointer storage ty ) )
                  $ knownInterface @bds

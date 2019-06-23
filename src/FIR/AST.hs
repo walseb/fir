@@ -71,9 +71,8 @@ import Data.Type.Known
 import Data.Type.List
   ( SLength )
 import FIR.ASTState
-  ( FunctionContext(..), TLInterface
+  ( TLInterface
   , ASTState(..)
-  , EntryPointInfos
   )
 import FIR.Binding
   ( BindingsMap
@@ -81,7 +80,8 @@ import FIR.Binding
   )
 import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
-  , ValidFunDef, FunctionDefinitionStartState
+  , ValidFunDef, FunctionTypes
+  , FunctionDefinitionStartState, FunctionDefinitionEndState
   , ValidEntryPoint, SetInterface
   , GetExecutionInfo
   , EntryPointStartState, EntryPointEndState
@@ -148,8 +148,8 @@ data AST :: Type -> Type where
   --
   -- Meaning of type variables:
   -- * name: function name,
-  -- * as: named function arguments,
-  -- * b: function return type,
+  -- * as: named function arguments (usually inferred),
+  -- * b: function return type (usually inferred),
   -- * j_bds: bindings state at end of function definition (usually inferred),
   -- * i: monadic state at function definition site (usually inferred).
   FunDef :: forall name as b j_bds i.
@@ -158,11 +158,12 @@ data AST :: Type -> Type where
             , KnownVars as
             , PrimTy b
             , ValidFunDef name as i j_bds
+            , '(as,b) ~ FunctionTypes name i
             )
          => Proxy name -- ^ Funtion name.
          -> Proxy as   -- ^ Function argument types.
          -> Proxy b    -- ^ Function return type.
-         -> AST ( ( b := 'ASTState j_bds (InFunction name as) (EntryPointInfos i) )
+         -> AST ( ( b := FunctionDefinitionEndState name as j_bds i )
                     ( FunctionDefinitionStartState name as i )
                 -> ( FunctionType as b := AddFunBinding name as b i ) i
                 )
@@ -198,7 +199,7 @@ data AST :: Type -> Type where
          -> Proxy stageInfo -- ^ Entry point stage info.
          -> AST (  ( () := EntryPointEndState name stageInfo j_bds j_iface i )
                    ( EntryPointStartState name stageInfo i )
-                -> ( () := SetInterface name stageInfo ('Just j_iface) i ) i
+                -> ( () := SetInterface name stageInfo j_iface i ) i
                 )
 
   -- | /Use/ an optic, returning a monadic value read from the (indexed) state.

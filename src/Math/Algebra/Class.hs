@@ -13,7 +13,7 @@ module Math.Algebra.Class where
 
 -- base
 import Prelude
-  ( id, (.)
+  ( id, (.), ($)
   , Bool
   , Integer, Rational
   , Word, Int
@@ -203,12 +203,17 @@ deriving via Base CDouble instance DivisionRing CDouble
 
 -- totally ordered archimedean monoids
 class (Ord a, AdditiveMonoid a) => Archimedean a where
-  mod :: a -> a -> a
-  rem :: a -> a -> a
+  mod    :: a -> a -> a
+  rem    :: a -> a -> a
+  div    :: a -> a -> a
+  divMod :: a -> a -> (a,a)
+  divMod a b = ( div a b, mod a b )
 
 instance ( Ord a, AdditiveMonoid a, Prelude.Integral a ) => Archimedean (Base a) where
-  mod = coerce ( Prelude.mod :: a -> a -> a )
-  rem = coerce ( Prelude.rem :: a -> a -> a )
+  mod    = coerce ( Prelude.mod    :: a -> a -> a     )
+  rem    = coerce ( Prelude.rem    :: a -> a -> a     )
+  div    = coerce ( Prelude.div    :: a -> a -> a     )
+  divMod = coerce ( Prelude.divMod :: a -> a -> (a,a) )
 
 deriving via Base Word8  instance Archimedean Word8
 deriving via Base Word16 instance Archimedean Word16
@@ -250,6 +255,11 @@ instance ( Eq a, Logic a ~ Bool
   rem a m = ifThenElse (signum a == signum m)
               ( mod a m )
               ( negate ( mod a m ) )
+  div (Fixed a) (Fixed b)
+    = Fixed $ fromInteger ( Fixed.div' a b )
+  divMod (Fixed a) (Fixed b)
+    = case Fixed.divMod' a b of
+        (q,r) -> ( Fixed (fromInteger q), Fixed r )
 
 deriving via Fixed Half   instance Archimedean Half
 deriving via Fixed Float  instance Archimedean Float

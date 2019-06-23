@@ -125,9 +125,10 @@ import FIR.AST
   , primOp
   )
 import FIR.ASTState
-  ( FunctionContext(..), ASTState(ASTState)
+  ( FunctionInfo, Definedness(..)
+  , FunctionContext(..), ASTState(ASTState)
   , TLInterface
-  , ExecutionContext, EntryPointInfos
+  , ExecutionContext
   , EntryPointInfo(EntryPointInfo)
   )
 import FIR.Binding
@@ -138,7 +139,7 @@ import FIR.Binding
 import FIR.Definition
   ( Definition
   , KnownDefinitions
-  , DefinitionEntryPoints
+  , DefinitionFunctions, DefinitionEntryPoints
   , StartBindings, EndBindings
   )
 import FIR.Instances.AST
@@ -146,14 +147,14 @@ import FIR.Instances.AST
 import FIR.Instances.Bindings
   ( AddBinding, AddFunBinding
   , Has
-  , ValidFunDef, FunctionDefinitionStartState
+  , ValidFunDef, FunctionTypes
+  , FunctionDefinitionStartState, FunctionDefinitionEndState
   , ValidEntryPoint
   , EntryPointStartState, EntryPointEndState
   , SetInterface, GetExecutionInfo
   , LookupImageProperties
   , ValidImageRead, ValidImageWrite
   , Embeddable
-  , ProvidedSymbol, ProvidedOptic
   )
 import FIR.Instances.Images
   ( ImageTexel )
@@ -164,7 +165,9 @@ import FIR.Instances.Optics
 import FIR.Pipeline
   ( ShaderStage(ShaderStage) )
 import FIR.Prim.Image
-  ( ImageProperties, ImageData, ImageCoordinates )
+  ( ImageProperties, ImageOperands
+  , ImageData, ImageCoordinates
+  )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
 import FIR.Synonyms
@@ -283,9 +286,10 @@ fundef :: forall name as b j_bds i r.
            , KnownVars as
            , PrimTy b
            , ValidFunDef name as i j_bds
+           , '(as, b) ~ FunctionTypes name i
            )
         => Codensity AST
-              ( AST b := 'ASTState j_bds (InFunction name as) (EntryPointInfos i) )
+              ( AST b := FunctionDefinitionEndState name as j_bds i)
               ( FunctionDefinitionStartState name as i ) -- ^ Function body code.
         -> Codensity AST
               ( r := AddFunBinding name as b i )
@@ -324,7 +328,7 @@ entryPoint :: forall
                 ( AST () := EntryPointEndState name stageInfo j_bds j_iface i )
                 ( EntryPointStartState name stageInfo i )
            -> Codensity AST
-                ( AST () := SetInterface name stageInfo ('Just j_iface) i )
+                ( AST () := SetInterface name stageInfo j_iface i )
                 i
 entryPoint = fromAST
                 ( Entry @name @stage @stageInfo @j_bds @j_iface @i Proxy Proxy )
@@ -340,13 +344,9 @@ entryPoint = fromAST
 --
 -- *@name@: name of entry point,
 -- *@shader@: which shader stage to use,
--- *@defs@: top-level inputs/outputs of shader stage,
--- *@stage@: entry point 'SPIRV.Stage.ExecutionModel' (deduced from @shader@),
--- *@stageInfo@: entry point 'SPIRV.Stage.StageInfo' (usually inferred),
--- *@j_bds@: bindings state at end of shader stage body (usually inferred),
--- *@j_iface@: interface of the entry point (usually inferred),
--- *@eps@: singleton list consisting of the entry point info for this stage (usually inferred),
--- *@i@: basic top-level state for the shader (usually inferred).
+-- *@defs@: top-level inputs/outputs of shader stage.
+--
+-- Other type-level arguments should be inferred.
 shader :: forall
             ( name      :: Symbol                        )
             ( shader    :: SPIRV.Shader                  )
@@ -355,24 +355,27 @@ shader :: forall
             ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
             ( j_bds     :: BindingsMap                   )
             ( j_iface   :: TLInterface                   )
+            ( funs      :: [Symbol :-> FunctionInfo]     )
             ( eps       :: [ EntryPointInfo ]            )
             ( i         :: ASTState                      )
-       . ( DefinitionEntryPoints defs ~ eps
-         , eps ~ '[ 'EntryPointInfo name stageInfo 'Nothing ]
-         , i ~ 'ASTState (StartBindings defs) 'TopLevel eps
-         , StartBindings defs ~ EndBindings defs
-         , GHC.Stack.HasCallStack
+       . ( GHC.Stack.HasCallStack
          , KnownDefinitions defs
+         , DefinitionFunctions   defs ~ funs
+         , DefinitionEntryPoints defs ~ eps
+         , funs ~ '[ ]
+         , eps ~ '[ 'EntryPointInfo name stageInfo '( '[], '[]) 'Declared ]
+         , i ~ 'ASTState (StartBindings defs) 'TopLevel funs eps
          , KnownSymbol name
          , stage ~ 'SPIRV.Stage ('SPIRV.ShaderStage shader)
          , Known SPIRV.Shader shader
          , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
-         , ValidEntryPoint name stageInfo ('ASTState (EndBindings defs) 'TopLevel eps) j_bds
+         , EndBindings defs ~ StartBindings defs
+         , ValidEntryPoint name stageInfo ('ASTState (EndBindings defs) 'TopLevel funs eps) j_bds
          )
        => Codensity AST
           ( AST () := EntryPointEndState name stageInfo j_bds j_iface i )
           ( EntryPointStartState name stageInfo i )
-       -> ShaderStage name shader defs (SetInterface name stageInfo ('Just j_iface) i)
+       -> ShaderStage name shader defs (SetInterface name stageInfo j_iface i)
 shader
   = ShaderStage
   . entryPoint @name @stage
@@ -454,19 +457,36 @@ modify = modifying @(Name k :: Optic '[] i a)
 --
 -- Type-level arguments:
 -- 
--- * @k@: image name,
+-- * @imgName@: image name,
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
-imageRead :: forall k props (i :: ASTState).
-            ( KnownSymbol k, ProvidedSymbol k
-            , Gettable (ImageTexel k)
-            , LookupImageProperties k i ~ props
+imageRead :: forall
+              ( imgName :: Symbol          )
+              ( props   :: ImageProperties )
+              ( i       :: ASTState        )
+            .
+            ( KnownSymbol imgName
+            , Gettable
+                ( ImageTexel imgName
+                  :: Optic
+                      '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                       i
+                       ( ImageData props '[] )
+                )
+            , props ~ LookupImageProperties imgName i
             , Known ImageProperties props
             , ValidImageRead props '[]
             )
           => AST (ImageCoordinates props '[])
           -> Codensity AST ( AST (ImageData props '[]) := i ) i
-imageRead = use @(ImageTexel k) NoOperands
+imageRead = use
+          @( ImageTexel imgName
+              :: Optic
+                   '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                    i
+                    ( ImageData props '[] )
+           )
+          NoOperands
 
 -- | Write directly to an image (without a sampler).
 --
@@ -475,20 +495,37 @@ imageRead = use @(ImageTexel k) NoOperands
 --
 -- Type-level arguments:
 -- 
--- * @k@: image name,
+-- * @imgName@: image name,
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
-imageWrite :: forall k props (i :: ASTState).
-             ( KnownSymbol k, ProvidedSymbol k
-             , Gettable (ImageTexel k)
-             , LookupImageProperties k i ~ props
+imageWrite :: forall
+                ( imgName :: Symbol          )
+                ( props   :: ImageProperties )
+                ( i       :: ASTState        )
+             .
+             ( KnownSymbol imgName
+             , Gettable
+                ( ImageTexel imgName
+                  :: Optic
+                      '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                       i
+                       ( ImageData props '[] )
+                )
+             , props ~ LookupImageProperties imgName i
              , Known ImageProperties props
              , ValidImageWrite props '[]
              )
            => AST (ImageCoordinates props '[])
            -> AST (ImageData props '[])
            -> Codensity AST ( AST () := i ) i
-imageWrite = assign @(ImageTexel k) NoOperands
+imageWrite = assign
+           @( ImageTexel imgName
+                :: Optic
+                    '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                     i
+                     ( ImageData props '[] )
+            )
+           NoOperands
 
 --------------------------------------------------------------------------
 -- geometry shader primitive instructions
@@ -546,7 +583,7 @@ type CodModifier (optic :: Optic is s a) = VariadicCodModifier is s a
 modifying
     :: forall optic.
        ( GHC.Stack.HasCallStack
-       , KnownOptic optic, ProvidedOptic optic
+       , KnownOptic optic
        , StatefulOptic optic
        , Settable optic
        , Gettable optic
@@ -594,14 +631,14 @@ instance Boolean (Codensity AST (AST Bool := i) i) where
   not   = ixFmap not
 
 instance ( PrimTy a
-         , i' ~ i, i'' ~ i
-         , a' ~ a
-         , r ~ (AST a := i)
+         , t ~ ( Codensity AST (AST a := j) i )
+         , f ~ ( Codensity AST (AST a := k) i )
+         , r ~ ( AST a := i )
          ) =>
   Choose  ( AST Bool )
-         '( Codensity AST (AST a  := j) i
-          , Codensity AST (AST a' := k) i'
-          , Codensity AST r             i''
+         '( t
+          , f
+          , Codensity AST r i
           ) where
   choose = fromAST IfM
 
@@ -690,11 +727,13 @@ instance (ScalarTy a, DivisionRing a, j ~ i) => DivisionRing (Codensity AST (AST
   fromRational = ixPure . fromRational
 instance ( ScalarTy a
          , Archimedean a
+         , Archimedean (AST a)
          , Logic a ~ Bool
          , j ~ i
          ) => Archimedean (Codensity AST (AST a := j) i) where
   mod    = ixLiftA2 mod
   rem    = ixLiftA2 rem
+  div    = ixLiftA2 div
 
 instance (ScalarTy a, Floating a, j ~ i) => Floating (Codensity AST (AST a := j) i) where
   pi      = ixPure pi

@@ -1,6 +1,6 @@
 
-test\tests\geometry\notgeometry.hs:34:5: error:
-    • Couldn't match type ‘'Fragment’ with ‘'Geometry’
+test\Tests\Geometry\NotGeometry.hs:34:5: error:
+    • Couldn't match type ‘'FragmentShader’ with ‘'GeometryShader’
         arising from a use of ‘emitVertex’
     • In a stmt of a 'do' block: emitVertex
       In the third argument of ‘entryPoint’, namely

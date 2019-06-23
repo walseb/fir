@@ -22,7 +22,7 @@ import Math.Linear
 
 type Defs
   = '[ "ubo"      ':-> Uniform  '[] ( Struct '[ "mvp" ':-> M 4 4 Float ] )
-     , "position" ':-> Input    '[] ( V   4 Float )
+     , "position" ':-> Input    '[] ( V 4 Float )
      , "f"        ':-> Function '["u" ':-> Var R Float] Float
      , "main"     ':-> EntryPoint '[] Vertex
      ]

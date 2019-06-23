@@ -1,5 +1,5 @@
 
-test\tests\vector\mixedswizzle.hs:35:12: error:
+test\Tests\Vector\MixedSwizzle.hs:35:12: error:
     • Cannot mix and match different swizzle sets.
       Swizzle set of "g" is "rgba".
       Swizzle set of "x" is "xyzw".
@@ -18,7 +18,7 @@ test\tests\vector\mixedswizzle.hs:35:12: error:
 35 |     col <- use @(Name "in_col" :.: Swizzle "rgxb") -- cannot mix "rgba" and "xyzw"
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-test\tests\vector\mixedswizzle.hs:35:12: error:
+test\Tests\Vector\MixedSwizzle.hs:35:12: error:
     • Cannot mix and match different swizzle sets.
       Swizzle set of "g" is "rgba".
       Swizzle set of "x" is "xyzw".
@@ -37,7 +37,7 @@ test\tests\vector\mixedswizzle.hs:35:12: error:
 35 |     col <- use @(Name "in_col" :.: Swizzle "rgxb") -- cannot mix "rgba" and "xyzw"
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-test\tests\vector\mixedswizzle.hs:35:12: error:
+test\Tests\Vector\MixedSwizzle.hs:35:12: error:
     • Cannot mix and match different swizzle sets.
       Swizzle set of "g" is "rgba".
       Swizzle set of "x" is "xyzw".

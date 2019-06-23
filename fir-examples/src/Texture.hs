@@ -111,7 +111,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples"
+  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Texture"
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
@@ -120,7 +120,8 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
   vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance neededExtensions
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
-  queueFamilyIndex <- logMsg "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice
+  queueFamilyIndex <- logMsg "Finding suitable queue family"
+      *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]
 
 
   device      <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex Nothing
@@ -170,14 +171,29 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
             &* Vulkan.set @"depth"  1
             )
 
+      logoStagingImageInfo, logoImageInfo, screenshotImageInfo, depthImageInfo :: ImageInfo
+      logoStagingImageInfo =
+        ( Default2DImageInfo logoExtent3D Vulkan.VK_FORMAT_R8G8B8A8_UNORM
+            Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+        ) { imageLayout = Vulkan.VK_IMAGE_LAYOUT_PREINITIALIZED
+          , imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR
+          }
+      logoImageInfo =
+        Default2DImageInfo logoExtent3D Vulkan.VK_FORMAT_R8G8B8A8_UNORM
+         (   Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
+         .|. Vulkan.VK_IMAGE_USAGE_SAMPLED_BIT
+         )
+      screenshotImageInfo =
+        ( Default2DImageInfo extent3D colFmt
+          Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
+        ) { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR }  -- host visible image needs linear tiling
+      depthImageInfo =
+        Default2DImageInfo extent3D depthFmt
+          Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+
   (logoStagingImage, logoStagingImageMemory) <-
     createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
-      logoExtent3D
-      Vulkan.VK_FORMAT_R8G8B8A8_UNORM
-      Vulkan.VK_IMAGE_LAYOUT_PREINITIALIZED
-      Vulkan.VK_IMAGE_TILING_LINEAR
-      Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+      logoStagingImageInfo
       [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
       , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
       ]
@@ -204,14 +220,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
   (logoImage, _) <-
     createImage physicalDevice device
-      Vulkan.VK_IMAGE_TYPE_2D
-      logoExtent3D
-      Vulkan.VK_FORMAT_R8G8B8A8_UNORM
-      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-      Vulkan.VK_IMAGE_TILING_OPTIMAL
-      (    Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
-       .|. Vulkan.VK_IMAGE_USAGE_SAMPLED_BIT
-      )
+      logoImageInfo
       [ ]
 
   logoImageView <-
@@ -301,25 +310,13 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
                   Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
           (screenshotImage, screenshotImageMemory)
             <- createImage physicalDevice device
-                  Vulkan.VK_IMAGE_TYPE_2D
-                  extent3D
-                  colFmt
-                  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-                  Vulkan.VK_IMAGE_TILING_LINEAR -- host visible image needs linear tiling
-                  (     Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-                    .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                  )
+                  screenshotImageInfo
                   [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                   , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                   ]
           (depthImage, _)
             <- createImage physicalDevice device
-                  Vulkan.VK_IMAGE_TYPE_2D
-                  extent3D
-                  depthFmt
-                  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-                  Vulkan.VK_IMAGE_TILING_OPTIMAL
-                  Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                  depthImageInfo
                   [ ]
           depthImageView
             <- createImageView device depthImage
@@ -858,8 +855,7 @@ allocateDescriptorSet dev descriptorPool layout0 = do
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"descriptorPool" descriptorPool
-        &* Vulkan.set @"descriptorSetCount" 1
-        &* Vulkan.setListRef @"pSetLayouts" [ layout0 ]
+        &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts" [ layout0 ]
         )
 
   manageBracket

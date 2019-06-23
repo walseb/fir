@@ -121,7 +121,8 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
   vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance neededExtensions
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
-  queueFamilyIndex <- logMsg "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice
+  queueFamilyIndex <- logMsg "Finding suitable queue family"
+      *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]
 
   let features :: Maybe Vulkan.VkPhysicalDeviceFeatures
       features = Just $ Vulkan.createVk
@@ -168,6 +169,16 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
   swapchainImages <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
   renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt depthFmt
 
+  let
+    screenshotImageInfo, depthImageInfo :: ImageInfo
+    screenshotImageInfo =
+      ( Default2DImageInfo extent3D colFmt
+        Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
+      ) { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR } -- host visible image needs linear tiling
+    depthImageInfo =
+      Default2DImageInfo extent3D depthFmt
+        Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+
   framebuffersWithAttachments <- logMsg "Creating frame buffers"
     *> ( for swapchainImages $ \swapchainImage -> do
 
@@ -179,25 +190,13 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
                   Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
           (screenshotImage, screenshotImageMemory)
             <- createImage physicalDevice device
-                  Vulkan.VK_IMAGE_TYPE_2D
-                  extent3D
-                  colFmt
-                  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-                  Vulkan.VK_IMAGE_TILING_LINEAR -- host visible image needs linear tiling
-                  (     Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-                    .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                  )
+                  screenshotImageInfo
                   [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                   , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                   ]
           (depthImage, _)
             <- createImage physicalDevice device
-                  Vulkan.VK_IMAGE_TYPE_2D
-                  extent3D
-                  depthFmt
-                  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-                  Vulkan.VK_IMAGE_TILING_OPTIMAL
-                  Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                  depthImageInfo
                   [ ]
           depthImageView
             <- createImageView device depthImage
@@ -767,8 +766,7 @@ allocateDescriptorSet dev descriptorPool layout0 = do
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"descriptorPool" descriptorPool
-        &* Vulkan.set @"descriptorSetCount" 1
-        &* Vulkan.setListRef @"pSetLayouts" [ layout0 ]
+        &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts" [ layout0 ]
         )
 
   manageBracket

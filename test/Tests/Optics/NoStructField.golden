@@ -1,5 +1,5 @@
 
-test\tests\optics\nostructfield.hs:42:17: error:
+test\Tests\Optics\NoStructField.hs:42:17: error:
     • get: struct has no field with name "inexistent".
       This struct has the following fields:
       '[ "position" ':-> V 3 Float, "colour" ':-> V 4 Float,

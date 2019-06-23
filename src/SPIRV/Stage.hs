@@ -342,7 +342,8 @@ data ShaderInfo (n :: Type) (s :: Shader) where
   FragmentShaderInfo
     :: ShaderInfo n FragmentShader
   ComputeShaderInfo
-    :: ShaderInfo n ComputeShader
+    :: (n,n,n) -- shader local size
+    -> ShaderInfo n ComputeShader
 
 deriving instance Show n => Show (ShaderInfo n s)
 deriving instance Eq   n => Eq   (ShaderInfo n s)
@@ -357,7 +358,7 @@ type TessellationControlInfo i j m = 'ShaderExecutionInfo ( 'TessellationControl
 type TessellationEvaluationInfo i m = 'ShaderExecutionInfo ( 'TessellationEvaluationShaderInfo i m)
 type GeometryInfo i m = 'ShaderExecutionInfo ('GeometryShaderInfo i m)
 type FragmentInfo = 'ShaderExecutionInfo 'FragmentShaderInfo
-type ComputeInfo  = 'ShaderExecutionInfo 'ComputeShaderInfo
+type ComputeInfo ijk = 'ShaderExecutionInfo ('ComputeShaderInfo ijk)
 
 deriving instance Show n => Show (ExecutionInfo n s)
 deriving instance Eq   n => Eq   (ExecutionInfo n s)
@@ -374,7 +375,7 @@ modelOf (ShaderExecutionInfo (GeometryShaderInfo {}))
   = Stage (ShaderStage GeometryShader)
 modelOf (ShaderExecutionInfo FragmentShaderInfo)
   = Stage (ShaderStage FragmentShader)
-modelOf (ShaderExecutionInfo ComputeShaderInfo)
+modelOf (ShaderExecutionInfo (ComputeShaderInfo {}))
   = Stage (ShaderStage ComputeShader)
 
 
@@ -409,8 +410,9 @@ instance (KnownNat inputSize, Known GeometryInputMode mode)
              ( knownValue @mode      )
 instance Known (ShaderInfo Nat FragmentShader) FragmentShaderInfo where
   known = FragmentShaderInfo
-instance Known (ShaderInfo Nat ComputeShader) ComputeShaderInfo where
-  known = ComputeShaderInfo
+instance ( Known (Nat,Nat,Nat) ijk )
+      => Known (ShaderInfo Nat ComputeShader) (ComputeShaderInfo ijk) where
+  known = ComputeShaderInfo ( knownValue @ijk )
 
 instance Demotable (ExecutionInfo Nat s) where
   type Demote (ExecutionInfo Nat s) = ExecutionInfo Word32 s
