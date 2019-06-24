@@ -146,9 +146,8 @@ import FIR.Definition
 import FIR.Instances.AST
   ( WhichConversion(conversion) ) -- plus instances
 import FIR.Instances.Bindings
-  ( AddBinding, AddFunBinding
-  , Has
-  , ValidFunDef, FunctionTypes
+  ( ValidDef, AddBinding, Has
+  , ValidFunDef, AddFunBinding, FunctionTypes
   , FunctionDefinitionStartState, FunctionDefinitionEndState
   , ValidEntryPoint
   , EntryPointStartState, EntryPointEndState
@@ -282,6 +281,7 @@ def :: forall k ps a i.
        , KnownSymbol k
        , Known Permissions ps
        , PrimTy a
+       , ValidDef k i
        )
     => AST a -- ^ Initial value.
     -> Codensity AST (AST a := AddBinding k (Var ps a) i) i

@@ -79,8 +79,8 @@ import FIR.Binding
   , FunctionType, Var, Permissions
   )
 import FIR.Instances.Bindings
-  ( AddBinding, AddFunBinding
-  , ValidFunDef, FunctionTypes
+  ( ValidDef, ValidFunDef, FunctionTypes
+  , AddBinding, AddFunBinding
   , FunctionDefinitionStartState, FunctionDefinitionEndState
   , ValidEntryPoint, SetInterface
   , GetExecutionInfo
@@ -139,6 +139,7 @@ data AST :: Type -> Type where
         , KnownSymbol k
         , Known Permissions ps
         , PrimTy a
+        , ValidDef k i
         )
       => Proxy k  -- ^ Variable name.
       -> Proxy ps -- ^ Permissions (read,write,...).

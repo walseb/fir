@@ -86,7 +86,7 @@ import FIR.AST
 import FIR.Binding
   ( Var, R, RW )
 import FIR.Instances.Bindings
-  ( AddBinding, Has, CanGet, CanPut )
+  ( ValidDef, AddBinding, Has, CanGet, CanPut )
 import FIR.Instances.Codensity
   ( def, use, assign, modifying )
 import FIR.ASTState
@@ -143,6 +143,7 @@ infixr 1 .=
 (#=) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
+        , ValidDef k i
         , PrimTy a
         )
      => Label k a
@@ -154,6 +155,7 @@ _ #= a = def @k @RW a
 (#=!) :: forall a k i.
         ( GHC.Stack.HasCallStack
         , KnownSymbol k
+        , ValidDef k i
         , PrimTy a
         )
      => Label k a

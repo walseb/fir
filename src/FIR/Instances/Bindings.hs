@@ -21,7 +21,7 @@ or accessing a binding that does not exist.
 
 module FIR.Instances.Bindings
   ( Has, CanGet, CanPut
-  , AddBinding, AddFunBinding
+  , ValidDef, AddBinding, AddFunBinding
   , ValidFunDef, GetFunctionInfo, FunctionTypes
   , FunctionDefinitionStartState
   , FunctionDefinitionEndState
@@ -103,10 +103,6 @@ import qualified SPIRV.Stage    as SPIRV
   ( ExecutionModel, NamedExecutionModel
   , ExecutionInfo
   )
-
--------------------------------------------------
--- | Helper type family for impossible sub-cases.
-type family Unreachable :: k where
 
 -------------------------------------------------
 -- * Lookup whether a binding exists in the monadic state.
@@ -191,18 +187,16 @@ type family AddBinding
               ( s  :: ASTState )
               :: ASTState where
   AddBinding k bd ('ASTState bds ctx funs eps)
-    = If ( ValidDef k bds )
-        ( 'ASTState (Insert k bd bds) ctx funs eps )
-        Unreachable
+    = 'ASTState (Insert k bd bds) ctx funs eps
 
 -- | Check that it is valid to define a new variable with given name.
 --
 -- Throws a type error if a binding by this name already exists.
-type family ValidDef (k :: Symbol) (i :: BindingsMap) :: Bool where
-  ValidDef k i = NotAlreadyDefined k (Lookup k i)
+type family ValidDef (k :: Symbol) (i :: ASTState) :: Constraint where
+  ValidDef k ('ASTState bds _ _ _) = NotAlreadyDefined k (Lookup k bds)
 
-type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Bool where
-  NotAlreadyDefined _ 'Nothing  = 'True
+type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
+  NotAlreadyDefined _ 'Nothing  = ()
   NotAlreadyDefined k ('Just _) = TypeError
     ( Text "'def': a binding by the name " :<>: ShowType k :<>: Text " already exists." )
 

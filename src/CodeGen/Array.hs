@@ -48,7 +48,7 @@ import FIR.Instances.Codensity
   )
 import FIR.Instances.Bindings
   ( Has, CanGet, CanPut
-  , AddBinding
+  , ValidDef, AddBinding
   )
 import FIR.ASTState
   ( ASTState(..) )
@@ -80,6 +80,7 @@ createArray :: forall n arrName ixName a i j ctx funs eps.
              , CanPut ixName  j
              , CanGet arrName j
              , CanPut arrName j
+             , ValidDef ixName i
              )
           => ( AST Word32 -> AST a ) 
           -> AST ( (Array n a := i) i )

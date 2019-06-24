@@ -1,12 +1,9 @@
-{-# OPTIONS_GHC -fwarn-partial-type-signatures #-}
-
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE NamedFieldPuns         #-}
---{-# LANGUAGE NamedWildCards         #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
@@ -74,9 +71,10 @@ maxV3 :: AST (V 3 Float) -> AST Float
 maxV3 (Vec3 x y z) = max x (max y z)
 
 intersectAABB
-  :: Ray (AST (V 3 Float))
+  :: forall (s :: ASTState). ( _ )
+  => Ray (AST (V 3 Float))
   -> AABB (AST (V 3 Float))
-  -> Codensity AST ( ( AST Float, AST Float ) := (s :: ASTState) ) s
+  -> Codensity AST ( ( AST Float, AST Float ) := s ) s
 intersectAABB
   Ray  { pos, invDir }
   AABB { low, high   }
@@ -97,7 +95,8 @@ intersectAABB
 
 
 intersectTriangle
-  :: Ray (AST (V 3 Float))
+  :: forall (s :: ASTState) . ( _ )
+  => Ray (AST (V 3 Float))
   -> Triangle (AST (V 3 Float))
   -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := (s :: ASTState) ) s
 intersectTriangle
@@ -262,7 +261,6 @@ computeShader = Program $ entryPoint @"main" @Compute do
 
         let ray = Ray { pos, dir, invDir }
 
-        _ <- def @"t1" @RW @Float 7 -- to trip up the other comp
         (tMin, tMax) <- ray `intersectAABB` cube
 
         let
@@ -283,6 +281,7 @@ computeShader = Program $ entryPoint @"main" @Compute do
            )
         then pure (Lit ()) -- no cube hit
         else do
+          -- ray interacts with cube, perform ray-tracing inside the cube
           let
             cubeCol =
               if (  ( abs outx > Lit 0.995 && abs outy > Lit 0.995 )
