@@ -21,7 +21,7 @@ module FIR.Prim.Image
   -- ** Type reflection of image properties
   -- $reflection
   , ImageAndCoordinate(..)
-  , knownImage
+  , knownImage, knownImageCoordinateComponent
 
   -- * Image operands
   , OperandName(..), ImageOperands(..)
@@ -61,7 +61,7 @@ import {-# SOURCE #-} FIR.AST
 import FIR.Prim.Array
   ( Array )
 import {-# SOURCE #-} FIR.Prim.Singletons
-  ( PrimTy  , primTy
+  ( PrimTy
   , ScalarTy, scalarTy
   )
 import Math.Algebra.Class
@@ -81,8 +81,6 @@ import SPIRV.Image
   )
 import qualified SPIRV.Image    as SPIRV
   ( Image(..), Operand(..), LODOperand(..) )
-import qualified SPIRV.PrimTy   as SPIRV
-  ( PrimTy )
 import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy )
 

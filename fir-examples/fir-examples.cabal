@@ -35,12 +35,12 @@ library
     , Shaders.JuliaSet
     , Shaders.Offscreen
     , Shaders.Texture
+    , Simulation.Observer
     , Vulkan.Backend
     , Vulkan.Buffer
     , Vulkan.Formats
     , Vulkan.Memory
     , Vulkan.Monad
-    , Vulkan.Observer
     , Vulkan.Pipeline
     , Vulkan.SDL
 

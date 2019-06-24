@@ -22,10 +22,13 @@ import Control.Monad
 import Control.Monad.IO.Class
   ( liftIO )
 import Data.Bits
+  ( (.|.) )
 import Data.Coerce
   ( coerce )
 import Data.Foldable
   ( for_ )
+import Data.Monoid
+  ( Sum(getSum) )
 import Data.Traversable
   ( for )
 import Data.Word
@@ -77,16 +80,23 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 import FIR
   ( runCompilationsTH
   , Layout(Extended), Poke(poke)
+  , (:->)((:->)), Struct((:&),End)
   )
+import qualified FIR
 import Math.Linear
-  ( pattern V2, pattern V3 )
+  ( V, pattern V2, pattern V3
+  , (*^), (^+^)
+  , normalise
+  )
+import Math.Quaternion
+  ( rotate, axisAngle )
 
 -- fir-examples
 import Shaders.Compute
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Vulkan.Observer
+import Simulation.Observer
 import Vulkan.Pipeline
 import Vulkan.SDL
 
@@ -336,7 +346,7 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
     for (zip images descriptorSets) $ \((swapImgAndView, screenshotImageAndMemory), descriptorSet) ->
       mkCommandBuffer descriptorSet swapImgAndView (Just screenshotImageAndMemory)
 
-  assign _observer ( Observer { position = V3 5 (-5) (-5), angles = V2 (pi/4) (-pi/5) } )
+  assign _observer ( Observer { position = V3 0 0 10, angles = V2 (5*pi/4) (pi/5) } )
 
   mainLoop do
 
@@ -347,19 +357,38 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
     prevInput <- use _input
     let newInput = foldl onSDLInput prevInput inputEvents
     let action = interpretInput newInput
+        angs   = fmap getSum ( look action )
     assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
 
     ----------------
     -- simulation
 
     oldObserver <- use _observer
-    let (observer, orientation) = oldObserver `move` action
-    assign _observer observer
+    let
+      oldAngs = angles oldObserver
+      newAngs@(V2 x y) = oldAngs ^+^ angs
+      orientation = axisAngle (V3 0 (-1) 0) x FIR.* axisAngle (V3 1 0 0) y
 
-    let cam = camera observer (Just orientation)
+      pos, fwd, up, right :: V 3 Float
+      pos   = rotate orientation ( V3 0 0 10 )
+      fwd   = normalise ( (-1) *^ pos )
+      up    = rotate orientation ( V3 0 (-1) 0 )
+      right = rotate orientation ( V3 1   0  0 )
+
+      cam :: Struct
+                '[ "position" ':-> V 3 Float
+                 , "right"    ':-> V 3 Float
+                 , "up"       ':-> V 3 Float
+                 , "forward"  ':-> V 3 Float
+                 ]
+      cam = pos :& right :& up :& fwd :& End
+
+      newObserver = oldObserver { angles = newAngs }
+
+    assign _observer newObserver
 
     when ( locate action )
-      ( liftIO $ putStrLn ( show observer ) )
+      ( liftIO $ putStrLn ( show newObserver ) )
 
     -- update camera
     liftIO ( poke @_ @Extended camPtr cam )

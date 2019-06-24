@@ -35,6 +35,9 @@ module Control.Monad.Indexed
   , IxApplicative((<<*>>))
   , (*>>), (<<*), ixLiftA2, ixLiftA3, ixLiftA4
 
+    -- ** Foldable operations
+  , ixTraverse_, ixFor_
+
     -- * Rebindable syntax for @do@ notation
   , (>>=), (=<<), (>>), (<<), return, pure, ixPure,
 
@@ -143,9 +146,11 @@ infixl 1 <<&>>
 infixl 4 <<*>>
 class FunctorIx f => IxApplicative f where
   (<<*>>) :: f ((a -> b) := j) i -> (f (a := k) j -> f (b := k) i)
+  ixPure :: a -> f (a := i) i
 
 instance (FunctorIx m, MonadIx m) => IxApplicative m where
   mf <<*>> ma = mf >>= (<<$>> ma)
+  ixPure = returnIx . AtKey
 
 infixl 4 *>>
 infixl 4 <<*
@@ -171,6 +176,19 @@ ixLiftA4 :: IxApplicative f
 ixLiftA4 f a b c d = f <<$>> a <<*>> b <<*>> c <<*>> d
 
 ------------------------------------------------
+-- foldable/traversable
+
+ixTraverse_
+  :: (Prelude.Foldable t, IxApplicative f)
+  => (a -> f (b := i) i) -> t a -> f (() := i) i
+ixTraverse_ f = foldr ((*>>) . f) (ixPure ())
+
+ixFor_
+  :: (Prelude.Foldable t, IxApplicative f)
+  => t a -> (a -> f (b := i) i) -> f (() := i) i
+ixFor_ = flip ixTraverse_
+
+------------------------------------------------
 -- rebindable syntax
 
 -- | Angelic bind.
@@ -186,7 +204,6 @@ ma >> mb = ma >>= const mb
 (=<<) :: MonadIx m => (a -> m q j) -> m (a := j) i -> m q i
 (=<<) = flip (>>=)
 
-return, pure, ixPure :: MonadIx m => a -> m (a := i) i
+return, pure :: MonadIx m => a -> m (a := i) i
 return = returnIx . AtKey
 pure   = returnIx . AtKey
-ixPure = returnIx . AtKey

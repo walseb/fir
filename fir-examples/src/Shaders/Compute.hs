@@ -1,10 +1,12 @@
+{-# OPTIONS_GHC -fwarn-partial-type-signatures #-}
+
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE NamedFieldPuns         #-}
-{-# LANGUAGE NamedWildCards         #-}
+--{-# LANGUAGE NamedWildCards         #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
@@ -23,8 +25,6 @@ module Shaders.Compute where
 import qualified Prelude
 import Prelude
   ( Functor, map )
-import Data.Foldable
-  ( Foldable(foldr) )
 import GHC.TypeLits
   ( KnownNat )
 
@@ -76,7 +76,7 @@ maxV3 (Vec3 x y z) = max x (max y z)
 intersectAABB
   :: Ray (AST (V 3 Float))
   -> AABB (AST (V 3 Float))
-  -> Codensity AST ( ( AST Float, AST Float ) := _i ) _i
+  -> Codensity AST ( ( AST Float, AST Float ) := (s :: ASTState) ) s
 intersectAABB
   Ray  { pos, invDir }
   AABB { low, high   }
@@ -99,7 +99,7 @@ intersectAABB
 intersectTriangle
   :: Ray (AST (V 3 Float))
   -> Triangle (AST (V 3 Float))
-  -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := _i ) _i
+  -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := (s :: ASTState) ) s
 intersectTriangle
   Ray { pos, dir }
   Triangle { v0, v1, v2 }
@@ -153,6 +153,13 @@ red     = Lit (V4 0.65 0.1  0.1  1)
 bgCol   = Lit (V4 0.95 0.93 0.88 0)
 edgeCol = bgCol -- Lit (V4 0    0    0    1)
 
+sceneTriangles
+  :: [ ( Triangle (AST (V 3 Float)), AST (V 4 Float) ) ]
+sceneTriangles =
+  [ (tree , green)
+  , (trunk, red  )
+  ]
+
 gradient :: forall n. KnownNat n
          => AST Float
          -> AST (Array n (V 4 Float))
@@ -183,6 +190,14 @@ cubeColor pt = gradient (1-t) (Lit cubeGradientStops)
   where
     c = 0.57735026 -- 1 / sqrt 3
     t = 0.5 + 0.5 * ( normalise pt `dot` (Vec3 (-c) (-c) c) )
+
+xSamples, ySamples, samples :: Semiring a => a
+xSamples = 4
+ySamples = 4
+samples = xSamples * ySamples
+
+weight :: AST Float
+weight = Lit (1 / samples)
 
 ------------------------------------------------
 -- compute shader
@@ -227,19 +242,19 @@ computeShader = Program $ entryPoint @"main" @Compute do
 
     invDir <- def @"invDir" @R ( recip @(AST Float) <$$> dir )
 
-    -- 16x AA
+    -- anti-aliasing
     _ <- def @"i" @RW @Float 0
     _ <- def @"j" @RW @Float 0
-    while (get @"i" < 4) do
-      while (get @"j" < 4) do
+    while (get @"i" < xSamples) do
+      while (get @"j" < ySamples) do
 
         i <- get @"i"
         j <- get @"j"
 
         let
           dx, dy :: AST Float
-          dx = ( ( i + 0.5 ) / 4 - 0.5 ) / 960
-          dy = ( ( j + 0.5 ) / 4 - 0.5 ) / 960
+          dx = ( ( i + 0.5 ) / xSamples - 0.5 ) / 960
+          dy = ( ( j + 0.5 ) / ySamples - 0.5 ) / 960
 
         --dir    <- def @"dir"    @R $ normalise ( fwd ^+^ (x+dx) *^ right ^-^ (y+dy) *^ up )
         --invDir <- def @"invDir" @R ( recip @(AST Float) <$$> dir )
@@ -251,10 +266,12 @@ computeShader = Program $ entryPoint @"main" @Compute do
         (tMin, tMax) <- ray `intersectAABB` cube
 
         let
-          cubeIn, cubeOut :: AST (V 3 Float)
-          cubeIn@( Vec3 inx  iny  inz ) = pos ^+^ tMin *^ dir
+          cubeOut :: AST (V 3 Float)
           cubeOut@(Vec3 outx outy outz) = pos ^+^ tMax *^ dir
+          (Vec3 inx iny inz ) = pos ^+^ tMin *^ dir
 
+        -- check if ray doesn't hit the cube
+        -- (either not at all, or hits, from the outside, near one of the edges)
         if (  tMax < 0
            || tMin > tMax
            || ( tMin > 0 &&
@@ -264,11 +281,8 @@ computeShader = Program $ entryPoint @"main" @Compute do
                 )
               )
            )
-        then pure (Lit ())
+        then pure (Lit ()) -- no cube hit
         else do
-          -- would need some indexed monad traversal here
-          hitTree  <- ray `intersectTriangle` tree
-          hitTrunk <- ray `intersectTriangle` trunk
           let
             cubeCol =
               if (  ( abs outx > Lit 0.995 && abs outy > Lit 0.995 )
@@ -277,16 +291,22 @@ computeShader = Program $ entryPoint @"main" @Compute do
                  )
               then edgeCol
               else cubeColor cubeOut
-            hitCol = snd
-                $ foldr
-                  ( \ ((t, uv), col) (t',col') ->
-                      if (t > 0 && onTriangle uv && t < t')
-                      then (t , col )
-                      else (t', col')
-                  )
-                  ( tMax, cubeCol )
-                  [ (hitTree, green), (hitTrunk, red) ]
-          modify @"col" ( ^+^ ( 0.0625 *^ (hitCol ^-^ bgCol) ) )
+
+          -- find first triangle hit inside the cube
+          -- if no hit inside the cube, return the appropriate cube background colour
+
+          _ <- def @"hitCol" @RW cubeCol
+          _ <- def @"hit_t"  @RW tMax
+
+          ixFor_ sceneTriangles \ (tri, col) -> do
+              (t,uv) <- ray `intersectTriangle` tri
+              curr_t <- get @"hit_t"
+              when (t > 0 && onTriangle uv && t < curr_t) do
+                put @"hitCol" col
+                put @"hit_t"  t
+
+          hitCol <- get @"hitCol"
+          modify @"col" ( ^+^ ( weight *^ (hitCol ^-^ bgCol) ) )
 
 
         modify @"j" (+1)

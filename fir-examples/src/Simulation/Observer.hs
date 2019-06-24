@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Vulkan.Observer
+module Simulation.Observer
   ( Input(..), nullInput
   , Action(..)
   , Quit(Quit)

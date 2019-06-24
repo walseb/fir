@@ -33,7 +33,7 @@ import Math.Linear
   ( V )
 
 -- fir-example
-import Vulkan.Observer
+import Simulation.Observer
   ( Observer(..), initialObserver
   , Input(..), nullInput
   , Quit(..)

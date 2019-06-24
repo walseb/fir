@@ -86,7 +86,7 @@ import Shaders.Bezier
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Vulkan.Observer
+import Simulation.Observer
 import Vulkan.Pipeline
 import Vulkan.SDL
 
