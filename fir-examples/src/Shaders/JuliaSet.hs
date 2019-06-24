@@ -108,7 +108,7 @@ fragment = shader do
     ~(Vec2 mx my) <- use @(Name "ubo" :.: Name "mousePos")
 
 
-    let (#<) = (<) @(Procedure _ _i _i) -- disambiguate to help type inference
+    let (#<) = (<) @(Procedure _i _i _) -- disambiguate to help type inference
 
     #total     @Word32 #= 0
 

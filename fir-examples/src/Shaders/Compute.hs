@@ -1,9 +1,10 @@
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE NamedWildCards         #-}
-{-# LANGUAGE OverloadedLabels       #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
@@ -18,13 +19,170 @@
 
 module Shaders.Compute where
 
+-- base
+import qualified Prelude
+import Prelude
+  ( Functor, map )
+import Data.Foldable
+  ( Foldable(foldr) )
+import GHC.TypeLits
+  ( KnownNat )
+
+-- vector
+import qualified Data.Vector as Array
+
 -- text-utf8
 import "text-utf8" Data.Text
   ( Text )
 
 -- fir
 import FIR
+  hiding ( Triangle )
 import Math.Linear
+
+
+------------------------------------------------
+-- basic ray-tracing setup
+
+data AABB a
+  = AABB
+  { low  :: a
+  , high :: a
+  }
+  deriving Functor
+
+data Triangle a
+  = Triangle
+  { v0 :: a
+  , v1 :: a
+  , v2 :: a
+  }
+  deriving Functor
+
+data Ray a
+  = Ray
+  { pos    :: a
+  , dir    :: a
+  , invDir :: a
+  }
+
+
+minV3 :: AST (V 3 Float) -> AST Float
+minV3 (Vec3 x y z) = min x (min y z)
+
+maxV3 :: AST (V 3 Float) -> AST Float
+maxV3 (Vec3 x y z) = max x (max y z)
+
+intersectAABB
+  :: Ray (AST (V 3 Float))
+  -> AABB (AST (V 3 Float))
+  -> Codensity AST ( ( AST Float, AST Float ) := _i ) _i
+intersectAABB
+  Ray  { pos, invDir }
+  AABB { low, high   }
+    = locallyPair do
+        t1 :: AST (V 3 Float)
+          <- def @"t1" @R
+             $ ( \ s p i -> ( s - p ) * i :: AST Float ) <$$> low  <**> pos <**> invDir
+        t2 :: AST (V 3 Float)
+          <- def @"t2" @R
+             $ ( \ s p i -> ( s - p ) * i :: AST Float ) <$$> high <**> pos <**> invDir
+
+        let
+          tMin, tMax :: AST Float
+          tMin = maxV3 ( min @(AST Float) <$$> t1 <**> t2 )
+          tMax = minV3 ( max @(AST Float) <$$> t1 <**> t2 )
+
+        pure (tMin, tMax)
+
+
+intersectTriangle
+  :: Ray (AST (V 3 Float))
+  -> Triangle (AST (V 3 Float))
+  -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := _i ) _i
+intersectTriangle
+  Ray { pos, dir }
+  Triangle { v0, v1, v2 }
+    = locallyPair do
+        e1 <- def @"e1" @R $ v1 ^-^ v0
+        e2 <- def @"e2" @R $ v2 ^-^ v0
+
+        h  <- def @"h" @R $ dir `cross` e2
+        f  <- def @"f" @R $ recip (h `dot` e1)
+        s  <- def @"s" @R $ pos ^-^ v0
+        q  <- def @"q" @R $ s `cross` e1
+
+        let
+          u = f * ( s   `dot` h )
+          v = f * ( dir `dot` q )
+          t = f * ( e2  `dot` q )
+
+        pure (t, Vec2 u v)
+
+
+onTriangle :: AST (V 2 Float) -> AST Bool
+onTriangle (Vec2 u v) =
+  u > 0 && v > 0 && u + v < 1
+
+------------------------------------------------
+-- scene
+
+cube :: AABB (AST (V 3 Float))
+cube = AABB
+  ( Lit (Prelude.pure (-1)) )
+  ( Lit (Prelude.pure   1 ) )
+
+w, bary, equi :: Float
+w = 0.8
+bary = (2*w-1)/3
+equi = bary + sqrt ( 1 + 6 * bary * (2 * bary - 1) )
+
+tree, trunk :: Triangle (AST (V 3 Float))
+tree = Triangle
+         ( Lit $ V3 (-w)   w  (-1) )
+         ( Lit $ V3   1    w    w  )
+         ( Lit $ V3 (-w) (-1)   w  )
+trunk = Triangle
+         ( Lit $ V3 0       1     (-equi) )
+         ( Lit $ V3 equi    1       0     )
+         ( Lit $ V3 (-bary) (2*w-1) bary  )
+
+green, red, bgCol, edgeCol :: AST (V 4 Float)
+green   = Lit (V4 0.05 0.5  0.2  1)
+red     = Lit (V4 0.65 0.1  0.1  1)
+bgCol   = Lit (V4 0.95 0.93 0.88 0)
+edgeCol = bgCol -- Lit (V4 0    0    0    1)
+
+gradient :: forall n. KnownNat n
+         => AST Float
+         -> AST (Array n (V 4 Float))
+         -> AST (V 4 Float)
+gradient t colors
+  =   ( (1-s) *^ ( view @(AnIndex _)  i    colors ) )
+  ^+^ (    s  *^ ( view @(AnIndex _) (i+1) colors ) )
+  where n :: AST Float
+        n = Lit . fromIntegral $ knownValue @n
+        i :: AST Word32
+        i = floor ( (n-1) * t )
+        s :: AST Float
+        s = (n-1) * t - fromIntegral i
+
+
+cubeGradientStops :: Array 5 (V 4 Float)
+cubeGradientStops =
+  mkArray . Array.fromList . map ( ^* (1/255) ) $
+    [ V4 255 120  90 255
+    , V4 240 180  80 255
+    , V4 230 120 160 255
+    , V4  90 150 240 255
+    , V4 190 240 230 255
+    ]
+
+cubeColor :: AST (V 3 Float) -> AST (V 4 Float)
+cubeColor pt = gradient (1-t) (Lit cubeGradientStops)
+  where
+    c = 0.57735026 -- 1 / sqrt 3
+    t = 0.5 + 0.5 * ( normalise pt `dot` (Vec3 (-c) (-c) c) )
 
 ------------------------------------------------
 -- compute shader
@@ -55,13 +213,19 @@ computeShader = Program $ entryPoint @"main" @Compute do
       x = ( fromIntegral i_x - 960 ) / 960
       y = ( fromIntegral i_y - 540 ) / 960
 
-    pos   <- use @(Name "ubo" :.: Name "position")
+    --pos   <- use @(Name "ubo" :.: Name "position")
+    pos0  <- use @(Name "ubo" :.: Name "position")
+
     right <- use @(Name "ubo" :.: Name "right"   )
     up    <- use @(Name "ubo" :.: Name "up"      )
-    fwd   <- use @(Name "ubo" :.: Name "forward" )
+
+    --fwd   <- use @(Name "ubo" :.: Name "forward" )
+    dir   <- use @(Name "ubo" :.: Name "forward" )
 
 
-    _ <- def @"col" @RW ( Vec4 0 0 0 0 :: AST (V 4 Float) )
+    _ <- def @"col" @RW bgCol
+
+    invDir <- def @"invDir" @R ( recip @(AST Float) <$$> dir )
 
     -- 16x AA
     _ <- def @"i" @RW @Float 0
@@ -77,32 +241,52 @@ computeShader = Program $ entryPoint @"main" @Compute do
           dx = ( ( i + 0.5 ) / 4 - 0.5 ) / 960
           dy = ( ( j + 0.5 ) / 4 - 0.5 ) / 960
 
-        dir    <- def @"dir"    @R $ normalise ( fwd ^+^ (x+dx) *^ right ^-^ (y+dy) *^ up )
-        invdir <- def @"invdir" @R ( recip @(AST Float) <$$> dir )
+        --dir    <- def @"dir"    @R $ normalise ( fwd ^+^ (x+dx) *^ right ^-^ (y+dy) *^ up )
+        --invDir <- def @"invDir" @R ( recip @(AST Float) <$$> dir )
+        pos <- def @"pos" @R ( pos0 ^+^ 5 *^ ( (x+dx) *^ right ^-^ (y+dy) *^ up ) )
+
+        let ray = Ray { pos, dir, invDir }
+
+        _ <- def @"t1" @RW @Float 7 -- to trip up the other comp
+        (tMin, tMax) <- ray `intersectAABB` cube
 
         let
-          tMin, tMax :: AST Float
-          (tMin, tMax) = cubeIntersections pos invdir
-
-          cubeIntersection :: AST (V 3 Float)
-          cubeIntersection@(Vec3 ix iy iz) =
-            if tMin < 0
-            then pos ^+^ tMax *^ dir
-            else pos ^+^ tMin *^ dir
+          cubeIn, cubeOut :: AST (V 3 Float)
+          cubeIn@( Vec3 inx  iny  inz ) = pos ^+^ tMin *^ dir
+          cubeOut@(Vec3 outx outy outz) = pos ^+^ tMax *^ dir
 
         if (  tMax < 0
            || tMin > tMax
-           || ( abs ix > 0.75 && abs iy > 0.75 )
-           || ( abs ix > 0.75 && abs iz > 0.75 )
-           || ( abs iy > 0.75 && abs iz > 0.75 )
+           || ( tMin > 0 &&
+                (  ( abs inx > Lit w && abs iny > Lit w )
+                || ( abs inx > Lit w && abs inz > Lit w )
+                || ( abs iny > Lit w && abs inz > Lit w )
+                )
+              )
            )
         then pure (Lit ())
-        --else modify @"col" ( ^+^ ( 0.0625 *^ green ) )
-        else let
-           (t, Vec2 u v) = triangleIntersection pos dir
-          in if ( t < tMax && u > 0 && u < 1 && v > 0 && v < 1 && u + v < 1 )
-            then modify @"col" ( ^+^ ( 0.0625 *^ green ) )
-            else modify @"col" ( ^+^ ( 0.0625 *^ cubeColor ( (pos ^+^ tMax *^ dir) ) ) )
+        else do
+          -- would need some indexed monad traversal here
+          hitTree  <- ray `intersectTriangle` tree
+          hitTrunk <- ray `intersectTriangle` trunk
+          let
+            cubeCol =
+              if (  ( abs outx > Lit 0.995 && abs outy > Lit 0.995 )
+                 || ( abs outx > Lit 0.995 && abs outz > Lit 0.995 )
+                 || ( abs outy > Lit 0.995 && abs outz > Lit 0.995 )
+                 )
+              then edgeCol
+              else cubeColor cubeOut
+            hitCol = snd
+                $ foldr
+                  ( \ ((t, uv), col) (t',col') ->
+                      if (t > 0 && onTriangle uv && t < t')
+                      then (t , col )
+                      else (t', col')
+                  )
+                  ( tMax, cubeCol )
+                  [ (hitTree, green), (hitTrunk, red) ]
+          modify @"col" ( ^+^ ( 0.0625 *^ (hitCol ^-^ bgCol) ) )
 
 
         modify @"j" (+1)
@@ -113,62 +297,6 @@ computeShader = Program $ entryPoint @"main" @Compute do
       ( Vec2 i_x i_y )
       =<< get @"col"
 
-
-minV3 :: AST (V 3 Float) -> AST Float
-minV3 (Vec3 x y z) = min x (min y z)
-
-maxV3 :: AST (V 3 Float) -> AST Float
-maxV3 (Vec3 x y z) = max x (max y z)
-
-cubeIntersections :: AST (V 3 Float) -> AST (V 3 Float) -> ( AST Float, AST Float )
-cubeIntersections pos invdir = (tMin, tMax)
-  where
-
-    cube0, cube1 :: AST (V 3 Float)
-    cube0 = pureAST (-1)
-    cube1 = pureAST   1
-
-    t1, t2 :: AST (V 3 Float)
-    t1 = ( \ c p i -> ( c - p ) * i :: AST Float ) <$$> cube0 <**> pos <**> invdir
-    t2 = ( \ c p i -> ( c - p ) * i :: AST Float ) <$$> cube1 <**> pos <**> invdir
-
-    tMin, tMax :: AST Float
-    tMin = maxV3 ( min @(AST Float) <$$> t1 <**> t2 )
-    tMax = minV3 ( max @(AST Float) <$$> t1 <**> t2 )
-
-
-triangleIntersection :: AST (V 3 Float) -> AST (V 3 Float) -> (AST Float, AST (V 2 Float))
-triangleIntersection pos dir = ( t, Vec2 u v )
-  -- TODO: too much inlining
-  where
-    p1 = Vec3 (-0.75) 0.75 (-1)
-    p2 = Vec3   1     0.75 0.75
-    p3 = Vec3 (-0.75) (-1) 0.75
-    e1 = p2 ^-^ p1
-    e2 = p3 ^-^ p1
-
-    h  = dir `cross` e2
-    a  = h `dot` e1
-    f  = recip a
-    s  = pos ^-^ p1
-    q  = s `cross` e1
-
-    u  = f * ( s   `dot` h )
-    v  = f * ( dir `dot` q )
-    t  = f * ( e2  `dot` q )
-
-
-anyV3 :: AST (V 3 Bool) -> AST Bool
-anyV3 (Vec3 b1 b2 b3) = b1 || b2 || b3
-
-green :: AST (V 4 Float)
-green = Vec4 0.05 0.5 0.2 1
-
-cubeColor :: AST (V 3 Float) -> AST (V 4 Float)
-cubeColor (Vec3 x y z) =
-  if y > 0.95
-  then Vec4 0.0 (abs (x+z)/4) 0.2 1.0
-  else Vec4 (1-0.5*(y+1)) 0.5 0.2 1.0
 
 ------------------------------------------------
 -- compiling

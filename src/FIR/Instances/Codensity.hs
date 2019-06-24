@@ -29,7 +29,8 @@ orphan instances for types of the form @Codensity AST (AST a := j) i@
 
 module FIR.Instances.Codensity
   ( -- * Monadic control operations
-    when, unless, locally, embed, while
+    when, unless, while
+  , locally, embed, locallyPair, embedPair
 
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
@@ -83,7 +84,7 @@ import Prelude hiding
   , Integral(..)
   , Fractional(..), fromRational
   , Floating(..), RealFloat(..)
-  , Functor(..)
+  , Functor(..), Monad(..)
   , Applicative(..)
   )
 import Data.Int
@@ -212,12 +213,30 @@ unless b action
     then ixPure (Lit ()) :: Codensity AST (AST () := i) i
     else action
 
-locally :: forall i j a. Codensity AST (AST a := j) i -> Codensity AST (AST a := i) i
+locally :: forall i j r. Syntactic r => Codensity AST (r := j) i -> Codensity AST (r := i) i
 locally = fromAST Locally
 
-embed :: forall i j a. Embeddable i j
-      => Codensity AST (AST a := i) i -> Codensity AST (AST a := j) j
+embed :: forall i j r. (Embeddable i j, Syntactic r)
+      => Codensity AST (r := i) i -> Codensity AST (r := j) j
 embed = fromAST Embed
+
+-- temporary helpers until I find a nice typeclass for this
+locallyPair :: forall i a b j
+            .  Codensity AST ( (AST a, AST b) := j ) i
+            -> Codensity AST ( (AST a, AST b) := i ) i
+locallyPair p =
+  ixLiftA2 (,)
+    ( locally . ixFmap fst $ p )
+    ( locally . ixFmap snd $ p )
+
+embedPair :: forall i a b j
+            .  (Embeddable i j)
+            => Codensity AST ( (AST a, AST b) := i ) i
+            -> Codensity AST ( (AST a, AST b) := j ) j
+embedPair p =
+  ixLiftA2 (,)
+    ( embed @i @j . ixFmap fst $ p )
+    ( embed @i @j . ixFmap snd $ p )
 
 while :: ( GHC.Stack.HasCallStack
          , i' ~ i, i'' ~ i

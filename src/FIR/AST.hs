@@ -270,6 +270,9 @@ data AST :: Type -> Type where
   Ops   :: ImageOperands props ops -> AST ( ImageOperands props ops )
   Coerce :: forall a b. AST (a -> b)
 
+  --MkStruct
+  --MkArray
+
   -- | Internal pair data type.
   --
   -- Only used for providing multiple run-time indices to product optics.

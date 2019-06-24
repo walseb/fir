@@ -188,6 +188,17 @@ instance ( PrimTy a
        => Choose (AST Bool) '(x, y, AST a) where
   choose = fromAST If
 
+-- temporary convenience
+instance ( Choose (AST Bool) '(zl,zl,zl)
+         , Choose (AST Bool) '(zr,zr,zr)
+         , x ~ (zl,zr)
+         , y ~ (zl,zr)
+         )
+       => Choose (AST Bool) '(x, y, (zl,zr)) where
+  choose c (at,bt) (af,bf)
+    = ( choose c at af, choose c bt bf )
+    --   ^^^^^ not ideal: two "if" statements instead of one...
+
 instance ( PrimTy a, Eq a, Logic a ~ Bool )
   => Eq (AST a) where
   type Logic (AST a) = AST Bool
@@ -920,11 +931,9 @@ instance Syntactic () where
 
 {-
 instance (Syntactic a, Syntactic b) => Syntactic (a,b) where
-  type Internal (a,b) = Struct '[ "_0" ':-> a
-                                , "_1" ':-> b
-                                ]
-  toAST (a,b) = a :& b :& End
-  fromAST (a :& b :& End) = (a,b)
+  type Internal (a,b) = (Internal a, Internal b)
+  toAST  (a,b) = Pair :$ toAST a :$ toAST b
+  fromAST p = ( fromAST (Fst :$ p), fromAST (Snd :$ p) )
 -}
 
 -- utility type for the following instance declaration

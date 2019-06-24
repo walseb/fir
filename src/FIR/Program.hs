@@ -68,7 +68,7 @@ import qualified SPIRV.PrimTy as SPIRV
 -- These are wrappers around the main internal representation
 -- @Codensity AST (AST a := j) i@
 
-type Procedure (a :: Type) (i :: ASTState) (j :: ASTState)
+type Procedure (i :: ASTState) (j :: ASTState) (a :: Type)
   = Codensity AST (AST a := j) i
 
 type family CodensityProgram

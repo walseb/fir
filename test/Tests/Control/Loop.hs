@@ -26,7 +26,7 @@ program = Program do
 
   entryPoint @"main" @Vertex do
 
-    let (#<) = (<) @(Procedure _ _i _i) -- disambiguate to help type inference
+    let (#<) = (<) @(Procedure _i _i _) -- disambiguate to help type inference
 
     #t @Float #= 0
     #s @Float #= 1

@@ -336,7 +336,7 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
     for (zip images descriptorSets) $ \((swapImgAndView, screenshotImageAndMemory), descriptorSet) ->
       mkCommandBuffer descriptorSet swapImgAndView (Just screenshotImageAndMemory)
 
-  assign _observer ( Observer { position = V3 3 (-3) (-3), angles = V2 (pi/4) (-pi/4) } )
+  assign _observer ( Observer { position = V3 5 (-5) (-5), angles = V2 (pi/4) (-pi/5) } )
 
   mainLoop do
 
@@ -359,7 +359,7 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
     let cam = camera observer (Just orientation)
 
     when ( locate action )
-      ( liftIO $ putStrLn ( show cam ) )
+      ( liftIO $ putStrLn ( show observer ) )
 
     -- update camera
     liftIO ( poke @_ @Extended camPtr cam )
