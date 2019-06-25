@@ -98,7 +98,7 @@ intersectTriangle
   :: forall (s :: ASTState) . ( _ )
   => Ray (AST (V 3 Float))
   -> Triangle (AST (V 3 Float))
-  -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := (s :: ASTState) ) s
+  -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := s) s
 intersectTriangle
   Ray { pos, dir }
   Triangle { v0, v1, v2 }

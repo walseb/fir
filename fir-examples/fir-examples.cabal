@@ -48,9 +48,9 @@ library
       base
         >= 4.12
     , fir
-        >= 0.0.1.0
+        == 0.0.1.0
     , sdl2
-        >= 2.5.0
+        >= 2.5.0 && <= 2.6
     , vulkan-api
         >= 1.1.4 && <= 1.4
     , JuicyPixels

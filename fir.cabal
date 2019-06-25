@@ -74,7 +74,7 @@ description:
       See "FIR.Program" for the definition, and the example shaders for common usage patterns.
 
 
-  All three of these types can be displayed graphically as a tree, using the 'draw' function.
+  All three of these types can be displayed graphically as a tree, using the 'ast' function.
   This can assist in understanding inlining behaviour.
 
 

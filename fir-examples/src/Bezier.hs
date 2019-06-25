@@ -278,7 +278,10 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
   (indexBuffer, _) <- createIndexBuffer physicalDevice device letterT_indices
 
-  let initialMVP = modelViewProjection initialObserver Nothing
+  let initialObserver' = initialObserver { position = V3 0 (-3.5) (-6) }
+  assign _observer initialObserver'
+
+  let initialMVP = modelViewProjection initialObserver' Nothing
       binormal = V4 0 0 (-1) 0
       lineWidths = V3 0.11 0.1 (recip 0.005)
 

@@ -78,7 +78,7 @@ More meaningful examples can be found in the @fir-examples@ subdirectory of the 
 
 module FIR 
   ( compile, runCompilationsTH
-  , DrawableProgram(draw)
+  , DrawableProgramAST(ast)
   , CompilerFlag(Debug, NoCode)
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
@@ -286,23 +286,23 @@ import SPIRV.Stage
 -- | Functionality for drawing a program AST as a tree.
 --
 -- Can be used on whole programs, or on snippets of code in the AST indexed monad.
-class DrawableProgram prog where
-  draw :: prog -> IO ()
+class DrawableProgramAST prog where
+  ast :: prog -> IO ()
 
-instance DrawableProgram (AST a) where
-  draw = drawTree . toTree
-instance DrawableProgram (Codensity AST (AST a := j) i) where
-  draw = drawTree . toTree . toAST
-instance ( DrawableProgram
+instance DrawableProgramAST (AST a) where
+  ast = drawTree . toTree
+instance DrawableProgramAST (Codensity AST (AST a := j) i) where
+  ast = drawTree . toTree . toAST
+instance ( DrawableProgramAST
              ( CodensityProgram (StartState defs) endState a )
          )
-      => DrawableProgram (Program defs a)
+      => DrawableProgramAST (Program defs a)
       where
-  draw (Program prog) = draw prog
-instance DrawableProgram (CodensityProgram (StartState defs) endState ())
-      => DrawableProgram (FIR.Pipeline.ShaderStage name stage defs endState)
+  ast (Program prog) = ast prog
+instance DrawableProgramAST (CodensityProgram (StartState defs) endState ())
+      => DrawableProgramAST (FIR.Pipeline.ShaderStage name stage defs endState)
       where
-  draw (FIR.Pipeline.ShaderStage prog) = draw prog
+  ast (FIR.Pipeline.ShaderStage prog) = ast prog
 
 -- | Compiler flags.
 data CompilerFlag
