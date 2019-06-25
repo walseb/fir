@@ -50,9 +50,9 @@ library
     , fir
         >= 0.0.1.0
     , sdl2
-        >= 2.4.1.0
+        >= 2.5.0
     , vulkan-api
-        >= 1.1.4
+        >= 1.1.4 && <= 1.4
     , JuicyPixels
         >= 3.3.2
     , vector
