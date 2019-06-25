@@ -65,7 +65,7 @@ createVulkanInstance neededExtensions =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"pApplicationInfo" Vulkan.VK_NULL_HANDLE
         &* Vulkan.setStrListCountAndRef
               @"enabledLayerCount" @"ppEnabledLayerNames"
@@ -115,7 +115,7 @@ createPhysicalDevice vk = liftIO do
 findQueueFamilyIndex
   :: MonadIO m
   => Vulkan.VkPhysicalDevice
-  -> [ Vulkan.VkQueueBitmask Vulkan.FlagMask ]
+  -> [ Vulkan.VkQueueFlags ]
   -> m Int
 findQueueFamilyIndex physicalDevice requiredFlags = liftIO do
   queueFamilies <- fetchAll ( Vulkan.vkGetPhysicalDeviceQueueFamilyProperties physicalDevice )
@@ -126,12 +126,12 @@ findQueueFamilyIndex physicalDevice requiredFlags = liftIO do
       ( i, queueFamily ) <- zip [0..] queueFamilies
 
       let
-        flags :: Vulkan.VkQueueBitmask Vulkan.FlagMask
+        flags :: Vulkan.VkQueueFlags
         flags = Vulkan.getField @"queueFlags" queueFamily
 
       for_ requiredFlags
         ( \f ->
-            guard ( flags .&. f > 0 )
+            guard ( flags .&. f > Vulkan.VK_ZERO_FLAGS )
         )
 
       pure i
@@ -166,7 +166,7 @@ createLogicalDevice physicalDevice queueFamilyIndex mbFeatures =
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
           &* Vulkan.set @"pNext" Foreign.nullPtr
-          &* Vulkan.set @"flags" 0
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
           &* Vulkan.setListCountAndRef
                 @"queueCreateInfoCount"
                 @"pQueueCreateInfos"
@@ -185,7 +185,7 @@ createLogicalDevice physicalDevice queueFamilyIndex mbFeatures =
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
           &* Vulkan.set @"pNext" Foreign.nullPtr
-          &* Vulkan.set @"flags" 0
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
           &* Vulkan.setListCountAndRef
                 @"queueCreateInfoCount"
                 @"pQueueCreateInfos"
@@ -266,7 +266,7 @@ createSwapchain
   -> Vulkan.VkDevice
   -> SDL.Video.Vulkan.VkSurfaceKHR
   -> Vulkan.VkSurfaceFormatKHR
-  -> Vulkan.VkImageUsageBitmask Vulkan.FlagMask
+  -> Vulkan.VkImageUsageFlags
   -> m ( Vulkan.VkSwapchainKHR, Vulkan.VkExtent2D )
 createSwapchain physicalDevice device surface surfaceFormat imageUsage = do
 
@@ -354,7 +354,7 @@ createFramebuffer dev renderPass extent attachments =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"renderPass" renderPass
         &* Vulkan.setListCountAndRef @"attachmentCount" @"pAttachments" attachments
         &* Vulkan.set @"width"  ( Vulkan.getField @"width"  extent )
@@ -377,10 +377,10 @@ data ImageInfo
   , imageArrayLayers :: Vulkan.Word32
   , imageSamples     :: Vulkan.VkSampleCountFlagBits
   , imageTiling      :: Vulkan.VkImageTiling
-  , imageUsage       :: Vulkan.VkImageUsageBitmask Vulkan.FlagMask
+  , imageUsage       :: Vulkan.VkImageUsageFlags
   }
 
-pattern Default2DImageInfo :: Vulkan.VkExtent3D -> Vulkan.VkFormat -> Vulkan.VkImageUsageBitmask Vulkan.FlagMask -> ImageInfo
+pattern Default2DImageInfo :: Vulkan.VkExtent3D -> Vulkan.VkFormat -> Vulkan.VkImageUsageFlags -> ImageInfo
 pattern Default2DImageInfo extent3D fmt usage
   = ImageInfo
   { imageType        = Vulkan.VK_IMAGE_TYPE_2D
@@ -407,7 +407,7 @@ createImage physicalDevice device ImageInfo { .. } reqs
           Vulkan.createVk
             (  Vulkan.set @"sType"       Vulkan.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO
             &* Vulkan.set @"pNext"       Vulkan.vkNullPtr
-            &* Vulkan.set @"flags"       0
+            &* Vulkan.set @"flags"       Vulkan.VK_ZERO_FLAGS
             &* Vulkan.set @"imageType"   imageType
             &* Vulkan.set @"format"      imageFormat
             &* Vulkan.set @"extent"      imageExtent
@@ -444,7 +444,7 @@ createImageView
   -> Vulkan.VkImage
   -> Vulkan.VkImageViewType
   -> Vulkan.VkFormat
-  -> Vulkan.VkImageAspectBitmask Vulkan.FlagMask
+  -> Vulkan.VkImageAspectFlags
   -> m Vulkan.VkImageView
 createImageView dev image viewType fmt aspect =
   let
@@ -472,7 +472,7 @@ createImageView dev image viewType fmt aspect =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
         &* Vulkan.set @"pNext"      Vulkan.vkNullPtr
-        &* Vulkan.set @"flags"      0
+        &* Vulkan.set @"flags"      Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"image"      image
         &* Vulkan.set @"viewType"   viewType
         &* Vulkan.set @"format"     fmt
@@ -535,31 +535,29 @@ cmdTransitionImageLayout
 createSampler
   :: MonadManaged m
   => Vulkan.VkDevice
-  -> Vulkan.VkFilter
-  -> Vulkan.VkFilter
   -> m Vulkan.VkSampler
-createSampler dev magFilter minFilter =
+createSampler dev =
   let
     createInfo :: Vulkan.VkSamplerCreateInfo
     createInfo =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" 0
-        &* Vulkan.set @"magFilter" magFilter
-        &* Vulkan.set @"minFilter" minFilter
-        &* Vulkan.set @"mipmapMode" 0
-        &* Vulkan.set @"addressModeU" 1 --
-        &* Vulkan.set @"addressModeV" 1 -- mirrorred repeat
-        &* Vulkan.set @"addressModeW" 1 --
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
+        &* Vulkan.set @"magFilter" Vulkan.VK_FILTER_NEAREST
+        &* Vulkan.set @"minFilter" Vulkan.VK_FILTER_NEAREST
+        &* Vulkan.set @"mipmapMode" Vulkan.VK_SAMPLER_MIPMAP_MODE_NEAREST
+        &* Vulkan.set @"addressModeU" Vulkan.VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
+        &* Vulkan.set @"addressModeV" Vulkan.VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
+        &* Vulkan.set @"addressModeW" Vulkan.VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
         &* Vulkan.set @"mipLodBias" 0
         &* Vulkan.set @"anisotropyEnable" Vulkan.VK_FALSE
         &* Vulkan.set @"maxAnisotropy" 0
         &* Vulkan.set @"compareEnable" Vulkan.VK_FALSE
-        &* Vulkan.set @"compareOp" 7
+        &* Vulkan.set @"compareOp" Vulkan.VK_COMPARE_OP_ALWAYS
         &* Vulkan.set @"minLod" 0
         &* Vulkan.set @"maxLod" 1
-        &* Vulkan.set @"borderColor" 0 -- floating point transparent black
+        &* Vulkan.set @"borderColor" Vulkan.VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
         )
 
   in managedVulkanResource
@@ -579,7 +577,7 @@ createCommandPool dev queueFamilyIndex =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"queueFamilyIndex" ( fromIntegral queueFamilyIndex )
         )
 
@@ -731,7 +729,7 @@ createSemaphore device =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         )
   in
     managedVulkanResource
@@ -747,7 +745,7 @@ createFence device =
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
           &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
-          &* Vulkan.set @"flags" 0
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
           )
 
   in
@@ -830,7 +828,7 @@ submitCommandBuffer
   :: MonadIO m
   => Vulkan.VkQueue
   -> Vulkan.VkCommandBuffer
-  -> [ ( Vulkan.VkSemaphore, Vulkan.VkPipelineStageBitmask Vulkan.FlagMask ) ]
+  -> [ ( Vulkan.VkSemaphore, Vulkan.VkPipelineStageFlags ) ]
   -> [ Vulkan.VkSemaphore ]
   -> Maybe Vulkan.VkFence
   -> m ()
@@ -868,7 +866,7 @@ beginCommandBuffer commandBuffer =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"pInheritanceInfo" Vulkan.vkNullPtr
         )
   in liftIO $

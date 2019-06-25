@@ -95,7 +95,7 @@ tessellationInfo (PatchesOfSize pts) =
   (Just . Vulkan.createVk )
      (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO
      &* Vulkan.set @"pNext" Vulkan.VK_NULL
-     &* Vulkan.set @"flags" 0
+     &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
      &* Vulkan.set @"patchControlPoints" (fromIntegral pts)
      )
 tessellationInfo _ = Nothing
@@ -184,7 +184,7 @@ loadShader device shaderPath = do
               Vulkan.createVk
                 (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO
                 &* Vulkan.set @"pNext" Vulkan.VK_NULL
-                &* Vulkan.set @"flags" 0
+                &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
                 &* Vulkan.set @"pCode"    ( Foreign.castPtr bytesPtr )
                 &* Vulkan.set @"codeSize" ( fromIntegral len )
                 )
@@ -207,7 +207,7 @@ createShaderInfo device shaderStage shaderPath = do
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
           &* Vulkan.set @"pNext"        Vulkan.VK_NULL
-          &* Vulkan.set @"flags"        0
+          &* Vulkan.set @"flags"        Vulkan.VK_ZERO_FLAGS
           &* Vulkan.setStrRef @"pName"  "main"
           &* Vulkan.set @"module"       shader
           &* Vulkan.set @"stage"        (stageFlag shaderStage)
@@ -230,7 +230,7 @@ createPipelineLayout device layout0 =
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
           &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"flags" 0
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
           &* Vulkan.setListCountAndRef
                 @"setLayoutCount"
                 @"pSetLayouts"
@@ -323,7 +323,7 @@ createGraphicsPipeline device renderPass extent layout0
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO
           &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"flags" 0
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
           &* Vulkan.setListCountAndRef @"viewportCount" @"pViewports" [ viewport ]
           &* Vulkan.setListCountAndRef @"scissorCount"  @"pScissors"  [ scissor  ]
           )
@@ -386,7 +386,7 @@ createGraphicsPipeline device renderPass extent layout0
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
           &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"flags" 0
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
           &* Vulkan.set @"depthTestEnable"   Vulkan.VK_TRUE
           &* Vulkan.set @"depthWriteEnable"  Vulkan.VK_TRUE
           &* Vulkan.set @"depthCompareOp"    Vulkan.VK_COMPARE_OP_LESS_OR_EQUAL
@@ -402,7 +402,7 @@ createGraphicsPipeline device renderPass extent layout0
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO
           &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"flags" 0
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
           &* Vulkan.setListCountAndRef @"stageCount" @"pStages" shaders
           &* Vulkan.setVkRef   @"pVertexInputState"   vertexInputState
           &* Vulkan.setListRef @"pTessellationState"  (toList mbTessellationState)
@@ -448,7 +448,7 @@ createComputePipeline device layout0 shaderPath = do
     createInfo = Vulkan.createVk
       (  Vulkan.set @"sType"  Vulkan.VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO
       &* Vulkan.set @"pNext"  Vulkan.VK_NULL
-      &* Vulkan.set @"flags"  0
+      &* Vulkan.set @"flags"  Vulkan.VK_ZERO_FLAGS
       &* Vulkan.set @"stage"  computeShader
       &* Vulkan.set @"layout" pipelineLayout
       &* Vulkan.set @"basePipelineIndex" 0

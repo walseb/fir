@@ -132,7 +132,7 @@ cube = AABB
   ( Lit (Prelude.pure   1 ) )
 
 w, bary, equi :: Float
-w = 0.8
+w = 0.75
 bary = (2*w-1)/3
 equi = bary + sqrt ( 1 + 6 * bary * (2 * bary - 1) )
 

@@ -79,7 +79,7 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
 
         for_ requiredFlags
           ( \f ->
-              guard ( Vulkan.getField @"propertyFlags" memoryType .&. f > 0 )
+              guard ( Vulkan.getField @"propertyFlags" memoryType .&. f > Vulkan.VK_ZERO_FLAGS )
           )
 
         pure i

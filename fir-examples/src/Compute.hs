@@ -269,7 +269,7 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
         cmdTransitionImageLayout commandBuffer swapchainImage
           Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
           Vulkan.VK_IMAGE_LAYOUT_GENERAL
-          ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0 )
+          ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
           ( Vulkan.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.VK_ACCESS_SHADER_WRITE_BIT )
 
         liftIO do
@@ -300,13 +300,13 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
                   cmdTransitionImageLayout commandBuffer screenshotImage
                     Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
                     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT , 0 )
-                    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 )
+                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT , Vulkan.VK_ZERO_FLAGS )
+                    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
                   cmdTransitionImageLayout commandBuffer swapchainImage
                     Vulkan.VK_IMAGE_LAYOUT_GENERAL
                     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
                     ( Vulkan.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.VK_ACCESS_SHADER_WRITE_BIT )
-                    ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 )
+                    ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
                   -- perform the copy
                   liftIO $ Vulkan.vkCmdCopyImage commandBuffer
                     swapchainImage
@@ -319,19 +319,19 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
                   cmdTransitionImageLayout commandBuffer screenshotImage
                     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                     Vulkan.VK_IMAGE_LAYOUT_GENERAL
-                    ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 )
-                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , 0 )
+                    ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
+                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.VK_ZERO_FLAGS )
                   cmdTransitionImageLayout commandBuffer swapchainImage
                     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
                     Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-                    ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 )
-                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , 0 )
+                    ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
+                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.VK_ZERO_FLAGS )
           Nothing
             -> cmdTransitionImageLayout commandBuffer swapchainImage
                   Vulkan.VK_IMAGE_LAYOUT_GENERAL
                   Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-                  ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 )
-                  ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , 0 )
+                  ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
+                  ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.VK_ZERO_FLAGS )
 
         endCommandBuffer commandBuffer
 
@@ -421,7 +421,8 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
 
         memPtr :: Vulkan.Ptr Word8
           <- coerce <$> allocaAndPeek
-                ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound 0
+                ( Vulkan.vkMapMemory device screenshotImageMemory
+                    0 maxBound Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                 )
 
@@ -476,7 +477,7 @@ createDescriptorSetLayout device = do
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.setListCountAndRef @"bindingCount" @"pBindings" [ uboBinding, imageBinding ]
         )
 

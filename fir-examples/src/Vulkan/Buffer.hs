@@ -66,7 +66,7 @@ createIndexBuffer
 createBufferFromList
   :: forall a ali m.
      ( MonadManaged m, Poke a ali )
-  => Vulkan.VkBufferUsageBitmask Vulkan.FlagMask
+  => Vulkan.VkBufferUsageFlags
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
@@ -100,7 +100,7 @@ createBuffer
   :: MonadManaged m
   => Vulkan.VkDevice
   -> Vulkan.VkPhysicalDevice
-  -> Vulkan.VkBufferUsageBitmask Vulkan.FlagMask
+  -> Vulkan.VkBufferUsageFlags
   -> (Vulkan.Ptr a -> IO ())
   -> Vulkan.VkDeviceSize
   -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
@@ -111,7 +111,7 @@ createBuffer device physicalDevice usage poking sizeInBytes =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"size" sizeInBytes
         &* Vulkan.set @"usage" usage
         &* Vulkan.set @"sharingMode" Vulkan.VK_SHARING_MODE_EXCLUSIVE
@@ -143,7 +143,9 @@ createBuffer device physicalDevice usage poking sizeInBytes =
 
           memPtr :: Vulkan.Ptr a
              <- coerce <$> allocaAndPeek
-                  ( Vulkan.vkMapMemory device memory 0 sizeInBytes 0 >=> throwVkResult )
+                  ( Vulkan.vkMapMemory device memory 0 sizeInBytes Vulkan.VK_ZERO_FLAGS
+                  >=> throwVkResult
+                  )
 
           poking memPtr
           pure memPtr

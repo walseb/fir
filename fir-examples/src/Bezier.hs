@@ -402,7 +402,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
                       (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
                       &* Vulkan.set @"pNext" Vulkan.vkNullPtr
                       &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                      &* Vulkan.set @"dstAccessMask" 0
+                      &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
                       &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
                       &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                       &* Vulkan.set @"image"               screenshotImage
@@ -438,7 +438,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
               (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
               &* Vulkan.set @"pNext" Vulkan.vkNullPtr
               &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-              &* Vulkan.set @"dstAccessMask" 0
+              &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
               &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
               &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
               &* Vulkan.set @"image"         ( fst $ attachments !! 0 ) -- swapchain image
@@ -457,7 +457,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
                         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
                         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
                         &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                        &* Vulkan.set @"dstAccessMask" 0
+                        &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
                         &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                         &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_GENERAL
                         &* Vulkan.set @"image"               screenshotImage
@@ -544,7 +544,8 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
         memPtr :: Vulkan.Ptr Word8
           <- coerce <$> allocaAndPeek
-                ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound 0
+                ( Vulkan.vkMapMemory device screenshotImageMemory
+                    0 maxBound Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                 )
 
@@ -587,7 +588,7 @@ createRenderPass dev colorFormat depthFormat =
     colorAttachmentDescription :: Vulkan.VkAttachmentDescription
     colorAttachmentDescription =
       Vulkan.createVk
-        (  Vulkan.set @"flags"          0
+        (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         colorFormat
         &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
         &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
@@ -608,7 +609,7 @@ createRenderPass dev colorFormat depthFormat =
     depthAttachmentDescription :: Vulkan.VkAttachmentDescription
     depthAttachmentDescription =
       Vulkan.createVk
-        (  Vulkan.set @"flags"          0
+        (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         depthFormat
         &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
         &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
@@ -629,7 +630,7 @@ createRenderPass dev colorFormat depthFormat =
     subpass :: Vulkan.VkSubpassDescription
     subpass =
       Vulkan.createVk
-        (  Vulkan.set @"flags" 0
+        (  Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"pipelineBindPoint" Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
         &* Vulkan.setListCountAndRef
               @"colorAttachmentCount"
@@ -646,9 +647,9 @@ createRenderPass dev colorFormat depthFormat =
     dependency1 =
       Vulkan.createVk
         (  Vulkan.set @"srcSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
-        &* Vulkan.set @"dstSubpass"    0
+        &* Vulkan.set @"dstSubpass"    Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-        &* Vulkan.set @"srcAccessMask" 0
+        &* Vulkan.set @"srcAccessMask" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"dstAccessMask"
               (    Vulkan.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
@@ -659,7 +660,7 @@ createRenderPass dev colorFormat depthFormat =
     dependency2 :: Vulkan.VkSubpassDependency
     dependency2 =
       Vulkan.createVk
-        (  Vulkan.set @"srcSubpass"    0
+        (  Vulkan.set @"srcSubpass"    Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"dstSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"srcAccessMask"
@@ -667,7 +668,7 @@ createRenderPass dev colorFormat depthFormat =
                .|. Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
               )
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
-        &* Vulkan.set @"dstAccessMask" 0
+        &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
         )
 
     createInfo :: Vulkan.VkRenderPassCreateInfo
@@ -675,7 +676,7 @@ createRenderPass dev colorFormat depthFormat =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.setListCountAndRef
               @"attachmentCount"
               @"pAttachments"
@@ -715,7 +716,7 @@ createDescriptorSetLayout device = do
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.setListCountAndRef @"bindingCount" @"pBindings" [ binding ]
         )
 

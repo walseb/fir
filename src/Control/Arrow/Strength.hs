@@ -27,3 +27,6 @@ firstF = (>>^ uncurry leftStrength) . first
 secondF :: (Arrow a, Functor f)
         => a b (f c) -> a (d, b) (f (d, c))
 secondF = (>>^ uncurry rightStrength) . second
+
+--test :: (Applicative f, Functor g) => f (a -> b) -> f (g a) -> f (g b)
+--test = liftA2 fmap

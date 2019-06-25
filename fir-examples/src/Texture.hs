@@ -209,7 +209,8 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
   logoStagingPtr :: Vulkan.Ptr Word8
     <- coerce <$> allocaAndPeek
-                ( Vulkan.vkMapMemory device logoStagingImageMemory 0 (4 * 1024 * 1024) 0
+                ( Vulkan.vkMapMemory device logoStagingImageMemory
+                    0 (4 * 1024 * 1024) Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                 )
 
@@ -230,7 +231,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
       Vulkan.VK_FORMAT_R8G8B8A8_UNORM
       Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
 
-  logoSampler <- createSampler device 0 0
+  logoSampler <- createSampler device
 
   logoCopyCommandBuffer <- allocateCommandBuffer device commandPool
 
@@ -239,13 +240,13 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
   cmdTransitionImageLayout logoCopyCommandBuffer logoStagingImage
     Vulkan.VK_IMAGE_LAYOUT_PREINITIALIZED
     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 )
-    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 )
+    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
+    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
   cmdTransitionImageLayout logoCopyCommandBuffer logoImage
     Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 )
-    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 )
+    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
+    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
 
   let
     noOffset :: Vulkan.VkOffset3D
@@ -285,8 +286,8 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
   cmdTransitionImageLayout logoCopyCommandBuffer logoImage
     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
     Vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 )
-    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 )
+    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
+    ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
 
   endCommandBuffer logoCopyCommandBuffer
 
@@ -483,7 +484,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
                     Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
                     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                     ( Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT )
-                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0)
+                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS)
                   -- perform the copy
                   liftIO $ Vulkan.vkCmdCopyImage commandBuffer
                     ( fst $ attachments !! 0 ) -- (swapchain) color attachment
@@ -514,7 +515,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
               (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
               &* Vulkan.set @"pNext" Vulkan.vkNullPtr
               &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-              &* Vulkan.set @"dstAccessMask" 0
+              &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
               &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
               &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
               &* Vulkan.set @"image"         ( fst $ attachments !! 0 ) -- swapchain image
@@ -533,7 +534,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
                         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
                         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
                         &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                        &* Vulkan.set @"dstAccessMask" 0
+                        &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
                         &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                         &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_GENERAL
                         &* Vulkan.set @"image"               screenshotImage
@@ -618,7 +619,8 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
         memPtr :: Vulkan.Ptr Word8
           <- coerce <$> allocaAndPeek
-                ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound 0
+                ( Vulkan.vkMapMemory device screenshotImageMemory
+                    0 maxBound Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                 )
 
@@ -661,7 +663,7 @@ createRenderPass dev colorFormat depthFormat =
     colorAttachmentDescription :: Vulkan.VkAttachmentDescription
     colorAttachmentDescription =
       Vulkan.createVk
-        (  Vulkan.set @"flags"          0
+        (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         colorFormat
         &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
         &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
@@ -682,7 +684,7 @@ createRenderPass dev colorFormat depthFormat =
     depthAttachmentDescription :: Vulkan.VkAttachmentDescription
     depthAttachmentDescription =
       Vulkan.createVk
-        (  Vulkan.set @"flags"          0
+        (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         depthFormat
         &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
         &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
@@ -703,7 +705,7 @@ createRenderPass dev colorFormat depthFormat =
     subpass :: Vulkan.VkSubpassDescription
     subpass =
       Vulkan.createVk
-        (  Vulkan.set @"flags" 0
+        (  Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"pipelineBindPoint" Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
         &* Vulkan.setListCountAndRef
               @"colorAttachmentCount"
@@ -720,9 +722,9 @@ createRenderPass dev colorFormat depthFormat =
     dependency1 =
       Vulkan.createVk
         (  Vulkan.set @"srcSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
-        &* Vulkan.set @"dstSubpass"    0
+        &* Vulkan.set @"dstSubpass"    Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-        &* Vulkan.set @"srcAccessMask" 0
+        &* Vulkan.set @"srcAccessMask" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"dstAccessMask"
               (    Vulkan.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
@@ -733,7 +735,7 @@ createRenderPass dev colorFormat depthFormat =
     dependency2 :: Vulkan.VkSubpassDependency
     dependency2 =
       Vulkan.createVk
-        (  Vulkan.set @"srcSubpass"    0
+        (  Vulkan.set @"srcSubpass"    Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"dstSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"srcAccessMask"
@@ -741,7 +743,7 @@ createRenderPass dev colorFormat depthFormat =
                .|. Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
               )
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
-        &* Vulkan.set @"dstAccessMask" 0
+        &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
         )
 
     createInfo :: Vulkan.VkRenderPassCreateInfo
@@ -749,7 +751,7 @@ createRenderPass dev colorFormat depthFormat =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.setListCountAndRef
               @"attachmentCount"
               @"pAttachments"
@@ -798,7 +800,7 @@ createDescriptorSetLayout device = do
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" 0
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.setListCountAndRef @"bindingCount" @"pBindings" [ binding, logoBinding ]
         )
 
