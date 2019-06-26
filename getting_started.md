@@ -10,17 +10,34 @@
 <a name="installation"></a>
 ## Installation instructions
 
-__Requirements:__ GHC >= 8.6
 
-The library itself only has Haskell dependencies, so can easily be installed with a Haskell package manager such as *cabal* (>= 3):
+The library itself only has Haskell dependencies, so can easily be installed using a Haskell compiler and package manager:
+ * FIR requires [GHC](https://www.haskell.org/ghc/), version 8.6 or greater. See the [GHC downloads page](https://www.haskell.org/ghc/download.html).
+ * For the package manager, we'll use [cabal](https://www.haskell.org/cabal/download.html), version 3.0 or greater, but other package managers will work too.
+
+To use FIR in a project, with the GHC and cabal executables added to PATH, we can create a new cabal project using `cabal init`. We then specify a dependency on FIR by adding `fir` to the `build-depends` field of the generated `projectName.cabal` file.
+We also need to tell cabal to fetch the project from this repository; this can be achieved by creating the following `cabal.project` file:
 
 ```
-> git clone git://gitlab.com/sheaf/fir.git
-> cd fir
-> cabal build
+packages: .
+
+source-repository-package
+  type:     git
+  location: https://gitlab.com/sheaf/fir.git
+  tag:      head
 ```
 
-This suffices to compile shaders to *SPIR-V*. These SPIR-V files can then be used in any Vulkan program, in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
+Alternatively, download the library (either manually or by running `git clone https://gitlab.com/sheaf/fir.git`) and point to it locally in the `cabal.project` file:
+
+```
+packages: .
+          path/to/fir
+```
+
+After running `cabal update` to fetch the latest Haskell package list, run `cabal build` to build the project.
+
+
+This is all that's needed in order to compile shaders to SPIR-V. These SPIR-V files can then be used in any Vulkan program, in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
 
 Some [simple examples](fir-examples/readme.md) are included, which use the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings.
 Refer to the examples page for further information about the examples, including installation instructions.
@@ -92,6 +109,14 @@ shaderCompilationResult
   = $( runCompilationsTH
         [ ("Simple vertex shader", compileVertexShader) ]
      )
+```
+
+This produces the following SPIR-V (see the [section on SPIR-V tools](#spirv)):
+
+```
+> spirv-dis vert.spv
+
+...
 ```
 
 <a name="ast"></a>
@@ -171,7 +196,10 @@ Usage of this function compiles to the appropriate SPIR-V code:
 <a name="spirv"></a>
 ## Using SPIR-V tools
 
-Khronos provides many useful tools to deal with SPIR-V, which are included in the Vulkan SDK:
+Khronos provides many useful tools to deal with SPIR-V, which are included in the Vulkan SDK.  
+See the [examples readme](fir-examples/readme.md#installation) for instructions concerning installation of the Vulkan SDK.
+
+Example usage of SPIR-V tools:
 
 * spirv-val: validate a SPIR-V file:
   - `spirv-val sourceProg.spv` to validate.
@@ -191,3 +219,6 @@ Khronos provides many useful tools to deal with SPIR-V, which are included in th
 <div align="center">
 ![Control flow graph of compute shader logo example](img/compute_cfg.png)
 </div>
+
+
+
