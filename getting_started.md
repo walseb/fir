@@ -29,7 +29,7 @@ Refer to the examples page for further information about the examples, including
 <a name="simple-shader"></a>
 ## Writing a simple shader
 To write a shader using FIR, begin by importing the module `FIR`.
-Additional functionality is provided by the modules `FIR.Linear` (vector and matrices),
+Additional functionality is provided by the modules `FIR.Linear` (vectors and matrices),
 `FIR.Quaternion` (quaternions) and `FIR.Labels` (optional imperative-like syntax using *OverloadedLabels*).
 
 The important types are:
@@ -123,6 +123,7 @@ Bind
        └╴%1
 ```
 
+The AST pretty-printing is performed using the [tree-view](http://hackage.haskell.org/package/tree-view) package.
 
 <a name="inlining"></a>
 ## Controlling inlining
@@ -179,10 +180,14 @@ Khronos provides many useful tools to deal with SPIR-V, which are included in th
   - `spirv-dis sourceProg.spv -o sourceProg.spv-asm` to create an editable disassembly.
 * spirv-as: re-assemble SPIR-V disassembly:
   - `spirv-as dissassembly.spv-asm -o reassembled.spv`.
-* spirv-cfg: create a control flow graph, output as a DOT graph:
-  - `spirv-cfg sourceProv.spv -o sourceProgCFG.dot` to create the DOT graph,
-  - `dot -Tpdf sourceProgCFG.dot -o sourceProgCFG.pdf` to render the graph into a PDF (requires GraphViz `dot` executable).
 * spirv-opt: optimise a SPIR-V file:
   - `spirv-opt sourceProg.spv -O -o sourceProg_opt.spv` to optimise for performance,
   - `spirv-opt sourceProg.spv -Os -o sourceProg_opt.spv` to optimise size of SPIR-V binary.
 * spirv-cross: cross-compile a SPIR-V file to another shading language (GLSL/HLSL/Metal).
+* spirv-cfg: create a control flow graph, output as a DOT graph:
+  - `spirv-cfg sourceProv.spv -o sourceProgCFG.dot` to create the DOT graph,
+  - `dot -Tpdf sourceProgCFG.dot -o sourceProgCFG.pdf` to render the graph into a PDF (requires GraphViz `dot` executable).
+
+<div align="center">
+![Control flow graph of compute shader logo example](img/compute_cfg.png)
+</div>
