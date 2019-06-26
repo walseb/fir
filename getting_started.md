@@ -53,9 +53,9 @@ The important types are:
 * __`AST a`__: code for a pure value of type `a`, represented internally as an abstract syntax tree.
 Type class overloading allows for simple construction of values of this type, e.g. one has:
 ```haskell
-( \ t -> exp ( - ( tan t ) ** 2 ) / ( cos t ** 4 ) ) :: AST Float -> AST Float
+( \ t -> exp ( - tan t ** 2 ) / ( cos t ** 4 ) ) :: AST Float -> AST Float
 ```
-* __`Program defs a`__: a program that can be compiled to SPIR-V. `defs` is a type-level map which specifies the shader inputs/outputs, top-level functions and entry-points; this is the mechanism by which the user specifies shader interfaces and execution modes.
+* __`Program defs a`__: a program that can be compiled to SPIR-V. `defs` is a type-level map which specifies the program inputs/outputs, top-level functions and entry-points; this is the mechanism by which the user specifies shader interfaces and execution modes.
 * __`Codensity AST (AST a := j) i`__: an *indexed* monadic expression, starting in state `i` and ending in state `j`. Can be thought of as stateful GPU code producing a value of type `a`. The additional type-level information (the indices) allows the library to enforce program correctness.
 
 Shaders are written using __do__ notation, using this indexed monad (with *RebindableSyntax*).
@@ -116,7 +116,48 @@ This produces the following SPIR-V (see the [section on SPIR-V tools](#spirv)):
 ```
 > spirv-dis vert.spv
 
-...
+               OpCapability Shader
+               OpCapability Matrix
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Vertex %main "main" %gl_Position %in_pos
+               OpName %main "main"
+               OpName %gl_Position "gl_Position"
+               OpName %in_pos "in_pos"
+               OpName %ubo "ubo"
+               OpName %_ptr_ubo "_ptr_ubo"
+               OpMemberName %ubo 0 "mvp"
+               OpDecorate %_ptr_ubo Binding 0
+               OpDecorate %_ptr_ubo DescriptorSet 0
+               OpDecorate %ubo Block
+               OpDecorate %in_pos Location 0
+               OpDecorate %gl_Position BuiltIn Position
+               OpMemberDecorate %ubo 0 ColMajor
+               OpMemberDecorate %ubo 0 MatrixStride 16
+               OpMemberDecorate %ubo 0 Offset 0
+       %void = OpTypeVoid
+          %2 = OpTypeFunction %void
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%mat4v4float = OpTypeMatrix %v4float 4
+        %ubo = OpTypeStruct %mat4v4float
+%_ptr_Uniform_ubo = OpTypePointer Uniform %ubo
+       %uint = OpTypeInt 32 0
+     %uint_0 = OpConstant %uint 0
+%_ptr_Uniform_mat4v4float = OpTypePointer Uniform %mat4v4float
+%_ptr_Input_v4float = OpTypePointer Input %v4float
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+%gl_Position = OpVariable %_ptr_Output_v4float Output
+     %in_pos = OpVariable %_ptr_Input_v4float Input
+   %_ptr_ubo = OpVariable %_ptr_Uniform_ubo Uniform
+       %main = OpFunction %void None %2
+          %4 = OpLabel
+         %14 = OpInBoundsAccessChain %_ptr_Uniform_mat4v4float %_ptr_ubo %uint_0
+         %15 = OpLoad %mat4v4float %14
+         %18 = OpLoad %v4float %in_pos
+         %19 = OpMatrixTimesVector %v4float %15 %18
+               OpStore %gl_Position %19
+               OpReturn
+               OpFunctionEnd
 ```
 
 <a name="ast"></a>
@@ -128,7 +169,7 @@ It is also possible to view the AST that this library generates, using the `ast`
 > ast vertexShader
 
 Bind
- ├╴Entry @Stage Vertex
+ ├╴Entry @Vertex
  │  └╴Bind
  │     ├╴Use @(Binding "ubo" :.: Index 0)
  │     └╴Lam %2
@@ -163,13 +204,13 @@ inlined t
 ```
 As `let x = a in e` desugars to `(\x -> e) a`, `u` is inlined, which results in a loss of sharing:
 ```
-%1 = OpFMul %float %2 %pi
+%1 = OpFMul %float %float_2 %float_pi
 %2 = OpFMul %float %1 %t
 %3 = OpExtInst %float %GLSL Cos %2
-%4 = OpFMul %float %2 %pi
+%4 = OpFMul %float %float_2 %float_pi
 %5 = OpFMul %float %4 %t
 %6 = OpExtInst %float %GLSL Cos %5
-%7 = OpFMul %float %2 %pi
+%7 = OpFMul %float %float_2 %float_pi
 %8 = OpFMul %float %7 %t
 %9 = OpExtInst %float %GLSL Cos %8
 %r = OpCompositeConstruct %v3float %3 %6 %9
@@ -186,7 +227,7 @@ shared t = do
 ```
 Usage of this function compiles to the appropriate SPIR-V code:
 ```
-%1 = OpFMul %float %2 %pi
+%1 = OpFMul %float %float_2 %float_pi
 %2 = OpFMul %float %1 %t
 %3 = OpExtInst %float %GLSL Cos %2
 %r = OpCompositeConstruct %v3float %3 %3 %3

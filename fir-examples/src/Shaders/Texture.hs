@@ -35,6 +35,19 @@ type VertexInput
      , Slot 2 0 ':-> V 2 Float -- UV coordinates
      ]
 
+type MyDefs =
+  '[ "ubo"    ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+                      ( Struct '[ "mvp" ':->  M 4 4 Float ] )
+   , "in_pos" ':-> Input '[ Location 0 ] (V 4 Float)
+   , "main"   ':-> EntryPoint '[] Vertex
+   ]
+
+vertexShader :: Program MyDefs ()
+vertexShader = Program $ entryPoint @"main" @Vertex do
+  mvp <- use @(Name "ubo" :.: Name "mvp")
+  in_pos <- get @"in_pos"
+  put @"gl_Position" (mvp !*^ in_pos)
+
 ------------------------------------------------
 -- vertex shader
 
