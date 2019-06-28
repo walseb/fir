@@ -98,7 +98,7 @@ createPhysicalDevice vk = liftIO do
       pure ( physicalDevice, Vulkan.getField @"deviceType" properties )
 
   case filter (isSuitableDeviceType . snd) typedDevices of
-    [] -> fail "Could not find a suitable physical device"
+    [] -> error "Could not find a suitable physical device"
     ( ( d, _deviceType ) : _ds )
       -> pure d
 
@@ -137,7 +137,7 @@ findQueueFamilyIndex physicalDevice requiredFlags = liftIO do
       pure i
 
   case capableFamilyIndices of
-    []        -> fail "No queue family has sufficient capabilities"
+    []        -> error "No queue family has sufficient capabilities"
     ( i : _ ) -> pure i
 
 
@@ -230,7 +230,7 @@ chooseSwapchainFormat
           )
 
       case sortOn ( Down . score ) surfaceFormats of
-        [] -> fail "No formats found."
+        [] -> error "No formats found."
         ( best : _ )
           | Vulkan.VK_FORMAT_UNDEFINED <- Vulkan.getField @"format" best
             -> pure preferredFormat
@@ -821,7 +821,7 @@ assertSurfacePresentable physicalDevice queueFamilyIndex surface = liftIO do
           >=> throwVkResult
       )
 
-  unless ( bool == Vulkan.VK_TRUE ) ( fail "Unsupported surface" )
+  unless ( bool == Vulkan.VK_TRUE ) ( error "Unsupported surface" )
 
 
 submitCommandBuffer

@@ -415,7 +415,7 @@ type family TessellationEvaluationMode
               ( modes :: [ ExecutionMode Nat ] )
             :: TessellationMode
             where
-  TessellationControlMbMode k modes
+  TessellationEvaluationMode k modes
     = ReadTessellationMode
         ( FromMaybe
           ( LookupOneOf k TessellationEvaluation

@@ -1,4 +1,3 @@
-{-# LANGUAGE PackageImports   #-}
 {-# LANGUAGE TypeApplications #-}
 
 {-|
@@ -35,24 +34,31 @@ import Data.Word
   ( Word8,Word16,Word32,Word64 )
 
 -- binary
-import qualified Data.Binary as Binary
+import qualified Data.Binary     as Binary
+  ( put )
 import qualified Data.Binary.Put as Binary
-
--- bytestring
-import qualified Data.ByteString as ByteString
+  ( PutM
+  , putWord8
+  , putWord32le, putWord64le
+  , putInt32le, putInt64le
+  , putShortByteString
+  )
 
 -- data-binary-ieee754
 import qualified Data.Binary.IEEE754 as Binary.IEEE754
+  ( putFloat32le, putFloat64le )
 
 -- half
 import Numeric.Half
   ( Half )
 import qualified Numeric.Half as Half
+  ( fromHalf )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text.Encoding as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( length, toShortByteString )
 
 ----------------------------------------------------------------------------
 -- Put type class
@@ -120,15 +126,14 @@ instance Put Double where
   wordCount _ = 2
 
 -- | @C@-style string
-instance Put Text where
+instance Put ShortText where
   put lit =
-    let bs = Text.encodeUtf8 lit
-        n = ByteString.length bs
+    let n = ShortText.length lit
         pad = 4 - (n `mod` 4)
-    in Binary.putByteString bs
+    in Binary.putShortByteString (ShortText.toShortByteString lit)
     <> (pad `stimes` Binary.putWord8 0)
   wordCount lit
-    = let n = fromIntegral $ ByteString.length ( Text.encodeUtf8 lit )
+    = let n = fromIntegral $ ShortText.length lit
       in 1 + (n `div` 4)
 
 ----------------------------------------------------------------------------

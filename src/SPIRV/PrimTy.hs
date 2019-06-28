@@ -1,7 +1,6 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
 module SPIRV.PrimTy
@@ -17,9 +16,9 @@ import Data.Word
 import Prelude
   hiding (Integer, Floating)
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import SPIRV.Decoration
@@ -67,7 +66,7 @@ data PrimTy where
     , usage :: AggregateUsage
     } -> PrimTy
   Struct ::
-    { eltTys :: [( Maybe Text, PrimTy, Decorations )]
+    { eltTys :: [( Maybe ShortText, PrimTy, Decorations )]
     -- ^ the (optional) field names are only used to annotate the source code
     , decs   :: Decorations
     , usage  :: AggregateUsage

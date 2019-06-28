@@ -10,7 +10,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TupleSections         #-}
@@ -156,10 +155,10 @@ import Numeric.Half
 import Control.Monad.Except
   ( MonadError, throwError )
 
--- text-utf8
-import "text-utf8" Data.Text as Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
   ( pack )
 
 -- fir
@@ -513,12 +512,12 @@ instance ( PrimTyMap as
 
 instance
   ( TypeError
-      (    'Text "Structure contains insufficient layout information."
-      :$$: 'Text ""
-      :$$: 'Text "To use the 'Locations' layout, location/component information needs to be supplied, such as:"
-      :$$: 'Text "    Struct '[ Slot 0 0 ':-> V 2 Float, Slot 0 2 ':-> V 2 Float ],"
-      :$$: 'Text "where 'Slot l c' refers to the interface slot in location 'l' with component 'c',"
-      :$$: 'Text "with 0 <= l < maxVertexInputAttributes (at least 16), 0 <= b < 4."
+      (    Text "Structure contains insufficient layout information."
+      :$$: Text ""
+      :$$: Text "To use the 'Locations' layout, location/component information needs to be supplied, such as:"
+      :$$: Text "    Struct '[ Slot 0 0 ':-> V 2 Float, Slot 0 2 ':-> V 2 Float ],"
+      :$$: Text "where 'Slot l c' refers to the interface slot in location 'l' with component 'c',"
+      :$$: Text "with 0 <= l < maxVertexInputAttributes (at least 16), 0 <= b < 4."
       )
   )
   => Poke (Struct (as :: [Symbol :-> Type])) Locations
@@ -610,9 +609,9 @@ type family SlotDoesNotAppear
     ( Provenance base1 ( _ :: SKPrimTy ty1 ) _ )
     ( ( slot ':-> Provenance base2 ( _ :: SKPrimTy ty2 ) _ ) ': _ )
     = TypeError
-        (    'Text "Overlap at " :<>: 'Text (ShowLocation slot ) :<>: 'Text ":"
-        :$$: 'Text "  - " :<>: ShowType ty1 :<>: 'Text " based at " :<>: 'Text (ShowLocation base1) :<>: 'Text ","
-        :$$: 'Text "  - " :<>: ShowType ty2 :<>: 'Text " based at " :<>: 'Text (ShowLocation base2) :<>: 'Text "."
+        (    Text "Overlap at " :<>: Text (ShowLocation slot ) :<>: Text ":"
+        :$$: Text "  - " :<>: ShowType ty1 :<>: Text " based at " :<>: Text (ShowLocation base1) :<>: Text ","
+        :$$: Text "  - " :<>: ShowType ty2 :<>: Text " based at " :<>: Text (ShowLocation base2) :<>: Text "."
         )
   SlotDoesNotAppear slot prov ( _ ': slots)
     = SlotDoesNotAppear slot prov slots
@@ -693,10 +692,10 @@ type family EnumSlots
             where
   EnumSlots _ () SKUnit
     = TypeError
-        ( 'Text "Vertex binding: unit type not supported." )
+        ( Text "Vertex binding: unit type not supported." )
   EnumSlots _ Bool SKBool
     = TypeError
-        ( 'Text "Vertex binding: booleans not supported. Convert to 'Word32' instead." )
+        ( Text "Vertex binding: booleans not supported. Convert to 'Word32' instead." )
   EnumSlots ('LocationSlot l c) ty (SKScalar s)
     = If ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 )
         ( ( EnumConsecutiveSlots ('LocationSlot l c) ty )
@@ -704,8 +703,8 @@ type family EnumSlots
           ( Provenance ('LocationSlot l c) (SKScalar s) s )
         )
         ( TypeError
-          (    'Text "Vertex binding: cannot position " :<>: ShowType ty :<>: 'Text " at location " :<>: ShowType l
-          :<>: 'Text " with odd component " :<>: ShowType c :<>: 'Text "."
+          (    Text "Vertex binding: cannot position " :<>: ShowType ty :<>: Text " at location " :<>: ShowType l
+          :<>: Text " with odd component " :<>: ShowType c :<>: Text "."
           )
         )
   EnumSlots ('LocationSlot l c) (V n a) (SKVector s)
@@ -715,9 +714,9 @@ type family EnumSlots
           ( Provenance ('LocationSlot l c) (SKVector s) s )
        )
        ( TypeError
-          (    'Text "Vertex binding: cannot position vector " :<>: ShowType (V n a)
-          :<>: 'Text " at location " :<>: ShowType l
-          :<>: 'Text " with component " :<>: ShowType c :<>: 'Text "."
+          (    Text "Vertex binding: cannot position vector " :<>: ShowType (V n a)
+          :<>: Text " at location " :<>: ShowType l
+          :<>: Text " with component " :<>: ShowType c :<>: Text "."
           )
        )
   EnumSlots ('LocationSlot l 0) (M m n a) (SKMatrix s)
@@ -726,8 +725,8 @@ type family EnumSlots
       ( Provenance ('LocationSlot l 0) (SKMatrix s) s )
   EnumSlots ('LocationSlot l c) (M m n a) (SKMatrix _)
     = TypeError
-        (    'Text "Vertex binding: cannot position matrix at location " :<>: ShowType l
-        :<>: 'Text " with non-zero component " :<>: ShowType c :<>: 'Text "."
+        (    Text "Vertex binding: cannot position matrix at location " :<>: ShowType l
+        :<>: Text " with non-zero component " :<>: ShowType c :<>: Text "."
         )
   EnumSlots loc (Array 0 a) (SKArray _  ) = '[]
   EnumSlots loc (Array 1 a) (SKArray elt) = EnumSlots loc a elt
@@ -742,10 +741,10 @@ type family EnumSlots
             ( SKArray elt )
   EnumSlots _ (RuntimeArray _) (SKRuntimeArray _)
     = TypeError
-        ( 'Text "Vertex binding: runtime arrays not supported." )
+        ( Text "Vertex binding: runtime arrays not supported." )
   EnumSlots _ (Struct _) (SKStruct _)
     = TypeError
-        ( 'Text "Vertex binding: nested structs not (yet?) supported." )
+        ( Text "Vertex binding: nested structs not (yet?) supported." )
 
 type family SumRoundedUpSizes (lay :: Layout) (ali :: Nat) (as :: [fld :-> Type]) :: Nat where
   SumRoundedUpSizes _   _   '[]                    = 0
@@ -766,7 +765,7 @@ maxMemberAlignment
    => ( SPIRV.PrimTy -> m Word32 ) -> [(ignore1, SPIRV.PrimTy, ignore2)] -> m Word32
 maxMemberAlignment f as = foldr ( \ a b -> max <$> ( f . ( \(_,ty,_) -> ty ) ) a <*> b ) (pure 0) as
 
-scalarAlignment :: MonadError Text m => SPIRV.PrimTy -> m Word32
+scalarAlignment :: MonadError ShortText m => SPIRV.PrimTy -> m Word32
 scalarAlignment (SPIRV.Scalar (SPIRV.Integer  _ w)) = pure (SPIRV.width w `quot` 8)
 scalarAlignment (SPIRV.Scalar (SPIRV.Floating   w)) = pure (SPIRV.width w `quot` 8)
 scalarAlignment (SPIRV.Vector        {eltTy}) = scalarAlignment eltTy
@@ -776,9 +775,9 @@ scalarAlignment (SPIRV.RuntimeArray  {eltTy}) = scalarAlignment eltTy
 scalarAlignment (SPIRV.Struct       {eltTys}) = maxMemberAlignment scalarAlignment eltTys
 scalarAlignment ty
   = throwError
-      ( "Layout: cannot compute scalar alignment of type " <> Text.pack (show ty) <> "." )
+      ( "Layout: cannot compute scalar alignment of type " <> ShortText.pack (show ty) <> "." )
 
-baseAlignment :: MonadError Text m => SPIRV.PrimTy -> m Word32
+baseAlignment :: MonadError ShortText m => SPIRV.PrimTy -> m Word32
 baseAlignment sc@SPIRV.Scalar {} = scalarAlignment sc
 baseAlignment (SPIRV.Vector   {size, eltTy})
   | size == 0 = throwError "Layout: cannot compute base alignment of empty vector."
@@ -789,23 +788,23 @@ baseAlignment (SPIRV.Struct        {eltTys}) = maxMemberAlignment baseAlignment 
 baseAlignment (SPIRV.Matrix {rows, entryTy}) = baseAlignment (SPIRV.Vector rows (SPIRV.Scalar entryTy)) -- assumed column major
 baseAlignment ty
   = throwError
-      ( "Layout: cannot compute base alignment of type " <> Text.pack (show ty) <> "." )
+      ( "Layout: cannot compute base alignment of type " <> ShortText.pack (show ty) <> "." )
 
-extendedAlignment :: MonadError Text m => SPIRV.PrimTy -> m Word32
+extendedAlignment :: MonadError ShortText m => SPIRV.PrimTy -> m Word32
 extendedAlignment (SPIRV.Array         {eltTy}) = (`roundUp` 16) <$> extendedAlignment eltTy
 extendedAlignment (SPIRV.RuntimeArray  {eltTy}) = (`roundUp` 16) <$> extendedAlignment eltTy
 extendedAlignment (SPIRV.Struct       {eltTys}) = (`roundUp` 16) <$> maxMemberAlignment extendedAlignment eltTys
 extendedAlignment ty                            = baseAlignment ty
 
-requiredAlignment :: MonadError Text m => SPIRV.StorageClass -> m ( SPIRV.PrimTy -> m Word32 )
+requiredAlignment :: MonadError ShortText m => SPIRV.StorageClass -> m ( SPIRV.PrimTy -> m Word32 )
 requiredAlignment Storage.Uniform       = pure extendedAlignment
 requiredAlignment Storage.StorageBuffer = pure baseAlignment
 requiredAlignment Storage.PushConstant  = pure baseAlignment
 requiredAlignment storage
   = throwError
-      ( "Layout: unsupported storage class " <> Text.pack (show storage) <> "." )
+      ( "Layout: unsupported storage class " <> ShortText.pack (show storage) <> "." )
 
-inferLayout :: MonadError Text m
+inferLayout :: MonadError ShortText m
             => SPIRV.AggregateUsage
             -> SPIRV.Decorations
             -> SPIRV.StorageClass
@@ -853,13 +852,13 @@ inferLayout _ _ storageClass ty
   = pure ty
   | otherwise
   = throwError
-    (  "'inferLayout': unsupported type " <> Text.pack (show ty)
+    (  "'inferLayout': unsupported type " <> ShortText.pack (show ty)
     <> " in conjunction with storage class "
-    <> Text.pack (show storageClass) <> "."
+    <> ShortText.pack (show storageClass) <> "."
     )
 
 inferPointerLayout
-  :: MonadError Text m
+  :: MonadError ShortText m
   => SPIRV.AggregateUsage
   -> SPIRV.Decorations
   -> SPIRV.PointerTy
@@ -868,7 +867,7 @@ inferPointerLayout usage decs (SPIRV.PointerTy storageClass ty)
   = SPIRV.PointerTy storageClass <$> inferLayout usage decs storageClass ty
 
 
-layoutWith :: MonadError Text m
+layoutWith :: MonadError ShortText m
            => ( SPIRV.PrimTy -> m Word32 ) -> SPIRV.PrimTy -> m SPIRV.PrimTy
 layoutWith _ ty@(SPIRV.Scalar {}) = pure ty
 layoutWith _ ty@(SPIRV.Vector {}) = pure ty
@@ -907,19 +906,19 @@ layoutWith f struct@(SPIRV.Struct as decs structUsage) = do
   laidOutMembers <- layoutStructMembersWith f ali as
   pure ( SPIRV.Struct laidOutMembers decs structUsage )
 layoutWith _ ty
-  = throwError ( "'layoutWith': unsupported type " <> Text.pack (show ty) <> "." )
+  = throwError ( "'layoutWith': unsupported type " <> ShortText.pack (show ty) <> "." )
 
 layoutStructMembersWith
-    :: forall m. MonadError Text m
+    :: forall m. MonadError ShortText m
     => ( SPIRV.PrimTy -> m Word32 )
     -> Word32
-    -> [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
-    -> m [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
+    -> [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
+    -> m [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
 layoutStructMembersWith f ali as = fst <$> go 0 as
   where
     go :: Word32
-       ->     [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ]
-       -> m ( [ ( Maybe Text, SPIRV.PrimTy, SPIRV.Decorations ) ], Word32 )
+       ->     [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
+       -> m ( [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ], Word32 )
     go offset []               = pure ( [], offset )
     go offset ((name, ty, decs):nxt) = do
         (newOffset, laidOutTy, newDecs)

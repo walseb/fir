@@ -4,7 +4,6 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -39,10 +38,11 @@ import Codec.Picture.Png
 import Control.Monad.Managed
   ( MonadManaged, runManaged )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( unpack )
 
 -- vector
 import qualified Data.Vector.Storable as Vector
@@ -72,7 +72,7 @@ import Vulkan.Pipeline
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either Text ()
+shaderCompilationResult :: Either ShortText ()
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Vertex shader"  , compileVertexShader  )
@@ -84,7 +84,7 @@ offscreen :: IO ()
 offscreen = runManaged do
 
   case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err )
+    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
   vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance []

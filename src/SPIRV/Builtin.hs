@@ -1,7 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -17,9 +16,9 @@ module SPIRV.Builtin
 import Data.Word
   ( Word32 )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import Data.Binary.Class.Put
@@ -76,7 +75,7 @@ data Builtin
   | InstanceIndex
   deriving ( Show, Eq, Ord )
 
-readBuiltin :: Text -> Maybe Builtin
+readBuiltin :: ShortText -> Maybe Builtin
 readBuiltin "gl_Position"                  = Just Position
 readBuiltin "gl_PointSize"                 = Just PointSize
 readBuiltin "gl_ClipDistance"              = Just ClipDistance

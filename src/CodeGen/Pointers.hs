@@ -2,7 +2,6 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -31,10 +30,11 @@ import Control.Monad.Except
 import Control.Lens
   ( use, assign )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Binary
@@ -140,8 +140,8 @@ accessChain (basePtrID, SPIRV.PointerTy storage baseTy) indices
       -- even though they appear identical on the Haskell side.)
       eltTy <-
         note ( "'accessChain': could not compute accessee type.\n\
-               \base: " <> Text.pack (show baseTy) <> "\n\
-               \indices: " <> Text.pack (show indices) <> "."
+               \base: " <> ShortText.pack (show baseTy) <> "\n\
+               \indices: " <> ShortText.pack (show indices) <> "."
              )
           =<< ( flip accessedTy baseTy <$> reverseLookupIndices indices )
       let opAccessChain
@@ -189,7 +189,7 @@ reverseConstantLookup c = do
 ----------------------------------------------------------------------------
 -- load/store through pointers
 
-load :: (Text, ID) -> SPIRV.PointerTy -> CGMonad (ID, SPIRV.PrimTy)
+load :: (ShortText, ID) -> SPIRV.PointerTy -> CGMonad (ID, SPIRV.PrimTy)
 load (loadeeName, loadeeID) (SPIRV.PointerTy storage ty)
   = do
       context <- use _functionContext
@@ -217,7 +217,7 @@ loadInstruction ty loadeeID
             }
         pure (v, ty)
 
-store :: (Text, ID) -> ID -> SPIRV.PointerTy -> CGMonad ()
+store :: (ShortText, ID) -> ID -> SPIRV.PointerTy -> CGMonad ()
 store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
   = do
       context <- use _functionContext

@@ -5,7 +5,6 @@
 {-# LANGUAGE NamedWildCards         #-}
 {-# LANGUAGE OverloadedLabels       #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -18,9 +17,9 @@
 
 module Shaders.Bezier where
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import FIR
@@ -255,19 +254,19 @@ tesePath = "shaders/bezier_tese.spv"
 geomPath = "shaders/bezier_geom.spv"
 fragPath = "shaders/bezier_frag.spv"
 
-compileVertexShader :: IO ( Either Text () )
+compileVertexShader :: IO ( Either ShortText () )
 compileVertexShader = compile vertPath [] vertex
 
-compileTessellationControlShader :: IO ( Either Text () )
+compileTessellationControlShader :: IO ( Either ShortText () )
 compileTessellationControlShader = compile tescPath [] tessellationControl
 
-compileTessellationEvaluationShader :: IO ( Either Text () )
+compileTessellationEvaluationShader :: IO ( Either ShortText () )
 compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
 
-compileGeometryShader :: IO ( Either Text () )
+compileGeometryShader :: IO ( Either ShortText () )
 compileGeometryShader = compile geomPath [] geometry
 
-compileFragmentShader :: IO ( Either Text () )
+compileFragmentShader :: IO ( Either ShortText () )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline

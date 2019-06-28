@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -43,9 +42,9 @@ import Control.Lens
 import Control.Monad.Except
   ( throwError )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import CodeGen.Application
@@ -160,7 +159,7 @@ storeThroughAccessChain basePtr val sOptic is
 
 insertUsingSetter
   :: forall is s a (optic :: Optic is s a).
-     Text -> (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad ()
+     ShortText -> (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad ()
 insertUsingSetter varName base val sOptic is
   = insertUsingSetter' varName base val =<< operationTree is sOptic
 
@@ -329,7 +328,7 @@ storeThroughAccessChain' _ _ ( Join `Then` _ )
 
 
 insertUsingSetter'
-  :: Text -> (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad ()
+  :: ShortText -> (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad ()
 -- deal with some simple cases first
 insertUsingSetter' varName _ val Done
   = assign ( _localBinding varName ) (Just val)

@@ -19,7 +19,7 @@ The Haskell type system helps in verifying programs at compile time, especially 
 <a name="getting-started"></a>
 # Getting started
 
-FIR requires GHC >= 8.6. See [getting started](getting_started.md) for help on getting started, including:
+See [getting started](getting_started.md) for help on getting started, including:
   * installation instructions,
   * a simple vertex shader example,
   * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools.

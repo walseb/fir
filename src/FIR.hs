@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
@@ -235,10 +234,11 @@ import Data.Tree.View
 import qualified Language.Haskell.TH        as TH
 import qualified Language.Haskell.TH.Syntax as TH
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack, unpack )
 
 -- fir
 import CodeGen.CodeGen
@@ -312,7 +312,7 @@ data CompilerFlag
 
 -- | Functionality for compiling a program, saving the SPIR-V assembly at the given filepath.
 class CompilableProgram prog where
-  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either Text () )
+  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText () )
 
 instance KnownDefinitions defs => CompilableProgram (Program defs a) where
   compile filePath flags (Program program)
@@ -331,8 +331,8 @@ instance ( KnownDefinitions defs )
   compile filePath flags (FIR.Pipeline.ShaderStage prog)
     = compile filePath flags (Program @defs prog)
 
-instance TH.Lift Text where
-  lift t = [| Text.pack $(TH.lift $ Text.unpack t) |]
+instance TH.Lift ShortText where
+  lift t = [| ShortText.pack $(TH.lift $ ShortText.unpack t) |]
 
 -- | Utility function to run IO actions at compile time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.
@@ -350,16 +350,16 @@ instance TH.Lift Text where
 -- This will compile the vertexShader @vertexShader@ at filepath @vertPath@,
 -- and similarly for the fragment shader.
 -- These can then be loaded into Vulkan shader modules for use in rendering.
-runCompilationsTH :: [ ( Text, IO (Either Text ()) ) ] -> TH.Q TH.Exp
+runCompilationsTH :: [ ( ShortText, IO (Either ShortText ()) ) ] -> TH.Q TH.Exp
 runCompilationsTH namedCompilations
   = TH.lift Prelude.=<< TH.runIO (combineCompilations namedCompilations)
     where
-      combineCompilations :: [ ( Text, IO (Either Text ()) ) ] -> IO (Either Text ())
+      combineCompilations :: [ ( ShortText, IO (Either ShortText ()) ) ] -> IO (Either ShortText ())
       combineCompilations
         = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right ()) )
         . traverse ( uncurry rightStrength )
 
-      combineResult :: Text -> Either Text () -> Either Text () -> Either Text ()
+      combineResult :: ShortText -> Either ShortText () -> Either ShortText () -> Either ShortText ()
       combineResult _    a           (Right _ ) = a
       combineResult name (Right _)   (Left err) = Left (name <> ": " <> err)
       combineResult name (Left errs) (Left err)

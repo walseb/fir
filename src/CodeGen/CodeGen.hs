@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -50,10 +49,11 @@ import Control.Monad.State
 import Control.Lens
   ( view, use, assign, modifying )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Application
@@ -144,7 +144,7 @@ import qualified SPIRV.Storage   as Storage
 ----------------------------------------------------------------------------
 -- main code generator
 
-runCodeGen :: CGContext -> AST a -> Either Text ByteString
+runCodeGen :: CGContext -> AST a -> Either ShortText ByteString
 runCodeGen context = putASM context . codeGen
 
 codeGen :: AST ast -> CGMonad (ID, SPIRV.PrimTy)
@@ -162,13 +162,13 @@ codeGen (Applied (MkID ident@(i,ty)) as)
                              declareFunctionCall (retTyID, y) ident =<< traverseASTs codeGen as
                     GT -> throwError $
                             "codeGen: partial application not supported \
-                            \(function " <> Text.pack (show i) <> ")"
+                            \(function " <> ShortText.pack (show i) <> ")"
                     LT -> throwError 
-                        $ "codeGen: function " <> Text.pack (show i) <> " of " <> Text.pack (show totalArgs)
+                        $ "codeGen: function " <> ShortText.pack (show i) <> " of " <> ShortText.pack (show totalArgs)
                           <> " arguments applied to "
-                          <> Text.pack (show givenArgs)
+                          <> ShortText.pack (show givenArgs)
                           <> " arguments"
-          _ -> throwError $ "codeGen: type " <> Text.pack (show ty) <> " used as a function ("<> Text.pack (show i) <> ")"
+          _ -> throwError $ "codeGen: type " <> ShortText.pack (show ty) <> " used as a function ("<> ShortText.pack (show i) <> ")"
 -- constants
 codeGen (Lit (a :: ty)) = ( , primTyVal @ty) <$> constID a
 -- perform substitution when possible
@@ -294,34 +294,34 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
                     extractUsingGetter texel getter nextindices
 
       _ -> throwError (   "codeGen: cannot 'use', unsupported optic:\n"
-                       <> Text.pack (showSOptic singOptic) <> "\n"
+                       <> ShortText.pack (showSOptic singOptic) <> "\n"
                        <> "Optic does not start by accessing a binding (or image texel).\n"
                        <> "Cannot access multiple bindings simultaneously."
                       )
 codeGen (Applied (Use sLg singOptic) is)
-  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+  = throwError (    "codeGen: optic " <> ShortText.pack (showSOptic singOptic)
                  <> " provided with the wrong number of run-time indices by 'use'.\n"
                  <> "Expected " <> expected
                  <> ", but provided " <> provided <> "."
                )
-    where expected :: Text
-          expected = Text.pack . show $ sLengthVal sLg
-          provided :: Text
-          provided = Text.pack . show $ astsLength is
+    where expected :: ShortText
+          expected = ShortText.pack . show $ sLengthVal sLg
+          provided :: ShortText
+          provided = ShortText.pack . show $ astsLength is
 
 codeGen (OpticView (AnIndexedOptic getter is) (UAST s))
   = do base <- codeGen s
        extractUsingGetter base getter is
 codeGen (Applied (View sLg singOptic) is)
-  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+  = throwError (    "codeGen: optic " <> ShortText.pack (showSOptic singOptic)
                  <> " provided with the wrong number of run-time indices by 'view'.\n"
                  <> "Expected " <> expected
                  <> ", but provided " <> provided <> "."
                )
-    where expected :: Text
-          expected = Text.pack . show $ sLengthVal sLg
-          provided :: Text
-          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ astsLength is
+    where expected :: ShortText
+          expected = ShortText.pack . show $ sLengthVal sLg
+          provided :: ShortText
+          provided = ShortText.pack . show . (\i -> if i < 1 then 0 else i-1) $ astsLength is
           -- off by one: the last argument is the object being accessed,
           -- which is not a run-time index
 
@@ -378,20 +378,20 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
                       )
 
       _ -> throwError (   "codeGen: cannot 'assign', unsupported optic:\n"
-                       <> Text.pack (showSOptic singOptic) <> "\n"
+                       <> ShortText.pack (showSOptic singOptic) <> "\n"
                        <> "Optic does not start by accessing a binding."
                        <> "Cannot update multiple bindings simultaneously."
                       )
 codeGen (Applied (Assign sLg singOptic) is)
-  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+  = throwError (    "codeGen: optic " <> ShortText.pack (showSOptic singOptic)
                  <> " provided with the wrong number of run-time indices by 'assign'.\n"
                  <> "Expected " <> expected
                  <> ", but provided " <> provided <> "."
                )
-    where expected :: Text
-          expected = Text.pack . show $ sLengthVal sLg
-          provided :: Text
-          provided = Text.pack . show . (\i -> if i < 1 then 0 else i-1) $ astsLength is
+    where expected :: ShortText
+          expected = ShortText.pack . show $ sLengthVal sLg
+          provided :: ShortText
+          provided = ShortText.pack . show . (\i -> if i < 1 then 0 else i-1) $ astsLength is
           -- off by one: the last argument is the value for the assignment,
           -- which is not a run-time index
 
@@ -400,15 +400,15 @@ codeGen (OpticSet (AnIndexedOptic setter is) (UAST a) (UAST s))
        elt  <- codeGen a
        setUsingSetter  base elt setter is
 codeGen (Applied (Set sLg singOptic) is)
-  = throwError (    "codeGen: optic " <> Text.pack (showSOptic singOptic)
+  = throwError (    "codeGen: optic " <> ShortText.pack (showSOptic singOptic)
                  <> " provided with the wrong number of run-time indices by 'set'.\n"
                  <> "Expected " <> expected
                  <> ", but provided " <> provided <> "."
                )
-    where expected :: Text
-          expected = Text.pack . show $ sLengthVal sLg
-          provided :: Text
-          provided = Text.pack . show . (\i -> if i < 2 then 0 else i-2) $ astsLength is
+    where expected :: ShortText
+          expected = ShortText.pack . show $ sLengthVal sLg
+          provided :: ShortText
+          provided = ShortText.pack . show . (\i -> if i < 2 then 0 else i-2) $ astsLength is
           -- off by two
 codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
   = do  let n = knownValue @n
@@ -419,7 +419,7 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                SPIRV.Vector m (SPIRV.Scalar s)
                  -> pure $ SPIRV.Matrix m n s
                x -> throwError ( "codeGen: unexpected vector constituent "
-                               <> Text.pack ( show x )
+                               <> ShortText.pack ( show x )
                                )
         (compositeConstruct compositeTy . map fst) =<< traverseASTs codeGen as
 codeGen (GradedMappend :$ (a :: AST a) :$ (b :: AST b))
@@ -490,7 +490,7 @@ codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
         when ( condTy /= SPIRV.Boolean )
              ( throwError
              $  "codeGen: 'if' expected boolean conditional, but got "
-             <> Text.pack (show condTy)
+             <> ShortText.pack (show condTy)
              )
         selectionMerge mergeBlock Nothing
         branchConditional condID trueBlock falseBlock
@@ -553,13 +553,13 @@ codeGen (While :$ cond :$ loopBody)
         -- needs to appear after the header block in the CFG.
         ctxt  <- ask
         state <- get
-        let bindingsBefore :: Map Text (ID, SPIRV.PrimTy)
+        let bindingsBefore :: Map ShortText (ID, SPIRV.PrimTy)
             bindingsBefore  = localBindings state
 
             -- The first CGState is the one we pass manually and that we want.
             -- The second CGState has the wrong "currentBlock" information,
             -- because we branched to the header block at the end.
-            loopGenOutput :: Either Text (CGState, CGState, ByteString)
+            loopGenOutput :: Either ShortText (CGState, CGState, ByteString)
             loopGenOutput
               = runCGMonad ctxt state
                   do  block loopBlock
@@ -602,7 +602,7 @@ codeGen (While :$ cond :$ loopBody)
         when ( condTy /= SPIRV.Boolean )
              ( throwError
              $  "codeGen: 'while' expected boolean conditional, but got "
-             <> Text.pack (show condTy)
+             <> ShortText.pack (show condTy)
              )
         liftPut $ putInstruction Map.empty
           Instruction
@@ -636,13 +636,13 @@ codeGen (While :$ cond :$ loopBody)
        
 codeGen (Lam f)
   = throwError ( "codeGen: unexpected lambda abstraction:\n"
-                <> Text.pack ( show (Lam f) )
+                <> ShortText.pack ( show (Lam f) )
                )
 codeGen (f :$ a)
   = throwError ( "codeGen: unsupported function application:\n"
-                 <> Text.pack ( show (f :$ a) )
+                 <> ShortText.pack ( show (f :$ a) )
                )
 codeGen other
   = throwError ( "codeGen: non-exhaustive pattern match:\n"
-                 <> Text.pack ( show other )
+                 <> ShortText.pack ( show other )
                )

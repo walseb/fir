@@ -5,7 +5,6 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
-{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -33,9 +32,9 @@ import Data.Map
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import CodeGen.State
@@ -134,9 +133,9 @@ instance ( Known SPIRV.ExecutionModel stage, Known [SPIRV.ExecutionMode Nat] mod
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
   annotations
-    :: ( Map Text                         ( SPIRV.PointerTy, SPIRV.Decorations )
-       , Map Text                         SPIRV.FunctionControl
-       , Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes
+    :: ( Map  ShortText                        ( SPIRV.PointerTy, SPIRV.Decorations )
+       , Map  ShortText                        SPIRV.FunctionControl
+       , Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
        )
 
 instance KnownDefinitions '[] where
@@ -152,7 +151,7 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
            AnnotateGlobal     x      -> ( Map.insert k x g, f, e )
            AnnotateFunction   x      -> ( g, Map.insert k x f, e )
            AnnotateEntryPoint (s, x) -> ( g, f, Map.insert l x e )
-              where l :: ( Text, SPIRV.ExecutionModel )
+              where l :: ( ShortText, SPIRV.ExecutionModel )
                     l = (k,s)
 
 type family StartState (defs :: [ Symbol :-> Definition ]) :: ASTState where
@@ -195,7 +194,7 @@ type family DefinitionInsertEntryPointInfo
   -- 'SPIRV.ValidateExecutionModes' never returns Nothing, it throws a type error instead
   -- this trick forces evaluation of "SPIRV.ValidateExecutionModes"
   -- ( this fixes [issue #43](https://gitlab.com/sheaf/fir/issues/43) )
-    = TypeError ( 'Text "Invalid entry point execution modes (unreachable)" )
+    = TypeError ( Text "Invalid entry point execution modes (unreachable)" )
   DefinitionInsertEntryPointInfo k ('Just nfo) nfos
     = InsertEntryPointInfo
         ( 'EntryPointInfo k nfo '( '[], '[] ) 'Declared )
@@ -229,20 +228,20 @@ type family ValidateGlobal
   ValidateGlobal Storage.UniformConstant '[] (Image ty) = Nothing
   ValidateGlobal Storage.UniformConstant (dec ': _) (Image _)
     = TypeError
-        ( 'Text "Invalid decoration " :<>: ShowType dec :<>: 'Text " applied to image." )
+        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
   ValidateGlobal Storage.UniformConstant _ nonImageTy
     = TypeError
-        (    'Text "Uniform constant global expected to point to an image, but points to "
-        :<>: ShowType nonImageTy :<>: 'Text " instead."
+        (    Text "Uniform constant global expected to point to an image, but points to "
+        :<>: ShowType nonImageTy :<>: Text " instead."
         )
   ValidateGlobal Storage.Image '[] (Image ty) = Nothing
   ValidateGlobal Storage.Image  (dec ': _) (Image _)
     = TypeError
-        ( 'Text "Invalid decoration " :<>: ShowType dec :<>: 'Text " applied to image." )
+        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
   ValidateGlobal Storage.Image  _ nonImageTy
     = TypeError
-        (    'Text "Image global expected to point to an image, but points to "
-        :<>: ShowType nonImageTy :<>: 'Text " instead."
+        (    Text "Image global expected to point to an image, but points to "
+        :<>: ShowType nonImageTy :<>: Text " instead."
         )
   ValidateGlobal Storage.Uniform decs (Struct as)
     = If ( ValidUniformDecorations decs (Struct as))
@@ -254,15 +253,15 @@ type family ValidateGlobal
         ( Nothing ) -- unreachable
   ValidateGlobal Storage.Uniform _ ty
     = TypeError
-        (    'Text "Uniform buffer should be backed by a struct or array containing a struct;"
-        :$$: 'Text "found type " :<>: ShowType ty :<>: 'Text " instead."
+        (    Text "Uniform buffer should be backed by a struct or array containing a struct;"
+        :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
   ValidateGlobal Storage.StorageBuffer _ (Struct as) = Just (Struct as)
   ValidateGlobal Storage.StorageBuffer _ (Array n (Struct as)) = Just (Array n (Struct as))
   ValidateGlobal Storage.StorageBuffer _ ty
     = TypeError
-        (    'Text "Uniform storage buffer should be backed by a struct or array containing a struct;"
-        :$$: 'Text "found type " :<>: ShowType ty :<>: 'Text " instead."
+        (    Text "Uniform storage buffer should be backed by a struct or array containing a struct;"
+        :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
   -- TODO
   ValidateGlobal Storage.Input  _ _ = Nothing
@@ -283,14 +282,14 @@ type family HasBinding ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
   HasBinding ( _ ': decs ) = HasBinding decs
   HasBinding '[]
     = TypeError
-        ( 'Text "Uniform buffer is missing a 'Binding' decoration." )
+        ( Text "Uniform buffer is missing a 'Binding' decoration." )
 
 type family HasDescriptorSet ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
   HasDescriptorSet ( SPIRV.DescriptorSet _ ': _ ) = 'True
   HasDescriptorSet ( _ ': decs ) = HasDescriptorSet decs
   HasDescriptorSet '[]
     = TypeError
-        ( 'Text "Uniform buffer is missing a 'DescriptorSet' decoration." )
+        ( Text "Uniform buffer is missing a 'DescriptorSet' decoration." )
 
 --------------------------------------------------------------------------
 

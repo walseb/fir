@@ -1,7 +1,6 @@
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports    #-}
 
 module CodeGen.Composite
   ( compositeConstruct
@@ -22,8 +21,9 @@ import qualified Data.Map.Strict as Map
 import Control.Monad.Except
   ( throwError )
 
--- text-utf8
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Binary
@@ -69,8 +69,8 @@ compositeExtract indices (compositeID, compositeTy)
   = do
       constituentTy <-
           note ( "'compositeExtract': could not compute accessee type.\n\
-                 \base: " <> Text.pack (show compositeTy) <> "\n\
-                 \indices: " <> Text.pack (show indices) <> "."
+                 \base: " <> ShortText.pack (show compositeTy) <> "\n\
+                 \indices: " <> ShortText.pack (show indices) <> "."
                )
           ( accessedTy ( fmap Just indices ) compositeTy )
       constituentTyID <- typeID constituentTy
@@ -95,8 +95,8 @@ compositeInsert (inserteeID, inserteeTy) (compositeID, compositeTy) indices
       compositeTyID <- typeID compositeTy
       constituentTy <-
           note ( "'compositeInsert': could not compute constituent type.\n\
-                 \base: " <> Text.pack (show compositeTy) <> "\n\
-                 \indices: " <> Text.pack (show indices) <> "."
+                 \base: " <> ShortText.pack (show compositeTy) <> "\n\
+                 \indices: " <> ShortText.pack (show indices) <> "."
                )
           ( accessedTy ( fmap Just indices ) compositeTy )
       constituentTyID <- typeID constituentTy

@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports    #-}
 {-# LANGUAGE TupleSections     #-}
 
 module Test where
@@ -38,7 +37,7 @@ import System.Process
   , waitForProcess
   )
 
--- text-utf8
+-- text
 import Data.Text
   ( Text )
 import qualified Data.Text    as Text

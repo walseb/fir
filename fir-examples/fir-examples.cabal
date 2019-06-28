@@ -5,15 +5,17 @@ synopsis:            Vulkan example scenes using FIR
 category:            Graphics
 author:              Sam Derbyshire
 maintainer:          sam.derbyshire@gmail.com
+homepage:            https://gitlab.com/sheaf/fir/fir-examples
 build-type:          Simple
 description:
+
   This package contains some example Vulkan scenes,
   using shaders compiled by __FIR__.
-  .
+
   Depends on 'vulkan-api' for Vulkan bindings,
   'sdl2' for window and input management,
   and 'JuicyPixels' for exporting PNG renders.
-  .
+
   See the root directory for more information about __FIR__,
   an EDSL for writing shaders that compile to __@SPIR-V@__.
 
@@ -46,7 +48,9 @@ library
 
   build-depends:
       base
-        >= 4.12
+        >= 4.13
+    , template-haskell
+        >= 2.15
     , fir
         == 0.0.1.0
     , sdl2
@@ -57,16 +61,12 @@ library
         >= 3.3.2
     , vector
         >= 0.12.0.1
-    , template-haskell
-        >= 2.14
     , bytestring
         >= 0.10.8.2
     , managed
         >= 1.0
-    , text
-        >= 1.2.3
-    , text-utf8
-        >= 1.2.3
+    , text-short
+        >= 0.1.2
     , lens
         >= 4.17
     , transformers

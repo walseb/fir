@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -24,10 +23,10 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( Nat, KnownNat, natVal )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
 
 -- fir
 import Data.Type.Map
@@ -47,9 +46,9 @@ knownValue :: forall a. Known (KindOf a) a => Demote (KindOf a)
 knownValue = known @(KindOf a) @a
 
 instance Demotable Symbol where
-  type Demote Symbol = Text
+  type Demote Symbol = ShortText
 instance KnownSymbol k => Known Symbol k where
-  known = Text.pack (symbolVal @k Proxy)
+  known = ShortText.pack (symbolVal @k Proxy)
 
 instance Demotable Nat where
   type Demote Nat = Word32

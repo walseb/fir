@@ -50,9 +50,9 @@ type family Lookup (s :: k) (i :: [k :-> v]) :: Maybe v where
   Lookup k (_          ': b) = Lookup k b
 
 type family LookupKey (s :: k) (i :: [k :-> v]) :: Maybe k where
-  Lookup _ '[]               = 'Nothing
-  Lookup k ((k ':-> _) ': _) = 'Just k
-  Lookup k (_          ': b) = LookupKey k b
+  LookupKey _ '[]               = 'Nothing
+  LookupKey k ((k ':-> _) ': _) = 'Just k
+  LookupKey k (_          ': b) = LookupKey k b
 
 -- insert a key/value pair in an already-sorted map
 type family Insert (s :: k) (t :: v) (i :: Map k v) :: Map k v where

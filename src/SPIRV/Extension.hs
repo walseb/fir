@@ -1,6 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
 module SPIRV.Extension where
@@ -9,9 +8,9 @@ module SPIRV.Extension where
 import Data.Word
   ( Word32 )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import Data.Binary.Class.Put
@@ -25,7 +24,7 @@ data ExtInst
   | GLSL
   deriving ( Show, Eq, Ord, Enum, Bounded )
 
-extInstName :: ExtInst -> Text
+extInstName :: ExtInst -> ShortText
 extInstName OpenCL = "OpenCL.std.100"
 extInstName GLSL   = "GLSL.std.450"
 

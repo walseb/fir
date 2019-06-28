@@ -1,18 +1,17 @@
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE InstanceSigs           #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PackageImports         #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE InstanceSigs          #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module FIR.Prim.Singletons where
 
@@ -43,8 +42,9 @@ import qualified Data.Set as Set
 import Numeric.Half
   ( Half )
 
--- text-utf8
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import Data.Binary.Class.Put
@@ -407,12 +407,12 @@ sPrimTy struct@SStruct = case struct of
 
 sPrimTyMap :: forall (fld :: Type) (flds :: [fld :-> Type])
            .  SPrimTyMap flds
-           -> [ (Maybe Text.Text, SPIRV.PrimTy, SPIRV.Decorations) ]
+           -> [ (Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations) ]
 sPrimTyMap SNil = []
 sPrimTyMap cons@SCons = case cons of
   ( _ :: SPrimTyMap (( f ':-> a ) ': as) )
     ->  let
-          mbFieldName :: Maybe Text.Text
+          mbFieldName :: Maybe ShortText
           mbFieldName =
             case fieldKind @fld of
               NamedField -> Just ( knownValue @f )
@@ -441,7 +441,7 @@ sScalarTy SDouble = SPIRV.Floating         W64
 -- statically known list of variables (for function definitions)
 
 class KnownVar (bd :: (Symbol :-> Binding)) where
-  knownVar :: ( Text.Text, (SPIRV.PrimTy, Permissions) )
+  knownVar :: ( ShortText, (SPIRV.PrimTy, Permissions) )
 
 instance (KnownSymbol k, Known Permissions ps, PrimTy a)
        => KnownVar (k ':-> Var ps a) where
@@ -453,7 +453,7 @@ instance (KnownSymbol k, Known Permissions ps, PrimTy a)
     )
 
 class KnownVars (bds :: BindingsMap) where
-  knownVars :: [ (Text.Text, (SPIRV.PrimTy, Permissions)) ]
+  knownVars :: [ (ShortText, (SPIRV.PrimTy, Permissions)) ]
 instance KnownVars '[] where
   knownVars = []
 instance (KnownVar bd, KnownVars bds)
@@ -464,7 +464,7 @@ instance (KnownVar bd, KnownVars bds)
 -- statically known interfaces (for entry points)
 
 class KnownInterfaceBinding (bd :: (Symbol :-> Binding)) where
-  knownInterfaceBinding :: ( Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass) )
+  knownInterfaceBinding :: ( ShortText, (SPIRV.PrimTy, SPIRV.StorageClass) )
 
 instance (KnownSymbol k, PrimTy a)
        => KnownInterfaceBinding (k ':-> Var '[ 'Read ] a) where
@@ -497,7 +497,7 @@ instance
   knownInterfaceBinding = error "unreachable"
 
 class KnownInterface (bds :: BindingsMap) where
-  knownInterface :: [ ( Text.Text, (SPIRV.PrimTy, SPIRV.StorageClass) ) ]
+  knownInterface :: [ ( ShortText, (SPIRV.PrimTy, SPIRV.StorageClass) ) ]
 instance KnownInterface '[] where
   knownInterface = []
 instance (KnownInterfaceBinding bd, KnownInterface bds)

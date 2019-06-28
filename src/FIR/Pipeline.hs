@@ -1108,15 +1108,15 @@ type family SuccNbComponentsIfMatching
     loc
     'False
       = TypeError
-      (    'Text ( "Mismatched components at " `AppendSymbol` ShowLocation loc `AppendSymbol` ":" )
-      :$$: 'Text "  - object of type " :<>: ShowType baseTy
-      :$$: 'Text ( "    based at " `AppendSymbol` ShowLocation baseLoc `AppendSymbol` ":" )
-      :$$: 'Text "    uses components of type " :<>: ShowType baseScalar :<>: Text ","
-      :$$: 'Text "  - object of type " :<>: ShowType otherTy
-      :$$: 'Text ( "    based at " `AppendSymbol` ShowLocation otherBase `AppendSymbol` ":" )
-      :$$: 'Text "    uses components of type " :<>: ShowType otherScalar :<>: Text "."
-      :$$: 'Text ""
-      :$$: 'Text "Note that all components within a given location must use the same component type."
+      (    Text ( "Mismatched components at " `AppendSymbol` ShowLocation loc `AppendSymbol` ":" )
+      :$$: Text "  - object of type " :<>: ShowType baseTy
+      :$$: Text ( "    based at " `AppendSymbol` ShowLocation baseLoc `AppendSymbol` ":" )
+      :$$: Text "    uses components of type " :<>: ShowType baseScalar :<>: Text ","
+      :$$: Text "  - object of type " :<>: ShowType otherTy
+      :$$: Text ( "    based at " `AppendSymbol` ShowLocation otherBase `AppendSymbol` ":" )
+      :$$: Text "    uses components of type " :<>: ShowType otherScalar :<>: Text "."
+      :$$: Text ""
+      :$$: Text "Note that all components within a given location must use the same component type."
       )
   SuccNbComponentsIfMatching
     _ _ _ nbComps
