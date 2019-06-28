@@ -95,6 +95,7 @@ module FIR
   , (Data.Type.Map.:->)((:->))
   , FIR.AST.AST((:$), Lit, Pair, Ops)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
+  , FIR.AST.HasUndefined(undefined)
   , FIR.Binding.BindingsMap
   , FIR.Binding.Var, FIR.Binding.Fun
   , FIR.Binding.R
@@ -188,7 +189,6 @@ module FIR
   , Prelude.flip, (Prelude.$)
   , Prelude.until, Prelude.asTypeOf
   , Prelude.error, Prelude.errorWithoutStackTrace
-  , Prelude.undefined
   , Prelude.seq, (Prelude.$!)
   , Prelude.IO
   , Prelude.FilePath

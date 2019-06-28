@@ -2,6 +2,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports    #-}
+{-# LANGUAGE TupleSections     #-}
 
 module CodeGen.Composite
   ( compositeConstruct
@@ -29,7 +30,7 @@ import qualified "text-utf8" Data.Text as Text
 import CodeGen.Binary
   ( putInstruction )
 import CodeGen.IDs
-  ( typeID )
+  ( typeID, undefID )
 import CodeGen.Instruction
   ( Args(..), toArgs
   , ID, Instruction(..)
@@ -167,4 +168,9 @@ vectorShuffle _ _
   = throwError "vectorShuffle used on non-vectors"
 
 vectorSwizzle :: (ID, SPIRV.PrimTy) -> [Word32] -> CGMonad (ID, SPIRV.PrimTy)
-vectorSwizzle v is = vectorShuffle (v, is) (v, [])
+vectorSwizzle v@(_, vecTy) is = do
+  undef <- (,vecTy) <$> undefID vecTy
+  vectorShuffle (v, is) (undef, [])
+  -- using 'undefined' here prevents any code duplication that could result from
+  -- 'vectorShuffle (v, is) (v, [])'
+  -- (e.g. if 'v' is the result of an expensive computation, which could get inlined twice)

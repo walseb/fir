@@ -36,6 +36,7 @@ import CodeGen.Binary
   , putDecorations
   , putMemberDecorations
   , putTypesAndConstants
+  , putUndefineds
   , putGlobals
   )
 import CodeGen.Instruction
@@ -87,5 +88,7 @@ putDecs
               -- For instance, an array type needs to have
               -- its length (a constant) defined earlier.
               putTypesAndConstants    knownTypes knownConstants
+
+              putUndefineds           knownUndefineds
 
     putGlobals knownTypes usedGlobals

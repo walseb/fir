@@ -76,7 +76,7 @@ import CodeGen.Debug
 import CodeGen.Functions
   ( declareFunction, declareFunctionCall, declareEntryPoint )
 import CodeGen.IDs
-  ( typeID, constID, bindingID )
+  ( typeID, constID, bindingID, undefID )
 import CodeGen.Images
   ( imageTexel, writeTexel )
 import CodeGen.Instruction
@@ -133,7 +133,7 @@ import FIR.ASTState
 import FIR.Prim.Op
   ( PrimOp(opName) )
 import FIR.Prim.Singletons
-  ( primTyVal
+  ( primTy
   , KnownVars(knownVars)
   )
 import qualified SPIRV.Control   as SPIRV
@@ -147,19 +147,24 @@ import qualified SPIRV.Storage   as Storage
 runCodeGen :: CGContext -> AST a -> Either Text ByteString
 runCodeGen context = putASM context . codeGen
 
-codeGen :: AST ast -> CGMonad (ID, SPIRV.PrimTy)
+codeGen :: forall ast. AST ast -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
-codeGen (Applied (MkID ident@(i,ty)) as)
+codeGen (Applied (MkID idTy@(i,ty)) as)
   = case as of
-      NilAST -> pure ident
+      NilAST -> pure idTy
       _      ->
         case ty of
           SPIRV.Function xs y
             -> let totalArgs = length xs
                    givenArgs = astsLength as
                in case compare totalArgs givenArgs of
-                    EQ -> do retTyID <- typeID y
-                             declareFunctionCall (retTyID, y) ident =<< traverseASTs codeGen as
+                    EQ -> do
+                      retTyID <- typeID y
+                      funID   <- declareFunctionCall
+                                    ( retTyID, y )
+                                    idTy
+                                    =<< traverseASTs codeGen as
+                      pure (funID, y)
                     GT -> throwError $
                             "codeGen: partial application not supported \
                             \(function " <> Text.pack (show i) <> ")"
@@ -170,7 +175,7 @@ codeGen (Applied (MkID ident@(i,ty)) as)
                           <> " arguments"
           _ -> throwError $ "codeGen: type " <> Text.pack (show ty) <> " used as a function ("<> Text.pack (show i) <> ")"
 -- constants
-codeGen (Lit (a :: ty)) = ( , primTyVal @ty) <$> constID a
+codeGen (Lit (a :: ty)) = ( , primTy @ty) <$> constID a
 -- perform substitution when possible
 codeGen (Lam f :$ a) -- = codeGen (f a)
   = do cg <- codeGen a
@@ -180,6 +185,9 @@ codeGen (Bind :$ a :$ f)
        codeGen $ (fromAST f) (MkID cg)
 codeGen (Applied (PrimOp (_ :: Proxy a) (_ :: Proxy op)) as)
   = primOp (opName @_ @_ @op @a) =<< traverseASTs codeGen as
+codeGen (Undefined :: AST a)
+  = let undefTy = primTy @a
+    in ( , undefTy ) <$> undefID undefTy
 -- stateful operations
 codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
   = do  let name     = knownValue @name
@@ -214,8 +222,8 @@ codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
         pure cgRes
 
 codeGen (FunDef (_ :: Proxy name) (_ :: Proxy as) (_ :: Proxy b) :$ body)
-  = let as     = knownVars @as
-        retTy  = primTyVal  @b
+  = let as     = knownVars  @as
+        retTy  = primTy     @b
         name   = knownValue @name
     in do
       debug ( putSrcInfo GHC.Stack.callStack )
@@ -413,7 +421,7 @@ codeGen (Applied (Set sLg singOptic) is)
 codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
   = do  let n = knownValue @n
         compositeTy
-          <- case primTyVal @ty of
+          <- case primTy @ty of
                SPIRV.Scalar s
                  -> pure $ SPIRV.Vector n (SPIRV.Scalar s)
                SPIRV.Vector m (SPIRV.Scalar s)
