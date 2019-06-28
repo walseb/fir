@@ -213,6 +213,7 @@ instance forall (as :: [Symbol :-> Type]) (k :: Symbol) (a :: Type) (empty :: [T
          , PrimTyMap as
          , PrimTy a
          , HasField k as
+         , Just a ~ Lookup k as
          , empty ~ '[]
          ) => KnownOptic (Field_ (k :: Symbol) :: Optic empty (Struct as) a)
          where
