@@ -13,7 +13,7 @@
 <a name="installation"></a>
 ## Installation instructions
 
-<a name="library"></>
+<a name="library"></a>
 ### Library
 
 The library itself only has Haskell dependencies, so can easily be installed using a Haskell compiler and package manager:
@@ -51,12 +51,14 @@ This is all that's needed in order to compile shaders to SPIR-V. These SPIR-V fi
 To build the documentation, we use Haddock. The `haddock` executable should be in the PATH, at it is bundled with GHC. Start building the documentation by running
 
 ```
-> cabal haddock --haddock-options="--expose-all" --enable-documentation
+> cabal haddock --haddock-options="--show-all --hyperlinked-source" --enable-documentation
 ```
 
-The flag `--expose-all` builds the documentation for all modules in FIR, including the internal ones. The flag `--enable-documentation` builds the documentation for all the dependencies.
+The flag `--show-all` builds the documentation for all modules in FIR, including the internal ones.
+The flag `--hyperlinked-source` allows the source code to be browsed through haddock, including hyperlinking identifiers whenever possible.
+The flag `--enable-documentation` builds the documentation for all the dependencies.
 
-Upon completion, the documentation can be found in `fir/dist-newstyle/build/{arch}/{ghc-version}/{fir-version}/{doc}/{html}/{fir}/`; start browsing with `index.html`.
+Upon completion, the documentation can be found in `fir/dist-newstyle/build/{arch}/{ghc-version}/{fir-version}/doc/html/fir/`; start browsing with `index.html`.
 
 
 <a name="examples"></a>

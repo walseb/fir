@@ -24,7 +24,7 @@ See [getting started](getting_started.md) for help on getting started, including
   * a simple vertex shader example,
   * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools.
 
-The haddock documentation is also worth perusing for specialised in-depth explanations.
+The haddock documentation is also worth perusing for specialised in-depth explanations, see the [getting started guide](#getting_started.md#docs) for installation instructions.
 
 <a name="examples"></a>
 # Examples
