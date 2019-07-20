@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Shaders.Compute where
+module Shaders.Logo where
 
 -- base
 import qualified Prelude
@@ -321,7 +321,7 @@ computeShader = Program $ entryPoint @"main" @Compute do
 -- compiling
 
 compPath :: FilePath
-compPath = "shaders/compute_comp.spv"
+compPath = "shaders/logo_comp.spv"
 
 compileComputeShader :: IO ( Either Text () )
 compileComputeShader = compile compPath [] computeShader

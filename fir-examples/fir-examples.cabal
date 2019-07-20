@@ -24,15 +24,15 @@ library
 
   exposed-modules:
       Bezier
-    , Compute
     , FullPipeline
     , JuliaSet
+    , Logo
     , Offscreen
     , Texture
     , Shaders.Bezier
-    , Shaders.Compute
     , Shaders.FullPipeline
     , Shaders.JuliaSet
+    , Shaders.Logo
     , Shaders.Offscreen
     , Shaders.Texture
     , Simulation.Observer

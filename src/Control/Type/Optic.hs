@@ -279,15 +279,10 @@ type Id = (Id_ :: Optic '[] a a)
 type Joint = (Joint_ :: Optic '[] a (MonoType a))
 -- | Composition of optics (kind-correct).
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
-  = ((o1 `ComposeO` o2) :: Optic (is :++: js) s b)
+  = ( (o1 `ComposeO` o2) :: Optic (is :++: js) s b )
 -- | Product of optics (kind-correct).
 type (:*:) (o1 :: Optic is s a) (o2 :: Optic js s b)
-  = ( (o1 `ProductO` o2)
-        :: Optic
-              ( Zip is js )
-              s
-              ( Product o1 o2 )
-    )
+  = ( (o1 `ProductO` o2) :: Optic ( Zip is js ) s (Product o1 o2) )
 
 type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
   ShowOptic Id_ = Text "Id"
