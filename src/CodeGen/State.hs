@@ -59,7 +59,7 @@ import qualified Data.Text.Short as ShortText
 
 -- fir
 import CodeGen.Instruction
-  ( ID(ID)
+  ( ID(ID), TyID(tyID)
   , Instruction
   )
 import FIR.Builtin
@@ -114,11 +114,11 @@ data CGState
       -- | Entry point interfaces, keeping track of which global variables are used.
       , interfaces          :: Map (ShortText, SPIRV.ExecutionModel) (Map ShortText ID)
 
-      -- | Decorations for IDs.
+      -- | Decorations for given types.
       , decorations         :: Map ID                                SPIRV.Decorations
 
-      -- | Decorations for members of a struct with given ID.
-      , memberDecorations   :: Map (ID, Word32)                      SPIRV.Decorations
+      -- | Decorations for members of a given struct type.
+      , memberDecorations   :: Map (TyID, Word32)                    SPIRV.Decorations
 
       -- | Map of all declared types.
       , knownTypes          :: Map SPIRV.PrimTy                      Instruction
@@ -126,22 +126,25 @@ data CGState
       -- | Map of all declared constants.
       , knownConstants      :: Map AConstant                         Instruction
 
+      -- | Map of all types who have a corresponding "Undefined" instruction.
+      , knownUndefineds     :: Map SPIRV.PrimTy                      (ID, TyID)
+
       -- | Which top-level global (input/output) variables have been used?
       , usedGlobals         :: Map ShortText                         (ID, SPIRV.PointerTy)
 
       -- | Top-level bindings available, such as top-level functions.
-      , knownBindings       :: Map ShortText                        (ID, SPIRV.PrimTy)
+      , knownBindings       :: Map ShortText                         (ID, SPIRV.PrimTy)
 
       -- | Variables declared by the user in the program.
-      , localBindings       :: Map ShortText                        (ID, SPIRV.PrimTy)
+      , localBindings       :: Map ShortText                         (ID, SPIRV.PrimTy)
 
       -- | IDs of locally declared variables (floated to the top of the function definition).
-      , localVariables      :: Map ID                               SPIRV.PointerTy
+      , localVariables      :: Map ID                                SPIRV.PointerTy
 
       -- | Pointer ID associated to a given ID.
       -- Used to keep track of auxiliary temporary pointers
       -- (e.g. a pointer created for a runtime access chain operation).
-      , temporaryPointers   :: Map ID                               (ID, PointerState)
+      , temporaryPointers   :: Map ID                                (ID, PointerState)
       }
   deriving Show
 
@@ -166,6 +169,7 @@ initialState
       , memberDecorations   = Map.empty
       , knownTypes          = Map.empty
       , knownConstants      = Map.empty
+      , knownUndefineds     = Map.empty
       , usedGlobals         = Map.empty
       , knownBindings       = Map.empty
       , localBindings       = Map.empty
@@ -315,13 +319,13 @@ _decorations = lens decorations ( \s v -> s { decorations = v } )
 _decorate :: ID -> Lens' CGState (Maybe SPIRV.Decorations)
 _decorate bindingID = _decorations . at bindingID
 
-_memberDecorations :: Lens' CGState ( Map (ID, Word32) SPIRV.Decorations )
+_memberDecorations :: Lens' CGState ( Map (TyID, Word32) SPIRV.Decorations )
 _memberDecorations = lens memberDecorations ( \s v -> s { memberDecorations = v } )
 
-_memberDecorate :: ID -> Word32 -> Lens' CGState ( Maybe SPIRV.Decorations )
-_memberDecorate bindingID index
+_memberDecorate :: TyID -> Word32 -> Lens' CGState ( Maybe SPIRV.Decorations )
+_memberDecorate bindingTyID index
   = _memberDecorations
-  . at (bindingID, index)
+  . at (bindingTyID, index)
 
 _knownTypes :: Lens' CGState (Map SPIRV.PrimTy Instruction)
 _knownTypes = lens knownTypes ( \s v -> s { knownTypes = v } )
@@ -334,6 +338,12 @@ _knownConstants = lens knownConstants ( \s v -> s { knownConstants = v } )
 
 _knownConstant :: AConstant -> Lens' CGState (Maybe Instruction)
 _knownConstant constant = _knownConstants . at constant
+
+_knownUndefineds :: Lens' CGState (Map SPIRV.PrimTy (ID, TyID))
+_knownUndefineds = lens knownUndefineds ( \s v -> s { knownUndefineds = v } )
+
+_knownUndefined :: SPIRV.PrimTy -> Lens' CGState (Maybe (ID,TyID))
+_knownUndefined primTy = _knownUndefineds . at primTy
 
 _knownBindings :: Lens' CGState (Map ShortText (ID, SPIRV.PrimTy))
 _knownBindings = lens knownBindings ( \s v -> s { knownBindings = v } )
@@ -416,13 +426,13 @@ addName bdID name
       ( Set.insert (bdID, Left name) )
 
 addMemberName :: MonadState CGState m 
-              => ID -> Word32 -> ShortText -> m ()
+              => TyID -> Word32 -> ShortText -> m ()
 addMemberName structTyID index name
   = modifying _names
-      ( Set.insert (structTyID, Right (index,name)) )
+      ( Set.insert (tyID structTyID, Right (index,name)) )
 
 addDecoration :: MonadState CGState m
-               => ID -> SPIRV.Decoration Word32 -> m ()
+              => ID -> SPIRV.Decoration Word32 -> m ()
 addDecoration bdID dec
   = modifying ( _decorate bdID )
       ( Just . maybe (Set.singleton dec) (Set.insert dec) )
@@ -434,13 +444,13 @@ addDecorations bdID decs
       ( Just . maybe decs (Set.union decs) )
 
 addMemberDecoration :: MonadState CGState m
-                    => ID -> Word32 -> SPIRV.Decoration Word32 -> m ()
-addMemberDecoration structID index dec
-  = modifying ( _memberDecorate structID index )
+                    => TyID -> Word32 -> SPIRV.Decoration Word32 -> m ()
+addMemberDecoration structTyID index dec
+  = modifying ( _memberDecorate structTyID index )
       ( Just . maybe (Set.singleton dec) (Set.insert dec) )
 
 addMemberDecorations :: MonadState CGState m
-                     => ID -> Word32 -> SPIRV.Decorations -> m ()
-addMemberDecorations structID index decs
-  = modifying ( _memberDecorate structID index )
+                     => TyID -> Word32 -> SPIRV.Decorations -> m ()
+addMemberDecorations structTyID index decs
+  = modifying ( _memberDecorate structTyID index )
       ( Just . maybe decs (Set.union decs) )

@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -26,13 +27,18 @@ module FIR.AST
     AST(..)
     -- * Syntactic type class
   , Syntactic(Internal, toAST, fromAST)
+    -- * Primitive operations
   , primOp
+  , HasUndefined(undefined)
     -- * Displaying ASTs graphically
   , toTree
   )
   where
 
 -- base
+import Prelude
+  hiding ( undefined )
+import qualified Prelude
 import Data.Kind
   ( Type )
 import Data.Proxy
@@ -94,7 +100,7 @@ import FIR.Prim.Image
 import FIR.Prim.Op
   ( PrimOp(PrimOpType, PrimOpConstraint, opName) )
 import FIR.Prim.Singletons
-  ( PrimTy, primTyVal, KnownVars
+  ( PrimTy, primTy, KnownVars
   , PrimFunc, primFuncName
   , KnownArity
   )
@@ -282,6 +288,9 @@ data AST :: Type -> Type where
   Fst  :: AST ( (a,b) -> a )
   Snd  :: AST ( (a,b) -> b )
 
+  -- | Undefined.
+  Undefined :: PrimTy a => AST a
+
   -- | As @SPIR-V@ is based around identifiers,
   -- this function can be used to create values of any type using their IDs.
   MkID :: (ID, SPIRV.PrimTy) -> AST a
@@ -305,12 +314,24 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
   fromAST (Lam f) a = fromAST ( f  $ toAST a )
   fromAST      f  a = fromAST ( f :$ toAST a )
 
+------------------------------------------------
+
 -- | Utility function for defining primops.
 primOp :: forall a op r. ( PrimOp op a, PrimOpConstraint op a
                          , Syntactic r, Internal r ~ PrimOpType op a
                          )
        => r 
 primOp = fromAST $ PrimOp @op @a Proxy Proxy
+
+-- | Types at which we can define "undefined."
+class HasUndefined a where
+  undefined :: a
+
+instance PrimTy a => HasUndefined (AST a) where
+  undefined = Undefined
+
+instance {-# OVERLAPPABLE #-} HasUndefined a where
+  undefined = Prelude.undefined
 
 ------------------------------------------------
 -- display AST for viewing
@@ -328,20 +349,21 @@ toTreeArgs (Lam f) as = do
     _  -> Node  ":$"              (body : as)
 toTreeArgs (PrimOp (_ :: Proxy a) (_ :: Proxy op) ) as 
   = return (Node ("PrimOp " ++ show ( SPIRV.op ( opName @_ @_ @op @a ) ) ) as)
-toTreeArgs If       as = return (Node "If"       as)
-toTreeArgs IfM      as = return (Node "IfM"      as)
-toTreeArgs While    as = return (Node "While"    as)
-toTreeArgs Locally  as = return (Node "Locally"  as)
-toTreeArgs Embed    as = return (Node "Embed"    as)
-toTreeArgs Return   as = return (Node "Return"   as)
-toTreeArgs Bind     as = return (Node "Bind"     as)
-toTreeArgs Mat      as = return (Node "Mat"      as)
-toTreeArgs UnMat    as = return (Node "UnMat"    as)
-toTreeArgs (Ops _ ) as = return (Node "ImageOperands" as)
-toTreeArgs Coerce   as = return (Node "Coerce"   as)
-toTreeArgs Pair     as = return (Node "Pair"     as)
-toTreeArgs Fst      as = return (Node "Fst"      as)
-toTreeArgs Snd      as = return (Node "Snd"      as)
+toTreeArgs If        as = return (Node "If"            as)
+toTreeArgs IfM       as = return (Node "IfM"           as)
+toTreeArgs While     as = return (Node "While"         as)
+toTreeArgs Locally   as = return (Node "Locally"       as)
+toTreeArgs Embed     as = return (Node "Embed"         as)
+toTreeArgs Return    as = return (Node "Return"        as)
+toTreeArgs Bind      as = return (Node "Bind"          as)
+toTreeArgs Mat       as = return (Node "Mat"           as)
+toTreeArgs UnMat     as = return (Node "UnMat"         as)
+toTreeArgs (Ops _ )  as = return (Node "ImageOperands" as)
+toTreeArgs Coerce    as = return (Node "Coerce"        as)
+toTreeArgs Pair      as = return (Node "Pair"          as)
+toTreeArgs Fst       as = return (Node "Fst"           as)
+toTreeArgs Snd       as = return (Node "Snd"           as)
+toTreeArgs Undefined as = return (Node "Undefined"     as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs GradedMappend    as = return (Node "GradedMappend" as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
@@ -352,9 +374,9 @@ toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")
 toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
 toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
 toTreeArgs (Entry  _ (_ :: Proxy (stageInfo :: SPIRV.ExecutionInfo Nat stage) )) as
-  = return (Node ("Entry @" ++ show (knownValue @stage)) as)
+  = return (Node ("Entry @(" ++ show (knownValue @stage) ++ ")") as)
 toTreeArgs (Lit (a :: ty)) as
-  = return (Node ("Lit @(" ++ show (primTyVal @ty) ++ ") " ++ show a ) as)
+  = return (Node ("Lit @(" ++ show (primTy @ty) ++ ") " ++ show a ) as)
 toTreeArgs fm@Fmap as
   = case fm of
       ( _ :: AST ( (x -> y) -> f x -> f y ) )

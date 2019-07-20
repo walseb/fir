@@ -222,7 +222,7 @@ The AST pretty-printing is performed using the [tree-view](http://hackage.haskel
 <a name="inlining"></a>
 ## Controlling inlining
 
-The SPIR-V created by this library tends to be of high quality, e.g. using [phi functions](https://en.wikipedia.org/wiki/Static_single_assignment_form#Variations_that_reduce_the_number_of_%CE%A6_functions) instead of load/store operations, and vectorised operations whenever possible. However, one needs to be careful about inlining. Consider the following example:
+The SPIR-V created by this library tends to be of high quality, e.g. using [phi functions](https://en.wikipedia.org/wiki/Static_single_assignment_form) instead of load/store operations, and vectorised operations whenever possible. However, one needs to be careful about inlining. Consider the following example:
 
 ```haskell
 inlined :: AST Float -> AST (V 3 Float)
@@ -286,5 +286,5 @@ Example usage of SPIR-V tools:
   - `dot -Tpdf sourceProgCFG.dot -o sourceProgCFG.pdf` to render the graph into a PDF (requires GraphViz `dot` executable).
 
 <div align="center">
-![Control flow graph of compute shader logo example](img/compute_cfg.png)
+![Control flow graph of compute shader for FIR logo](img/logo_compute_cfg.png)
 </div>

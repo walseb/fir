@@ -30,7 +30,7 @@ The haddock documentation is also worth perusing for specialised in-depth explan
 # Examples
 
 <div align="center">
-![FullPipeline](img/full_pipeline_small.png) ![Compute](img/compute_small.png) ![Texture](img/texture_small.png) ![JuliaSet](img/julia_small.png) ![Offscreen](img/offscreen_small.png) ![Bezier](img/bezier_small.png)
+![FullPipeline](img/full_pipeline_small.png) ![Logo](img/logo_small.png) ![Texture](img/texture_small.png) ![JuliaSet](img/julia_small.png) ![Offscreen](img/offscreen_small.png) ![Bezier](img/bezier_small.png)
 </div>
 
 Some simple examples are included in the **fir-examples** subdirectory.

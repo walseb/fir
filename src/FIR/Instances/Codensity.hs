@@ -57,6 +57,9 @@ module FIR.Instances.Codensity
     -- ** Syntactic type class
     -- $syntactic
 
+    -- ** Undefined type class
+    -- $undef
+
     -- ** Logical operations
     -- $logical
 
@@ -86,7 +89,9 @@ import Prelude hiding
   , Floating(..), RealFloat(..)
   , Functor(..), Monad(..)
   , Applicative(..)
+  , undefined
   )
+import qualified Prelude
 import Data.Int
   ( Int32 )
 import Data.Kind
@@ -124,6 +129,7 @@ import FIR.AST
   ( AST(..)
   , Syntactic(Internal,toAST,fromAST)
   , primOp
+  , HasUndefined(undefined)
   )
 import FIR.ASTState
   ( FunctionInfo, Definedness(..)
@@ -262,6 +268,23 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 
   fromAST :: AST ( (Internal a := j) i) -> Codensity AST (a := j) i
   fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
+
+--------------------------------------------------------------------------
+-- Undefined
+
+-- $undef
+-- Instance for the 'Undefined' type class.
+
+-- Enforcing "i ~ j" allows the user to use 'undefined' in indexed-monadic code
+-- without wreaking havoc on type inference by causing the computation to result
+-- in an arbitrary state.
+-- This does mean that the user cannot use 'undefined' to stand-in for an
+-- arbitrary state-changing computation.
+instance ( PrimTy a, j ~ i ) => HasUndefined (Codensity AST (AST a := j) i) where
+  undefined = ixPure undefined
+
+instance {-# OVERLAPPABLE #-} ( j ~ i ) => HasUndefined (Codensity AST (a := j) i) where
+  undefined = Prelude.undefined
 
 --------------------------------------------------------------------------
 -- Stateful operations (with indexed monadic state)

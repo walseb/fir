@@ -47,7 +47,8 @@ import Data.Text.Short
 
 -- fir
 import CodeGen.Instruction
-  ( ID(ID), Instruction(..)
+  ( ID(ID), TyID(TyID, tyID)
+  , Instruction(..)
   , Args(Arg, EndArgs), toArgs
   )
 import CodeGen.Monad
@@ -65,6 +66,7 @@ import CodeGen.State
   , _localBinding
   , _knownType
   , _knownConstant
+  , _knownUndefined
   , _builtin
   , _usedGlobal
   , _userGlobal
@@ -122,23 +124,23 @@ typeID :: forall m.
           , MonadFresh ID        m
           , MonadError ShortText m -- only needed for the constant instruction call for array length
           )
-       => SPIRV.PrimTy -> m ID
-typeID ty =
+       => SPIRV.PrimTy -> m TyID
+typeID ty = TyID <$>
   tryToUseWith _knownPrimTy
-    ( fromJust . resID ) -- type constructor instructions always have a result ID
+    ( coerce . fromJust . resID ) -- type constructor instructions always have a result ID
     do addCapabilities ( SPIRV.primTyCapabilities ty )
        case ty of
 
         SPIRV.Matrix m n a -> 
           createIDRec _knownPrimTy
-            ( typeID (SPIRV.Vector m (SPIRV.Scalar a)) ) -- column type
+            ( tyID <$> typeID (SPIRV.Vector m (SPIRV.Scalar a)) ) -- column type
             ( \ colID 
                   -> mkTyConInstruction ( Arg colID $ Arg n EndArgs )
             )
 
         SPIRV.Vector n a ->
           createIDRec _knownPrimTy
-            ( typeID a ) -- element type
+            ( tyID <$> typeID a ) -- element type
             ( \ eltID 
                   -> mkTyConInstruction ( Arg eltID $ Arg n EndArgs )
             )
@@ -159,17 +161,17 @@ typeID ty =
                  eltID <- typeID  a --     as opposed to being a literal number
                  pure (eltID, lgID) -- (I suppose this is to do with specialisation constants)
             )
-            ( \(eltID, lgID) v ->
+            ( \(eltTyID, lgID) v -> do
                 addDecorations v decs
-                  >> mkTyConInstruction ( Arg eltID $ Arg lgID EndArgs ) v
+                mkTyConInstruction ( Arg eltTyID $ Arg lgID EndArgs ) v
             )
 
         SPIRV.RuntimeArray a decs _ ->
           createIDRec _knownPrimTy
             ( typeID a )
-            ( \eltID v ->
+            ( \eltTyID v -> do
               addDecorations v decs
-                >> mkTyConInstruction ( Arg eltID EndArgs ) v
+              mkTyConInstruction ( Arg eltTyID EndArgs ) v
             )
 
         SPIRV.Unit    -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
@@ -177,7 +179,7 @@ typeID ty =
 
         SPIRV.Scalar (SPIRV.Integer s w)
           -> createID _knownPrimTy
-                ( mkTyConInstruction 
+                ( mkTyConInstruction
                   ( Arg (SPIRV.width w)
                   $ Arg (SPIRV.signedness s) EndArgs
                   )
@@ -189,7 +191,7 @@ typeID ty =
 
         SPIRV.Struct as decs structUsage
           -> createIDRec _knownPrimTy
-                ( traverse (typeID . (\(_,y,_) -> y)) as ) -- return IDs of struct member types
+                ( traverse (fmap tyID . typeID . (\(_,y,_) -> y)) as ) -- return IDs of struct member types
                 ( \eltIDs structTyID ->
                   do
                     let labelledElts :: [ (Maybe ShortText, Word32, SPIRV.Decorations) ]
@@ -203,17 +205,17 @@ typeID ty =
                     -- add information: name of each struct field, and decorations
                     for_ labelledElts
                       ( \ (mbFieldName, i, eltDecs) -> do
-                        traverse_ ( addMemberName structTyID i ) mbFieldName
-                        addMemberDecorations structTyID i eltDecs
+                        traverse_ ( addMemberName (TyID structTyID) i ) mbFieldName
+                        addMemberDecorations (TyID structTyID) i eltDecs
                         -- unfortunate workaround for built-in decorations with structs
                         case structUsage of
                           ForInputBuiltins  -> do
                             for_ ( SPIRV.readBuiltin =<< mbFieldName )
-                              ( addMemberDecoration structTyID i . SPIRV.Builtin )
+                              ( addMemberDecoration (TyID structTyID) i . SPIRV.Builtin )
                             addName structTyID "gl_in_PerVertex"
                           ForOutputBuiltins -> do
                             for_ ( SPIRV.readBuiltin =<< mbFieldName )
-                              ( addMemberDecoration structTyID i . SPIRV.Builtin )
+                              ( addMemberDecoration (TyID structTyID) i . SPIRV.Builtin )
                             addName structTyID "gl_out_PerVertex"
                           NotForBuiltins -> pure ()
                       )
@@ -228,9 +230,7 @@ typeID ty =
         SPIRV.Pointer storage a ->
           createIDRec _knownPrimTy
             ( typeID a )
-            ( \ tyID -> mkTyConInstruction
-                          ( Arg storage $ Arg tyID EndArgs )
-            )
+            ( \ tyID -> mkTyConInstruction ( Arg storage $ Arg tyID EndArgs ) )
 
         SPIRV.PrimTy.Image (SPIRV.Image.Image { .. })
           -> createIDRec _knownPrimTy
@@ -405,6 +405,18 @@ bindingID varName
                 ( "codeGen: no binding with name " <> varName )
                 ( mbLoc <<?> mbKnown <<?> mbGlob )
 
+undefID :: ( MonadState CGState   m
+           , MonadError ShortText m
+           , MonadFresh ID        m
+           )
+        => SPIRV.PrimTy -> m ID
+undefID ty =
+  tryToUse ( _knownUndefined ty )
+    fst
+    ( \v -> do
+      tyID <- typeID ty
+      pure (v,tyID)
+    )
 
 -- | Get the ID for a built-in variable.
 --

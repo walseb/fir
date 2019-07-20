@@ -26,15 +26,15 @@ library
 
   exposed-modules:
       Bezier
-    , Compute
     , FullPipeline
     , JuliaSet
+    , Logo
     , Offscreen
     , Texture
     , Shaders.Bezier
-    , Shaders.Compute
     , Shaders.FullPipeline
     , Shaders.JuliaSet
+    , Shaders.Logo
     , Shaders.Offscreen
     , Shaders.Texture
     , Simulation.Observer
@@ -107,24 +107,6 @@ executable Bezier
   default-language:
     Haskell2010
 
-executable Compute
-
-  main-is:
-    Main.hs
-
-  ghc-options:
-    -threaded -rtsopts
-
-  hs-source-dirs:
-    app/Compute
-
-  build-depends:
-      base
-    , fir-examples
-
-  default-language:
-    Haskell2010
-
 executable FullPipeline
 
   main-is:
@@ -153,6 +135,24 @@ executable JuliaSet
 
   hs-source-dirs:
     app/JuliaSet
+
+  build-depends:
+      base
+    , fir-examples
+
+  default-language:
+    Haskell2010
+
+executable Logo
+
+  main-is:
+    Main.hs
+
+  ghc-options:
+    -threaded -rtsopts
+
+  hs-source-dirs:
+    app/Logo
 
   build-depends:
       base

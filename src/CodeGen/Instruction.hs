@@ -1,12 +1,19 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 
-module CodeGen.Instruction where
+module CodeGen.Instruction
+  ( Args(..), foldrArgs, arity, toArgs, Pairs(..)
+  , ID(..), TyID(MkTyID, TyID, tyID)
+  , Instruction(..)
+  , prependArg, setArgs
+  ) where
 
 -- base
 import Control.Category
@@ -55,10 +62,16 @@ newtype ID = ID { idNumber :: Word32 }
 instance Show ID where
   show (ID n) = "%" ++ show n
 
+newtype TyID = TyID { tyID :: ID }
+  deriving newtype ( Eq, Ord, Enum, Put, Show )
+
+pattern MkTyID :: Word32 -> TyID
+pattern MkTyID i = TyID (ID i)
+
 data Instruction
   = Instruction
     { operation :: SPIRV.Operation
-    , resTy     :: Maybe ID
+    , resTy     :: Maybe TyID
     , resID     :: Maybe ID
     , args      :: Args
     }

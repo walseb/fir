@@ -46,7 +46,8 @@ import CodeGen.IDs
   ( typeID )
 import CodeGen.Instruction
   ( Args(..), toArgs
-  , ID, Instruction(..)
+  , ID, TyID
+  , Instruction(..)
   )
 import CodeGen.Monad
   ( CGMonad, runCGMonad
@@ -132,10 +133,10 @@ inContext context as body
 ----------------------------------
 -- declaring function instructions
 
-declareFunctionCall :: (ID, SPIRV.PrimTy)
+declareFunctionCall :: (TyID, SPIRV.PrimTy)
                     -> (ID, SPIRV.PrimTy)
                     -> [ (ID, SPIRV.PrimTy) ]
-                    -> CGMonad (ID, SPIRV.PrimTy)
+                    -> CGMonad ID
 declareFunctionCall res func argIDs
   = do v <- fresh
        liftPut $ putInstruction Map.empty
@@ -146,7 +147,7 @@ declareFunctionCall res func argIDs
            , args  = Arg (fst func)
                    $ toArgs (map fst argIDs)
            }
-       pure (v, snd res)
+       pure v
 
 declareFunction :: ShortText
                 -> SPIRV.FunctionControl

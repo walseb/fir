@@ -1,12 +1,17 @@
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PackageImports      #-}
+{-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
 
 module CodeGen.Binary where
 
 -- base
+import Data.Coerce
+  ( coerce )
 import Data.List
   ( sortOn)
 import Data.Foldable
@@ -44,7 +49,8 @@ import Control.Monad.Trans.Class
 -- fir
 import CodeGen.Instruction
   ( Args(..), toArgs
-  , ID(..), Instruction(..)
+  , ID(..), TyID(..), pattern MkTyID
+  , Instruction(..)
   )
 import CodeGen.Monad
   ( note )
@@ -97,9 +103,9 @@ putInstruction extInsts
 putHeader :: Word32 -> Binary.Put
 putHeader bound
   = traverse_
-      (put @Word32)
+      ( put @Word32 )
       [ 0x07230203   -- magic number
-      , 0x00010000   -- version 1.0 ( 0 | 1 | 0 | 0 )
+      , 0x00010300   -- SPIR-V version 1.3 ( 0 | 1 | 3 | 0 )
       , 0x21524946   -- FIR!
       , bound
       , 0            -- always 0
@@ -150,7 +156,7 @@ putEntryPoint model modelName entryPointID interface
         { operation = SPIRV.Op.EntryPoint
         -- slight kludge to account for unusual parameters for OpEntryPoint
         -- instead of result type, resTy field holds the ExecutionModel value
-        , resTy     = Just . ID $ SPIRV.executionModelID model
+        , resTy     = Just . MkTyID $ SPIRV.executionModelID model
         , resID     = Just entryPointID
         , args      = Arg modelName
                     $ toArgs interface -- 'Map ShortText ID' has the appropriate traversable instance
@@ -273,10 +279,10 @@ putDecorations
             )
       )
 
-putMemberDecorations :: Map (ID,Word32) SPIRV.Decorations -> Binary.Put
+putMemberDecorations :: Map (TyID, Word32) SPIRV.Decorations -> Binary.Put
 putMemberDecorations
   = traverseWithKey_
-      ( \ (structID, index) ->
+      ( \ (structTyID, index) ->
            traverse_
              ( \dec ->
                  putInstruction Map.empty
@@ -284,7 +290,7 @@ putMemberDecorations
                      { operation = SPIRV.Op.MemberDecorate
                      , resTy     = Nothing
                      , resID     = Nothing
-                     , args      = Arg structID
+                     , args      = Arg structTyID
                                  $ Arg index
                                  $ Arg dec EndArgs
                      }
@@ -305,16 +311,28 @@ putTypesAndConstants ts cs
   = traverse_ ( putInstruction Map.empty )
       ( sortOn resID $ Map.elems ts ++ Map.elems cs )
 
+putUndefineds :: Map SPIRV.PrimTy (ID, TyID) -> Binary.Put
+putUndefineds = traverse_
+  ( \ ( undefID, undefTyID ) ->
+      putInstruction Map.empty
+        Instruction
+          { operation = SPIRV.Op.Undef
+          , resTy     = Just undefTyID
+          , resID     = Just undefID
+          , args      = EndArgs
+          }
+  )
+
 putGlobals :: Map SPIRV.PrimTy Instruction
            -> Map ShortText (ID, SPIRV.PointerTy)
            -> ExceptT ShortText Binary.PutM ()
 putGlobals typeIDs
   = traverse_
       ( \(globalID, ptrTy@(SPIRV.PointerTy storage _)) ->
-        do  ptrTyID
+        do  ptrTyID :: TyID
               <- note
                    ( "putGlobals: pointer type " <> ShortText.pack (show ptrTy) <> " not bound to any ID." )
-                   ( resID =<< Map.lookup (SPIRV.pointerTy ptrTy) typeIDs )
+                   ( coerce . resID =<< Map.lookup (SPIRV.pointerTy ptrTy) typeIDs )
             lift $ putInstruction Map.empty
                   Instruction
                     { operation = SPIRV.Op.Variable

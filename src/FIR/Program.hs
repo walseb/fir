@@ -13,9 +13,9 @@ Module: FIR.Program
 
 Utility wrapper types for programs.
 
-A program essentially consists of a value of type 'Codensity AST (AST a := j) i',
+A program essentially consists of a value of type @Codensity AST (AST a := j) i@,
 but with additional type-level information pertaining to the program inputs/outputs,
-similar to the interface for a shader module in @OpenGL@ or @Vulkan.
+similar to the interface for a shader module in @OpenGL@ or @Vulkan@.
 -}
 
 module FIR.Program

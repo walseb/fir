@@ -381,9 +381,6 @@ instance ( Typeable fld, Typeable as, PrimTyMap as )
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
 primTy = sPrimTy ( primTySing @ty )
 
-primTyVal :: forall ty. PrimTy ty => SPIRV.PrimTy
-primTyVal = primTy @ty
-
 sPrimTy :: SPrimTy ty -> SPIRV.PrimTy
 sPrimTy SUnit = SPIRV.Unit
 sPrimTy SBool = SPIRV.Boolean
@@ -545,7 +542,7 @@ aConstant = AConstant
 
 instance Show AConstant where
   show (AConstant (a :: ty))
-    = "Constant " ++ show a ++ " of type " ++ show (primTyVal @ty)
+    = "Constant " ++ show a ++ " of type " ++ show (primTy @ty)
 
 instance Eq AConstant where
   (AConstant (a1 :: ty1)) == (AConstant (a2 :: ty2))
@@ -557,5 +554,5 @@ instance Ord AConstant where
   (AConstant (a1 :: ty1)) `compare` (AConstant (a2 :: ty2))
     = case eqT @ty1 @ty2 of
          Just Refl -> compare a1 a2
-         _         -> compare (primTyVal @ty1)
-                              (primTyVal @ty2)
+         _         -> compare (primTy @ty1)
+                              (primTy @ty2)

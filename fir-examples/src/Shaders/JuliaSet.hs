@@ -52,7 +52,7 @@ vertex = shader do
 
 type FragmentDefs =
   '[ "out_colour"  ':-> Output     '[ Location 0      ] (V 4 Float)
-   , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+   , "ubo"         ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
                           ( Struct '[ "mousePos" ':-> V 2 Float ] )
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
