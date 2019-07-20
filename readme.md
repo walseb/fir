@@ -24,13 +24,13 @@ FIR requires GHC >= 8.6. See [getting started](getting_started.md) for help on g
   * a simple vertex shader example,
   * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools.
 
-The haddock documentation is also worth perusing for specialised in-depth explanations.
+The haddock documentation is also worth perusing for specialised in-depth explanations; see the [getting started guide](getting_started.md#docs) for installation.
 
 <a name="examples"></a>
 # Examples
 
 <div align="center">
-![FullPipeline](img/full_pipeline_small.png) ![Compute](img/compute_small.png) ![Texture](img/texture_small.png) ![JuliaSet](img/julia_small.png) ![Offscreen](img/offscreen_small.png) ![Bezier](img/bezier_small.png)
+![FullPipeline](img/full_pipeline_small.png) ![Logo](img/logo_small.png) ![Texture](img/texture_small.png) ![JuliaSet](img/julia_small.png) ![Offscreen](img/offscreen_small.png) ![Bezier](img/bezier_small.png)
 </div>
 
 Some simple examples are included in the **fir-examples** subdirectory.

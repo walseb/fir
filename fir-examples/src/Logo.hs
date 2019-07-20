@@ -14,7 +14,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Compute ( compute ) where
+module Logo ( logo ) where
 
 -- base
 import Control.Monad
@@ -92,7 +92,7 @@ import Math.Quaternion
   ( rotate, axisAngle )
 
 -- fir-examples
-import Shaders.Compute
+import Shaders.Logo
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
@@ -108,8 +108,8 @@ shaderCompilationResult
         [ ("Compute shader", compileComputeShader) ]
      )
 
-compute :: IO ()
-compute = ( runManaged . ( `evalStateT` initialState ) ) do
+logo :: IO ()
+logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
     Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err )
@@ -117,7 +117,7 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Compute shader"
+  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Logo"
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
@@ -239,7 +239,7 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
   descriptorSets      <- allocateDescriptorSets device descriptorPool descriptorSetLayout numImages
 
   ( computePipeline, pipelineLayout )
-    <- createComputePipeline device descriptorSetLayout compPath --"../shaders/compute_glsl.spv"
+    <- createComputePipeline device descriptorSetLayout compPath
 
   (cameraUniformBuffer, camPtr)
     <- createUniformBuffer
@@ -438,7 +438,7 @@ compute = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/compute.png" imageData
+        writePng "screenshots/logo.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 

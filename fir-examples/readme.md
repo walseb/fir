@@ -5,7 +5,7 @@
   - [Linux](#linux)
 * [Overview of examples](#overview)
   - [Full graphics pipeline](#fullpipeline)
-  - [Compute shader: FIR logo](#compute)
+  - [FIR logo](#logo)
   - [Texture sampling](#texture)
   - [Julia set](#julia)
   - [Offscreen rendering](#offscreen)
@@ -18,7 +18,7 @@
 Start off by making sure the [library itself installs properly](../getting_started.md#installation).    
 
 To build the examples, the installation of two external dependencies is necessary: SDL2 (version 2.0.6 or greater), and the Vulkan SDK.
-Instructions for building these packages is provided below, for (Windows)[#win] and (Linux)(#linux).
+Instructions for building these packages is provided below, for [Windows](#win) and [Linux](#linux).
 
 Once these dependencies are installed, you should be able to run:
 
@@ -34,14 +34,14 @@ where *Example* is any one of the [examples](#overview).
 ### Windows
 
 To keep track of external dependencies, we first need to install `pkg-config`.
-If this is not already present on your system, download (pkg-config-lite)[https://sourceforge.net/projects/pkgconfiglite/]
+If this is not already present on your system, download [pkg-config-lite](https://sourceforge.net/projects/pkgconfiglite/)
 and add the installed location to your PATH, making `pkg-config` available in the command line.
 
 To install SDL2, download the [SDL2 MinGW development library](https://www.libsdl.org/download-2.0.php) (version 2.0.6 or greater).
 After extracting, we need to:
   * Add the `bin` folder to PATH (on 64 bit systems, the folder `SDL2-2.x.y\x86_64-w64-mingw32\bin`).
   * Add the `lib\pkg-config` folder to PKG_CONFIG_PATH to make SDL2 visible to pkg-config.
-    If PKG_CONFIG_PATH does not exist (`echo %PKG_CONFIG_PATH%` returns nothing), set it with `setx %PKG_CONFIG_PATH% path\to\sdl2\lib\pkg-config\`.
+    If PKG_CONFIG_PATH does not exist (`echo %PKG_CONFIG_PATH%` returns nothing), set it with `setx PKG_CONFIG_PATH path\to\sdl2\lib\pkg-config\`.
 You can check that SDL2 is registered with pkg-config using `pkg-config --list-all`.
 
 The Windows Vulkan SDK installer can be downloaded from the [LunarG website](https://vulkan.lunarg.com/sdk/home).
@@ -74,10 +74,10 @@ for the Vulkan SDK on Linux.
 
 A graphics pipeline containing all shader stages.
 
-<a name="compute"></a>
-### Compute shader: FIR logo
+<a name="logo"></a>
+### FIR logo
 <div align="center">
-![Compute](../img/compute.png)
+![Compute](../img/logo.png)
 </div>
 
 Rendering the FIR logo using simple ray tracing in a compute shader.
