@@ -109,6 +109,7 @@ module FIR.Layout
   , ShowLocation
   , Poke(..), pokeArray
   , inferPointerLayout
+  , roundUp, nextAligned
   )
   where
 

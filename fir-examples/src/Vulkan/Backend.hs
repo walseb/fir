@@ -21,7 +21,7 @@ import Control.Monad
 import Control.Monad.IO.Class
   ( MonadIO, liftIO )
 import Data.Bits
-  ( (.&.) )
+  ( Bits((.&.)) )
 import Data.Foldable
   ( for_ )
 import Data.List
@@ -57,16 +57,28 @@ import Vulkan.Monad
 
 -----------------------------------------------------------------------------------------------------
 
-createVulkanInstance :: MonadManaged m => [ Vulkan.CString ] -> m Vulkan.VkInstance
-createVulkanInstance neededExtensions =
+createVulkanInstance :: MonadManaged m => String -> [ Vulkan.CString ] -> m Vulkan.VkInstance
+createVulkanInstance appName neededExtensions =
   let
+    appInfo :: Vulkan.VkApplicationInfo
+    appInfo =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_APPLICATION_INFO
+        &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
+        &* Vulkan.setStrRef @"pApplicationName" appName
+        &* Vulkan.set @"applicationVersion" 0
+        &* Vulkan.setStrRef @"pEngineName" "fir"
+        &* Vulkan.set @"engineVersion" 0
+        &* Vulkan.set @"apiVersion" Vulkan.VK_API_VERSION_1_1
+        )
+
     createInfo :: Vulkan.VkInstanceCreateInfo
     createInfo =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
         &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"pApplicationInfo" Vulkan.VK_NULL_HANDLE
+        &* Vulkan.setVkRef @"pApplicationInfo" appInfo
         &* Vulkan.setStrListCountAndRef
               @"enabledLayerCount" @"ppEnabledLayerNames"
               [ "VK_LAYER_LUNARG_standard_validation" ]

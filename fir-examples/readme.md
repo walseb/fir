@@ -45,7 +45,7 @@ After extracting, we need to:
 You can check that SDL2 is registered with pkg-config using `pkg-config --list-all`.
 
 The Windows Vulkan SDK installer can be downloaded from the [LunarG website](https://vulkan.lunarg.com/sdk/home).
-No further setup should be required after installing.
+No further setup should be required after installing. The relevant `bin` folder (by default `VulkanSDK\[vulkan-sdk-version]\Bin`) is automatically added to PATH, and the environment variables VULKAN_SDK and VK_SDK_PATH should also have been initialised (pointing to `VulkanSDK\[vulkan-sdk-version]` by default).
 
 
 <a name="linux"></a>
@@ -59,7 +59,7 @@ Please ensure that the installed version of SDL2 is at least 2.0.6, at it is thi
 This might require adding newer package repository lists.
 
 For Vulkan, you'll need the Vulkan SDK. What to install will usually depend on your GPU (AMD/NVIDIA/Intel).
-The [LunarG website](https://vulkan.lunarg.com/doc/view/1.1.106.0/linux/getting_started.html) provides installation instructions
+The [LunarG website](https://vulkan.lunarg.com/doc/sdk/latest/linux/getting_started.html) provides installation instructions
 for the Vulkan SDK on Linux.
 
 

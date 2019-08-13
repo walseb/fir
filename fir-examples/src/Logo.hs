@@ -28,6 +28,8 @@ import Data.Foldable
   ( for_ )
 import Data.Monoid
   ( Sum(getSum) )
+import Data.String
+  ( IsString )
 import Data.Traversable
   ( for )
 import Data.Word
@@ -108,6 +110,9 @@ shaderCompilationResult
         [ ("Compute shader", compileComputeShader) ]
      )
 
+appName :: IsString a => a
+appName = "fir-examples - Logo"
+
 logo :: IO ()
 logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
@@ -117,14 +122,14 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Logo"
+  window           <- logMsg "Creating SDL window"           *> createWindow appName
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
   extensionNames <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
   logMsg $ "Needed instance extensions are: " ++ show extensionNames
 
-  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance neededExtensions
+  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family"
     *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_COMPUTE_BIT]

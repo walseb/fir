@@ -129,6 +129,7 @@ type GeometryDefs =
    , "main"      ':-> EntryPoint
                          '[ Triangles
                           , OutputTriangleStrip, OutputVertices 3
+                          , Invocations 1
                           ]
                           Geometry
    ]
@@ -207,9 +208,9 @@ compileFragmentShader = compile fragPath [] fragment
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = withStructInput @VertexInput @(PatchesOfSize 3)
-  $  StartPipeline
-  :> (vertex                , vertPath)
-  :> (tessellationControl   , tescPath)
-  :> (tessellationEvaluation, tesePath)
-  :> (geometry              , geomPath)
-  :> (fragment              , fragPath)
+  $    StartPipeline
+  :>-> (vertex                , vertPath)
+  :>-> (tessellationControl   , tescPath)
+  :>-> (tessellationEvaluation, tesePath)
+  :>-> (geometry              , geomPath)
+  :>-> (fragment              , fragPath)

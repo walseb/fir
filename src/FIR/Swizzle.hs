@@ -13,7 +13,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ViewPatterns           #-}
 
-module FIR.Swizzle ( Swizzle ) where
+module FIR.Swizzle where --( Swizzle ) where
 
 -- base
 import Data.Kind
@@ -29,7 +29,9 @@ import GHC.TypeLits
 
 -- fir
 import Control.Type.Optic
-  ( Optic(..), Index )
+  ( Optic(..), Index
+  , ProductComponents(ProductO,EndProd)
+  )
 import Data.Type.List
   ( Length )
 import Data.Type.String
@@ -110,67 +112,85 @@ type SwizzleTree
       )
     )
 
+
 type Swizzle (string :: Symbol)
-  = ( SwizzleFromString (LookupChars SwizzleTree string)
+  = ( Prod ( SwizzleFromString (LookupChars SwizzleTree string) )
         :: Optic '[] vec (SwizzleRes vec (LookupChars SwizzleTree string))
     )
 
 --------------------------------------------------------------------------------------------------
 
-type family SwizzleRes (vec :: Type) (ks :: [Symbol]) :: Type where
-  SwizzleRes (V _ a)       '[_] = a
-  SwizzleRes (AST (V _ a)) '[_] = AST a
-  SwizzleRes (V _ a)         ks = V (Length ks) a
-  SwizzleRes (AST (V _ a))   ks = AST (V (Length ks) a)
---  SwizzleRes ty _
---    = TypeError
---        ( Text "Cannot use swizzle on non-vector of type " :<>: ShowType ty :<>: Text "." )
 
-type family SwizzleFromString (swizzle :: [Symbol]) :: Optic '[] vec (SwizzleRes vec swizzle) where
-  SwizzleFromString '[ ]   = TypeError ( Text "Error: empty swizzle (no swizzle characters recognised)." )
-  SwizzleFromString '["x"] = Index 0
-  SwizzleFromString '["X"] = Index 0
-  SwizzleFromString '["y"] = Index 1
-  SwizzleFromString '["Y"] = Index 1
-  SwizzleFromString '["z"] = Index 2
-  SwizzleFromString '["Z"] = Index 2
-  SwizzleFromString '["w"] = Index 3
-  SwizzleFromString '["W"] = Index 3
-  SwizzleFromString '["r"] = Index 0
-  SwizzleFromString '["R"] = Index 0
-  SwizzleFromString '["g"] = Index 1
-  SwizzleFromString '["G"] = Index 1
-  SwizzleFromString '["b"] = Index 2
-  SwizzleFromString '["B"] = Index 2
-  SwizzleFromString '["a"] = Index 3
-  SwizzleFromString '["A"] = Index 3
-  SwizzleFromString '["s"] = Index 0
-  SwizzleFromString '["S"] = Index 0
-  SwizzleFromString '["t"] = Index 1
-  SwizzleFromString '["T"] = Index 1
-  SwizzleFromString '["p"] = Index 2
-  SwizzleFromString '["P"] = Index 2
-  SwizzleFromString '["q"] = Index 3
-  SwizzleFromString '["Q"] = Index 3
-  SwizzleFromString '[k]
-    = TypeError
-        (     Text "Unsupported swizzle character detected in " :<>: ShowType k :<>: Text "."
-         :$$: Text "Supported swizzle sets are: \"xyzw\", \"rgba\", \"stpq\"."
+type family SwizzleRes (vec :: Type) (ks :: [Symbol]) :: Type where
+  SwizzleRes _   '[ ] = TypeError ( Text "Empty swizzle." )
+  SwizzleRes vec '[k] = SwizzleComponent vec
+  SwizzleRes (V _ a) ks = V (Length ks) a
+  SwizzleRes (AST (V _ a)) ks = AST (V (Length ks) a)
+  SwizzleRes ty _ =
+    TypeError
+        ( Text "Cannot use swizzle on non-vector of type " :<>: ShowType ty :<>: Text "." )
+
+type family SwizzleComponent (vec :: Type) :: Type where
+  SwizzleComponent (V _ a)       = a
+  SwizzleComponent (AST (V _ a)) = AST a
+  SwizzleComponent ty =
+    TypeError
+        ( Text "Cannot use swizzle on non-vector of type " :<>: ShowType ty :<>: Text "." )
+
+type family SwizzleComponents (vec :: Type) (ks :: [Symbol]) :: [Type] where
+  SwizzleComponents _   '[]  = '[]
+  SwizzleComponents vec '[k] = '[ SwizzleComponent vec ]
+  SwizzleComponents vec (k1 ': k2 ': ks) =
+    SwizzleComponent vec ': SwizzleComponents vec (k2 ': ks)
+
+type family SwizzleFromChar (k :: Symbol) :: Optic '[] vec (SwizzleComponent vec) where
+  SwizzleFromChar "x" = Index 0
+  SwizzleFromChar "X" = Index 0
+  SwizzleFromChar "y" = Index 1
+  SwizzleFromChar "Y" = Index 1
+  SwizzleFromChar "z" = Index 2
+  SwizzleFromChar "Z" = Index 2
+  SwizzleFromChar "w" = Index 3
+  SwizzleFromChar "W" = Index 3
+  SwizzleFromChar "r" = Index 0
+  SwizzleFromChar "R" = Index 0
+  SwizzleFromChar "g" = Index 1
+  SwizzleFromChar "G" = Index 1
+  SwizzleFromChar "b" = Index 2
+  SwizzleFromChar "B" = Index 2
+  SwizzleFromChar "a" = Index 3
+  SwizzleFromChar "A" = Index 3
+  SwizzleFromChar "s" = Index 0
+  SwizzleFromChar "S" = Index 0
+  SwizzleFromChar "t" = Index 1
+  SwizzleFromChar "T" = Index 1
+  SwizzleFromChar "p" = Index 2
+  SwizzleFromChar "P" = Index 2
+  SwizzleFromChar "q" = Index 3
+  SwizzleFromChar "Q" = Index 3
+  SwizzleFromChar  k  =
+    TypeError
+      (     Text "Unsupported swizzle character " :<>: ShowType k :<>: Text "."
+       :$$: Text "Supported swizzle sets are: \"xyzw\", \"rgba\", \"stpq\"."
+      )
+
+type family SwizzleFromString
+              (swizzle :: [Symbol])
+         :: ProductComponents '[] vec (SwizzleComponents vec swizzle)
+         where
+  SwizzleFromString '[ ] = EndProd
+  SwizzleFromString '[k] = SwizzleFromChar k `ProductO` EndProd
+  SwizzleFromString (k1 ': k2 ': ks) =
+    If ( SwizzleSet k1 == SwizzleSet k2 )
+      ( SwizzleFromChar k1 `ProductO` SwizzleFromString (k2 ': ks) )
+      ( TypeError
+        (    Text "Cannot mix and match different swizzle sets."
+        :$$: Text "Swizzle set of " :<>: ShowType k1 :<>: Text " is "
+        :<>: ShowType (SwizzleSet k1) :<>: Text "."
+        :$$: Text "Swizzle set of " :<>: ShowType k2 :<>: Text " is "
+        :<>: ShowType (SwizzleSet k2) :<>: Text "."
         )
-  SwizzleFromString (k1 ': k2 ': ks)
-    = If ( SwizzleSet k1 == SwizzleSet k2 )
-        ( ProductO
-            ( SwizzleFromString '[k1]        )
-            ( SwizzleFromString ( k2 ': ks ) )
-        )
-        ( TypeError
-            (    Text "Cannot mix and match different swizzle sets."
-            :$$: Text "Swizzle set of " :<>: ShowType k1 :<>: Text " is "
-            :<>: ShowType (SwizzleSet k1) :<>: Text "."
-            :$$: Text "Swizzle set of " :<>: ShowType k2 :<>: Text " is "
-            :<>: ShowType (SwizzleSet k2) :<>: Text "."
-            )
-        )
+      )
 
 type family SwizzleSet ( swizzle :: Symbol ) :: Symbol where
   SwizzleSet "x" = "xyzw"

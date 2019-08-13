@@ -103,6 +103,6 @@ compileFragmentShader = compile fragPath [] fragment
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = withStructInput @VertexInput @(Triangle List)
-  $  StartPipeline
-  :> (vertex  , vertPath)
-  :> (fragment, fragPath)
+  $    StartPipeline
+  :>-> (vertex  , vertPath)
+  :>-> (fragment, fragPath)

@@ -20,12 +20,23 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
+type MyStruct = Struct '[ "field_0" ':-> Float, "field_1" ':-> Bool ]
+type OtherStruct = Struct '[ "x" ':-> Float, "y" ':-> Float ]
+
 program :: Program '[ "main" ':-> EntryPoint '[] Vertex ] ()
 program = Program do
 
   entryPoint @"main" @Vertex do
 
-    def @"struct" @RW @(Struct '[ "field_0" ':-> Float, "field_1" ':-> Bool ])
+    def @"struct" @RW @MyStruct
       ( Lit ( 3 :& True :& End ) )
 
-    assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( Lit ( 4 :& 5 :& End ) )
+    assign
+      @(    Name "struct"
+        :.: ( Prod (Name "field_0" :*: Index 0 :*: EndProd)
+               :: Optic '[]
+                    MyStruct
+                    OtherStruct
+            )
+       )
+      ( Lit ( 4 :& 5 :& End ) )

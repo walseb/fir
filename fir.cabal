@@ -123,6 +123,7 @@ library
       , Data.Binary.Class.Put
       , Data.Function.Variadic
       , Data.Map.Traverse
+      , Data.Product
       , Data.Type.Known
       , Data.Type.List
       , Data.Type.Map

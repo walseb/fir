@@ -289,7 +289,9 @@ type family ValidateExecutionModes
         )
         Nothing
   ValidateExecutionModes k Geometry modes
-    = If ( HasOneOf k Geometry '[ OutputPoints, OutputLineStrip, OutputTriangleStrip ] modes )
+    = If (  HasOneOf k Geometry '[ OutputPoints, OutputLineStrip, OutputTriangleStrip ] modes
+         && HasInvocations k modes
+         )
         ( Just
           ( GeometryInputInfo k modes )
         )
@@ -461,7 +463,7 @@ type family NoSizes
               ( modes     :: [ ExecutionMode Nat ] )
               :: Bool
               where
-  NoSizes _ _     _     '[]
+  NoSizes _ _  _     '[]
     = 'True
   NoSizes k em given (InputPoints ': _ )
     = TypeError
@@ -549,3 +551,18 @@ type family NoLocalSizes
   NoLocalSizes k em xyz ( _ ': modes )
     = NoLocalSizes k em xyz modes
 
+type family HasInvocations
+              ( k     :: Symbol                )
+              ( modes :: [ ExecutionMode Nat ] )
+           :: Bool
+           where
+  HasInvocations k '[]
+    = TypeError
+    (    Text (NamedExecutionModel k Geometry) :<>: Text " is missing the number of invocations."
+    :$$: Text "Expecting an 'Invocations i' execution mode, with 0 < i <= maxGeometryShaderInvocations."
+    )
+  HasInvocations k ( Invocations 0 ': _ )
+    = TypeError
+    ( Text (NamedExecutionModel k Geometry) :<>: Text ": number of invocations cannot be 0." )
+  HasInvocations k ( Invocations _ ': _ ) = True
+  HasInvocations k ( _ ': modes ) = HasInvocations k modes

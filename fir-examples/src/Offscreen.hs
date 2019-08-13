@@ -80,6 +80,9 @@ shaderCompilationResult
         ]
      )
 
+appName :: String
+appName = "fir-examples - Offscreen"
+
 offscreen :: IO ()
 offscreen = runManaged do
 
@@ -87,7 +90,7 @@ offscreen = runManaged do
     Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
-  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance []
+  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName []
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family"
       *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]

@@ -118,20 +118,20 @@ data TestOutput
   deriving ( Eq, Show )
 
 ghc :: FilePath
-ghc = "C:\\" </> "ghc" </> "ghc-8.6.5" </> "bin" </> "ghc" <.> "exe"
+ghc = "ghc"
 
 ghci :: FilePath
-ghci = "C:\\" </> "ghc" </> "ghc-8.6.5" </> "bin" </> "ghci" <.> "exe"
+ghci = "ghci"
 
 validator :: FilePath
 validator = "spirv-val"
 
 codeGen, validate :: FilePath -> IO TestOutput
-codeGen  testName = compileTest testName [Debug, NoCode]
-validate testName = compileTest testName [Debug]
+codeGen  testName = compileTest [Debug, NoCode] testName 
+validate testName = compileTest [Debug]         testName 
 
-compileTest :: FilePath -> [CompilerFlag] -> IO TestOutput
-compileTest testName flags = do
+compileTest :: [CompilerFlag] -> FilePath -> IO TestOutput
+compileTest flags testName = do
   srcExists <- doesFileExist src
   case srcExists of
     False -> pure ( Failure MissingSource )

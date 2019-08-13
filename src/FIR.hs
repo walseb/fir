@@ -80,7 +80,8 @@ module FIR
   , DrawableProgramAST(ast)
   , CompilerFlag(Debug, NoCode)
   , module Control.Monad.Indexed
-  , Control.Type.Optic.Optic
+  , Control.Type.Optic.Optic(Prod)
+  , Control.Type.Optic.ProductComponents(EndProd)
   , (Control.Type.Optic.:*:)
   , (Control.Type.Optic.:.:)
   , Control.Type.Optic.Joint
@@ -90,9 +91,10 @@ module FIR
   , Control.Type.Optic.ReifiedGetter(view)
   , Control.Type.Optic.ReifiedSetter(set)
   , Control.Type.Optic.ReifiedLens(over)
+  , module Data.Product
   , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST((:$), Lit, Pair, Ops)
+  , FIR.AST.AST((:$), Lit, Ops)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.AST.HasUndefined(undefined)
   , FIR.Binding.BindingsMap
@@ -113,6 +115,8 @@ module FIR
   , FIR.Layout.Layout(..)
   , FIR.Layout.Poke(..)
   , FIR.Layout.pokeArray
+  , FIR.Layout.roundUp
+  , FIR.Layout.nextAligned
   , FIR.Pipeline.ShaderPipeline(..)
   , FIR.Pipeline.withVertexInput, FIR.Pipeline.withStructInput
   , FIR.Pipeline.ShaderPipelineWithInfo(..)
@@ -246,6 +250,7 @@ import CodeGen.State
 import Control.Arrow.Strength
 import Control.Monad.Indexed
 import Control.Type.Optic
+import Data.Product
 import Data.Type.Known
 import Data.Type.List
 import Data.Type.Map

@@ -31,6 +31,10 @@ import Control.Arrow
   ( first )
 import Control.Monad
   ( unless )
+import Data.Kind
+  ( Type )
+import Data.Type.Equality
+  ( (:~:)(Refl) )
 import Data.Word
   ( Word32 )
 
@@ -74,15 +78,34 @@ import CodeGen.State
   , _localBinding, _temporaryPointer
   )
 import Control.Type.Optic
-  ( Optic )
+  ( Optic
+  , ProductComponents(..) )
+import Data.Product
+  ( HList
+  , MapHList
+  , AreProducts(productsDict)
+  , AreProductsDict(ConsProducts)
+  , Distribute
+  , distributeZipConsLemma1
+  )
 import Data.Type.List
-  ( type (:++:), Zip
+  ( type (:++:), ZipCons
+  , KnownLength(sLength)
   , SLength(SZero, SSucc)
+  , SameLength(sSameLength)
+  , SSameLength(SSameZero, SSameSucc)
   )
 import FIR.AST
-  ( AST((:$), Lit, Fst, Snd, Use, Assign, View, Set) )
+  ( AST
+    ( (:$), Lit
+    , Use, Assign, View, Set
+    , NilHList, ConsHList
+    , HeadHList, TailHList
+    , ProductToHList
+    )
+  )
 import FIR.Instances.Optics
-  ( SOptic(..) )
+  ( SOptic(..), SProductComponents(..) )
 import FIR.Prim.Singletons
   ( SPrimTy(..), primTy )
 import qualified SPIRV.PrimTy  as SPIRV
@@ -218,34 +241,71 @@ operationTree is (SComposeO lg1 opt1 opt2)
           continue (Access (RTInds safe1 is1) `Then` Done) (Access (RTInds safe2 is2) `Then` ops2)
             = Access (RTInds (safe1 <> safe2) (is1 ++ is2)) `Then` ops2
           continue (op1 `Then` ops1) ops2 = op1 `Then` continue ops1 ops2
-operationTree is (SProductO lg1 lg2 o1 o2 :: SOptic (optic :: Optic is s a))
-  = do  let (is1, is2) = combinedIndices lg1 lg2 is
-        t1 <- operationTree is1 o1
-        t2 <- operationTree is2 o2
-        let children
-              = case ( t1, t2 ) of
-                  (Combine _ ts1, Combine _ ts2) -> ts1 ++ ts2
-                  (Combine _ ts1, _            ) -> ts1 ++ [t2]
-                  (_            , Combine _ ts2) -> t1 : ts2
-                  (_            , _            ) -> [t1, t2]
-        pure (Combine (primTy @a) children)
+operationTree is
+  ( SProd same (comps :: SProductComponents (os :: ProductComponents iss s as))
+    :: SOptic (optic :: Optic is s a)
+  ) =  Combine (primTy @a)
+   <$> componentsTrees same (combinedIndices @iss @is @as sSameLength sLength is) comps
 operationTree _ (SBinding _)
   = throwError "operationTree: trying to access a binding within a binding"
 operationTree _ (SImageTexel _ _)
   = throwError "operationTree: unexpected image optic"
 
-composedIndices :: SLength is -> ASTs (is :++: js) -> (ASTs is, ASTs js)
-composedIndices SZero js = ( NilAST, js )
-composedIndices (SSucc tail_is) (k `ConsAST` ks)
-  = first ( k `ConsAST` ) (composedIndices tail_is ks)
+componentsTrees
+  :: forall (k :: Type) (iss :: [[Type]]) (s :: k) (as :: [Type]) (os :: ProductComponents iss s as)
+  .  SSameLength (Distribute iss as) as
+  -> ASTs (MapHList (Distribute iss as))
+  -> SProductComponents os
+  -> CGMonad [OpticalOperationTree]
+componentsTrees           SSameZero     NilAST             SEndProd             = pure []
+componentsTrees sameSucc@(SSameSucc lg) (is `ConsAST` iss) (so `SProductO` sos) =
+  case sameSucc of
+    ( _ :: SSameLength (ds ': dss) (b ': bs) ) ->
+      case so of
+        ( _ :: SOptic ( o :: Optic es s b ) ) ->
+          case sos of
+           ( _ :: SProductComponents ( tail_os :: ProductComponents ess s bs ) ) ->
+            case distributeZipConsLemma1 @b @bs @ds @dss @es @ess of
+              (Refl, Refl) ->
+                (:) <$> operationTree (astsFromHList is) so <*> componentsTrees lg iss sos
 
-combinedIndices :: SLength is -> SLength js -> ASTs (Zip is js) -> (ASTs is, ASTs js)
-combinedIndices SZero SZero _ = ( NilAST, NilAST )
-combinedIndices SZero (SSucc _) ks = ( NilAST, ks )
-combinedIndices (SSucc _) SZero ks = ( ks, NilAST )
-combinedIndices (SSucc is) (SSucc js) (k1k2 `ConsAST` ks)
-  = case combinedIndices is js ks of
-         ( is', js' ) -> ( (Fst :$ k1k2) `ConsAST` is', (Snd :$ k1k2) `ConsAST` js' )
+composedIndices :: SLength is -> ASTs (is :++: js) -> (ASTs is, ASTs js)
+composedIndices SZero           js               = ( NilAST, js )
+composedIndices (SSucc tail_is) (k `ConsAST` ks)
+  = first ( k `ConsAST` ) ( composedIndices tail_is ks )
+
+combinedIndices
+  :: forall (jss :: [[Type]]) (is :: [Type]) (as :: [Type])
+  .  AreProducts is jss as
+  => SSameLength is jss
+  -> SLength as
+  -> ASTs is
+  -> ASTs (MapHList (Distribute jss as))
+combinedIndices        SSameZero     SZero      NilAST           = NilAST
+combinedIndices        SSameZero     (SSucc lg) NilAST           = NilHList `ConsAST` combinedIndices SSameZero lg NilAST
+combinedIndices sSame@(SSameSucc sm) lg         (i `ConsAST` is) =
+  case sSame of
+    ( _ :: SSameLength (p ': ps) (es ': ess) ) ->
+      case productsDict @is @jss @as of
+        ConsProducts ->
+          zipIndices sSameLength (toHListASTs sLength (ProductToHList :$ i)) (combinedIndices sm lg is)
+
+
+toHListASTs :: SLength as -> AST (HList as) -> ASTs as
+toHListASTs SZero      _ = NilAST
+toHListASTs (SSucc lg) p = ( HeadHList :$ p ) `ConsAST` toHListASTs lg ( TailHList :$ p )
+
+astsFromHList :: AST (HList as) -> ASTs as
+astsFromHList NilHList = NilAST
+astsFromHList (ConsHList :$ a :$ as)
+  = a `ConsAST` astsFromHList as
+astsFromHList _
+  = error "'operationTree': indexing heterogenous list AST not of the expected form (TODO?)"
+
+zipIndices :: SSameLength is jss -> ASTs is -> ASTs (MapHList jss) -> ASTs (MapHList (ZipCons is jss))
+zipIndices SSameZero      NilAST           NilAST             = NilAST
+zipIndices (SSameSucc lg) (i `ConsAST` is) (js `ConsAST` jss) =
+  (ConsHList :$ i :$ js) `ConsAST` zipIndices lg is jss
 
 ----------------------------------------------------------------------------
 -- code generation for optics

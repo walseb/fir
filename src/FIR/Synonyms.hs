@@ -35,8 +35,10 @@ import Numeric.Half
 
 -- fir
 import Control.Type.Optic
-  ( Optic(..), Index, (:.:)
+  ( Optic(..), Index
+  , (:.:), (:*:)
   , Joint
+  , ProductComponents(EndProd)
   )
 import FIR.AST
   ( AST(Ops) )
@@ -190,7 +192,6 @@ type Col__ (i :: Nat) = ( Index i :: Optic '[] (AST (M m n a)) (AST (V m a)) )
 type Ix_   (i :: Nat) = ( Index i :: Optic '[] (V n a) a )
 type Ix__  (i :: Nat) = ( Index i :: Optic '[] (AST (V n a)) (AST a) )
 
-
 type family ColRes (i :: Nat) (mat :: Type) :: Type where
   ColRes i (AST (M m n a)) = AST (V m a)
   ColRes i (M m n a) = V m a
@@ -204,48 +205,54 @@ type family RowRes (i :: Nat) (mat :: Type) :: Type where
   RowRes i (AST (M m n a)) = AST (V n a)
 
 type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes i mat) ) where
-  Row i = ( (            (Col__ 0 :.: Ix__ i)
-              `ProductO` (Col__ 1 :.: Ix__ i)
-            ) :: Optic '[] (AST (M m 2 a)) (AST (V 2 a))
-          )
-  Row i = ( ( ( (            ( Col__ 0 :.: Ix__ i )
-                  `ProductO` ( Col__ 1 :.: Ix__ i )
-                ) :: Optic '[] (AST (M m 3 a)) (AST (V 2 a))
+  Row i = ( Prod
+              (   (Col__ 0 :.: Ix__ i)
+              :*: (Col__ 1 :.: Ix__ i)
+              :*: EndProd
               )
-              `ProductO` ( Col__ 2 :.: Ix__ i )
-            ) :: Optic '[] (AST (M m 3 a)) (AST (V 3 a))
+            :: Optic '[] (AST (M m 2 a)) (AST (V 2 a))
           )
-  Row i = ( ( ( ( ( (            ( Col__ 0 :.: Ix__ i )
-                      `ProductO` ( Col__ 1 :.: Ix__ i )
-                    ) :: Optic '[] (AST (M m 4 a)) (AST (V 2 a))
-                  )
-                  `ProductO` ( Col__ 2 :.: Ix__ i )
-                ) :: Optic '[] (AST (M m 4 a)) (AST (V 3 a))
+  Row i = ( Prod
+              (   (Col__ 0 :.: Ix__ i)
+              :*: (Col__ 1 :.: Ix__ i)
+              :*: (Col__ 2 :.: Ix__ i)
+              :*: EndProd
               )
-              `ProductO` ( Col__ 3 :.: Ix__ i )
-            ) :: Optic '[] (AST (M m 4 a)) (AST (V 4 a))
+            :: Optic '[] (AST (M m 3 a)) (AST (V 3 a))
           )
-  Row i = ( (            (Col_ 0 :.: Ix_ i)
-              `ProductO` (Col_ 1 :.: Ix_ i)
-            ) :: Optic '[] (M m 2 a) (V 2 a)
-          )
-  Row i = ( ( ( (            ( Col_ 0 :.: Ix_ i )
-                  `ProductO` ( Col_ 1 :.: Ix_ i )
-                ) :: Optic '[] (M m 3 a) (V 2 a)
+  Row i = ( Prod
+              (   (Col__ 0 :.: Ix__ i)
+              :*: (Col__ 1 :.: Ix__ i)
+              :*: (Col__ 2 :.: Ix__ i)
+              :*: (Col__ 3 :.: Ix__ i)
+              :*: EndProd
               )
-              `ProductO` ( Col_ 2 :.: Ix_ i )
-            ) :: Optic '[] (M m 3 a) (V 3 a)
+            :: Optic '[] (AST (M m 4 a)) (AST (V 4 a))
           )
-  Row i = ( ( ( ( ( (            ( Col_ 0 :.: Ix_ i )
-                      `ProductO` ( Col_ 1 :.: Ix_ i )
-                    ) :: Optic '[] (M m 4 a) (V 2 a)
-                  )
-                  `ProductO` ( Col_ 2 :.: Ix_ i )
-                ) :: Optic '[] (M m 4 a) (V 3 a)
+  Row i = ( Prod
+              (   (Col_ 0 :.: Ix_ i)
+              :*: (Col_ 1 :.: Ix_ i)
+              :*: EndProd
               )
-              `ProductO` ( Col_ 3 :.: Ix_ i )
-            ) :: Optic '[] (M m 4 a) (V 4 a)
+            :: Optic '[] (M m 2 a) (V 2 a)
           )
+  Row i = ( Prod
+              (   (Col_ 0 :.: Ix_ i)
+              :*: (Col_ 1 :.: Ix_ i)
+              :*: (Col_ 2 :.: Ix_ i)
+              :*: EndProd
+              )
+            :: Optic '[] (M m 3 a) (V 3 a)
+          )
+  Row i = ( Prod
+              (   (Col_ 0 :.: Ix_ i)
+              :*: (Col_ 1 :.: Ix_ i)
+              :*: (Col_ 2 :.: Ix_ i)
+              :*: (Col_ 3 :.: Ix_ i)
+              :*: EndProd
+              )
+           :: Optic '[] (M m 4 a) (V 4 a)
+         )
 
 type family EntryRes (mat :: Type) :: Type where
   EntryRes (M m n a) = a
@@ -260,41 +267,53 @@ type family DiagRes (mat :: Type) :: Type where
   DiagRes (AST (M n n a)) = AST (V n a)
 
 type family Diag :: Optic '[] mat (DiagRes mat) where
-  Diag = ( (            (Col_ 0 :.: Ix_ 0)
-             `ProductO` (Col_ 1 :.: Ix_ 1)
-           ) :: Optic '[] (M 2 2 a) (V 2 a)
+  Diag = ( Prod
+              (   (Col_ 0 :.: Ix_ 0)
+              :*: (Col_ 1 :.: Ix_ 1)
+              :*: EndProd
+              )
+            :: Optic '[] (M 2 2 a) (V 2 a)
          )
-  Diag = ( ( ( (            (Col_ 0 :.: Ix_ 0)
-                 `ProductO` (Col_ 1 :.: Ix_ 1)
-               ) :: Optic '[] (M 3 3 a) (V 2 a)
-             ) `ProductO` (Col_ 2 :.: Ix_ 2)
-           ) :: Optic '[] (M 3 3 a) (V 3 a)
+  Diag = ( Prod
+              (   (Col_ 0 :.: Ix_ 0)
+              :*: (Col_ 1 :.: Ix_ 1)
+              :*: (Col_ 2 :.: Ix_ 2)
+              :*: EndProd
+              )
+            :: Optic '[] (M 3 3 a) (V 3 a)
          )
-  Diag = ( ( ( ( ( (           (Col_ 0 :.: Ix_ 0)
-                    `ProductO` (Col_ 1 :.: Ix_ 1)
-                   ) :: Optic '[] (M 4 4 a) (V 2 a)
-                 ) `ProductO` (Col_ 2 :.: Ix_ 2)
-               ) :: Optic '[] (M 4 4 a) (V 3 a)
-             ) `ProductO` (Col_ 3 :.: Ix_ 3)
-           ) :: Optic '[] (M 4 4 a) (V 4 a)
+  Diag = ( Prod
+              (   (Col_ 0 :.: Ix_ 0)
+              :*: (Col_ 1 :.: Ix_ 1)
+              :*: (Col_ 2 :.: Ix_ 2)
+              :*: (Col_ 3 :.: Ix_ 3)
+              :*: EndProd
+              )
+            :: Optic '[] (M 4 4 a) (V 4 a)
          )
-  Diag = ( (            (Col__ 0 :.: Ix__ 0)
-             `ProductO` (Col__ 1 :.: Ix__ 1)
-           ) :: Optic '[] (AST (M 2 2 a)) (AST (V 2 a))
+  Diag = ( Prod
+              (   (Col__ 0 :.: Ix__ 0)
+              :*: (Col__ 1 :.: Ix__ 1)
+              :*: EndProd
+              )
+            :: Optic '[] (AST (M 2 2 a)) (AST (V 2 a))
          )
-  Diag = ( ( ( (            (Col__ 0 :.: Ix__ 0)
-                 `ProductO` (Col__ 1 :.: Ix__ 1)
-               ) :: Optic '[] (AST (M 3 3 a)) (AST (V 2 a))
-             ) `ProductO` (Col__ 2 :.: Ix__ 2)
-           ) :: Optic '[] (AST (M 3 3 a)) (AST (V 3 a))
+  Diag = ( Prod
+              (   (Col__ 0 :.: Ix__ 0)
+              :*: (Col__ 1 :.: Ix__ 1)
+              :*: (Col__ 2 :.: Ix__ 2)
+              :*: EndProd
+              )
+            :: Optic '[] (AST (M 3 3 a)) (AST (V 3 a))
          )
-  Diag = ( ( ( ( ( (           (Col__ 0 :.: Ix__ 0)
-                    `ProductO` (Col__ 1 :.: Ix__ 1)
-                   ) :: Optic '[] (AST (M 4 4 a)) (AST (V 2 a))
-                 ) `ProductO` (Col__ 2 :.: Ix__ 2)
-               ) :: Optic '[] (AST (M 4 4 a)) (AST (V 3 a))
-             ) `ProductO` (Col__ 3 :.: Ix__ 3)
-           ) :: Optic '[] (AST (M 4 4 a)) (AST (V 4 a))
+  Diag = ( Prod
+              (   (Col__ 0 :.: Ix__ 0)
+              :*: (Col__ 1 :.: Ix__ 1)
+              :*: (Col__ 2 :.: Ix__ 2)
+              :*: (Col__ 3 :.: Ix__ 3)
+              :*: EndProd
+              )
+            :: Optic '[] (AST (M 4 4 a)) (AST (V 4 a))
          )
 
 type family Center :: Optic '[] mat (EntryRes mat) where

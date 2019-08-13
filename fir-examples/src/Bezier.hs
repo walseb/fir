@@ -23,6 +23,8 @@ import Control.Monad.IO.Class
 import Data.Bits
 import Data.Coerce
   ( coerce )
+import Data.String
+  ( IsString )
 import Data.Traversable
   ( for )
 import Data.Word
@@ -103,6 +105,9 @@ shaderCompilationResult
         ]
      )
 
+appName :: IsString a => a
+appName = "fir-examples - Bézier curves"
+
 bezier :: IO ()
 bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
@@ -112,14 +117,14 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Bézier curves"
+  window           <- logMsg "Creating SDL window"           *> createWindow appName
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
   extensionNames <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
   logMsg $ "Needed instance extensions are: " ++ show extensionNames
 
-  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance neededExtensions
+  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family"
       *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]

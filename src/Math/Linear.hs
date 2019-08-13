@@ -125,6 +125,14 @@ import Data.Distributive
 -- fir
 import Control.Arrow.Strength
   ( strong )
+import Data.Product
+  ( IsProduct(..)
+  , HList(HNil, (:>))
+  )
+import Data.Type.List
+  ( Replicate
+  , Length, KnownLength
+  )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
@@ -151,7 +159,7 @@ infixr 3 :.
 -- @V m a@ denotes a vector of @m@ inhabitants of @a@.
 -- Represented as a linked list.
 data V :: Nat -> Type -> Type where
-  Nil  :: V 0 a
+  VNil :: V 0 a
   (:.) :: a -> V n a -> V (1+n) a
 
 deriving instance Functor     (V n)
@@ -175,7 +183,7 @@ instance (KnownNat n, Binary a) => Binary (V n a) where
                            $ get @(V (n-1) a)
             NLE nle _ ->
               case deduceZero nle of
-                   Refl -> pure Nil
+                   Refl -> pure VNil
 
 instance KnownNat n => Distributive (V n) where
   distribute :: Functor f => f (V n a) -> V n (f a)
@@ -187,14 +195,39 @@ instance KnownNat n => Distributive (V n) where
                    . fmap headTailV
         NLE nle _ ->
           case deduceZero nle of
-               Refl -> const Nil
+               Refl -> const VNil
     
 instance KnownNat n => Applicative (V n) where
   pure                    = unfold id
-  _         <*>  Nil      = Nil
+  _         <*>  VNil     = VNil
   (f :. fs) <*> (a :. as) = f a :. fs <*> as
   _         <*> _         = error "unreachable"
 
+instance (KnownLength rs, Replicated n a rs)
+      => IsProduct (V n a) rs where
+  fromHList = fromHListVec replication
+  toHList   = toHListVec   replication
+
+data Replication n a rs where
+  NilReplication :: Replication 0 a '[]
+  ConsReplication :: Replication n a rs -> Replication (1+n) a (a ': rs)
+
+class ( rs ~ Replicate n a, n ~ Length rs ) => Replicated n a rs | rs -> n where
+  replication :: Replication n a rs
+instance Replicated 0 a '[] where
+  replication = NilReplication
+instance (m ~ (1+n), rs ~ Replicate (m-1) a, (a ': rs) ~ Replicate m a, n ~ Length rs, Replicated n a rs)
+       => Replicated m a (a ': rs) where
+  replication = ConsReplication ( replication @n @a @rs )
+
+fromHListVec :: Replication n a rs -> HList rs -> V n a
+fromHListVec NilReplication          _        = VNil
+fromHListVec (ConsReplication repl) (x :> xs) = x :. fromHListVec repl xs
+
+toHListVec :: Replication n a rs -> V n a -> HList rs
+toHListVec NilReplication         _         = HNil
+toHListVec (ConsReplication repl) (x :. xs) = x :> toHListVec repl xs
+toHListVec (ConsReplication _   ) VNil = error "impossible"
 
 instance (KnownNat n, Choose b '(x,y,z))
         => Choose b '(V n x, V n y, V n z) where
@@ -208,11 +241,11 @@ instance (KnownNat n, Ord a) => Ord (V n a) where
   type Ordering (V n a) = Ordering a
   compare = error "todo"
 
-  Nil <= Nil = true
+  VNil <= VNil = true
   (a :. as) <= (b :. bs) = a < b || (a <= b && as <= bs)
   _ <= _ = error "unreachable"
 
-  Nil < Nil = false
+  VNil < VNil = false
   (a :. as) <  (b :. bs) = a < b || (a <= b && as <  bs)
   _ < _ = error "unreachable"
 
@@ -243,7 +276,7 @@ instance (KnownNat n, Storable a) => Storable (V n a) where
   
   poke ptr u = go u 0#
     where go :: KnownNat m => V m a -> Int# -> IO()
-          go Nil     _  = pure ()
+          go VNil     _  = pure ()
           go (a :. v) n# = do
               pokeElemOff (castPtr ptr) (I# n#) a
               go v (n# +# 1#)
@@ -258,7 +291,7 @@ infixl 9 ^!
 -- | Unsafe indexing.
 (^!) :: V n a -> Int -> a
 (^!) (a :. _)  0 = a
-(^!) Nil       _ = error "empty vector"
+(^!) VNil      _ = error "empty vector"
 (^!) (_ :. as) n = as ^! (n-1)
 
 -- | Safe indexing.
@@ -309,7 +342,7 @@ buildV :: forall n a v. KnownNat n
        => ( forall i. (KnownNat i, CmpNat i n ~ Prelude.LT) => Proxy i -> v -> a) -- ^ Indexing function.
        -> v -- ^ Object to index into.
        -> V n a
-buildV f v = go @0 Nil where
+buildV f v = go @0 VNil where
   go :: forall j. (KnownNat j, j <= n)
      => V j a
      -> V n a
@@ -332,7 +365,7 @@ dfoldrV :: forall n a b. KnownNat n
         -> b n
 dfoldrV f d = go
   where go :: (KnownNat m, m <= n) => V m a -> b m
-        go Nil     = d
+        go VNil    = d
         go (a:.as) = f a (go as)
 
 -- | Unfold: create a vector of specified length,
@@ -346,27 +379,27 @@ unfold f a
            LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
            NLE nle _ -> 
             case deduceZero nle of
-                 Refl -> Nil
+                 Refl -> VNil
 
 {-# COMPLETE V0 #-}
 pattern V0 :: V 0 a
-pattern V0 = Nil
+pattern V0 = VNil
 
 {-# COMPLETE V1 #-}
 pattern V1 :: a -> V 1 a
-pattern V1 x = x :. Nil
+pattern V1 x = x :. VNil
 
 {-# COMPLETE V2 #-}
 pattern V2 :: a -> a -> V 2 a
-pattern V2 x y = x :. y :. Nil
+pattern V2 x y = x :. y :. VNil
 
 {-# COMPLETE V3 #-}
 pattern V3 :: a -> a -> a -> V 3 a
-pattern V3 x y z = x :. y :. z :. Nil
+pattern V3 x y z = x :. y :. z :. VNil
 
 {-# COMPLETE V4 #-}
 pattern V4 :: a -> a -> a -> a -> V 4 a
-pattern V4 x y z w = x :. y :. z :. w :. Nil
+pattern V4 x y z w = x :. y :. z :. w :. VNil
 
 ------------------------------------------------------------------
 -- graded semigroup for vectors
@@ -375,14 +408,14 @@ instance GradedSemigroup (V 0 a) Nat where
   type Grade Nat (V 0 a) i = V i a
   type i :<!>: j = i + j
   (<!>) :: V i a -> V j a -> V (i+j) a
-  (<!>) Nil      v = v
+  (<!>) VNil     v = v
   (<!>) (a:.as)  v = a :. (as <!> v)
 
 instance GeneratedGradedSemigroup (V 0 a) Nat () where
   type GenType    (V 0 a) ()  _  = a
   type GenDeg Nat (V 0 a) () '() = 1
   generator :: a -> V (GenDeg Nat (V 0 a) () unit) a
-  generator a = unsafeCoerce (a :. Nil)
+  generator a = unsafeCoerce (a :. VNil)
   --              ^^^
   -- GHC cannot deduce unit ~ '()
   -- see [GHC trac #7259](https://gitlab.haskell.org/ghc/ghc/issues/7259)
@@ -390,7 +423,7 @@ instance GeneratedGradedSemigroup (V 0 a) Nat () where
 instance FreeGradedSemigroup (V 0 a) Nat () where
   type ValidDegree (V 0 a) n = KnownNat n
   (>!<) :: forall i j. (KnownNat i, KnownNat j) => V (i+j) a -> ( V i a, V j a )
-  (>!<) Nil = unsafeCoerce ( Nil, Nil )
+  (>!<) VNil = unsafeCoerce ( VNil, VNil )
   (>!<) (a :. as)
     = case Proxy @1 %<=? Proxy @i of
          LE Refl   ->
@@ -398,7 +431,7 @@ instance FreeGradedSemigroup (V 0 a) Nat () where
                 v :: V j a
                 (u, v) = (>!<) (as :: V ((i+j)-1) a)
             in (a :. u, v)
-         NLE _ _ -> unsafeCoerce ( Nil, a :. as )
+         NLE _ _ -> unsafeCoerce ( VNil, a :. as )
   generated :: V (GenDeg Nat (V 0 a) () unit) a -> a
   generated = unsafeCoerce (headV :: V 1 a -> a)
   --           ^^^^^   ditto
@@ -590,7 +623,7 @@ identityMat =
   case (Proxy :: Proxy 1) %<=? (Proxy :: Proxy n) of
        LE Refl   -> (1 :. pure 0) :. fmap (0:.) (identityMat :: V (n-1) (V (n-1) a) )
        NLE nle _ -> case deduceZero nle of
-                         Refl -> Nil
+                         Refl -> VNil
 
 newtype WrappedMatrix m n a k = WrappedMatrix { wrappedMatrix :: V m (V (n+k) a) }
 
@@ -604,17 +637,17 @@ addCols :: (KnownNat m, KnownNat n, KnownNat l) => V m (V n a) -> V l (V m a) ->
 addCols mat cols = wrappedMatrix $ dfoldrV (flip addCol') (WrappedMatrix mat) cols
 
 rowMatrix :: KnownNat n => V n a -> V 1 (V n a)
-rowMatrix = (:. Nil)
+rowMatrix = (:. VNil)
 
 columnMatrix :: KnownNat n => V n a -> V n (V 1 a)
-columnMatrix = fmap (:. Nil)
+columnMatrix = fmap (:. VNil)
 
 blockSum :: forall m1 m2 n1 n2 a. (KnownNat m1, KnownNat m2, KnownNat n1, KnownNat n2, Semiring a) 
          => V m1 (V n1 a)-> V m2 (V n2 a) -> V (m1+m2) (V (n1+n2) a)
 blockSum mat1 mat2 = fmap (<!> pure zero) mat1 <!> fmap (pure zero <!>) mat2
 
 fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> V m (V l a)
-fromColumns = addCols ( pure Nil :: V m (V 0 a))
+fromColumns = addCols ( pure VNil :: V m (V 0 a))
 
 
 ------------------------------------------------------------------
@@ -668,7 +701,7 @@ instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
         => M m (i+j) a -> ( M m i a, M m j a )
   (>!<) (M m) = case go m of { (m1, m2) -> ( M m1, M m2 ) }
     where go :: V k (V (i+j) a) -> (V k (V i a), V k (V j a))
-          go Nil = ( Nil, Nil )
+          go VNil = ( VNil, VNil )
           go (c :. cs) = case ( (>!<) c, go cs ) of
               ( ( ci, cj ), (cis, cjs) ) -> (ci :. cis, cj :. cjs)
   generated :: M m (GenDeg Nat (M m 0 a) () unit) a -> V m a

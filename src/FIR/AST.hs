@@ -72,6 +72,8 @@ import Control.Monad.Indexed
   ( (:=) )
 import Data.Function.Variadic
   ( NatVariadic )
+import Data.Product
+  ( HList, IsProduct )
 import Data.Type.Known
   ( Known, knownValue )
 import Data.Type.List
@@ -277,16 +279,18 @@ data AST :: Type -> Type where
   Ops   :: ImageOperands props ops -> AST ( ImageOperands props ops )
   Coerce :: forall a b. AST (a -> b)
 
-  --MkStruct
-  --MkArray
+  -- MkStruct
+  -- MkArray
 
-  -- | Internal pair data type.
+  -- | Internal HList data type.
   --
   -- Only used for providing multiple run-time indices to product optics.
   -- See [FIR issue #13](https://gitlab.com/sheaf/fir/issues/13).
-  Pair :: AST ( a -> b -> (a,b) )
-  Fst  :: AST ( (a,b) -> a )
-  Snd  :: AST ( (a,b) -> b )
+  NilHList  :: AST ( HList '[] )
+  ConsHList :: AST ( a -> HList as -> HList (a ': as) )
+  HeadHList :: AST ( HList (a ': as) -> a )
+  TailHList :: AST ( HList (a ': as) -> HList as )
+  ProductToHList :: IsProduct p as => AST (p -> HList as)
 
   -- | Undefined.
   Undefined :: PrimTy a => AST a
@@ -360,10 +364,12 @@ toTreeArgs Mat       as = return (Node "Mat"           as)
 toTreeArgs UnMat     as = return (Node "UnMat"         as)
 toTreeArgs (Ops _ )  as = return (Node "ImageOperands" as)
 toTreeArgs Coerce    as = return (Node "Coerce"        as)
-toTreeArgs Pair      as = return (Node "Pair"          as)
-toTreeArgs Fst       as = return (Node "Fst"           as)
-toTreeArgs Snd       as = return (Node "Snd"           as)
 toTreeArgs Undefined as = return (Node "Undefined"     as)
+toTreeArgs NilHList  as = return (Node "NilHListAST"  as)
+toTreeArgs ConsHList as = return (Node "ConsHListAST" as)
+toTreeArgs HeadHList as = return (Node "HeadAST"      as)
+toTreeArgs TailHList as = return (Node "TailAST"      as)
+toTreeArgs ProductToHList   as = return (Node "ProductToHList"   as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs GradedMappend    as = return (Node "GradedMappend" as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
