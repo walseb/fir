@@ -106,7 +106,7 @@ import GHC.TypeLits.Compare
   ( (:<=?)(LE,NLE), (%<=?) )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal
-  , type (+), type (-)
+  , type (+), type (-) --, type (*)
   , CmpNat, type (<=), type (<=?)
   )
 import Numeric.Natural
@@ -203,31 +203,6 @@ instance KnownNat n => Applicative (V n) where
   (f :. fs) <*> (a :. as) = f a :. fs <*> as
   _         <*> _         = error "unreachable"
 
-instance (KnownLength rs, Replicated n a rs)
-      => IsProduct (V n a) rs where
-  fromHList = fromHListVec replication
-  toHList   = toHListVec   replication
-
-data Replication n a rs where
-  NilReplication :: Replication 0 a '[]
-  ConsReplication :: Replication n a rs -> Replication (1+n) a (a ': rs)
-
-class ( rs ~ Replicate n a, n ~ Length rs ) => Replicated n a rs | rs -> n where
-  replication :: Replication n a rs
-instance Replicated 0 a '[] where
-  replication = NilReplication
-instance (m ~ (1+n), rs ~ Replicate (m-1) a, (a ': rs) ~ Replicate m a, n ~ Length rs, Replicated n a rs)
-       => Replicated m a (a ': rs) where
-  replication = ConsReplication ( replication @n @a @rs )
-
-fromHListVec :: Replication n a rs -> HList rs -> V n a
-fromHListVec NilReplication          _        = VNil
-fromHListVec (ConsReplication repl) (x :> xs) = x :. fromHListVec repl xs
-
-toHListVec :: Replication n a rs -> V n a -> HList rs
-toHListVec NilReplication         _         = HNil
-toHListVec (ConsReplication repl) (x :. xs) = x :> toHListVec repl xs
-toHListVec (ConsReplication _   ) VNil = error "impossible"
 
 instance (KnownNat n, Choose b '(x,y,z))
         => Choose b '(V n x, V n y, V n z) where
@@ -402,7 +377,33 @@ pattern V4 :: a -> a -> a -> a -> V 4 a
 pattern V4 x y z w = x :. y :. z :. w :. VNil
 
 ------------------------------------------------------------------
--- graded semigroup for vectors
+-- products for vectors
+
+instance (KnownLength rs, Replicated n a rs)
+      => IsProduct (V n a) rs where
+  fromHList = fromHListVec replication
+  toHList   = toHListVec   replication
+
+data Replication n a rs where
+  NilReplication :: Replication 0 a '[]
+  ConsReplication :: Replication n a rs -> Replication (1+n) a (a ': rs)
+
+class ( rs ~ Replicate n a, n ~ Length rs ) => Replicated n a rs | rs -> n where
+  replication :: Replication n a rs
+instance Replicated 0 a '[] where
+  replication = NilReplication
+instance (m ~ (1+n), rs ~ Replicate (m-1) a, (a ': rs) ~ Replicate m a, n ~ Length rs, Replicated n a rs)
+       => Replicated m a (a ': rs) where
+  replication = ConsReplication ( replication @n @a @rs )
+
+fromHListVec :: Replication n a rs -> HList rs -> V n a
+fromHListVec NilReplication          _        = VNil
+fromHListVec (ConsReplication repl) (x :> xs) = x :. fromHListVec repl xs
+
+toHListVec :: Replication n a rs -> V n a -> HList rs
+toHListVec NilReplication         _         = HNil
+toHListVec (ConsReplication repl) (x :. xs) = x :> toHListVec repl xs
+toHListVec (ConsReplication _   ) VNil      = error "impossible"
 
 instance GradedSemigroup (V 0 a) Nat where
   type Grade Nat (V 0 a) i = V i a
@@ -679,7 +680,47 @@ deriving via '(V m (V n x), V m (V n y), V m (V n z))
   instance (KnownNat m, KnownNat n, Choose b '(x,y,z)) => Choose b '(M m n x, M m n y, M m n z)
 
 ------------------------------------------------------------------
--- graded semigroup for matrices
+-- products for matrices
+
+
+instance {-# OVERLAPPING #-}  IsProduct (M 0 0 a) '[] where
+  fromHList _ = M VNil
+  toHList   _ = HNil
+instance {-# OVERLAPPABLE #-} KnownNat m => IsProduct (M m 0 a) '[] where
+  fromHList _ = M ( pure VNil )
+  toHList   _ = HNil
+instance {-# OVERLAPPABLE #-} IsProduct (M 0 n a) '[] where
+  fromHList _ = M VNil
+  toHList   _ = HNil
+instance ( KnownNat m
+         , KnownNat n, 1 <= n
+         , Replicated (n-1) (V m a) rs
+         , KnownLength rs
+         , (Length rs + 1) ~ n
+         )
+      => IsProduct (M m n a) (V m a ': rs)
+      where
+  fromHList (col :> cols) = M $ addCol ( distribute (fromHListVec (replication @(n-1) @(V m a)) cols )) col
+  toHList (M rows) = case distribute rows of
+    ( col :. cols ) -> col :> toHListVec (replication @(n-1) @(V m a)) cols
+{-
+instance ( KnownNat n, 1 <= n
+         , KnownNat m, 1 <= m
+         , Replicated (n*m-1) a rs
+         , KnownLength rs
+         , Length rs ~ (n*m-1)
+         )
+      => IsProduct (M m n a) (a ': rs)
+      where
+  fromHList = fromHListMatrixEntries ( ConsReplication (replication @(n*m-1) @a) )
+  toHList   = toHListMatrixEntries   ( ConsReplication (replication @(n*m-1) @a) )
+
+fromHListMatrixEntries :: Replication (n*m) a rs -> HList rs -> M m n a
+fromHListMatrixEntries = undefined
+
+toHListMatrixEntries :: Replication (n*m) a rs -> M m n a -> HList rs
+toHListMatrixEntries = undefined
+-}
 
 instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
   type Grade Nat (M m 0 a) i = M m i a

@@ -114,7 +114,7 @@ type SwizzleTree
 
 
 type Swizzle (string :: Symbol)
-  = ( Prod ( SwizzleFromString (LookupChars SwizzleTree string) )
+  = ( Prod_ ( SwizzleFromString (LookupChars SwizzleTree string) )
         :: Optic '[] vec (SwizzleRes vec (LookupChars SwizzleTree string))
     )
 

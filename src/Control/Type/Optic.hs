@@ -194,10 +194,10 @@ module Control.Type.Optic
     -- $composition_instances
 
     -- ** Product of optics
-  , (:*:)
+  , (:*:), Prod
   , ProductComponents(..)
   , ComponentsGettable, ComponentsSettable
-  , PairwiseDisjoint
+  , ArePairwiseDisjoint
     -- $product_instances
 
   ) where
@@ -205,11 +205,11 @@ module Control.Type.Optic
 
 -- base
 import Data.Kind
-  ( Type )
+  ( Type, Constraint )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Type.Bool
-  ( If, type (&&), type (||) )
+  ( If )
 import Data.Type.Equality
   ( (:~:)(Refl) )
 import GHC.TypeLits
@@ -226,7 +226,10 @@ import Data.Product
   ( HList(HNil, (:>))
   , IsProduct(fromHList, toHList)
   , AreProducts
+  , MapHList
   )
+import Data.Type.Error
+  ( IsRight, IfLeft, And )
 import Data.Type.List
   ( type (:++:), Postpend
   , Tail, MapTail
@@ -259,7 +262,7 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
   -- | Composition of optics.
   ComposeO :: Optic is s a -> Optic js a b -> Optic ks s b
   -- | Product of optics.
-  Prod :: ProductComponents iss s as -> Optic js s p
+  Prod_ :: ProductComponents iss s as -> Optic js s p
 
 -- | Wrapper to keep track of components of a product optic.
 data ProductComponents (iss :: [[Type]]) (s :: k) (as :: [Type]) where
@@ -302,6 +305,9 @@ type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
 -- | Product of optics (kind-correct).
 type (:*:) (o :: Optic is s a) (os :: ProductComponents iss s as)
   = ( o `ProductO` os :: ProductComponents (ZipCons is iss) s (a ': as) )
+type Prod (os :: ProductComponents iss s as)
+  = ( Prod_ os :: Optic (MapHList iss) s p )
+
 
 type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
   ShowOptic Id_ = Text "Id"
@@ -325,7 +331,7 @@ type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
     = Text "Binding " :<>: ShowType k
   ShowOptic (o1 `ComposeO` o2)
     = Text "( " :<>: ShowOptic o1 :<>: Text " :.: " :<>: ShowOptic o2 :<>: Text " )"
-  ShowOptic (Prod comps)
+  ShowOptic (Prod_ comps)
     = Text "Prod ( " :<>: ShowComponents comps :<>: Text " )"
 
 type family ShowComponents (comps :: ProductComponents iss s as) :: ErrorMessage where
@@ -560,72 +566,75 @@ instance ComposeSetters '[] js s a b => ComposeSetters '[] (j ': js) s a b where
 --   * the product of disjoint setters is a setter,
 --   * the product of getters is a getter.
 
-type family PairwiseDisjoint (os :: ProductComponents iss s as) :: Bool where
-  PairwiseDisjoint EndProd           = True
-  PairwiseDisjoint (o `ProductO` os) =
-    ( o `DisjointFrom` os ) && PairwiseDisjoint os
+type ArePairwiseDisjoint (os :: ProductComponents iss s as)
+  = ( IsRight (PairwiseDisjoint os) :: Constraint )
 
-type family DisjointFrom (o :: Optic is s a) (os :: ProductComponents iss s as) :: Bool where
-  DisjointFrom o EndProd            = True
+type family PairwiseDisjoint (os :: ProductComponents iss s as) :: Either ErrorMessage () where
+  PairwiseDisjoint EndProd           = Right '()
+  PairwiseDisjoint (o `ProductO` os) =
+    ( o `DisjointFrom` os ) `And` PairwiseDisjoint os
+
+type family DisjointFrom (o :: Optic is s a) (os :: ProductComponents iss s as) :: Either ErrorMessage () where
+  DisjointFrom o EndProd            = Right '()
   DisjointFrom o (o' `ProductO` os) =
-    Disjoint o o' && (o `DisjointFrom` os)
+    Disjoint o o' `And` (o `DisjointFrom` os)
 
 type family CrosswiseDisjoint
               ( os1 :: ProductComponents iss s as )
               ( os2 :: ProductComponents jss s bs )
-            :: Bool
+            :: Either ErrorMessage ()
             where
-  CrosswiseDisjoint EndProd _ = True
+  CrosswiseDisjoint EndProd _ = Right '()
   CrosswiseDisjoint (o1 `ProductO` os1) os2 =
-    ( o1 `DisjointFrom` os2 ) && CrosswiseDisjoint os1 os2
+    ( o1 `DisjointFrom` os2 ) `And` CrosswiseDisjoint os1 os2
 
 -- TODO: we could add more information in these error messages,
 -- by keeping track of the original optics supplied to this function.
-type family Disjoint ( o1 :: Optic is s a ) ( o2 :: Optic js s b ) :: Bool where
+type family Disjoint ( o1 :: Optic is s a ) ( o2 :: Optic js s b ) :: Either ErrorMessage () where
   Disjoint RTOptic_ _ =
-    TypeError
+    Left
       (    Text "Cannot create a product setter involving run-time indices."
       :$$: Text "Impossible to verify the required disjointness property."
       )
-  Disjoint o RTOptic_ = Disjoint RTOptic_ o
+  Disjoint o (RTOptic_ :: Optic js s b) = Disjoint (RTOptic_ :: Optic js s b) o
   Disjoint ( Field_ (i :: Nat   ) ) ( Field_ (i :: Nat   ) ) =
-    TypeError
+    Left
       (    Text "Cannot create product setter."
       :$$: Text "Overlapping optics at index "
       :<>: ShowType i :<>: Text "."
       )
-  Disjoint ( Field_ (i :: Nat   ) ) ( Field_ (j :: Nat   ) ) = True
+  Disjoint ( Field_ (i :: Nat   ) ) ( Field_ (j :: Nat   ) ) = Right '()
   Disjoint ( Field_ (k :: Symbol) ) ( Field_ (k :: Symbol) ) =
-    TypeError
+    Left
       (    Text "Cannot create product setter."
       :$$: Text "Overlapping optics at name "
       :<>: ShowType k :<>: Text "."
       )
-  Disjoint ( Field_ (k :: Symbol) ) ( Field_ (l :: Symbol) ) = True
-  Disjoint ( Field_ (k :: Symbol) ) ( Field_ (n :: Nat) :: Optic js s b ) =
+  Disjoint ( Field_ (k :: Symbol) ) ( Field_ (l :: Symbol) ) = Right '()
+  Disjoint ( Field_ (k :: Symbol) :: Optic is s a ) ( Field_ (n :: Nat) :: Optic js s b ) =
     If ( Overlapping s k n )
-      ( TypeError
+      ( Left
           (    Text "Cannot create product setter."
           :$$: Text "Name " :<>: ShowType k
           :<>: Text " and index " :<>: ShowType n
           :<>: Text " refer to the same field."
           )
       )
-      True
-  Disjoint (Field_ (n :: Nat)) (Field_ (k :: Symbol)) =
-    Disjoint (Field_ k) (Field_ n)
+      ( Right '() )
+  Disjoint (Field_ (n :: Nat) :: Optic is s a) (Field_ (k :: Symbol) :: Optic js s b) =
+    Disjoint (Field_ k :: Optic js s b) (Field_ n :: Optic is s a)
   Disjoint (Field_ (f1 :: fld1)) (Field_ (f2 :: fld2)) =
-    TypeError
+    Left
       (    Text "Disjointness check: unsupported optics field kinds "
       :<>: ShowType fld1 :<>: Text ", " :<>: ShowType fld2 :<>: Text "."
       )
-  Disjoint (o1 `ComposeO` o2) (o3 `ComposeO` o4) =
-    Disjoint o1 o3 || Disjoint o2 o4
+  Disjoint (o1 `ComposeO` o2) (o3 `ComposeO` o4) = IfLeft (Disjoint o1 o3) (Disjoint o2 o4)
   Disjoint (o1 `ComposeO` o2) o3 = Disjoint o1 o3
-  Disjoint o1 (o3 `ComposeO` o4) = Disjoint o1 o3
-  Disjoint (Prod os1) (Prod os2) = CrosswiseDisjoint os1 os2
-  Disjoint (Prod os1) o2 = DisjointFrom o2 os1
-  Disjoint o1 (Prod os2) = DisjointFrom o1 os2
+  Disjoint (o1 :: Optic is s a) ( ( (o3 :: Optic ks s c) `ComposeO` o4) :: Optic js s b )
+    = Disjoint ( o1 :: Optic is s a ) ( o3 :: Optic ks s c )
+  Disjoint (Prod_ os1) (Prod_ os2) = CrosswiseDisjoint os1 os2
+  Disjoint (Prod_ os1) o2 = DisjointFrom o2 os1
+  Disjoint o1 (Prod_ os2) = DisjointFrom o1 os2
 
 
 class ComponentsGettable (os :: ProductComponents iss s as) where
@@ -648,7 +657,7 @@ instance forall
           , IsProduct p as
           , AreProducts js iss as
           )
-       => Gettable (Prod os :: Optic js s p)
+       => Gettable (Prod_ os :: Optic js s p)
        where
 
 instance forall
@@ -663,9 +672,9 @@ instance forall
           ( ComponentsSettable os
           , IsProduct p as
           , AreProducts js iss as
-          , PairwiseDisjoint os ~ True
+          , ArePairwiseDisjoint os
           )
-       => Settable (Prod os :: Optic js s p)
+       => Settable (Prod_ os :: Optic js s p)
        where
 
 instance forall
@@ -682,7 +691,7 @@ instance forall
           , MultiplyGetters iss js s as p
           , GetViewers os
           )
-       => ReifiedGetter (Prod os :: Optic js s p)
+       => ReifiedGetter (Prod_ os :: Optic js s p)
        where
   view = multiplyGetters @iss @js @s @as @p
            ( viewers @iss @s @as @os )
@@ -698,11 +707,11 @@ instance forall
           ( ComponentsSettable os
           , IsProduct p as
           , AreProducts js iss as
-          , PairwiseDisjoint os ~ True
+          , ArePairwiseDisjoint os
           , MultiplySetters iss js s as p
           , GetSetters os
           )
-       => ReifiedSetter (Prod os :: Optic js s p)
+       => ReifiedSetter (Prod_ os :: Optic js s p)
        where
   set = multiplySetters @iss @js @s @as @p
            ( setters @iss @s @as @os )
@@ -728,7 +737,8 @@ instance forall
          , kss ~ ZipCons is iss
          )
        => GetViewers (o `ProductO` os :: ProductComponents kss s (a ': as)) where
-  viewers = ConsViewer @is @s @a (sSameLength @_ @_ @is @kss) Proxy Proxy (view @o) (viewers @iss @s @as @os)
+  viewers = ConsViewer @is @s @a (sSameLength @_ @_ @is @kss) Proxy Proxy Proxy
+              (view @o) (viewers @iss @s @as @os)
 
 class GetSetters (os :: ProductComponents iss (s :: Type) as) where
   setters :: Setters iss s as
@@ -751,7 +761,8 @@ instance forall
          , kss ~ ZipCons is iss
          )
        => GetSetters (o `ProductO` os :: ProductComponents kss s (a ': as)) where
-  setters = ConsSetter @is @s @a (sSameLength @_ @_ @is @kss) Proxy Proxy (set @o) (setters @iss @s @as @os)
+  setters = ConsSetter @is @s @a (sSameLength @_ @_ @is @kss) Proxy Proxy Proxy
+              (set @o) (setters @iss @s @as @os)
 
 class MultiplyGetters (iss :: [[Type]]) (js :: [Type]) (s :: Type) (as :: [Type]) (p :: Type) where
   multiplyGetters :: Viewers iss s as -> ListVariadic (js `Postpend` s) p
@@ -762,30 +773,51 @@ class MultiplySetters (iss :: [[Type]]) (js :: [Type]) (s :: Type) (as :: [Type]
 instance ( iss ~ '[], IsProduct p as, p ~ ListVariadic '[] p )
        => MultiplyGetters iss '[] s as p where
   multiplyGetters :: Viewers '[] s as -> s -> p
-  multiplyGetters views s = fromHList @p @as ( applyGetters s views )
+  multiplyGetters views s = fromHList @p @as ( applyGetters views s )
 
 instance ( IsProduct j is, SameLength is as, MultiplyGetters iss js s as p )
       => MultiplyGetters (is ': iss) (j ': js) s as p where
   multiplyGetters :: Viewers (is ': iss) s as -> ( j -> ListVariadic (js `Postpend` s) p )
   multiplyGetters views j =
     multiplyGetters @iss @js @s @as @p
-      ( passIndex (sSameLength @_ @_ @is @as) ( toHList j ) views )
+      ( passGetterIndex (sSameLength @_ @_ @is @as) ( toHList j ) views )
+
+instance ( iss ~ '[], IsProduct p as, s ~ ListVariadic '[] s )
+      => MultiplySetters iss '[] s as p where
+  multiplySetters :: Setters '[] s as -> p -> s -> s
+  multiplySetters sets p s = applySetters sets ( toHList @p @as p ) s
+
+instance ( IsProduct j is, SameLength is as, MultiplySetters iss js s as p )
+      => MultiplySetters (is ': iss) (j ': js) s as p where
+  multiplySetters :: Setters (is ': iss) s as -> ( j -> ListVariadic (js `Postpend` p `Postpend` s) s )
+  multiplySetters sets j
+    = multiplySetters @iss @js @s @as @p
+        ( passSetterIndex (sSameLength @_ @_ @is @as) ( toHList j ) sets )
 
 
-applyGetters :: s -> Viewers '[] s bs -> HList bs
-applyGetters _ NilViewer                           = HNil
-applyGetters s ( ConsViewer _ _ _ getter getters ) =
+applyGetters :: Viewers '[] s bs -> s -> HList bs
+applyGetters   NilViewer                                        _ = HNil
+applyGetters ( ConsViewer _ _ _ (_ :: Proxy b) getter getters ) s =
   case getters of
     ( _ :: Viewers jss s cs )
-      -> ( unsafeCoerce getter :: s -> a ) s
-         :> applyGetters s ( unsafeCoerce getters :: Viewers '[] s cs )
+      -> ( unsafeCoerce getter :: s -> b ) s
+         :> applyGetters ( unsafeCoerce getters :: Viewers '[] s cs ) s
 
-passIndex :: forall (js :: [Type]) (jss :: [[Type]]) (s :: Type) (as :: [Type])
-          . SSameLength js as -> HList js -> Viewers (js ': jss) s as -> Viewers jss s as
-passIndex SSameZero                                        _  _    = unsafeCoerce NilViewer
-passIndex (SSameSucc ( same1 :: SSameLength t_js t_as ) ) js views =
+applySetters :: Setters '[] s bs -> HList bs -> s -> s
+applySetters   NilSetter                                        _         s  = s
+applySetters ( ConsSetter _ _ _ (_ :: Proxy b) setter sets ) (b :> bs) s  =
+  case sets of
+    ( _ :: Setters jss s cs )
+      -> applySetters ( unsafeCoerce sets :: Setters '[] s cs ) bs
+       $ ( unsafeCoerce setter :: b -> s -> s ) b s
+
+passGetterIndex
+  :: forall (js :: [Type]) (jss :: [[Type]]) (s :: Type) (as :: [Type])
+  . SSameLength js as -> HList js -> Viewers (js ': jss) s as -> Viewers jss s as
+passGetterIndex SSameZero                                        _  _    = unsafeCoerce NilViewer
+passGetterIndex (SSameSucc ( same1 :: SSameLength t_js t_as ) ) js views =
   case ( js, views ) of
-    ( (k :: j) :> (ks :: HList t_js), ConsViewer same2 (_ :: Proxy is) (_ :: Proxy iss) getter getters ) ->
+    ( (k :: j) :> (ks :: HList t_js), ConsViewer same2 (_ :: Proxy is) (_ :: Proxy iss) _ getter getters ) ->
       case same2 of
         ( sameSucc@(SSameSucc (same3 :: SSameLength t_is jss) ) ) ->
           case sameSucc of
@@ -795,9 +827,29 @@ passIndex (SSameSucc ( same1 :: SSameLength t_js t_as ) ) js views =
                    , unsafeCoerce Refl :: i :~: j
                    ) of
                 ( Refl, Refl, Refl ) ->
-                    ConsViewer same3 (Proxy @t_is) (Proxy @(Tail iss))
+                    ConsViewer same3 (Proxy @t_is) (Proxy @(Tail iss)) Proxy
                       ( getter k )
-                      ( passIndex @t_js @(MapTail jss) @s @t_as same1 ks getters )
+                      ( passGetterIndex @t_js @(MapTail jss) @s @t_as same1 ks getters )
+
+passSetterIndex
+  :: forall (js :: [Type]) (jss :: [[Type]]) (s :: Type) (as :: [Type])
+  . SSameLength js as -> HList js -> Setters (js ': jss) s as -> Setters jss s as
+passSetterIndex SSameZero                                        _  _   = unsafeCoerce NilViewer
+passSetterIndex (SSameSucc ( same1 :: SSameLength t_js t_as ) ) js sets =
+  case ( js, sets ) of
+    ( (k :: j) :> (ks :: HList t_js), ConsSetter same2 (_ :: Proxy is) (_ :: Proxy iss) _ setter setts ) ->
+      case same2 of
+        ( sameSucc@(SSameSucc (same3 :: SSameLength t_is jss) ) ) ->
+          case sameSucc of
+            ( _ :: SSameLength (i ': t_is) (js ': jss) ) ->
+              case ( unsafeCoerce Refl :: ZipCons t_is (Tail iss) :~: jss
+                   , unsafeCoerce Refl :: ( t_js ': MapTail jss ) :~: iss
+                   , unsafeCoerce Refl :: i :~: j
+                   ) of
+                ( Refl, Refl, Refl ) ->
+                    ConsSetter same3 (Proxy @t_is) (Proxy @(Tail iss)) Proxy
+                      ( setter k )
+                      ( passSetterIndex @t_js @(MapTail jss) @s @t_as same1 ks setts )
 
 data Viewers (iss :: [[Type]]) (s :: Type) (as :: [Type]) where
   NilViewer  :: Viewers '[] s '[]
@@ -805,6 +857,7 @@ data Viewers (iss :: [[Type]]) (s :: Type) (as :: [Type]) where
              .  SSameLength is (ZipCons is iss)
              -> Proxy is
              -> Proxy iss
+             -> Proxy a
              -> ListVariadic (is `Postpend` s) a
              -> Viewers iss s as
              -> Viewers (ZipCons is iss) s (a ': as)
@@ -815,6 +868,7 @@ data Setters (iss :: [[Type]]) (s :: Type) (as :: [Type]) where
              .  SSameLength is (ZipCons is iss)
              -> Proxy is
              -> Proxy iss
+             -> Proxy a
              -> ListVariadic (is `Postpend` a `Postpend` s) s
              -> Setters iss s as
              -> Setters (ZipCons is iss) s (a ': as)

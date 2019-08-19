@@ -85,6 +85,11 @@ library
     -fwarn-missing-local-signatures
     -fwarn-incomplete-uni-patterns
 
+  -- bypass TH segfault bug on Windows, see (GHC issue #13112)[https://gitlab.haskell.org/ghc/ghc/issues/13112]
+  if os(windows)
+    ghc-options:
+      -fexternal-interpreter
+
   default-extensions:
     NoStarIsType
 

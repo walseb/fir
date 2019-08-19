@@ -87,7 +87,10 @@ import Data.Type.Known
 import Data.Function.Variadic
   ( ListVariadic )
 import Data.Product
-  ( IsProduct, AreProducts, Distribute )
+  ( IsProduct, AreProducts
+  , Distribute
+  , MapHList
+  )
 import Data.Type.List
   ( type (:++:), ZipCons
   , SLength, KnownLength(sLength)
@@ -176,7 +179,7 @@ data SOptic (optic :: Optic i s a) :: Type where
            )
         => SSameLength (Distribute iss as) as
         -> SProductComponents os
-        -> SOptic (Prod os :: Optic js s p)
+        -> SOptic (Prod_ os :: Optic js s p)
 
 data SProductComponents (os :: ProductComponents iss s as) :: Type where
   SEndProd  :: SProductComponents EndProd
@@ -284,9 +287,10 @@ instance forall iss s as js p (os :: ProductComponents iss s as)
          , KnownLength js
          , IsProduct p as
          , AreProducts js iss as
+         , js ~ MapHList iss
          , PrimTy p
          )
-       => KnownOptic (Prod os :: Optic js s p) where
+       => KnownOptic (Prod_ os :: Optic js s p) where
   opticSing = SProd sSameLength (componentsSing @os)
 
 class KnownComponents os where

@@ -38,6 +38,8 @@ import Unsafe.Coerce
   ( unsafeCoerce )
 
 -- fir
+import Data.Product
+  ( HList(HNil,(:>)), IsProduct(..) )
 import Data.Type.List
   ( type (:++:) )
 import Data.Type.Map
@@ -118,6 +120,14 @@ display s = case primTyMapSing @_ @as of
 
 instance PrimTyMap as => Show (Struct as) where
   show s = "{ " ++ display s ++ " }" 
+
+instance IsProduct (Struct '[]) '[] where
+  fromHList _ = End
+  toHList   _ = HNil
+
+instance IsProduct (Struct as) tys => IsProduct (Struct ((fld ':-> ty) ': as)) (ty ': tys) where
+  fromHList (a :> as) = a :& fromHList as
+  toHList   (a :& as) = a :> toHList   as
 
 instance GradedSemigroup (Struct :: [ fld :-> Type ] -> Type) [fld :-> Type] where
   type Grade [fld :-> Type] (Struct :: [ fld :-> Type ] -> Type) as = Struct as

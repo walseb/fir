@@ -80,9 +80,9 @@ module FIR
   , DrawableProgramAST(ast)
   , CompilerFlag(Debug, NoCode)
   , module Control.Monad.Indexed
-  , Control.Type.Optic.Optic(Prod)
+  , Control.Type.Optic.Optic
   , Control.Type.Optic.ProductComponents(EndProd)
-  , (Control.Type.Optic.:*:)
+  , (Control.Type.Optic.:*:), Control.Type.Optic.Prod
   , (Control.Type.Optic.:.:)
   , Control.Type.Optic.Joint
   , Control.Type.Optic.AnIndex

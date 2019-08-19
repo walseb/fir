@@ -99,7 +99,7 @@ import Control.Type.Optic
   , ProductComponents(EndProd, ProductO)
   , ComponentsGettable
   , ComponentsSettable
-  , PairwiseDisjoint
+  , ArePairwiseDisjoint
   , Container(Overlapping)
   , MonoContainer(MonoType, setAll)
   )
@@ -109,6 +109,7 @@ import Data.Product
   ( IsProduct
   , AreProducts
   , Distribute
+  , MapHList
   )
 import Data.Type.List
   ( KnownLength(sLength)
@@ -679,19 +680,20 @@ instance forall
           . ( KnownASTOpticComponents os' os
             , KnownComponents os
             , KnownLength js
-            , KnownOptic (Prod os :: Optic js s p)
+            , KnownOptic (Prod_ os :: Optic js s p)
             , SameLength (Distribute iss  as ) as
             , SameLength (Distribute iss' as') as'
             , IsProduct p as
             , p' ~ AST p
             , as' ~ MapAST as
             , AreProducts js iss as
+            , js ~ MapHList iss
             , js' ~ MapAST js
             , PrimTy p
             )
           => KnownASTOptic
-                ( Prod os' :: Optic js' (AST s) p' )
-                ( Prod os  :: Optic js       s  p  )
+                ( Prod_ os' :: Optic js' (AST s) p' )
+                ( Prod_ os  :: Optic js       s  p  )
           where
 instance  {-# OVERLAPPING #-}
           forall
@@ -709,7 +711,7 @@ instance  {-# OVERLAPPING #-}
           . ( ComponentsGettable os
             , KnownASTOpticComponents os' os
             , KnownComponents os
-            , KnownOptic (Prod os :: Optic js s p)
+            , KnownOptic (Prod_ os :: Optic js s p)
             , SameLength (Distribute iss  as ) as
             , SameLength (Distribute iss' as') as'
             , IsProduct p as
@@ -717,13 +719,14 @@ instance  {-# OVERLAPPING #-}
             , as' ~ MapAST as
             , js' ~ MapAST js
             , AreProducts js iss as
+            , js ~ MapHList iss
             , KnownLength js
             , PrimTy p
             , Syntactic (ListVariadic (js' `Postpend` AST s) p')
             , Internal (ListVariadic (js' `Postpend` AST s) p')
                 ~ (ListVariadic (js `Postpend` s) p)
             )
-          => Gettable (Prod os' :: Optic js' (AST s) p') where
+          => Gettable (Prod_ os' :: Optic js' (AST s) p') where
 instance  {-# OVERLAPPING #-}
           forall
             ( s    ::   Type   )
@@ -740,7 +743,7 @@ instance  {-# OVERLAPPING #-}
           . ( ComponentsGettable os
             , KnownASTOpticComponents os' os
             , KnownComponents os
-            , KnownOptic (Prod os :: Optic js s p)
+            , KnownOptic (Prod_ os :: Optic js s p)
             , SameLength (Distribute iss  as ) as
             , SameLength (Distribute iss' as') as'
             , IsProduct p as
@@ -748,15 +751,16 @@ instance  {-# OVERLAPPING #-}
             , as' ~ MapAST as
             , js' ~ MapAST js
             , AreProducts js iss as
+            , js ~ MapHList iss
             , KnownLength js
             , PrimTy p
             , Syntactic (ListVariadic (js' `Postpend` AST s) p')
             , Internal (ListVariadic (js' `Postpend` AST s) p')
                 ~ (ListVariadic (js `Postpend` s) p)
             )
-          => ReifiedGetter (Prod os' :: Optic js' (AST s) p') where
+          => ReifiedGetter (Prod_ os' :: Optic js' (AST s) p') where
   view = fromAST
-       $ View sLength ( opticSing @(Prod os :: Optic js s p) )
+       $ View sLength ( opticSing @(Prod_ os :: Optic js s p) )
 
 instance  {-# OVERLAPPING #-}
           forall
@@ -772,10 +776,10 @@ instance  {-# OVERLAPPING #-}
             ( os   :: ProductComponents iss       s  as  )
             ( os'  :: ProductComponents iss' (AST s) as' )
           . ( ComponentsSettable os
-            , PairwiseDisjoint os ~ True
+            , ArePairwiseDisjoint os
             , KnownASTOpticComponents os' os
             , KnownComponents os
-            , KnownOptic (Prod os :: Optic js s p)
+            , KnownOptic (Prod_ os :: Optic js s p)
             , SameLength (Distribute iss  as ) as
             , SameLength (Distribute iss' as') as'
             , IsProduct p as
@@ -783,13 +787,14 @@ instance  {-# OVERLAPPING #-}
             , as' ~ MapAST as
             , js' ~ MapAST js
             , AreProducts js iss as
+            , js ~ MapHList iss
             , KnownLength js
             , PrimTy p
             , Syntactic (ListVariadic (js' `Postpend` p' `Postpend` AST s) (AST s))
             , Internal (ListVariadic (js' `Postpend` p' `Postpend` AST s) (AST s))
               ~ (ListVariadic (js `Postpend` p `Postpend` s) s)
             )
-          => Settable (Prod os' :: Optic js' (AST s) p') where
+          => Settable (Prod_ os' :: Optic js' (AST s) p') where
 instance  {-# OVERLAPPING #-}
           forall
             ( s    ::   Type   )
@@ -804,10 +809,10 @@ instance  {-# OVERLAPPING #-}
             ( os   :: ProductComponents iss       s  as  )
             ( os'  :: ProductComponents iss' (AST s) as' )
           . ( ComponentsSettable os
-            , PairwiseDisjoint os ~ True
+            , ArePairwiseDisjoint os
             , KnownASTOpticComponents os' os
             , KnownComponents os
-            , KnownOptic (Prod os :: Optic js s p)
+            , KnownOptic (Prod_ os :: Optic js s p)
             , SameLength (Distribute iss  as ) as
             , SameLength (Distribute iss' as') as'
             , IsProduct p as
@@ -815,15 +820,16 @@ instance  {-# OVERLAPPING #-}
             , as' ~ MapAST as
             , js' ~ MapAST js
             , AreProducts js iss as
+            , js ~ MapHList iss
             , KnownLength js
             , PrimTy p
             , Syntactic (ListVariadic (js' `Postpend` p' `Postpend` AST s) (AST s))
             , Internal (ListVariadic (js' `Postpend` p' `Postpend` AST s) (AST s))
               ~ (ListVariadic (js `Postpend` p `Postpend` s) s)
             )
-          => ReifiedSetter (Prod os' :: Optic js' (AST s) p') where
+          => ReifiedSetter (Prod_ os' :: Optic js' (AST s) p') where
   set = fromAST
-      $ Set (sLength @_ @js) ( opticSing @(Prod os :: Optic js s p) )
+      $ Set (sLength @_ @js) ( opticSing @(Prod_ os :: Optic js s p) )
 
 class KnownASTOpticComponents ast_os os | ast_os -> os where
 instance  KnownASTOpticComponents

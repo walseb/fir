@@ -124,6 +124,7 @@ library
       , Data.Function.Variadic
       , Data.Map.Traverse
       , Data.Product
+      , Data.Type.Error
       , Data.Type.Known
       , Data.Type.List
       , Data.Type.Map
