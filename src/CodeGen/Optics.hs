@@ -63,12 +63,14 @@ import CodeGen.Composite
   ( compositeConstruct, compositeExtract, compositeInsert
   , vectorSwizzle
   )
+import CodeGen.IDs
+  ( constID )
 import CodeGen.Instruction
   ( ID )
 import CodeGen.Monad
   ( CGMonad )
 import CodeGen.Pointers
-  ( Safeness(Unsafe)
+  ( Safeness(Safe, Unsafe)
   , Indices(RTInds, CTInds)
   , temporaryVariable, accessChain
   , loadInstruction, storeInstruction
@@ -97,7 +99,7 @@ import Data.Type.List
   )
 import FIR.AST
   ( AST
-    ( (:$), Lit
+    ( (:$)
     , Use, Assign, View, Set
     , NilHList, ConsHList
     , HeadHList, TailHList
@@ -200,7 +202,7 @@ setUsingSetter base val sOptic is
 -- optical trees
 
 data OpticalOperation where
-  Access :: Indices -> OpticalOperation
+  Access :: Safeness -> Indices -> OpticalOperation
   Join   :: OpticalOperation
 
 infixr 5 `Then`
@@ -217,30 +219,43 @@ operationTree :: forall k is (s :: k) a (optic :: Optic is s a).
 operationTree _ SId    = pure Done
 operationTree _ SJoint = pure (Join `Then` Done)
 operationTree (i `ConsAST` _) SAnIndex {}
-  = (`Then` Done) . Access . RTInds Unsafe . (:[]) . fst <$> codeGen i
+  = (`Then` Done) . Access Unsafe . RTInds . (:[]) . fst <$> codeGen i
 operationTree _ (SIndex s _ n)
   -- if accessing a runtime array, a compile-time index may be unsafe
   | SRuntimeArray <- s
-    = (`Then` Done) . Access . RTInds Unsafe . (:[]) . fst <$> codeGen (Lit n)
+  = pure $ Access Unsafe ( CTInds [n] ) `Then` Done
   -- otherwise, a compile time index is guaranteed to be in-bounds
   | otherwise
-    = pure $ Access ( CTInds [n] ) `Then` Done
+  = pure $ Access Safe ( CTInds [n] ) `Then` Done
 operationTree is (SComposeO lg1 opt1 opt2)
   = do  let (is1, is2) = composedIndices lg1 is
         ops1 <- operationTree is1 opt1
         ops2 <- operationTree is2 opt2
-        pure ( ops1 `continue` ops2 )
-    where continue :: OpticalOperationTree -> OpticalOperationTree -> OpticalOperationTree
-          continue ops1 Done = ops1
+        ops1 `continue` ops2
+    where continue :: OpticalOperationTree -> OpticalOperationTree -> CGMonad OpticalOperationTree
+          continue ops1 Done = pure ops1
           -- recurse on first argument
-          continue Done ops2 = ops2
+          continue Done ops2 = pure ops2
           continue (Combine cb trees) ops2
-            = Combine cb $ map (`continue` ops2) trees
-          continue (Access (CTInds is1) `Then` Done) (Access (CTInds is2) `Then` ops2)
-            = Access  (CTInds (is1 ++ is2)) `Then` ops2
-          continue (Access (RTInds safe1 is1) `Then` Done) (Access (RTInds safe2 is2) `Then` ops2)
-            = Access (RTInds (safe1 <> safe2) (is1 ++ is2)) `Then` ops2
-          continue (op1 `Then` ops1) ops2 = op1 `Then` continue ops1 ops2
+            = Combine cb <$> traverse (`continue` ops2) trees
+          -- try to combine successive accesses into a single access chain as much as possible
+          -- (this helps bypass Vulkan implementation bugs in tessellation evaluation shaders)
+          continue (Access safe1 (CTInds is1) `Then` Done) (Access safe2 (CTInds is2) `Then` ops2)
+            = pure $ Access (safe1 <> safe2) (CTInds (is1 ++ is2)) `Then` ops2
+          continue (Access safe1 (RTInds is1) `Then` Done) (Access safe2 (RTInds is2) `Then` ops2)
+            = pure $ Access (safe1 <> safe2) (RTInds (is1 ++ is2)) `Then` ops2
+          continue (Access safe1 (CTInds is1) `Then` Done) (Access safe2 (RTInds is2) `Then` ops2)
+            = do
+                js1 <- traverse constID is1
+                pure $ Access (safe1 <> safe2) (RTInds (js1 ++ is2)) `Then` ops2
+          continue (Access safe1 (RTInds is1) `Then` Done) (Access safe2 (CTInds is2) `Then` ops2)
+            = do
+                js2 <- traverse constID is2
+                pure $ Access (safe1 <> safe2) (RTInds (is1 ++ js2)) `Then` ops2
+          continue (op1 `Then` ops1) ops2
+            = do
+                cont <- ops1 `continue` ops2
+                pure $ op1 `Then` cont
 operationTree is
   ( SProd same (comps :: SProductComponents (os :: ProductComponents iss s as))
     :: SOptic (optic :: Optic is s a)
@@ -315,7 +330,7 @@ swizzleIndices :: SPIRV.PrimTy -> [OpticalOperationTree] -> Maybe [Word32]
 swizzleIndices (SPIRV.Vector _ _) = traverse simpleIndex
   where
     simpleIndex :: OpticalOperationTree -> Maybe Word32
-    simpleIndex (Access (CTInds [i]) `Then` Done) = Just i
+    simpleIndex (Access Safe (CTInds [i]) `Then` Done) = Just i
     simpleIndex _ = Nothing
 swizzleIndices _ = const Nothing
 
@@ -323,9 +338,9 @@ loadThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 loadThroughAccessChain' (basePtrID, SPIRV.PointerTy _ eltTy) Done
   = loadInstruction eltTy basePtrID
-loadThroughAccessChain' basePtr ( Access is `Then` ops )
+loadThroughAccessChain' basePtr ( Access safe is `Then` ops )
   = do
-      newBasePtr <- accessChain basePtr is
+      newBasePtr <- accessChain basePtr safe is
       loadThroughAccessChain' newBasePtr ops
 loadThroughAccessChain' basePtr ( Combine cb trees )
   -- special case: can we use a vector swizzle operation?
@@ -345,11 +360,11 @@ extractUsingGetter'
   :: (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 extractUsingGetter' base Done
   = pure base
-extractUsingGetter' base ( Access (CTInds is) `Then` ops )
+extractUsingGetter' base ( Access _ (CTInds is) `Then` ops )
   = do
       newBase <- compositeExtract is base
       extractUsingGetter' newBase ops
-extractUsingGetter' (baseID, baseTy) ops@( Access (RTInds _ _) `Then` _ )
+extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _) `Then` _ )
   -- run-time indices: revert to loading through pointers
   = do
       let ptrTy = SPIRV.PointerTy Storage.Function baseTy
@@ -377,9 +392,9 @@ storeThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad ()
 storeThroughAccessChain' (basePtrID, _) (valID, _) Done
   = storeInstruction basePtrID valID
-storeThroughAccessChain' basePtr val ( Access is `Then` ops)
+storeThroughAccessChain' basePtr val ( Access safe is `Then` ops)
   = do
-      newBasePtr <- accessChain basePtr is
+      newBasePtr <- accessChain basePtr safe is
       storeThroughAccessChain' newBasePtr val ops
 storeThroughAccessChain' _ _ ( Combine _ _ )
   = throwError "storeThroughAccessChain': product setter TODO"
@@ -392,7 +407,7 @@ insertUsingSetter'
 -- deal with some simple cases first
 insertUsingSetter' varName _ val Done
   = assign ( _localBinding varName ) (Just val)
-insertUsingSetter' varName base val ( Access (CTInds is) `Then` Done )
+insertUsingSetter' varName base val ( Access Safe (CTInds is) `Then` Done )
   = assign ( _localBinding varName ) . Just
       =<< compositeInsert val base is
 -- in more complex situations, revert to storing through pointers
@@ -418,7 +433,7 @@ setUsingSetter'
   -> CGMonad (ID, SPIRV.PrimTy)
 setUsingSetter' _ val Done
   = pure val
-setUsingSetter' base val ( Access (CTInds is) `Then` Done )
+setUsingSetter' base val ( Access Safe (CTInds is) `Then` Done )
   = compositeInsert val base is
 -- in more complex situations, revert to using load/store
 setUsingSetter' (baseID, baseTy) val ops

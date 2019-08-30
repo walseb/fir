@@ -90,13 +90,13 @@ tessellationControl = shader do
 -- tessellation evaluation
 
 type TessellationEvaluationDefs =
-  '[ "in_cols" ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
-   , "out_col" ':-> Output     '[ Location 0 ] (V 4 Float)
-   , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
-                          ( Struct '[ "mvp"    ':-> M 4 4 Float
-                                    , "origin" ':-> V 4 Float
-                                    ]
-                          )
+  '[ "in_cols" ':-> Input   '[ Location 0 ] (Array 3 (V 4 Float))
+   , "out_col" ':-> Output  '[ Location 0 ] (V 4 Float)
+   , "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+                     ( Struct '[ "mvp"    ':-> M 4 4 Float
+                               , "origin" ':-> V 4 Float
+                               ]
+                     )
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
@@ -114,7 +114,8 @@ tessellationEvaluation = shader do
   pos1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
   pos2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
   orig <- use @(Name "ubo" :.: Name "origin")
-  let t = 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
+
+  t <- def @"t" @R $ 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
   put @"gl_Position"
     ( t *^ orig ^+^ (1-t) *^ ( u *^ pos0 ^+^ v *^ pos1 ^+^ w *^ pos2 ) )
 
@@ -123,9 +124,9 @@ tessellationEvaluation = shader do
 -- geometry shader
 
 type GeometryDefs =
-  '[ "in_color"  ':-> Input      '[ Location 0 ] ( Array 3 (V 4 Float ) )
-   , "out_color" ':-> Output     '[ Location 0 ] ( V 4 Float )
-   , "normal"    ':-> Output     '[ Location 1 ] ( V 3 Float )
+  '[ "in_color"  ':-> Input  '[ Location 0 ] ( Array 3 (V 4 Float ) )
+   , "out_color" ':-> Output '[ Location 0 ] ( V 4 Float )
+   , "normal"    ':-> Output '[ Location 1 ] ( V 3 Float )
    , "main"      ':-> EntryPoint
                          '[ Triangles
                           , OutputTriangleStrip, OutputVertices 3
@@ -142,8 +143,8 @@ geometry = shader do
   let
     Vec4 u1x u1y u1z _ = v1 ^-^ v0
     Vec4 u2x u2y u2z _ = v2 ^-^ v0
-    normal = normalise ( Vec3 u1x u1y u1z `cross` Vec3 u2x u2y u2z )
-  color <- get @"in_color"
+  normal <- def @"normal'" @R $ normalise ( Vec3 u1x u1y u1z `cross` Vec3 u2x u2y u2z )
+  color  <- get @"in_color"
 
   put @"normal" normal
   put @"gl_Position" v0

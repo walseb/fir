@@ -87,8 +87,8 @@ instance Semigroup Safeness where
   _    <> _ = Unsafe
 
 data Indices
-  = CTInds [Word32]      -- compile-time indices
-  | RTInds Safeness [ID] -- run-time indices
+  = CTInds [Word32] -- compile-time indices
+  | RTInds [ID]     -- run-time indices
   deriving Show
 
 ----------------------------------------------------------------------------
@@ -123,16 +123,15 @@ declareVariable v ptrTy@(SPIRV.PointerTy storage _)
             , args      = Arg storage EndArgs
             }
 
-indicesIDs :: Indices -> CGMonad ( Safeness, [ID] )
-indicesIDs (CTInds ws)
-  = ( Safe, ) <$> traverse constID ws
-indicesIDs (RTInds safe is) = pure ( safe, is )
+indicesIDs :: Indices -> CGMonad [ID]
+indicesIDs (CTInds ws) = traverse constID ws
+indicesIDs (RTInds is) = pure is
 
 -- create a pointer into a composite object with a list of successive indices
-accessChain :: (ID, SPIRV.PointerTy) -> Indices -> CGMonad (ID, SPIRV.PointerTy)
-accessChain (basePtrID, SPIRV.PointerTy storage baseTy) indices
+accessChain :: (ID, SPIRV.PointerTy) -> Safeness -> Indices -> CGMonad (ID, SPIRV.PointerTy)
+accessChain (basePtrID, SPIRV.PointerTy storage baseTy) safe indices
   = do
-      (safe, is) <- indicesIDs indices
+      is <- indicesIDs indices
       -- We need to compute the accessee type from the pointer,
       -- because creating it from scratch using typeID risks creating
       -- an incorrectly decorated object.
@@ -161,10 +160,9 @@ accessChain (basePtrID, SPIRV.PointerTy storage baseTy) indices
           }
       pure (v, accessPtrTy)
 
-
 reverseLookupIndices :: Indices -> CGMonad [ Maybe Word32 ]
-reverseLookupIndices (CTInds   is) = pure (map Just is)
-reverseLookupIndices (RTInds _ is) = traverse reverseConstantLookup is
+reverseLookupIndices (CTInds is) = pure (map Just is)
+reverseLookupIndices (RTInds is) = traverse reverseConstantLookup is
 
 reverseConstantLookup :: ID -> CGMonad (Maybe Word32)
 reverseConstantLookup c = do

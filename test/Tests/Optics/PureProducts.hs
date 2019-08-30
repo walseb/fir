@@ -109,19 +109,19 @@ m5 = view @(Prod (Entry 1 1 :*: Entry 3 3 :*: Entry 2 0 :*: EndProd)) m1
 
 struct4 :: Struct '[ "x" ':-> Float, "y" ':-> Float, "z" ':-> Float ]
 struct4 =
-   let part :: Struct '[ "y" ':-> Float, "z" ':-> Float ]
-       part = 8.8 :& 11.0 :& End
-   in set @( Prod ( (Name "y" :*: Name "z" :*: EndProd) ) )
-         part
-         struct1
+  let part :: Struct '[ "y" ':-> Float, "z" ':-> Float ]
+      part = 8.8 :& 11.0 :& End
+  in set @( Prod ( (Name "y" :*: Name "z" :*: EndProd) ) )
+        part
+        struct1
 
 struct5 :: Struct '[ "x" ':-> Float, "y" ':-> Float, "z" ':-> Float ]
 struct5 =
-   let part :: Struct '[ "field1" ':-> Float, "field2" ':-> Float ]
-       part = 8.8 :& 11.0 :& End
-   in set @( Prod ( (Name "y" :*: Name "x" :*: EndProd) ) )
-         part
-         struct1
+  let part :: Struct '[ "field1" ':-> Float, "field2" ':-> Float ]
+      part = 8.8 :& 11.0 :& End
+  in set @( Prod ( (Name "y" :*: Name "x" :*: EndProd) ) )
+        part
+        struct1
 
 nested5
   :: Struct
@@ -136,11 +136,11 @@ nested5
             ]
        ]
 nested5 =
-   let part :: Struct '[ "a" ':-> Float, "s" ':-> M 4 4 Double ]
-       part = 0 :& identity :& End
-   in set @( Prod ( Index 0 :*: (Name "b" :.: Name "s") :*: EndProd ))
-        part
-        nested1
+  let part :: Struct '[ "a" ':-> Float, "s" ':-> M 4 4 Double ]
+      part = 0 :& identity :& End
+  in set @( Prod ( Index 0 :*: (Name "b" :.: Name "s") :*: EndProd ))
+       part
+       nested1
 
 m6 :: M 3 3 Double
 m6 = M ( V3
