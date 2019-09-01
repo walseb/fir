@@ -71,6 +71,7 @@ tests = [ ( "Array"        </> "Applicative"   , Validate  )
         , ( "Optics"       </> "NoStructIndex" , TypeCheck )
         , ( "Optics"       </> "NoVectorIndex" , TypeCheck )
         , ( "Optics"       </> "Overlapping"   , TypeCheck )
+        , ( "Optics"       </> "ProductIndices", TypeCheck )
         , ( "Optics"       </> "PureProducts"  , TypeCheck )
         , ( "Optics"       </> "Various"       , Validate  )
         , ( "PrimOps"      </> "Rounding"      , Validate  )
@@ -209,7 +210,7 @@ compileTest flags testName = do
   where dir  = "test" </> "Tests"
         src  = dir </> testName <.> "hs"        
         test = dir </> testName <.> "fail"
-        spv    = dir </> testName <.> "spv"
+        spv  = dir </> testName <.> "spv"
         compile =  "compile "
                 <> Text.pack (show spv)
                 <> " "

@@ -96,7 +96,7 @@ import Control.Type.Optic
   ( Optic(..), Index
   , Gettable, ReifiedGetter(view)
   , Settable, ReifiedSetter(set)
-  , ProductComponents(EndProd, ProductO)
+  , ProductComponents(ProductO, EndProd_)
   , ComponentsGettable
   , ComponentsSettable
   , ArePairwiseDisjoint
@@ -832,9 +832,10 @@ instance  {-# OVERLAPPING #-}
       $ Set (sLength @_ @js) ( opticSing @(Prod_ os :: Optic js s p) )
 
 class KnownASTOpticComponents ast_os os | ast_os -> os where
-instance  KnownASTOpticComponents
-            ( EndProd :: ProductComponents '[] (AST s) '[] )
-            ( EndProd :: ProductComponents '[]      s  '[] )
+instance  ( iss ~ jss, as ~ '[], bs ~ '[] )
+       => KnownASTOpticComponents
+            ( EndProd_ :: ProductComponents iss (AST s) as )
+            ( EndProd_ :: ProductComponents jss      s  bs )
           where
 instance  ( KnownASTOptic o' o
           , KnownASTOpticComponents os' os

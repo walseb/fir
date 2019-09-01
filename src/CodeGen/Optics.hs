@@ -272,7 +272,7 @@ componentsTrees
   -> ASTs (MapHList (Distribute iss as))
   -> SProductComponents os
   -> CGMonad [OpticalOperationTree]
-componentsTrees           SSameZero     NilAST             SEndProd             = pure []
+componentsTrees _                       _                  SEndProd             = pure []
 componentsTrees sameSucc@(SSameSucc lg) (is `ConsAST` iss) (so `SProductO` sos) =
   case sameSucc of
     ( _ :: SSameLength (ds ': dss) (b ': bs) ) ->
@@ -407,7 +407,7 @@ insertUsingSetter'
 -- deal with some simple cases first
 insertUsingSetter' varName _ val Done
   = assign ( _localBinding varName ) (Just val)
-insertUsingSetter' varName base val ( Access Safe (CTInds is) `Then` Done )
+insertUsingSetter' varName base val ( Access _ (CTInds is) `Then` Done )
   = assign ( _localBinding varName ) . Just
       =<< compositeInsert val base is
 -- in more complex situations, revert to storing through pointers
@@ -433,7 +433,7 @@ setUsingSetter'
   -> CGMonad (ID, SPIRV.PrimTy)
 setUsingSetter' _ val Done
   = pure val
-setUsingSetter' base val ( Access Safe (CTInds is) `Then` Done )
+setUsingSetter' base val ( Access _ (CTInds is) `Then` Done )
   = compositeInsert val base is
 -- in more complex situations, revert to using load/store
 setUsingSetter' (baseID, baseTy) val ops

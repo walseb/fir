@@ -1,13 +1,13 @@
 
 test\Tests\Optics\NoMatrixIndex.hs:36:10: error:
-    • get: matrix column index 4 is out of bounds.
+    * get: matrix column index 4 is out of bounds.
       This matrix has 3 rows, 4 columns.
       Note: indexing starts from 0.
-    • In a stmt of a 'do' block:
+    * In a stmt of a 'do' block:
         c <- use @(Name "vertexData" :.: Entry 4 2)
-      In the third argument of ‘entryPoint’, namely
-        ‘do c <- use @(Name "vertexData" :.: Entry 4 2)
-            #gl_Position .= Vec4 c c c 1’
+      In the third argument of `entryPoint', namely
+        `do c <- use @(Name "vertexData" :.: Entry 4 2)
+            #gl_Position .= Vec4 c c c 1'
       In a stmt of a 'do' block:
         entryPoint
           @"main"

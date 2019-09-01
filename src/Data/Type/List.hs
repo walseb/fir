@@ -12,6 +12,7 @@ module Data.Type.List
   ( type (:++:)
   , Elem
   , Tail, MapTail
+  , MapSingleton
   , Zip, ExactZip, ZipCons
   , Replicate
   , Length
@@ -52,6 +53,10 @@ type family Tail (x :: [k]) :: [k] where
 type family MapTail (x :: [[k]]) :: [[k]] where
   MapTail '[] = '[]
   MapTail (xs ': xss) = Tail xs ': MapTail xss
+
+type family MapSingleton (as :: [k]) :: [[k]] where
+  MapSingleton '[] = '[]
+  MapSingleton (a ': as) = (a ': '[]) ': MapSingleton as
 
 type family Zip (is :: [k]) (js :: [k]) :: [k] where
   Zip '[] js = js

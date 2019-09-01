@@ -30,7 +30,8 @@ import GHC.TypeLits
 -- fir
 import Control.Type.Optic
   ( Optic(..), Index
-  , ProductComponents(ProductO,EndProd)
+  , ProductComponents(ProductO)
+  , EndProd
   )
 import Data.Type.List
   ( Length )

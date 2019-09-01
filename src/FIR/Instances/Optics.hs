@@ -182,7 +182,7 @@ data SOptic (optic :: Optic i s a) :: Type where
         -> SOptic (Prod_ os :: Optic js s p)
 
 data SProductComponents (os :: ProductComponents iss s as) :: Type where
-  SEndProd  :: SProductComponents EndProd
+  SEndProd  :: SProductComponents EndProd_
   SProductO :: forall
                 ( k   :: Type     )
                 ( is  :: [Type]   )
@@ -295,7 +295,7 @@ instance forall iss s as js p (os :: ProductComponents iss s as)
 
 class KnownComponents os where
   componentsSing :: SProductComponents os
-instance KnownComponents EndProd where
+instance ( as ~ '[] ) => KnownComponents ( EndProd_ :: ProductComponents iss s as )  where
   componentsSing = SEndProd
 instance  forall
             ( k   :: Type     )

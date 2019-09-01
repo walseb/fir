@@ -1,14 +1,14 @@
 
 test\Tests\Optics\NoStructIndex.hs:42:17: error:
-    • get: index 5 out of bounds when accessing struct with fields
+    * get: index 5 out of bounds when accessing struct with fields
       '[ "position" ':-> V 3 Float, "colour" ':-> V 4 Float,
          "size" ':-> Float, "weight" ':-> Float]
       Note: indexing starts at 0.
-    • In a stmt of a 'do' block:
+    * In a stmt of a 'do' block:
         position <- use @(Name "vertexData" :.: Index 5)
-      In the third argument of ‘entryPoint’, namely
-        ‘do position <- use @(Name "vertexData" :.: Index 5)
-            #gl_Position .= position’
+      In the third argument of `entryPoint', namely
+        `do position <- use @(Name "vertexData" :.: Index 5)
+            #gl_Position .= position'
       In a stmt of a 'do' block:
         entryPoint
           @"main"

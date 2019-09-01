@@ -1,13 +1,13 @@
 
 test\Tests\Optics\NoVectorIndex.hs:36:17: error:
-    • get: vector index 4 is out of bounds.
+    * get: vector index 4 is out of bounds.
       Vector dimension is 4.
       Note: indexing starts from 0.
-    • In a stmt of a 'do' block:
+    * In a stmt of a 'do' block:
         position <- use @(Name "vertexData" :.: Index 4)
-      In the third argument of ‘entryPoint’, namely
-        ‘do position <- use @(Name "vertexData" :.: Index 4)
-            #gl_Position .= position’
+      In the third argument of `entryPoint', namely
+        `do position <- use @(Name "vertexData" :.: Index 4)
+            #gl_Position .= position'
       In a stmt of a 'do' block:
         entryPoint
           @"main"

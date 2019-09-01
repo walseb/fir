@@ -194,7 +194,7 @@ module Control.Type.Optic
     -- $composition_instances
 
     -- ** Product of optics
-  , (:*:), Prod
+  , (:*:), Prod, EndProd
   , ProductComponents(..)
   , ComponentsGettable, ComponentsSettable
   , ArePairwiseDisjoint
@@ -233,6 +233,8 @@ import Data.Type.Error
 import Data.Type.List
   ( type (:++:), Postpend
   , Tail, MapTail
+  , Replicate, Length
+  , MapSingleton
   , ZipCons
   , SameLength(sSameLength)
   , SSameLength(SSameSucc, SSameZero)
@@ -261,12 +263,21 @@ data Optic (is :: [Type]) (s :: k) (a :: Type) where
   Field_   :: fld -> Optic is s a
   -- | Composition of optics.
   ComposeO :: Optic is s a -> Optic js a b -> Optic ks s b
-  -- | Product of optics.
+  -- | Unbiased product of optics.
   Prod_ :: ProductComponents iss s as -> Optic js s p
 
 -- | Wrapper to keep track of components of a product optic.
+--
+-- The first argument keeps track of runtime indices.
+-- Its length keeps track of how many additional arguments need to be provided when using the optic.
+-- For instance, @ iss ~ [ [X1,X2], [Y1,Y2], [Z1,Z2] ]@ means that we expect 3 additional indexing arguments,
+-- with first argument consisting of indices of types @X1@ and X2@,
+-- second argument consisting of indices of types @Y1@ and @Y2@,
+-- and third argument consisting of indices of types @Z1@ and @Z2@.
+--
+-- @ view \@( optic :: Optic [ [x1,x2], [y1,y2], [z1,z2] ] S A) (x1,x2) (y1,y2) (z1,z2) s :: A @
 data ProductComponents (iss :: [[Type]]) (s :: k) (as :: [Type]) where
-  EndProd  :: ProductComponents '[] s '[]
+  EndProd_ :: ProductComponents iss s as
   ProductO :: Optic is s a -> ProductComponents iss s as -> ProductComponents jss s (a ': as)
 
 -- $kind_coercion
@@ -283,7 +294,7 @@ data ProductComponents (iss :: [[Type]]) (s :: k) (as :: [Type]) where
 --
 --   * 'AnIndex', 'Index', 'Name', 'Id' and 'Joint' create specific optics,
 --   * ':.:' composes two optics (left-most argument = outer-most optic),
---   * ':*:' takes the product of two optics.
+--   * 'Prod', ':*:' and 'EndProd' allow the formation of (unbiased) product optics.
 --
 -- See also "FIR.Instances.Images" for an overview of how to use optics with images.
 
@@ -302,12 +313,27 @@ type Joint = (Joint_ :: Optic '[] a (MonoType a))
 -- | Composition of optics (kind-correct).
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
   = ( (o1 `ComposeO` o2) :: Optic (is :++: js) s b )
--- | Product of optics (kind-correct).
-type (:*:) (o :: Optic is s a) (os :: ProductComponents iss s as)
-  = ( o `ProductO` os :: ProductComponents (ZipCons is iss) s (a ': as) )
+-- | Gather optics together in order to take an unbiased product over them (kind-correct).
+type family (:*:) (o :: Optic is s a) (os :: ProductComponents iss s as) :: ProductComponents (ProductIndices is os) s (a ': as) where
+  ( o :: Optic is s a ) :*: EndProd_
+    = o `ProductO` ( EndProd_ :: ProductComponents (Replicate (Length is) '[]) s '[] )
+  ( o :: Optic is s a ) :*: ( os :: ProductComponents iss s as )
+    = ( ( o `ProductO` os :: ProductComponents (ZipCons is iss) s (a ': as) )
+        `WithKind` ( ProductComponents (ProductIndices is os) s (a ': as) )
+      )
+-- | Empty set of optic components.
+type family EndProd :: ProductComponents '[] s '[] where
+  EndProd = EndProd_
+-- | Kind of indices resulting from a product.
+type family ProductIndices (is :: [Type]) (os :: ProductComponents iss s as) :: [[Type]] where
+  ProductIndices is EndProd_ = MapSingleton is
+  ProductIndices is ( os :: ProductComponents iss s as ) = ZipCons is iss
+-- | Unbiased product of a set of component optics (kind-correct).
 type Prod (os :: ProductComponents iss s as)
   = ( Prod_ os :: Optic (MapHList iss) s p )
 
+type family WithKind (x :: a) b :: b where
+  WithKind (x :: b) b = x
 
 type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
   ShowOptic Id_ = Text "Id"
@@ -335,7 +361,7 @@ type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
     = Text "Prod ( " :<>: ShowComponents comps :<>: Text " )"
 
 type family ShowComponents (comps :: ProductComponents iss s as) :: ErrorMessage where
-  ShowComponents EndProd = Text "EndProd"
+  ShowComponents EndProd_ = Text "EndProd"
   ShowComponents (o `ProductO` comps)
     = ShowOptic o :<>: Text " :*: " :<>: ShowComponents comps
 
@@ -570,12 +596,12 @@ type ArePairwiseDisjoint (os :: ProductComponents iss s as)
   = ( IsRight (PairwiseDisjoint os) :: Constraint )
 
 type family PairwiseDisjoint (os :: ProductComponents iss s as) :: Either ErrorMessage () where
-  PairwiseDisjoint EndProd           = Right '()
+  PairwiseDisjoint EndProd_          = Right '()
   PairwiseDisjoint (o `ProductO` os) =
     ( o `DisjointFrom` os ) `And` PairwiseDisjoint os
 
 type family DisjointFrom (o :: Optic is s a) (os :: ProductComponents iss s as) :: Either ErrorMessage () where
-  DisjointFrom o EndProd            = Right '()
+  DisjointFrom o EndProd_           = Right '()
   DisjointFrom o (o' `ProductO` os) =
     Disjoint o o' `And` (o `DisjointFrom` os)
 
@@ -584,7 +610,7 @@ type family CrosswiseDisjoint
               ( os2 :: ProductComponents jss s bs )
             :: Either ErrorMessage ()
             where
-  CrosswiseDisjoint EndProd _ = Right '()
+  CrosswiseDisjoint EndProd_ _ = Right '()
   CrosswiseDisjoint (o1 `ProductO` os1) os2 =
     ( o1 `DisjointFrom` os2 ) `And` CrosswiseDisjoint os1 os2
 
@@ -638,10 +664,10 @@ type family Disjoint ( o1 :: Optic is s a ) ( o2 :: Optic js s b ) :: Either Err
 
 
 class ComponentsGettable (os :: ProductComponents iss s as) where
-instance ComponentsGettable EndProd where
+instance ComponentsGettable EndProd_ where
 instance ( ComponentsGettable os, Gettable o ) => ComponentsGettable (o `ProductO` os)
 class ComponentsSettable (os :: ProductComponents iss s as) where
-instance ComponentsSettable EndProd where
+instance ComponentsSettable EndProd_ where
 instance ( ComponentsSettable os, Settable o ) => ComponentsSettable (o `ProductO` os)
 
 instance forall
@@ -719,7 +745,7 @@ instance forall
 class GetViewers (os :: ProductComponents iss (s :: Type) as) where
   viewers :: Viewers iss s as
 
-instance GetViewers EndProd where
+instance ( as ~ '[] ) => GetViewers ( EndProd_ :: ProductComponents iss s as ) where
   viewers = NilViewer
 instance forall
           ( iss :: [[Type]]    )
@@ -743,7 +769,7 @@ instance forall
 class GetSetters (os :: ProductComponents iss (s :: Type) as) where
   setters :: Setters iss s as
 
-instance GetSetters EndProd where
+instance ( as ~ '[] ) => GetSetters ( EndProd_ :: ProductComponents iss s as ) where
   setters = NilSetter
 instance forall
           ( iss :: [[Type]]    )
@@ -770,9 +796,9 @@ class MultiplyGetters (iss :: [[Type]]) (js :: [Type]) (s :: Type) (as :: [Type]
 class MultiplySetters (iss :: [[Type]]) (js :: [Type]) (s :: Type) (as :: [Type]) (p :: Type) where
   multiplySetters :: Setters iss s as -> ListVariadic (js `Postpend` p `Postpend` s) s
 
-instance ( iss ~ '[], IsProduct p as, p ~ ListVariadic '[] p )
+instance ( IsProduct p as, p ~ ListVariadic '[] p )
        => MultiplyGetters iss '[] s as p where
-  multiplyGetters :: Viewers '[] s as -> s -> p
+  multiplyGetters :: Viewers iss s as -> s -> p
   multiplyGetters views s = fromHList @p @as ( applyGetters views s )
 
 instance ( IsProduct j is, SameLength is as, MultiplyGetters iss js s as p )
@@ -782,9 +808,9 @@ instance ( IsProduct j is, SameLength is as, MultiplyGetters iss js s as p )
     multiplyGetters @iss @js @s @as @p
       ( passGetterIndex (sSameLength @_ @_ @is @as) ( toHList j ) views )
 
-instance ( iss ~ '[], IsProduct p as, s ~ ListVariadic '[] s )
+instance ( IsProduct p as, s ~ ListVariadic '[] s )
       => MultiplySetters iss '[] s as p where
-  multiplySetters :: Setters '[] s as -> p -> s -> s
+  multiplySetters :: Setters iss s as -> p -> s -> s
   multiplySetters sets p s = applySetters sets ( toHList @p @as p ) s
 
 instance ( IsProduct j is, SameLength is as, MultiplySetters iss js s as p )
@@ -795,7 +821,7 @@ instance ( IsProduct j is, SameLength is as, MultiplySetters iss js s as p )
         ( passSetterIndex (sSameLength @_ @_ @is @as) ( toHList j ) sets )
 
 
-applyGetters :: Viewers '[] s bs -> s -> HList bs
+applyGetters :: Viewers iss s bs -> s -> HList bs
 applyGetters   NilViewer                                        _ = HNil
 applyGetters ( ConsViewer _ _ _ (_ :: Proxy b) getter getters ) s =
   case getters of
@@ -803,8 +829,8 @@ applyGetters ( ConsViewer _ _ _ (_ :: Proxy b) getter getters ) s =
       -> ( unsafeCoerce getter :: s -> b ) s
          :> applyGetters ( unsafeCoerce getters :: Viewers '[] s cs ) s
 
-applySetters :: Setters '[] s bs -> HList bs -> s -> s
-applySetters   NilSetter                                        _         s  = s
+applySetters :: Setters iss s bs -> HList bs -> s -> s
+applySetters   NilSetter                                     _         s  = s
 applySetters ( ConsSetter _ _ _ (_ :: Proxy b) setter sets ) (b :> bs) s  =
   case sets of
     ( _ :: Setters jss s cs )
@@ -852,7 +878,7 @@ passSetterIndex (SSameSucc ( same1 :: SSameLength t_js t_as ) ) js sets =
                       ( passSetterIndex @t_js @(MapTail jss) @s @t_as same1 ks setts )
 
 data Viewers (iss :: [[Type]]) (s :: Type) (as :: [Type]) where
-  NilViewer  :: Viewers '[] s '[]
+  NilViewer  :: Viewers iss s '[] -- iss should always be a list of empty lists
   ConsViewer :: forall (is :: [Type]) (s :: Type) (a :: Type) (iss :: [[Type]]) (as :: [Type])
              .  SSameLength is (ZipCons is iss)
              -> Proxy is
@@ -863,7 +889,7 @@ data Viewers (iss :: [[Type]]) (s :: Type) (as :: [Type]) where
              -> Viewers (ZipCons is iss) s (a ': as)
 
 data Setters (iss :: [[Type]]) (s :: Type) (as :: [Type]) where
-  NilSetter  :: Setters '[] s '[]
+  NilSetter  :: Setters iss s '[]  -- iss should always be a list of empty lists
   ConsSetter :: forall (is :: [Type]) (s :: Type) (a :: Type) (iss :: [[Type]]) (as :: [Type])
              .  SSameLength is (ZipCons is iss)
              -> Proxy is

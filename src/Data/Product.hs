@@ -35,10 +35,19 @@ data HList (as :: [Type]) where
   HNil :: HList '[]
   (:>) :: a -> HList as -> HList (a ': as)
 
+instance Show (HList '[]) where
+  show _ = "HNil"
+instance ( Show a, Show (HList as) ) => Show (HList (a ': as)) where
+  show (a :> as) = show a ++ " :> " ++ show as
+
 class KnownLength as => IsProduct (p :: Type) (as :: [Type]) -- | p -> as
   where
   fromHList :: HList as -> p
-  toHList :: p -> HList as
+  toHList   :: p -> HList as
+
+instance KnownLength as => IsProduct (HList as) as where
+  fromHList = id
+  toHList   = id
 
 data AreProductsDict js iss as where
   NilProducts  :: AreProductsDict '[] '[] as
@@ -78,8 +87,7 @@ distributeZipConsLemma1 = ( unsafeCoerce Refl, unsafeCoerce Refl )
 
 distributeZipConsLemma2
   :: forall (as :: [Type]) (is :: [Type]) (iss :: [[Type]])
-  .  ( SameLength is (Distribute iss as)
-     )
+  .  ( SameLength is (Distribute iss as) )
   => ( ZipCons is (Distribute iss as) :~: Distribute (is ': iss) as )
 distributeZipConsLemma2 = unsafeCoerce Refl
 

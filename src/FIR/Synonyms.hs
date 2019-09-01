@@ -38,7 +38,7 @@ import Control.Type.Optic
   ( Optic(..), Index
   , (:.:), (:*:)
   , Joint
-  , ProductComponents(EndProd)
+  , EndProd
   )
 import FIR.AST
   ( AST(Ops) )

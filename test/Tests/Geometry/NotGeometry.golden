@@ -1,12 +1,12 @@
 
 test\Tests\Geometry\NotGeometry.hs:34:5: error:
-    • Couldn't match type ‘'FragmentShader’ with ‘'GeometryShader’
-        arising from a use of ‘emitVertex’
-    • In a stmt of a 'do' block: emitVertex
-      In the third argument of ‘entryPoint’, namely
-        ‘do col <- get @"in_colour"
+    * Couldn't match type 'FragmentShader with 'GeometryShader
+        arising from a use of `emitVertex'
+    * In a stmt of a 'do' block: emitVertex
+      In the third argument of `entryPoint', namely
+        `do col <- get @"in_colour"
             put @"out_colour" col
-            emitVertex’
+            emitVertex'
       In a stmt of a 'do' block:
         entryPoint
           @"main"
