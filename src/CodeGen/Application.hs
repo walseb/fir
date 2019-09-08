@@ -43,15 +43,31 @@ data UASTs where
   SnocUAST :: UASTs -> AST a -> UASTs
 deriving instance Show UASTs
 
-
 ----------------------------------------------------------------------------
 -- typed list of ASTs
 
 infixr 5 `ConsAST`
+infixl 5 `SnocAST`
 
 data ASTs (is :: [Type]) :: Type where
   NilAST  :: ASTs '[]
   ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
+
+{-# COMPLETE SnocAST #-}
+pattern SnocAST :: ASTs as -> AST a -> ASTs (as `Snoc` a)
+pattern SnocAST as a <- ( unsnocAST -> (as, a) )
+  where
+    SnocAST NilAST           a = a `ConsAST` NilAST
+    SnocAST (x `ConsAST` xs) a = unsafeCoerce ( x `ConsAST` (xs `SnocAST` a) )
+      --                          ^^^^
+      -- should be able to get rid of this @unsafeCoerce@
+
+unsnocAST :: ASTs (as `Snoc` a) -> ( ASTs as, AST a )
+unsnocAST NilAST               = error "impossible"
+unsnocAST (b `ConsAST` NilAST) = unsafeCoerce ( NilAST, b )
+unsnocAST (b `ConsAST` bs    ) =
+  case unsnocAST ( unsafeCoerce bs ) of
+    ( cs, c ) -> ( unsafeCoerce (b `ConsAST` cs), c )
 
 foldrASTs :: (forall a. AST a -> b -> b) -> b -> ASTs as -> b
 foldrASTs _ b0 NilAST           = b0
@@ -103,12 +119,5 @@ unapply :: AST b -> AnApplication b
 unapply (f :$ a)
   = case unapply f of
         AnApplication (g :: AST (ListVariadic as (a ->b))) as
-          -> AnApplication (unsafeCoerce g :: AST (ListVariadic (as `Snoc` a) b)) (as `snocAST` a)
+          -> AnApplication (unsafeCoerce g :: AST (ListVariadic (as `Snoc` a) b)) (as `SnocAST` a)
 unapply f = AnApplication (unsafeCoerce f :: ListVariadic '[] b) NilAST
-
-snocAST :: ASTs as -> AST a -> ASTs (as `Snoc` a)
-snocAST NilAST           a = a `ConsAST` NilAST
-snocAST (x `ConsAST` xs) a = unsafeCoerce ( x `ConsAST` (xs `snocAST` a) )
-  --                          ^^^^
-  -- should be able to get rid of this @unsafeCoerce@
-

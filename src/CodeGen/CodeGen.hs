@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -105,6 +106,9 @@ import CodeGen.Optics
   , pattern OpticUse, pattern OpticAssign
   , pattern OpticView, pattern OpticSet
   , IndexedOptic(AnIndexedOptic)
+  , IndexedOptic'(AnIndexedOptic')
+  , IndexedTypedOptic(AnIndexedTypedOptic)
+  , IndexedAssignment(AnIndexedAssignment)
   , ASTs(NilAST,ConsAST)
   )
 import CodeGen.Put
@@ -317,7 +321,7 @@ codeGen (Applied (Use sLg singOptic) is)
           provided :: ShortText
           provided = ShortText.pack . show $ astsLength is
 
-codeGen (OpticView (AnIndexedOptic getter is) (UAST s))
+codeGen (OpticView (AnIndexedOptic' getter is) (UAST s))
   = do base <- codeGen s
        extractUsingGetter base getter is
 codeGen (Applied (View sLg singOptic) is)
@@ -333,7 +337,7 @@ codeGen (Applied (View sLg singOptic) is)
           -- off by one: the last argument is the object being accessed,
           -- which is not a run-time index
 
-codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
+codeGen (OpticAssign (AnIndexedAssignment singOptic is a))
   = case singOptic of
 
       SBinding (_ :: Proxy name) ->
@@ -370,13 +374,12 @@ codeGen (OpticAssign (AnIndexedOptic singOptic is) (UAST a))
 
       SComposeO _ (SBinding (_ :: Proxy name)) setter ->
         do  let varName = knownValue @name
-            a_IDTy          <- codeGen a
             bd@(bdID, bdTy) <- bindingID varName
 
             case bdTy of
               SPIRV.Pointer storage eltTy
-                -> storeThroughAccessChain   (bdID, (SPIRV.PointerTy storage eltTy)) a_IDTy setter is
-              _ -> insertUsingSetter varName bd                                      a_IDTy setter is
+                -> storeThroughAccessChain   (bdID, (SPIRV.PointerTy storage eltTy)) a setter is
+              _ -> insertUsingSetter varName bd                                      a setter is
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
@@ -403,10 +406,8 @@ codeGen (Applied (Assign sLg singOptic) is)
           -- off by one: the last argument is the value for the assignment,
           -- which is not a run-time index
 
-codeGen (OpticSet (AnIndexedOptic setter is) (UAST a) (UAST s))
-  = do base <- codeGen s
-       elt  <- codeGen a
-       setUsingSetter  base elt setter is
+codeGen (OpticSet (AnIndexedTypedOptic setter is) a s)
+  = setUsingSetter s a setter is
 codeGen (Applied (Set sLg singOptic) is)
   = throwError (    "codeGen: optic " <> ShortText.pack (showSOptic singOptic)
                  <> " provided with the wrong number of run-time indices by 'set'.\n"

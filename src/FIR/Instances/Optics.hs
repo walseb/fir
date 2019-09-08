@@ -82,6 +82,8 @@ import Control.Type.Optic
   , (:.:), Id, AnIndex, Name, Joint
   , ProductComponents(..)
   )
+import Data.Constraint.All
+  ( All )
 import Data.Type.Known
   ( Known )
 import Data.Function.Variadic
@@ -176,6 +178,7 @@ data SOptic (optic :: Optic i s a) :: Type where
         .  ( IsProduct p as
            , AreProducts js iss as
            , PrimTy p -- need to know result for SPIR-V code generation
+           , All PrimTy as
            )
         => SSameLength (Distribute iss as) as
         -> SProductComponents os
@@ -289,6 +292,7 @@ instance forall iss s as js p (os :: ProductComponents iss s as)
          , AreProducts js iss as
          , js ~ MapHList iss
          , PrimTy p
+         , All PrimTy as
          )
        => KnownOptic (Prod_ os :: Optic js s p) where
   opticSing = SProd sSameLength (componentsSing @os)

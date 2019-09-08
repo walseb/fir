@@ -21,11 +21,15 @@ import Unsafe.Coerce
   ( unsafeCoerce )
 
 -- fir
+import Data.Constraint.All
+  ( All )
 import Data.Type.List
   ( KnownLength
   , ZipCons
   , SameLength
   )
+import {-# SOURCE #-} FIR.Prim.Singletons
+  ( PrimTy )
 
 ----------------------------------------------------------------------
 
@@ -49,10 +53,12 @@ instance KnownLength as => IsProduct (HList as) as where
   fromHList = id
   toHList   = id
 
+-- TODO: refactor this using 'Data.Constraint.All'
 data AreProductsDict js iss as where
   NilProducts  :: AreProductsDict '[] '[] as
   ConsProducts
     :: ( IsProduct j is
+       , All PrimTy is
        , AreProducts js iss as
        , SameLength is (Distribute iss as)
        )
@@ -64,7 +70,7 @@ class SameLength js iss
   productsDict :: AreProductsDict js iss as
 instance AreProducts '[] '[] as where
   productsDict = NilProducts
-instance (IsProduct j is, AreProducts js iss as, SameLength is (Distribute iss as))
+instance (IsProduct j is, AreProducts js iss as, SameLength is (Distribute iss as), All PrimTy is)
       => AreProducts (j ': js) (is ': iss) as where
   productsDict = ConsProducts
 

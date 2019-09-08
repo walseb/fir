@@ -21,7 +21,7 @@ import Numeric.Half
   ( Half )
 
 -- fir
-import Data.Product
+import {-# SOURCE #-} Data.Product
   ( HList )
 import {-# SOURCE #-} FIR.AST
   ( AST )

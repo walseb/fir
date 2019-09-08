@@ -10,7 +10,7 @@ build-type:     Simple
 description:
 
   __FIR__ is an EDSL for writing GPU shader code in Haskell, compiled to __@SPIR-V@__.
-  Requires GHC >= 8.6.
+  Requires GHC >= 8.8.
 
   With this library, shader programs can be written using @do@ notation.
   Such programs are then transformed into abstract syntax trees (ASTs),
@@ -121,6 +121,7 @@ library
       , Control.Monad.Indexed
       , Control.Type.Optic
       , Data.Binary.Class.Put
+      , Data.Constraint.All
       , Data.Function.Variadic
       , Data.Map.Traverse
       , Data.Product
@@ -194,7 +195,7 @@ library
       , half
           >= 0.3
       , lens
-          >= 4.16
+          >= 4.18
       , distributive
           >= 0.6
       , constraints
@@ -202,9 +203,9 @@ library
       , typelits-witnesses
           >= 0.2.3
       , ghc-typelits-knownnat 
-          >= 0.6
+          >= 0.7
       , ghc-typelits-natnormalise 
-          >= 0.6.2
+          >= 0.7
       -- for testing
       , text
           >= 1.2.3.1

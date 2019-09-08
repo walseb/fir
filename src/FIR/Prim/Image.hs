@@ -344,7 +344,7 @@ data GatherInfo :: Gather -> Type where
   ComponentWithOffsets
     :: AST Word32 -> Array 4 (V 2 Int32) -> GatherInfo ComponentGather
   DepthWithOffsets
-            ::       Array 4 (V 2 Int32) -> GatherInfo DrefGather
+    ::               Array 4 (V 2 Int32) -> GatherInfo DrefGather
 
 -- Computes whether a component index needs to be provided to the
 -- 'Gather' image operand.

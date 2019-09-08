@@ -125,7 +125,7 @@ import Data.Distributive
 -- fir
 import Control.Arrow.Strength
   ( strong )
-import Data.Product
+import {-# SOURCE #-} Data.Product
   ( IsProduct(..)
   , HList(HNil, (:>))
   )

@@ -9,15 +9,10 @@ dist-newstyle/
 *.spv
 *.spv-asm
 *.glsl
+*.yaml
 
 /shaders/
 haddock-api/
 fir-examples/src/kaleidogen
 
 TODO.txt
-
--- local patches for GHC 8.8 support
-lens
-cabal-doctest
-hsc2hs
-zlib

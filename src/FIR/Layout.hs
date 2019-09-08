@@ -163,12 +163,16 @@ import qualified Data.Text.Short as ShortText
   ( pack )
 
 -- fir
+import Data.Constraint.All
+  ( AllDict(ConsDict)
+  , All(allDict)
+  )
 import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
 import Data.Type.List
   ( type (:++:) )
 import Data.Type.Map
-  ( Map, (:->)((:->))
+  ( Map, (:->)((:->)), Value
   , Insert, ZipValue
   )
 import Data.Type.Nat
@@ -465,31 +469,24 @@ instance (Poke a Locations, Prim.PrimTy a, KnownNat n, 1 <= n)
       off = fromIntegral $ nextAligned (sizeOf @a @Locations) (alignment @(Array n a) @Locations `roundUp` 16)
 
 
-data PokeDict :: [fld :-> Type] -> Layout -> Type where
-  NoPoke :: PokeDict '[] lay
-  PokeDict :: (Poke a lay, PokeStruct as lay) => PokeDict ( (k ':-> a) ': as ) lay
-class PokeStruct as lay where
-  pokeDict :: PokeDict as lay
-instance PokeStruct '[] lay where
-  pokeDict = NoPoke
-instance (Poke a lay, PokeStruct as lay) => PokeStruct ( (k ':-> a) ': as ) lay where
-  pokeDict = PokeDict
+class    ( Poke (Value x) lay ) => Pokeable (lay :: Layout) (x :: fld :-> Type) where
+instance ( Poke (Value x) lay ) => Pokeable (lay :: Layout) (x :: fld :-> Type) where
 
 structPoke :: forall (fld :: Type) (lay :: Layout) (as :: [fld :-> Type]).
-              ( PrimTyMap as, PokeStruct as lay )
+              ( PrimTyMap as, All (Pokeable lay) as )
            => Word32 -> Ptr (Struct as) -> Struct as -> IO ()
 structPoke ali ptr struct = case primTyMapSing @_ @as of
   SNil -> pure ()
   scons@SCons -> case scons of
     ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
-      case (struct, pokeDict @as @lay) of
-        ( b :& bs, PokeDict ) ->
+      case (struct, allDict @(Pokeable lay) @as) of
+        ( b :& bs, ConsDict ) ->
           let off = fromIntegral $ nextAligned (sizeOf @b @lay) ali
           in  poke @b @lay (castPtr ptr) b *> structPoke @fld @lay @bs ali (ptr `plusPtr` off) bs
 
 
 instance ( PrimTyMap as
-         , PokeStruct as Base
+         , All (Pokeable Base) as
          , KnownNat (SizeOf Base (Struct as))
          , KnownNat (Alignment Base (Struct as))
          ) => Poke (Struct as) Base where
@@ -501,7 +498,7 @@ instance ( PrimTyMap as
 
 
 instance ( PrimTyMap as
-         , PokeStruct as Extended
+         , All (Pokeable Extended) as
          , KnownNat (SizeOf Extended (Struct as))
          , KnownNat (Alignment Extended (Struct as))
          ) => Poke (Struct as) Extended where
@@ -529,6 +526,7 @@ instance
       = 1
     poke = error "unreachable"
 
+-- TODO: refactor this using 'Data.Constraint.All'
 data PokeSlotsDict (as :: [LocationSlot Nat :-> Type]) :: Type where
   NoSlotsPoke  :: PokeSlotsDict '[]
   PokeSlotDict :: ( Poke a Locations

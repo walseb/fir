@@ -331,6 +331,9 @@ type family ProductIndices (is :: [Type]) (os :: ProductComponents iss s as) :: 
 -- | Unbiased product of a set of component optics (kind-correct).
 type Prod (os :: ProductComponents iss s as)
   = ( Prod_ os :: Optic (MapHList iss) s p )
+-- TODO: it would be nice to have "p" as a first argument for visible kind application
+-- (this might require standalone kind signatures?)
+
 
 type family WithKind (x :: a) b :: b where
   WithKind (x :: b) b = x
