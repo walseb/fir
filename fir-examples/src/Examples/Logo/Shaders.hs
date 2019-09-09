@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Shaders.Logo where
+module Examples.Logo.Shaders where
 
 -- base
 import qualified Prelude

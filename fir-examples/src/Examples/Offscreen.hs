@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Offscreen ( offscreen ) where
+module Examples.Offscreen ( offscreen ) where
 
 -- base
 import Control.Monad
@@ -63,8 +63,8 @@ import Math.Linear
   ( pattern V3 )
 
 -- fir-examples
+import Examples.Offscreen.Shaders
 import Simulation.Observer
-import Shaders.Offscreen
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad

@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
-module Shaders.Offscreen where
+module Examples.Offscreen.Shaders where
 
 -- text-short
 import Data.Text.Short

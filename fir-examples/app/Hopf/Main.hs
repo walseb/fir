@@ -1,6 +1,7 @@
 module Main where
 
-import Hopf
+import Examples.Hopf
+  ( hopf )
 
 main :: IO ()
 main = hopf

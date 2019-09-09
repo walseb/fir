@@ -16,7 +16,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Shaders.Hopf where
+module Examples.Hopf.Shaders where
 
 -- text-short
 import Data.Text.Short

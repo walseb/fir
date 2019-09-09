@@ -25,20 +25,21 @@ library
     src
 
   exposed-modules:
-      Bezier
-    , FullPipeline
-    , Hopf
-    , JuliaSet
-    , Logo
-    , Offscreen
-    , Texture
-    , Shaders.Bezier
-    , Shaders.FullPipeline
-    , Shaders.Hopf
-    , Shaders.JuliaSet
-    , Shaders.Logo
-    , Shaders.Offscreen
-    , Shaders.Texture
+      Examples.Bezier
+    , Examples.Bezier.Shaders
+    , Examples.FullPipeline
+    , Examples.FullPipeline.Shaders
+    , Examples.Hopf
+    , Examples.Hopf.Shaders
+    , Examples.Hopf.Villarceau
+    , Examples.JuliaSet
+    , Examples.JuliaSet.Shaders
+    , Examples.Logo
+    , Examples.Logo.Shaders
+    , Examples.Offscreen
+    , Examples.Offscreen.Shaders
+    , Examples.Texture
+    , Examples.Texture.Shaders
     , Simulation.Observer
     , Vulkan.Backend
     , Vulkan.Buffer

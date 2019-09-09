@@ -1,6 +1,7 @@
 module Main where
 
-import Texture
+import Examples.Texture
+  ( texture )
 
 main :: IO ()
 main = texture

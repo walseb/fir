@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Shaders.FullPipeline where
+module Examples.FullPipeline.Shaders where
 
 -- text-short
 import Data.Text.Short

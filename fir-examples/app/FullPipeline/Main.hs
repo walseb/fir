@@ -1,6 +1,7 @@
 module Main where
 
-import FullPipeline
+import Examples.FullPipeline
+  ( fullPipeline )
 
 main :: IO ()
 main = fullPipeline

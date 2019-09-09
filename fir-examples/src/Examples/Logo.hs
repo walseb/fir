@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Logo ( logo ) where
+module Examples.Logo ( logo ) where
 
 -- base
 import Control.Monad
@@ -94,8 +94,8 @@ import Math.Quaternion
   ( rotate, axisAngle )
 
 -- fir-examples
+import Examples.Logo.Shaders
 import Simulation.Observer
-import Shaders.Logo
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad

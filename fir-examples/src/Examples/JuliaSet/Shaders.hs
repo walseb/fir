@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
 
-module Shaders.JuliaSet where
+module Examples.JuliaSet.Shaders where
 
 -- base
 import GHC.TypeNats

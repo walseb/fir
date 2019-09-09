@@ -12,7 +12,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 
-module JuliaSet ( juliaSet ) where
+module Examples.JuliaSet ( juliaSet ) where
 
 -- base
 import Control.Monad
@@ -86,8 +86,8 @@ import Math.Linear
   )
 
 -- fir-examples
+import Examples.JuliaSet.Shaders
 import Simulation.Observer
-import Shaders.JuliaSet
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
