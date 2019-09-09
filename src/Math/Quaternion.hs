@@ -15,6 +15,15 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
+{-|
+Module: Math.Quaternion
+
+Bare-bones implementation of quaternions,
+together with a few simple operations
+such as the conjugation action of quaternions on 3-d vectors.
+
+-}
+
 module Math.Quaternion where
 
 -- base

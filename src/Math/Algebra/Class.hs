@@ -9,6 +9,30 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Math.Algebra.Class
+
+Alternative numeric hierarchy, tailored for this library.
+
+The main problem with the standard numeric hierarchy consists
+of class methods with monomorphic return types.
+
+For instance, the method
+
+> toInteger :: Integral a => a -> Integer
+
+is not amenable to overloading when working with ASTs, as
+given e.g. @AST Int@ there is no way of recovering an @Integer@.
+
+Contrast this with a method such as
+
+> fromInteger :: Num a => Integer -> a
+
+There is no problem instantiating this method at a type such as @AST Int@,
+as it is indeed possible to turn a Haskell-level @Integer@ into an AST for an @Int@.
+
+-}
+
 module Math.Algebra.Class where
 
 -- base

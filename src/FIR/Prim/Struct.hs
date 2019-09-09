@@ -14,6 +14,32 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: FIR.Prim.Struct
+
+A __structure__ (or __struct__ for short) can be thought of as an ordered record.
+
+Here, we simply represent a struct as a linked list, with the fields annotated at the type level.
+
+To illustrate:
+
+> struct :: Struct '[ "field1" ':-> Float, "field2" ':-> V 3 Float ]
+> struct = 1.0 :& V3 0.0 1.0 0.0 :& End
+
+This defines a struct with two fields:
+
+  * first field named @"field1"@, of type @Float@,
+  * second field named @"field2"@, of type @V 3 Float@.
+
+Note that the field annotations need not be type-level literals.
+For instance, when specifying memory layout of vertex input data,
+one instead specifies location slots (see "FIR.Layout"):
+
+> inputData :: Struct '[ Slot 0 0 ':-> Float, Slot 0 3 ':-> V 3 Float ]
+
+
+-}
+
 module FIR.Prim.Struct
   ( Struct(End, (:&))
   , LocationSlot(..)

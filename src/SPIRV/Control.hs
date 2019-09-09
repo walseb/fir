@@ -8,6 +8,19 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
+{-|
+Module: SPIRV.Control
+
+This module enumerates SPIR-V control parameters:
+
+  * selection control parameters (SPIR-V specification §3.22 __Selection Control__),
+  * loop control parameters (SPIR-V specification §3.23 __Loop Control__),
+  * function control parameters (SPIR-V specification §3.24 __Function Control__).
+
+These are used both at the type-level and value-level.
+
+-}
+
 module SPIRV.Control
   ( Inlineability(..)
   , SideEffects(..)

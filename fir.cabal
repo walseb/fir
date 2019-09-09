@@ -45,7 +45,7 @@ description:
 
   Important types used by this library:
 
-  [@FIR.AST.AST a@]
+  [@AST a@]
 
       Code for a pure value of type @a@, represented internally as an abstract syntax tree.
 
@@ -75,7 +75,7 @@ description:
       See "FIR.Program" for the definition, and the example shaders for common usage patterns.
 
 
-  All three of these types can be displayed graphically as a tree, using the 'ast' function.
+  All three of these types can be displayed graphically as a tree, using the 'FIR.ast' function.
   This can assist in understanding inlining behaviour.
 
 

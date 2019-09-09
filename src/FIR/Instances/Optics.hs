@@ -129,6 +129,7 @@ import Math.Linear
 ----------------------------------------------------------------------
 -- singletons
 
+-- | Singletons associated to the type-level optics used by this library.
 data SOptic (optic :: Optic i s a) :: Type where
   SId    :: SOptic Id
   SJoint :: SOptic Joint

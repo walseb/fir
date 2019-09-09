@@ -19,7 +19,7 @@ Description: @---@ __Main module, re-exports what's needed to write programs and
 
 This module re-exports the main functionality needed to use the library.
 
-For an overview of the library, refer to the project __readme__.
+For an overview of the library, refer to the project [__readme__](https://gitlab.com/sheaf/fir/tree/master/readme.md).
 
 To illustrate the syntax of this library, the example of a trivial fragment shader follows.
 
@@ -57,8 +57,9 @@ Note the lens-like operations:
     This operation is similar to @get@ in a state monad, except that an additional binding name
     is provided via a type application.
   - @'FIR.Instances.Codensity.use' \@(ImageTexel "image") NoOperands pos@ samples the provided image
-    at coordinates @pos@. Additional operands can be provided for this sampling operation,
-    such as an explicit level of detail or whether to use projective coordinates.
+    at coordinates @pos@. Additional image operands can be provided for this sampling operation,
+    such as an explicit level of detail or whether to use projective coordinates
+    (refer to the SPIR-V specification for further information concerning image operands).
   - @'FIR.Instances.Codensity.put' \@"out_col" col@ – equivalent to
     @'FIR.Instances.Codensity.assign' \@(Name "out_col") col@ –
     sets the output value of the shader.
@@ -71,7 +72,8 @@ This fragment shader can then be compiled using:
 where @filePath@ is the desired output filepath, and @flags@ is a list of 'CompilerFlag's.
 
 
-More meaningful examples can be found in the @fir-examples@ subdirectory of the project's repository.
+More meaningful examples can be found in the (@fir-examples@ subdirectory)(https://gitlab.com/sheaf/fir/tree/master/fir-examples)
+of the project's repository.
 
 -}
 
@@ -351,7 +353,7 @@ instance TH.Lift ShortText where
 -- >        ]
 -- >   )
 --
--- This will compile the vertexShader @vertexShader@ at filepath @vertPath@,
+-- At compile time, this will compile the vertexShader @vertexShader@ at filepath @vertPath@,
 -- and similarly for the fragment shader.
 -- These can then be loaded into Vulkan shader modules for use in rendering.
 runCompilationsTH :: [ ( ShortText, IO (Either ShortText ()) ) ] -> TH.Q TH.Exp

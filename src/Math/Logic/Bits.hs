@@ -11,6 +11,15 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Math.Logic.Bits
+
+Alternative "Data.Bits" type class tailored for this library.
+
+Refer to "Math.Algebra.Class" for an explaination of why such alternatives are necessary for this library.
+
+-}
+
 module Math.Logic.Bits
   ( Bits(..)
   , BitShift(..)

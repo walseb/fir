@@ -22,7 +22,7 @@ data HList (as :: [Type]) where
   HNil :: HList '[]
   (:>) :: a -> HList as -> HList (a ': as)
 
-class KnownLength as => IsProduct (p :: Type) (as :: [Type]) -- | p -> as
+class KnownLength as => IsProduct (p :: Type) (as :: [Type]) {---  | p -> as  ---}
   where
   fromHList :: HList as -> p
   toHList   :: p -> HList as

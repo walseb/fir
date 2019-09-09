@@ -8,6 +8,16 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-|
+Module: FIR.Builtin
+
+This module describes the built-in variables that are provided
+for each execution model in SPIR-V.
+
+For instance, in a vertex shader, one can always write position information
+into the built-in variable named @gl_Position@, of type @V 4 Float@.
+-}
+
 module FIR.Builtin where
 
 -- base

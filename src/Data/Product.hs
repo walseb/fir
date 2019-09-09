@@ -44,7 +44,7 @@ instance Show (HList '[]) where
 instance ( Show a, Show (HList as) ) => Show (HList (a ': as)) where
   show (a :> as) = show a ++ " :> " ++ show as
 
-class KnownLength as => IsProduct (p :: Type) (as :: [Type]) -- | p -> as
+class KnownLength as => IsProduct (p :: Type) (as :: [Type]) {---  | p -> as  ---}
   where
   fromHList :: HList as -> p
   toHList   :: p -> HList as
@@ -65,7 +65,7 @@ data AreProductsDict js iss as where
      => AreProductsDict (j ': js) (is ': iss) as
 
 class SameLength js iss 
-   => AreProducts (js :: [Type]) (iss :: [[Type]]) (as :: [Type]) -- | js -> iss
+   => AreProducts (js :: [Type]) (iss :: [[Type]]) (as :: [Type])  {---  | js -> iss  ---}
    where
   productsDict :: AreProductsDict js iss as
 instance AreProducts '[] '[] as where

@@ -19,6 +19,23 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: FIR.Prim.Array
+
+This module defines the array type used in this library,
+which simply consists in a wrapper around a 'Data.Vector.Vector'.
+
+There are two kinds of arrays:
+
+  * arrays, affixed with a type-level natural number denoting their length,
+  * runtime arrays, whose length is not statically known.
+
+The user cannot create new runtime arrays within a SPIR-V module
+(although this is not currently enforced by this library),
+as they are only meant to be used as inputs within shader storage buffer objects,
+as the last object within a 'FIR.Synonyms.StorageBuffer'.
+-}
+
 module FIR.Prim.Array
   ( Array(..), mkArray
   , RuntimeArray(..)

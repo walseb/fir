@@ -10,6 +10,18 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
+{-|
+Module: SPIRV.Decoration
+
+This module enumerates SPIR-V decorations. Used both at the type-level and term-level.
+
+See SPIR-V specification §3.20 __Decoration__.
+
+In this library, decorations are usually provided as part of a top-level definition specifying an interface
+for a SPIR-V module. See "FIR.Definition".
+
+-}
+
 module SPIRV.Decoration
   ( Decoration(..)
   , Decorations

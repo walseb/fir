@@ -13,6 +13,15 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+Module: FIR.Prim.Singletons
+
+This module contains singletons machinery that is necessary for code generation.
+
+See for instance 'CodeGen.IDs.constID' for a crucial application of these singletons.
+
+-}
+
 module FIR.Prim.Singletons where
 
 -- base

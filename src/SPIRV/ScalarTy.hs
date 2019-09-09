@@ -4,6 +4,17 @@
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeFamilies          #-}
 
+{-|
+Module: SPIRV.ScalarTy
+
+This module enumerates the scalar types that exist within the SPIR-V type system:
+
+  * unsigned integers,
+  * signed integers, and
+  * floating point numbers.
+
+-}
+
 module SPIRV.ScalarTy
   ( Width(..), width, WidthToNat
   , Signedness(..), signedness

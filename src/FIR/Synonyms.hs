@@ -15,6 +15,14 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ViewPatterns           #-}
 
+{-|
+Module: FIR.Swizzle
+
+This module provides various convenience synonyms
+to mitigate verbosity in user-written programs.
+
+-}
+
 module FIR.Synonyms where
 
 -- base

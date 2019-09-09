@@ -13,6 +13,7 @@ in agreement with the default endianness for @SPIR-V@ assembly.
 
 Note: this type class is __not__ concerned with memory layout on the GPU.
 GPU memory layout is managed using @SPIR-V@ decorations, in conjunction with @Vulkan@.
+This type class is instead used internally, to emit binary SPIR-V assembly.
 
 -}
 
@@ -65,7 +66,7 @@ import qualified Data.Text.Short as ShortText
 
 -- | One half of 'Data.Binary.Binary'.
 class Put a where
-  put    :: a -> Binary.PutM ()
+  put       :: a -> Binary.PutM ()
   -- | Memory footprint, as a multiple of __32 bits__
   -- (/not/ the usual 8 bits as in 'Foreign.Storable.sizeOf').
   wordCount :: a -> Word32

@@ -12,6 +12,24 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+Module: SPIRV.Stage
+
+This module enumerates the SPIR-V execution models / shader stages.
+
+These are used both at the type-level and at the value-level.
+
+See the SPIR-V specification, §3.3 __Execution Model__.
+
+
+This module also keeps track of certain execution modes that need to be known
+at the type-level to perform certain type-level checks for custom error messages,
+e.g. which kind of tessellation is happening (triangles, quads, isolines).
+This information is eventually computed using user "SPIRV.Decoration.Decoration"s,
+but it proved useful to separate these decorations out.
+
+-}
+
 module SPIRV.Stage where
 
 -- base

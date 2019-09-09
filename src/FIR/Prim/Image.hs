@@ -12,6 +12,16 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: FIR.Prim.Image
+
+This module defines the 'Image' datatype,
+which is a void datatype used to manipulate image handles.
+
+This datatype is annotated at the type-level with various properties
+describing the image, such as the format of the image (e.g. RGBA8, depth image, etc).
+-}
+
 module FIR.Prim.Image
   ( -- * Images
     -- ** Image properties

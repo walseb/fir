@@ -1,5 +1,24 @@
 {-# LANGUAGE GADTs #-}
 
+{-|
+Module: SPIRV.PrimOp
+
+This module categorises the raw primitive OpCodes from "SPIRV.Operation".
+
+This allows easier use of operations by generalising over certain aspects,
+such as unifying the various arithmetic and logical operations.
+For instance, instead of having to distinguish:
+
+  * @UMin@, unsigned integer minimum,
+  * @SMin@, signed integer minimum, and
+  * @FMin@, floating point minimum,
+one can simply refer to the @Min@ operation defined in this module,
+and the functions within this module will dispatch the correct primitive
+operation depending on the types involved.
+
+Refer also to the module "FIR.Prim.Op", which ties these into the rest of the library.
+-}
+
 module SPIRV.PrimOp
   ( PrimOp(..)
   , BoolPrimOp(..), EqPrimOp(..), OrdPrimOp(..)

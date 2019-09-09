@@ -2,6 +2,17 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
+{-|
+Module: SPIRV.Extension
+
+This module enumerates SPIR-V extensions as well as extended instruction sets.
+These are used only at the value level.
+
+See SPIR-V specification §2.10 __Extended Instruction Sets__,
+as well as the SPIR-V registry for a complete list of SPIR-V extensions.
+
+-}
+
 module SPIRV.Extension where
 
 -- base

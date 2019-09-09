@@ -3,6 +3,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
+{-|
+Module: SPIRV.PrimTy
+
+This module enumerates the types that exist within the SPIR-V type system.
+
+See the SPIR-V specification, §3.22.6 __Type-Declaration instructions__.
+-}
+
 module SPIRV.PrimTy
   ( AggregateUsage(..)
   , PrimTy(..)

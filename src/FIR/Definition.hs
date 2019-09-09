@@ -12,6 +12,46 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+Module: FIR.Definition
+
+In this module, a definition refers to a type-level annotation the user
+can/must provide to describe the interface of a SPIR-V module.
+
+For example, a typical fragment shader for mapping a texture could
+declare the following definitions:
+
+> type FragmentDefs =
+>   '[ "in_colour"   ':-> Input      '[ Location 0 ]                 (V 4 Float)
+>    , "in_uv"       ':-> Input      '[ Location 1 ]                 (V 2 Float)
+>    , "texture"     ':-> Texture2D  '[ Binding 0, DescriptorSet 0 ] (RGBA8 UNorm)
+>    , "out_colour"  ':-> Output     '[ Location 0 ]                 (V 4 Float)
+>    , "main"        ':-> EntryPoint '[ OriginUpperLeft ]            Fragment
+>    ]
+>
+> fragment :: ShaderStage "main" FragmentShader FragmentDefs _endState
+> fragment = ...
+
+There are three types of definitions:
+
+  * global variables that belong to the interface (inputs, outputs, uniform constants such as textures, etc),
+  * functions that are going to be defined,
+  * entry points that are going to be defined.
+
+In the above example all definitions are of the first kind,
+save for the last definition which declares an entry point.
+
+The definitions allow the user to specify, within a SPIR-V module, detailed information about the interface.
+
+For instance, in the above example, the inputs/outputs are annotated with location information,
+whereas the texture (a uniform constant) is annotated with its binding and descriptor set.
+See "FIR.Layout" for further details concerning such annotations.
+
+On the other hand, the execution model (in this case the fragment shader) is given its execution modes
+(in this case, specifying that the origin for the coordinate system used by fragments is
+in the upper-left corner).
+-}
+
 module FIR.Definition where
 
 -- base
@@ -79,6 +119,8 @@ import qualified SPIRV.Storage         as Storage
 -- annotating top-level definitions with necessary information
 -- for instance, annotating layout information
 
+-- | Definitions are top-level type-level annotations which provide
+-- the necessary information for a SPIR-V module.
 data Definition where
   Global     :: SPIRV.StorageClass -> [ SPIRV.Decoration Nat ] -> Type -> Definition
   Function   :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
@@ -304,4 +346,3 @@ initialCGContext =
         , userFunctions
         , userEntryPoints
         }
-

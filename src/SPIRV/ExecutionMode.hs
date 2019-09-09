@@ -12,6 +12,19 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+Module: SPIRV.ExecutionMode
+
+This module enumerates SPIR-V execution modes. These are used both at the type-level and value-level.
+
+These annotate execution models / shader stages (see "SPIRV.Stage") with further information,
+such as the geometry type to use in a tessellation shader (points, triangles, quads, isolines),
+or the workgroup size in a compute shader.
+
+See the SPIR-V specification §3.6 __Execution Modes__.
+
+-}
+
 module SPIRV.ExecutionMode where
 
 -- base

@@ -2,6 +2,16 @@
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE ViewPatterns               #-}
 
+{-|
+Module: SPIRV.Capability
+
+Enumeration of SPIR-V capabilities. These are used at the value-level only.
+
+A capability must be declared whenever an operation is used which requires it.
+See the SPIR-V specification, section 3.31 __Capability__.
+
+-}
+
 module SPIRV.Capability where
 
 -- base

@@ -11,9 +11,25 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE ViewPatterns           #-}
 
-module FIR.Swizzle where --( Swizzle ) where
+{-|
+Module: FIR.Swizzle
+
+A swizzle is a way of remapping components of a vector, e.g.:
+
+> > view @(Swizzle "xyxz") (V3 1.0 2.0 3.0)
+> V4 1.0 2.0 1.0 3.0
+
+This is a convenience layer around the general type-level optics machinery
+defined in "Control.Type.Optic", and more specifically a wrapper
+around product optics, as @Swizzle "xyxz"@ desugars to the product optic
+
+> Prod ( Index 0 :*: Index 1 :*: Index 0 :*: Index 2 :*: EndProd )
+
+The purpose of this module is simply to implement this desugaring.
+-}
+
+module FIR.Swizzle where
 
 -- base
 import Data.Kind

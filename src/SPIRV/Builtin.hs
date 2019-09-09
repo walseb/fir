@@ -6,6 +6,17 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 
+{-|
+Module: SPIRV.Builtin
+
+Enumeration of SPIR-V built-in variables. Used both at the type-level and value-level.
+
+See the SPIR-V specification, section 3.21 __BuiltIn__.
+
+Refer to "FIR.BuiltIn" for usage in this library.
+
+-}
+
 module SPIRV.Builtin
   ( Builtin(..)
   , readBuiltin
