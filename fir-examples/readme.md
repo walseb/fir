@@ -55,7 +55,7 @@ It should be possible to install the SDL2 development kit from your distribution
 * Ubuntu/Debian: `sudo apt-get install libsdl2-dev`
 * ArchLinux: `pacman -S sdl2`
 
-Please ensure that the installed version of SDL2 is at least 2.0.6, at it is this version that adds Vulkan support.
+Please ensure that the installed version of SDL2 is at least 2.0.6, as it is this version that adds Vulkan support.
 This might require adding newer package repository lists.
 
 For Vulkan, you'll need the Vulkan SDK. What to install will usually depend on your GPU (AMD/NVIDIA/Intel).

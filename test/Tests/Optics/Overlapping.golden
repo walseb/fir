@@ -1,36 +1,33 @@
 
-test\Tests\Optics\Overlapping.hs:31:5: error:
-    • set: cannot create product setter.
-      Setters 
-        Name "field_0"
-      and 
-        Index 0
-      are not disjoint.
-    • In a stmt of a 'do' block:
+test\Tests\Optics\Overlapping.hs:34:5: error:
+    * Cannot create product setter.
+      Name "field_0" and index 0 refer to the same field.
+    * In a stmt of a 'do' block:
         assign
-          @(Name "struct" :.: (Name "field_0" :*: Index 0))
+          @(Name "struct"
+            :.:
+            (Prod (Name "field_0"
+                   :*: Index 0 :*: EndProd) :: Optic '[] MyStruct OtherStruct))
           (Lit (4 :& 5 :& End))
-      In the third argument of ‘entryPoint’, namely
-        ‘do def
-              @"struct"
-              @RW
-              @(Struct '["field_0" :-> Float, "field_1" :-> Bool])
-              (Lit (3 :& True :& End))
+      In the third argument of `entryPoint', namely
+        `do def @"struct" @RW @MyStruct (Lit (3 :& True :& End))
             assign
-              @(Name "struct" :.: (Name "field_0" :*: Index 0))
-              (Lit (4 :& 5 :& End))’
+              @(Name "struct"
+                :.:
+                (Prod (Name "field_0"
+                       :*: Index 0 :*: EndProd) :: Optic '[] MyStruct OtherStruct))
+              (Lit (4 :& 5 :& End))'
       In a stmt of a 'do' block:
         entryPoint
           @"main"
           @Vertex
-          do def
-               @"struct"
-               @RW
-               @(Struct '["field_0" :-> Float, "field_1" :-> Bool])
-               (Lit (3 :& True :& End))
+          do def @"struct" @RW @MyStruct (Lit (3 :& True :& End))
              assign
-               @(Name "struct" :.: (Name "field_0" :*: Index 0))
+               @(Name "struct"
+                 :.:
+                 (Prod (Name "field_0"
+                        :*: Index 0 :*: EndProd) :: Optic '[] MyStruct OtherStruct))
                (Lit (4 :& 5 :& End))
    |
-31 |     assign @(Name "struct" :.: (Name "field_0" :*: Index 0)) ( Lit ( 4 :& 5 :& End ) )
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 |     assign
+   |     ^^^^^^^...

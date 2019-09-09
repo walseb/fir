@@ -27,6 +27,7 @@ type GeometryDefs =
                          '[ Triangles
                           , OutputTriangleStrip
                           , OutputVertices 3
+                          , Invocations 1
                           ]
                           Geometry
    ]

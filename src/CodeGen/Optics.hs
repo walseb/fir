@@ -122,7 +122,7 @@ import FIR.AST
 import FIR.Instances.Optics
   ( SOptic(..), SProductComponents(..) )
 import FIR.Prim.Singletons
-  ( PrimTy, SPrimTy(..) )
+  ( PrimTy, primTy, SPrimTy(..) )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 
@@ -245,12 +245,12 @@ data OpticalOperationTree where
   Done    :: OpticalOperationTree
   Then    :: OpticalOperation -> OpticalOperationTree -> OpticalOperationTree
   Combine :: forall (p :: Type) (as :: [Type])
-          .  (All PrimTy as, IsProduct p as)
+          .  (PrimTy p, All PrimTy as, IsProduct p as)
           => Proxy p -> Proxy as -> [OpticalOperationTree] -> OpticalOperationTree
 
 
-operationTree :: forall k is (s :: k) a (optic :: Optic is s a).
-                 ASTs is -> SOptic optic -> CGMonad OpticalOperationTree
+operationTree :: forall k is (s :: k) a (optic :: Optic is s a)
+              .  ASTs is -> SOptic optic -> CGMonad OpticalOperationTree
 operationTree _ SId    = pure Done
 operationTree _ SJoint = pure (Join `Then` Done)
 operationTree (i `ConsAST` _) SAnIndex {}
@@ -359,6 +359,7 @@ deconstruct _          (Lit x) = pure $ hListToASTs allDict (toHList @p @as x)
 deconstruct _          p
   | Just hlist <- recogniseHList allDict p
   = pure hlist
+  -- TODO: more cases to avoid spurious "compositeConstruct ---> compositeExtract"
 deconstruct (SSucc lg) p = do
     composite <- codeGen p
     compositeExtractAll composite (SSucc lg) 0
@@ -414,14 +415,14 @@ loadThroughAccessChain' basePtr ( Access safe is `Then` ops )
   = do
       newBasePtr <- accessChain basePtr safe is
       loadThroughAccessChain' newBasePtr ops
-loadThroughAccessChain' basePtr@(_, SPIRV.PointerTy _ eltTy) ( Combine _ _ trees )
+loadThroughAccessChain' basePtr@(_, SPIRV.PointerTy _ eltTy) ( Combine (_ :: Proxy p) _ trees )
   -- special case: can we use a vector swizzle operation?
   | Just is <- swizzleIndices eltTy trees
   = do
       base <- loadThroughAccessChain' basePtr Done
       vectorSwizzle base is
   | otherwise
-  =  compositeConstruct eltTy =<< traverse (fmap fst . loadThroughAccessChain' basePtr) trees
+  =  compositeConstruct (primTy @p) =<< traverse (fmap fst . loadThroughAccessChain' basePtr) trees
 loadThroughAccessChain' _ ( Join `Then` _ )
   = throwError "loadThroughAccessChain': unexpected 'Joint' optic used as a getter"
 
@@ -446,12 +447,12 @@ extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _) `Then` _ )
              assign ( _temporaryPointer baseID ) ( Just (basePtrID, Fresh) )
         )
       loadThroughAccessChain' (basePtrID, ptrTy) ops
-extractUsingGetter' base@(_, eltTy) ( Combine _ _ trees )
+extractUsingGetter' base@(_, eltTy) ( Combine (_ :: Proxy p) _ trees )
   -- special case: can we use a vector swizzle operation?
   | Just is <- swizzleIndices eltTy trees
   = vectorSwizzle base is
   | otherwise
-  = compositeConstruct eltTy =<< traverse (fmap fst . extractUsingGetter' base) trees
+  = compositeConstruct (primTy @p) =<< traverse (fmap fst . extractUsingGetter' base) trees
 extractUsingGetter' _ ( Join `Then` _ )
   = throwError "extractUsingGetter': unexpected 'Joint' optic used as a getter"
 

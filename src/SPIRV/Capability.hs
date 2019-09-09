@@ -332,3 +332,12 @@ lodCapabilities bm
   -- uses the MinLOD opeand
   | bm `testBit` 15 = [ Shader, MinLod ]
   | otherwise       = [ ]
+
+-- whether the ImageGatherExtended capability is required
+gatherCapabilities :: Word32 -> [ Capability ]
+gatherCapabilities bm
+  |  bm `testBit` 12 -- Offset operand
+  || bm `testBit` 13 -- ConstOffsets operand
+  = [ ImageGatherExtended ]
+  | otherwise
+  = [ ]

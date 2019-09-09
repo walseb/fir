@@ -67,6 +67,7 @@ import qualified SPIRV.Capability as SPIRV
   , dimCapabilities
   , msCapabilities
   , lodCapabilities
+  , gatherCapabilities
   )
 import SPIRV.Image
   ( DepthTesting(..), Projection(..) )
@@ -324,9 +325,10 @@ addImageCapabilities sampling bm dim arrayness ms mbFmt
   = do
       ( addCapabilities . Compose )
         ( SPIRV.formatCapabilities <$> mbFmt )
-      addCapabilities ( SPIRV.msCapabilities ms )
-      addCapabilities ( SPIRV.lodCapabilities bm )
-      addCapabilities ( SPIRV.dimCapabilities sampling dim arrayness )
+      addCapabilities ( SPIRV.msCapabilities     ms )
+      addCapabilities ( SPIRV.lodCapabilities    bm )
+      addCapabilities ( SPIRV.gatherCapabilities bm )
+      addCapabilities ( SPIRV.dimCapabilities    sampling dim arrayness )
 
 --------------------------------------------------------------------------
 -- dealing with operands

@@ -1,9 +1,9 @@
 # Getting started with FIR
 
 * [Installation instructions](#installation)
-  - [Library](#library)
-  - [Documentation](#docs)
-  - [Examples](#examples)
+  - [Installing the library](#library)
+  - [Installing the documentation](#docs)
+  - [Installing the built-in examples](#examples)
 * [Writing a simple shader](#simple-shader)
 * [Compiling shaders](#compiling)
 * [Inspecting the AST](#ast)
@@ -14,7 +14,7 @@
 ## Installation instructions
 
 <a name="library"></a>
-### Library
+### Installing the library
 
 The library itself only has Haskell dependencies, so can easily be installed using a Haskell compiler and package manager:
  * FIR requires [GHC](https://www.haskell.org/ghc/), version 8.8 or greater. See the [GHC downloads page](https://www.haskell.org/ghc/download.html).
@@ -42,13 +42,14 @@ packages: .
 After running `cabal update` to fetch the latest Haskell package list, run `cabal build` to build the project.
 
 
-This is all that's needed in order to compile shaders to SPIR-V. These SPIR-V files can then be used in any Vulkan program, in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
+This completes the required setup; you should now be ready to write shaders and compile them to SPIR-V by importing the library.
+A basic example of a shader written using this library is given [below](#simple-shader). This example [will compile to a SPIR-V file](#compiling), which can then be used in any Vulkan program, in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
 
 
 <a name="docs"></a>
-### Documentation
+### Installing the documentation
 
-To build the documentation, we use Haddock. The `haddock` executable should be in the PATH, at it is bundled with GHC. Start building the documentation by running
+To build the documentation, we use Haddock. The `haddock` executable should be in the PATH, as it is bundled with GHC. Start building the documentation by running
 
 ```
 > cabal haddock --haddock-options="--show-all --hyperlinked-source" --enable-documentation
@@ -62,7 +63,7 @@ Upon completion, the documentation can be found in `fir/dist-newstyle/build/{arc
 
 
 <a name="examples"></a>
-### Examples
+### Installing the built-in examples
 
 Some [simple examples](fir-examples/readme.md) are included, which use the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings.
 Refer to the examples page for further information about the examples, including installation instructions.
