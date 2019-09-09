@@ -6,6 +6,7 @@
 * [Overview of examples](#overview)
   - [Full graphics pipeline](#fullpipeline)
   - [FIR logo](#logo)
+  - [Hopf fibration](#hopf)
   - [Texture sampling](#texture)
   - [Julia set](#julia)
   - [Offscreen rendering](#offscreen)
@@ -81,6 +82,15 @@ A graphics pipeline containing all shader stages.
 </div>
 
 Rendering the FIR logo using simple ray tracing in a compute shader.
+
+<a name="hopf"></a>
+### Hopf fibration
+<div align="center">
+![Hopf](../img/hopf.png)
+</div>
+
+Illustration of fibers in the Hopf fibration.
+Each circle is thickened out to a torus using a tessellation shader.
 
 <a name="texture"></a>
 ### Texture sampling

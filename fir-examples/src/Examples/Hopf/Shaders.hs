@@ -37,7 +37,7 @@ type RawVertexInput
 
 type VertexInput
   = '[ Slot 0 0 ':-> V 4 Float -- pos & R
-     , Slot 1 0 ':-> V 4 Float -- normal &r
+     , Slot 1 0 ':-> V 4 Float -- normal & r
      , Slot 2 0 ':-> V 4 Float -- col
      ]
 

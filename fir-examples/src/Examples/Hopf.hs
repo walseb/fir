@@ -250,19 +250,21 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let
 
-    c1, a1, c2, a2 :: Float
-    c1 = 2
-    a1 = 0.5
-    c2 = 2
-    a2 = 0.25
+    (a1, c1) = villarceauRadii 0.7
+    (a2, c2) = villarceauRadii 1.1
+    (a3, c3) = villarceauRadii 1.5
 
     circleThickening :: Float
-    circleThickening = 0.015
+    circleThickening = 0.025
+
+    nbCircles :: Int
+    nbCircles = 10
 
     toriVerts :: [ Struct RawVertexInput ]
     toriVerts
-      =  villarceauCircles c1 a1 circleThickening 8 sunset
-      <> villarceauCircles c2 a2 circleThickening 8 blueGradient
+      =  villarceauCircles c1 a1 circleThickening nbCircles blues  0
+      <> villarceauCircles c2 a2 circleThickening nbCircles greens ( 2 * pi / (3 * fromIntegral nbCircles) )
+      <> villarceauCircles c3 a3 circleThickening nbCircles sunset ( 4 * pi / (3 * fromIntegral nbCircles) )
 
     toriIndices :: [ Word32 ]
     toriIndices
