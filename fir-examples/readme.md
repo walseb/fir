@@ -91,6 +91,7 @@ Rendering the FIR logo using simple ray tracing in a compute shader.
 
 Illustration of fibers in the Hopf fibration.
 Each circle is thickened out to a torus using a tessellation shader.
+Rendered using multisampling with Vulkan resolve attachments.
 
 <a name="texture"></a>
 ### Texture sampling

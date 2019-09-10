@@ -220,8 +220,9 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
   descriptorSetLayout <- createDescriptorSetLayout device
   descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
 
+  let pipelineInfo = PipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT
   ( graphicsPipeline, pipelineLayout )
-    <- createGraphicsPipeline device renderPass extent descriptorSetLayout shaderPipeline
+    <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
   let
 

@@ -173,14 +173,19 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
   renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt depthFmt
 
   let
-    screenshotImageInfo, depthImageInfo :: ImageInfo
+    screenshotImageInfo, msImageInfo, depthImageInfo :: ImageInfo
     screenshotImageInfo =
       ( Default2DImageInfo extent3D colFmt
         Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
       ) { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR } -- host visible image needs linear tiling
+    msImageInfo =
+      ( Default2DImageInfo extent3D colFmt
+        Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+      ) { imageSamples = Vulkan.VK_SAMPLE_COUNT_8_BIT }
     depthImageInfo =
-      Default2DImageInfo extent3D depthFmt
+      ( Default2DImageInfo extent3D depthFmt
         Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+      ) { imageSamples = Vulkan.VK_SAMPLE_COUNT_8_BIT }
 
   framebuffersWithAttachments <- logMsg "Creating frame buffers"
     *> ( for swapchainImages $ \swapchainImage -> do
@@ -188,6 +193,13 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
           colorImageView
             <- createImageView
                   device swapchainImage
+                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                  colFmt
+                  Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+          (msImage, _)
+            <- createImage physicalDevice device msImageInfo []
+          msImageView
+            <- createImageView device msImage
                   Vulkan.VK_IMAGE_VIEW_TYPE_2D
                   colFmt
                   Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
@@ -208,6 +220,7 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
                   Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
           let attachments = [ (swapchainImage, colorImageView)
                             , (depthImage    , depthImageView)
+                            , (msImage       , msImageView   )
                             ]
           framebuffer <- createFramebuffer device renderPass extent (map snd attachments)
           pure (framebuffer, attachments, (screenshotImage, screenshotImageMemory))
@@ -216,6 +229,7 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
   let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
       clearValues = [ blackClear
                     , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
+                    , blackClear
                     ]
         where
           black :: Vulkan.VkClearColorValue
@@ -245,8 +259,9 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
   descriptorSetLayout <- createDescriptorSetLayout device
   descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
 
+  let pipelineInfo = PipelineInfo extent Vulkan.VK_SAMPLE_COUNT_8_BIT
   ( graphicsPipeline, pipelineLayout )
-    <- createGraphicsPipeline device renderPass extent descriptorSetLayout shaderPipeline
+    <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
   let
 
@@ -577,8 +592,8 @@ createRenderPass
 createRenderPass dev colorFormat depthFormat =
   let
 
-    colorAttachmentDescription :: Vulkan.VkAttachmentDescription
-    colorAttachmentDescription =
+    colorResolveDescription :: Vulkan.VkAttachmentDescription
+    colorResolveDescription =
       Vulkan.createVk
         (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         colorFormat
@@ -591,8 +606,8 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
         )
 
-    colorAttachmentReference :: Vulkan.VkAttachmentReference
-    colorAttachmentReference =
+    colorResolveReference :: Vulkan.VkAttachmentReference
+    colorResolveReference =
       Vulkan.createVk
         (  Vulkan.set @"attachment" 0
         &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -603,7 +618,7 @@ createRenderPass dev colorFormat depthFormat =
       Vulkan.createVk
         (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         depthFormat
-        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
+        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_8_BIT
         &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
         &* Vulkan.set @"storeOp"        Vulkan.VK_ATTACHMENT_STORE_OP_STORE
         &* Vulkan.set @"stencilLoadOp"  Vulkan.VK_ATTACHMENT_LOAD_OP_DONT_CARE
@@ -619,6 +634,27 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
         )
 
+    msAttachmentDescription :: Vulkan.VkAttachmentDescription
+    msAttachmentDescription =
+      Vulkan.createVk
+        (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
+        &* Vulkan.set @"format"         colorFormat
+        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_8_BIT
+        &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
+        &* Vulkan.set @"storeOp"        Vulkan.VK_ATTACHMENT_STORE_OP_STORE
+        &* Vulkan.set @"stencilLoadOp"  Vulkan.VK_ATTACHMENT_LOAD_OP_DONT_CARE
+        &* Vulkan.set @"stencilStoreOp" Vulkan.VK_ATTACHMENT_STORE_OP_DONT_CARE
+        &* Vulkan.set @"initialLayout"  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+        &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        )
+
+    msAttachmentReference :: Vulkan.VkAttachmentReference
+    msAttachmentReference =
+      Vulkan.createVk
+        (  Vulkan.set @"attachment" 2
+        &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        )
+
     subpass :: Vulkan.VkSubpassDescription
     subpass =
       Vulkan.createVk
@@ -627,12 +663,11 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.setListCountAndRef
               @"colorAttachmentCount"
               @"pColorAttachments"
-              [ colorAttachmentReference ]
+              [ msAttachmentReference ]
         &* Vulkan.setVkRef @"pDepthStencilAttachment" depthAttachmentReference
         &* Vulkan.setListCountAndRef @"inputAttachmentCount"    @"pInputAttachments"    []
         &* Vulkan.setListCountAndRef @"preserveAttachmentCount" @"pPreserveAttachments" []
-        &* Vulkan.set @"pResolveAttachments" Vulkan.vkNullPtr
-
+        &* Vulkan.setListRef @"pResolveAttachments" [ colorResolveReference ]
         )
 
     dependency1 :: Vulkan.VkSubpassDependency
@@ -672,7 +707,7 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.setListCountAndRef
               @"attachmentCount"
               @"pAttachments"
-              [ colorAttachmentDescription, depthAttachmentDescription ]
+              [ colorResolveDescription, depthAttachmentDescription, msAttachmentDescription ]
         &* Vulkan.setListCountAndRef
               @"subpassCount"
               @"pSubpasses"

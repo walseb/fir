@@ -241,15 +241,23 @@ createPipelineLayout device layout0 =
                 [ ]
           )
 
+data PipelineInfo
+  = PipelineInfo
+  { pipelineExtent2D    :: Vulkan.VkExtent2D
+  , pipelineSampleCount :: Vulkan.VkSampleCountFlagBits
+  }
+
 createGraphicsPipeline
   :: MonadManaged m
   => Vulkan.VkDevice
   -> Vulkan.VkRenderPass
-  -> Vulkan.VkExtent2D
+  -> PipelineInfo
   -> Vulkan.VkDescriptorSetLayout
   -> ShaderPipeline
   -> m ( Vulkan.VkPipeline, Vulkan.VkPipelineLayout )
-createGraphicsPipeline device renderPass extent layout0
+createGraphicsPipeline device renderPass
+  ( PipelineInfo extent sampleCount )
+  layout0
   ( WithVertexInput
       (_ :: Proxy bds)
       (_ :: Proxy descs)
@@ -333,7 +341,7 @@ createGraphicsPipeline device renderPass extent layout0
         Vulkan.createVk
           (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
           &* Vulkan.set @"minSampleShading"     1
-          &* Vulkan.set @"rasterizationSamples" Vulkan.VK_SAMPLE_COUNT_1_BIT
+          &* Vulkan.set @"rasterizationSamples" sampleCount
           &* Vulkan.set @"pNext"                Vulkan.VK_NULL
           )
 
