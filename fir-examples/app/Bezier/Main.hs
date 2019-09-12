@@ -1,6 +1,7 @@
 module Main where
 
-import Bezier
+import Examples.Bezier
+  ( bezier )
 
 main :: IO ()
 main = bezier

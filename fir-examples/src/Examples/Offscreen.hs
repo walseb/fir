@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Offscreen ( offscreen ) where
+module Examples.Offscreen ( offscreen ) where
 
 -- base
 import Control.Monad
@@ -63,11 +63,11 @@ import Math.Linear
   ( pattern V3 )
 
 -- fir-examples
-import Shaders.Offscreen
+import Examples.Offscreen.Shaders
+import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Simulation.Observer
 import Vulkan.Pipeline
 
 ----------------------------------------------------------------------------
@@ -196,8 +196,9 @@ offscreen = runManaged do
   descriptorSetLayout <- createDescriptorSetLayout device
   descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
 
+  let pipelineInfo = PipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT
   ( graphicsPipeline, pipelineLayout )
-    <- createGraphicsPipeline device renderPass extent descriptorSetLayout shaderPipeline
+    <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
   let
 

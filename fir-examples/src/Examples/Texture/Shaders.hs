@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
-module Shaders.Texture where
+module Examples.Texture.Shaders where
 
 -- text-short
 import Data.Text.Short

@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
-module Shaders.Bezier where
+module Examples.Bezier.Shaders where
 
 -- text-short
 import Data.Text.Short

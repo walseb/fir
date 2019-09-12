@@ -1,6 +1,7 @@
 module Main where
 
-import Offscreen
+import Examples.Offscreen
+  ( offscreen )
 
 main :: IO ()
 main = offscreen

@@ -4,8 +4,8 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
-{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module FullPipeline ( fullPipeline ) where
+module Examples.Hopf ( hopf ) where
 
 -- base
 import Control.Monad
@@ -84,11 +84,12 @@ import FIR
 import Math.Linear
 
 -- fir-examples
-import Shaders.FullPipeline
+import Examples.Hopf.Shaders
+import Examples.Hopf.Villarceau
+import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Simulation.Observer
 import Vulkan.Pipeline
 import Vulkan.SDL
 
@@ -100,16 +101,15 @@ shaderCompilationResult
         [ ("Vertex shader"                 , compileVertexShader                 )
         , ("Tessellation control shader"   , compileTessellationControlShader    )
         , ("Tessellation evaluation shader", compileTessellationEvaluationShader )
-        , ("Geometry shader"               , compileGeometryShader               )
         , ("Fragment shader"               , compileFragmentShader               )
         ]
      )
 
 appName :: IsString a => a
-appName = "fir-examples - Full pipeline"
+appName = "fir-examples - Hopf fibration"
 
-fullPipeline :: IO ()
-fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
+hopf :: IO ()
+hopf = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
     Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
@@ -131,9 +131,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
   let features :: Maybe Vulkan.VkPhysicalDeviceFeatures
       features = Just $ Vulkan.createVk
-          (  Vulkan.set @"geometryShader"     Vulkan.VK_TRUE
-          &* Vulkan.set @"tessellationShader" Vulkan.VK_TRUE
-          )
+          ( Vulkan.set @"tessellationShader" Vulkan.VK_TRUE )
   device  <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex features
   surface <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
 
@@ -174,16 +172,20 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
   swapchainImages <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
   renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt depthFmt
 
-
   let
-    screenshotImageInfo, depthImageInfo :: ImageInfo
+    screenshotImageInfo, msImageInfo, depthImageInfo :: ImageInfo
     screenshotImageInfo =
       ( Default2DImageInfo extent3D colFmt
         Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
       ) { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR } -- host visible image needs linear tiling
+    msImageInfo =
+      ( Default2DImageInfo extent3D colFmt
+        Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+      ) { imageSamples = Vulkan.VK_SAMPLE_COUNT_8_BIT }
     depthImageInfo =
-      Default2DImageInfo extent3D depthFmt
+      ( Default2DImageInfo extent3D depthFmt
         Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+      ) { imageSamples = Vulkan.VK_SAMPLE_COUNT_8_BIT }
 
   framebuffersWithAttachments <- logMsg "Creating frame buffers"
     *> ( for swapchainImages $ \swapchainImage -> do
@@ -191,6 +193,13 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
           colorImageView
             <- createImageView
                   device swapchainImage
+                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                  colFmt
+                  Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+          (msImage, _)
+            <- createImage physicalDevice device msImageInfo []
+          msImageView
+            <- createImageView device msImage
                   Vulkan.VK_IMAGE_VIEW_TYPE_2D
                   colFmt
                   Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
@@ -211,27 +220,29 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
                   Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
           let attachments = [ (swapchainImage, colorImageView)
                             , (depthImage    , depthImageView)
+                            , (msImage       , msImageView   )
                             ]
           framebuffer <- createFramebuffer device renderPass extent (map snd attachments)
           pure (framebuffer, attachments, (screenshotImage, screenshotImageMemory))
        )
 
   let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
-      clearValues = [ tealClear
+      clearValues = [ blackClear
                     , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
+                    , blackClear
                     ]
         where
-          teal :: Vulkan.VkClearColorValue
-          teal =
+          black :: Vulkan.VkClearColorValue
+          black =
             Vulkan.createVk
-              (  Vulkan.setAt @"float32" @0 0.1
-              &* Vulkan.setAt @"float32" @1 0.5
-              &* Vulkan.setAt @"float32" @2 0.7
+              (  Vulkan.setAt @"float32" @0 0
+              &* Vulkan.setAt @"float32" @1 0
+              &* Vulkan.setAt @"float32" @2 0
               &* Vulkan.setAt @"float32" @3 1
               )
 
-          tealClear :: Vulkan.VkClearValue
-          tealClear = Vulkan.createVk ( Vulkan.set @"color"  teal )
+          blackClear :: Vulkan.VkClearValue
+          blackClear = Vulkan.createVk ( Vulkan.set @"color" black )
 
           depthStencilClear :: Vulkan.VkClearDepthStencilValue
           depthStencilClear = Vulkan.createVk
@@ -248,57 +259,35 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
   descriptorSetLayout <- createDescriptorSetLayout device
   descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
 
+  let pipelineInfo = PipelineInfo extent Vulkan.VK_SAMPLE_COUNT_8_BIT
   ( graphicsPipeline, pipelineLayout )
-    <- createGraphicsPipeline device renderPass extent descriptorSetLayout shaderPipeline
+    <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
   let
 
-    phi :: Float
-    phi = 0.5 + sqrt 1.25
+    (a1, c1) = villarceauRadii 0.7
+    (a2, c2) = villarceauRadii 1.1
+    (a3, c3) = villarceauRadii 1.5
 
-    icosahedronVerts :: [ Struct VertexInput ]
-    icosahedronVerts =
-      [ ( V3    0     1    phi  ) :& ( V3 0    1    0    ) :& End
-      , ( V3    0   (-1)   phi  ) :& ( V3 0    0.75 0.25 ) :& End
-      , ( V3    0     1  (-phi) ) :& ( V3 0    0.25 0.75 ) :& End
-      , ( V3    0   (-1) (-phi) ) :& ( V3 0    0    1    ) :& End
-      , ( V3    1    phi    0   ) :& ( V3 1    0    0    ) :& End
-      , ( V3  (-1)   phi    0   ) :& ( V3 0.75 0.25 0    ) :& End
-      , ( V3    1  (-phi)   0   ) :& ( V3 0.25 0.75 0    ) :& End
-      , ( V3  (-1) (-phi)   0   ) :& ( V3 0    1    0    ) :& End
-      , ( V3   phi    0     1   ) :& ( V3 1    0    0    ) :& End
-      , ( V3   phi    0   (-1)  ) :& ( V3 0.75 0    0.25 ) :& End
-      , ( V3 (-phi)   0     1   ) :& ( V3 0.25 0    0.75 ) :& End
-      , ( V3 (-phi)   0   (-1)  ) :& ( V3 0    0    1    ) :& End
-      ]
+    circleThickening :: Float
+    circleThickening = 0.025
 
-    icosahedronIndices :: [ Word32 ]
-    icosahedronIndices
-      = [ 0,  1,  8
-        , 0, 10,  1
-        , 0,  4,  5
-        , 0,  8,  4
-        , 0,  5, 10
-        , 1,  7,  6
-        , 1,  6,  8
-        , 1, 10,  7
-        , 2,  9,  3
-        , 2,  3, 11
-        , 2,  5,  4
-        , 2,  4,  9
-        , 2, 11,  5
-        , 3,  6,  7
-        , 3,  9,  6
-        , 3,  7, 11
-        , 4,  8,  9
-        , 5, 11, 10
-        , 6,  9,  8
-        , 7, 10, 11
-        ]
+    nbCircles :: Int
+    nbCircles = 10
 
-  (vertexBuffer, _) <- createVertexBuffer physicalDevice device icosahedronVerts
+    toriVerts :: [ Struct RawVertexInput ]
+    toriVerts
+      =  villarceauCircles c1 a1 circleThickening nbCircles blues  0
+      <> villarceauCircles c2 a2 circleThickening nbCircles greens ( 2 * pi / (3 * fromIntegral nbCircles) )
+      <> villarceauCircles c3 a3 circleThickening nbCircles sunset ( 4 * pi / (3 * fromIntegral nbCircles) )
 
-  (indexBuffer, _) <- createIndexBuffer physicalDevice device icosahedronIndices
+    toriIndices :: [ Word32 ]
+    toriIndices
+      = [ 0 .. fromIntegral (length toriVerts) - 1 ]
+
+  (vertexBuffer, _) <- createVertexBuffer physicalDevice device toriVerts
+
+  (indexBuffer, _) <- createIndexBuffer physicalDevice device toriIndices
 
   let initialMVP = modelViewProjection initialObserver Nothing
       initialOrig :: V 4 Float
@@ -362,7 +351,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
           Vulkan.vkCmdDrawIndexed
             commandBuffer
-            ( fromIntegral ( length icosahedronIndices ) )
+            ( fromIntegral ( length toriIndices ) )
             1
             0
             0
@@ -563,8 +552,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
         memPtr :: Vulkan.Ptr Word8
           <- coerce <$> allocaAndPeek
-                ( Vulkan.vkMapMemory device screenshotImageMemory
-                    0 maxBound Vulkan.VK_ZERO_FLAGS
+                ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                 )
 
@@ -580,7 +568,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/fullpipeline.png" imageData
+        writePng "screenshots/hopf.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 
@@ -604,8 +592,8 @@ createRenderPass
 createRenderPass dev colorFormat depthFormat =
   let
 
-    colorAttachmentDescription :: Vulkan.VkAttachmentDescription
-    colorAttachmentDescription =
+    colorResolveDescription :: Vulkan.VkAttachmentDescription
+    colorResolveDescription =
       Vulkan.createVk
         (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         colorFormat
@@ -618,8 +606,8 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
         )
 
-    colorAttachmentReference :: Vulkan.VkAttachmentReference
-    colorAttachmentReference =
+    colorResolveReference :: Vulkan.VkAttachmentReference
+    colorResolveReference =
       Vulkan.createVk
         (  Vulkan.set @"attachment" 0
         &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
@@ -630,7 +618,7 @@ createRenderPass dev colorFormat depthFormat =
       Vulkan.createVk
         (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"format"         depthFormat
-        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
+        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_8_BIT
         &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
         &* Vulkan.set @"storeOp"        Vulkan.VK_ATTACHMENT_STORE_OP_STORE
         &* Vulkan.set @"stencilLoadOp"  Vulkan.VK_ATTACHMENT_LOAD_OP_DONT_CARE
@@ -646,6 +634,27 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
         )
 
+    msAttachmentDescription :: Vulkan.VkAttachmentDescription
+    msAttachmentDescription =
+      Vulkan.createVk
+        (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
+        &* Vulkan.set @"format"         colorFormat
+        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_8_BIT
+        &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
+        &* Vulkan.set @"storeOp"        Vulkan.VK_ATTACHMENT_STORE_OP_STORE
+        &* Vulkan.set @"stencilLoadOp"  Vulkan.VK_ATTACHMENT_LOAD_OP_DONT_CARE
+        &* Vulkan.set @"stencilStoreOp" Vulkan.VK_ATTACHMENT_STORE_OP_DONT_CARE
+        &* Vulkan.set @"initialLayout"  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+        &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        )
+
+    msAttachmentReference :: Vulkan.VkAttachmentReference
+    msAttachmentReference =
+      Vulkan.createVk
+        (  Vulkan.set @"attachment" 2
+        &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        )
+
     subpass :: Vulkan.VkSubpassDescription
     subpass =
       Vulkan.createVk
@@ -654,19 +663,18 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.setListCountAndRef
               @"colorAttachmentCount"
               @"pColorAttachments"
-              [ colorAttachmentReference ]
+              [ msAttachmentReference ]
         &* Vulkan.setVkRef @"pDepthStencilAttachment" depthAttachmentReference
         &* Vulkan.setListCountAndRef @"inputAttachmentCount"    @"pInputAttachments"    []
         &* Vulkan.setListCountAndRef @"preserveAttachmentCount" @"pPreserveAttachments" []
-        &* Vulkan.set @"pResolveAttachments" Vulkan.vkNullPtr
-
+        &* Vulkan.setListRef @"pResolveAttachments" [ colorResolveReference ]
         )
 
     dependency1 :: Vulkan.VkSubpassDependency
     dependency1 =
       Vulkan.createVk
         (  Vulkan.set @"srcSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
-        &* Vulkan.set @"dstSubpass"    Vulkan.VK_ZERO_FLAGS
+        &* Vulkan.set @"dstSubpass"    0
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"srcAccessMask" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -679,7 +687,7 @@ createRenderPass dev colorFormat depthFormat =
     dependency2 :: Vulkan.VkSubpassDependency
     dependency2 =
       Vulkan.createVk
-        (  Vulkan.set @"srcSubpass"    Vulkan.VK_ZERO_FLAGS
+        (  Vulkan.set @"srcSubpass"    0
         &* Vulkan.set @"dstSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
         &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         &* Vulkan.set @"srcAccessMask"
@@ -699,7 +707,7 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.setListCountAndRef
               @"attachmentCount"
               @"pAttachments"
-              [ colorAttachmentDescription, depthAttachmentDescription ]
+              [ colorResolveDescription, depthAttachmentDescription, msAttachmentDescription ]
         &* Vulkan.setListCountAndRef
               @"subpassCount"
               @"pSubpasses"
@@ -786,7 +794,8 @@ allocateDescriptorSet dev descriptorPool layout0 = do
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"descriptorPool" descriptorPool
-        &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts" [ layout0 ]
+        &* Vulkan.set @"descriptorSetCount" 1
+        &* Vulkan.setListRef @"pSetLayouts" [ layout0 ]
         )
 
   manageBracket

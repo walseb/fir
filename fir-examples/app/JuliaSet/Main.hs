@@ -1,6 +1,7 @@
 module Main where
 
-import JuliaSet
+import Examples.JuliaSet
+  ( juliaSet )
 
 main :: IO ()
 main = juliaSet

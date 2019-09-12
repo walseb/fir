@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Bezier ( bezier ) where
+module Examples.FullPipeline ( fullPipeline ) where
 
 -- base
 import Control.Monad
@@ -84,11 +84,11 @@ import FIR
 import Math.Linear
 
 -- fir-examples
-import Shaders.Bezier
+import Examples.FullPipeline.Shaders
+import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
 import Vulkan.Monad
-import Simulation.Observer
 import Vulkan.Pipeline
 import Vulkan.SDL
 
@@ -106,10 +106,10 @@ shaderCompilationResult
      )
 
 appName :: IsString a => a
-appName = "fir-examples - Bézier curves"
+appName = "fir-examples - Full pipeline"
 
-bezier :: IO ()
-bezier = ( runManaged . ( `evalStateT` initialState ) ) do
+fullPipeline :: IO ()
+fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
     Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
@@ -173,6 +173,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
   swapchainImages <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
   renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt depthFmt
+
 
   let
     screenshotImageInfo, depthImageInfo :: ImageInfo
@@ -247,58 +248,69 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
   descriptorSetLayout <- createDescriptorSetLayout device
   descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
 
+  let pipelineInfo = PipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT
   ( graphicsPipeline, pipelineLayout )
-    <- createGraphicsPipeline device renderPass extent descriptorSetLayout shaderPipeline
+    <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
   let
 
-    letterT :: [ Struct VertexInput ]
-    letterT
-      = [ V3 (-3) (-6) 0 :& V3 1 0 0 :& End
-        , V3   0  (-8) 0 :& V3 1 0 0 :& End
-        , V3   3  (-6) 0 :& V3 1 0 0 :& End
-        , V3   3  (-5) 0 :& V3 1 0 0 :& End
-        , V3   3  (-4) 0 :& V3 1 0 1 :& End
-        , V3   2  (-4) 0 :& V3 1 0 1 :& End
-        , V3   1  (-4) 0 :& V3 1 0 1 :& End
-        , V3   1  (-2) 0 :& V3 1 0 1 :& End
-        , V3   1    0  0 :& V3 0 0 1 :& End
-        , V3   0    0  0 :& V3 0 0 1 :& End
-        , V3 (-1)   0  0 :& V3 0 0 1 :& End
-        , V3 (-1) (-2) 0 :& V3 0 0 1 :& End
-        , V3 (-1) (-4) 0 :& V3 0 0 0 :& End
-        , V3 (-2) (-4) 0 :& V3 0 0 0 :& End
-        , V3 (-3) (-4) 0 :& V3 0 0 0 :& End
-        , V3 (-3) (-5) 0 :& V3 0 0 0 :& End
+    phi :: Float
+    phi = 0.5 + sqrt 1.25
+
+    icosahedronVerts :: [ Struct VertexInput ]
+    icosahedronVerts =
+      [ ( V3    0     1    phi  ) :& ( V3 0    1    0    ) :& End
+      , ( V3    0   (-1)   phi  ) :& ( V3 0    0.75 0.25 ) :& End
+      , ( V3    0     1  (-phi) ) :& ( V3 0    0.25 0.75 ) :& End
+      , ( V3    0   (-1) (-phi) ) :& ( V3 0    0    1    ) :& End
+      , ( V3    1    phi    0   ) :& ( V3 1    0    0    ) :& End
+      , ( V3  (-1)   phi    0   ) :& ( V3 0.75 0.25 0    ) :& End
+      , ( V3    1  (-phi)   0   ) :& ( V3 0.25 0.75 0    ) :& End
+      , ( V3  (-1) (-phi)   0   ) :& ( V3 0    1    0    ) :& End
+      , ( V3   phi    0     1   ) :& ( V3 1    0    0    ) :& End
+      , ( V3   phi    0   (-1)  ) :& ( V3 0.75 0    0.25 ) :& End
+      , ( V3 (-phi)   0     1   ) :& ( V3 0.25 0    0.75 ) :& End
+      , ( V3 (-phi)   0   (-1)  ) :& ( V3 0    0    1    ) :& End
+      ]
+
+    icosahedronIndices :: [ Word32 ]
+    icosahedronIndices
+      = [ 0,  1,  8
+        , 0, 10,  1
+        , 0,  4,  5
+        , 0,  8,  4
+        , 0,  5, 10
+        , 1,  7,  6
+        , 1,  6,  8
+        , 1, 10,  7
+        , 2,  9,  3
+        , 2,  3, 11
+        , 2,  5,  4
+        , 2,  4,  9
+        , 2, 11,  5
+        , 3,  6,  7
+        , 3,  9,  6
+        , 3,  7, 11
+        , 4,  8,  9
+        , 5, 11, 10
+        , 6,  9,  8
+        , 7, 10, 11
         ]
 
-    letterT_indices :: [ Word32 ]
-    letterT_indices
-      = concat do
-          i <- 15 : [1,3..13]
-          pure ( map (`mod` 16) [i..i+4] )
+  (vertexBuffer, _) <- createVertexBuffer physicalDevice device icosahedronVerts
 
+  (indexBuffer, _) <- createIndexBuffer physicalDevice device icosahedronIndices
 
-  (vertexBuffer, _) <- createVertexBuffer physicalDevice device letterT
-
-  (indexBuffer, _) <- createIndexBuffer physicalDevice device letterT_indices
-
-  let initialObserver' = initialObserver { position = V3 0 (-3.5) (-6) }
-  assign _observer initialObserver'
-
-  let initialMVP = modelViewProjection initialObserver' Nothing
-      binormal = V4 0 0 (-1) 0
-      lineWidths = V3 0.11 0.1 (recip 0.005)
+  let initialMVP = modelViewProjection initialObserver Nothing
+      initialOrig :: V 4 Float
+      initialOrig = V4 0 0 0 1 ^*! initialMVP
 
   (ubo, uboPtr)
     <- createUniformBuffer
           physicalDevice
           device
-          ( initialMVP :& binormal :& lineWidths :& End
-              :: Struct '[ "mvp"      ':-> M 4 4 Float
-                         , "binormal" ':-> V 4 Float
-                         , "widths"   ':-> V 3 Float
-                         ]
+          ( initialMVP :& initialOrig :& End
+              :: Struct '[ "mvp" ':-> M 4 4 Float, "origin" ':-> V 4 Float ]
           )
 
   updateDescriptorSet device descriptorSet ubo
@@ -351,7 +363,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
           Vulkan.vkCmdDrawIndexed
             commandBuffer
-            ( fromIntegral ( length letterT_indices ) )
+            ( fromIntegral ( length icosahedronIndices ) )
             1
             0
             0
@@ -516,13 +528,13 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
     assign _observer observer
 
     let mvp = modelViewProjection observer (Just orientation)
+        origin = mvp !*^ V4 0 0 0 1
 
     when ( locate action )
-      ( liftIO $ putStrLn ( show observer  ) )
+      ( liftIO $ putStrLn ( show observer ) )
 
     -- update MVP
-    liftIO $ poke @_ @Extended uboPtr
-      ( mvp :& V4 0 0 (-1) 0 :& lineWidths :& End )
+    liftIO ( poke @_ @Extended uboPtr (mvp :& origin :& End) )
 
     ----------------
     -- rendering
@@ -569,7 +581,7 @@ bezier = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/bezier.png" imageData
+        writePng "screenshots/fullpipeline.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 
@@ -714,8 +726,8 @@ createDescriptorSetLayout device = do
         &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
         &* Vulkan.set @"descriptorCount" 1
         &* Vulkan.set @"stageFlags"
-              (   Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT
-              .|. Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT
+              (   Vulkan.VK_SHADER_STAGE_VERTEX_BIT
+              .|. Vulkan.VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
               )
         &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
         )
