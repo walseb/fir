@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
@@ -20,7 +19,7 @@ Description: @---@ __Main module, re-exports what's needed to write programs and
 
 This module re-exports the main functionality needed to use the library.
 
-For an overview of the library, refer to the project __readme__.
+For an overview of the library, refer to the project [__readme__](https://gitlab.com/sheaf/fir/tree/master/readme.md).
 
 To illustrate the syntax of this library, the example of a trivial fragment shader follows.
 
@@ -58,8 +57,9 @@ Note the lens-like operations:
     This operation is similar to @get@ in a state monad, except that an additional binding name
     is provided via a type application.
   - @'FIR.Instances.Codensity.use' \@(ImageTexel "image") NoOperands pos@ samples the provided image
-    at coordinates @pos@. Additional operands can be provided for this sampling operation,
-    such as an explicit level of detail or whether to use projective coordinates.
+    at coordinates @pos@. Additional image operands can be provided for this sampling operation,
+    such as an explicit level of detail or whether to use projective coordinates
+    (refer to the SPIR-V specification for further information concerning image operands).
   - @'FIR.Instances.Codensity.put' \@"out_col" col@ – equivalent to
     @'FIR.Instances.Codensity.assign' \@(Name "out_col") col@ –
     sets the output value of the shader.
@@ -72,7 +72,8 @@ This fragment shader can then be compiled using:
 where @filePath@ is the desired output filepath, and @flags@ is a list of 'CompilerFlag's.
 
 
-More meaningful examples can be found in the @fir-examples@ subdirectory of the project's repository.
+More meaningful examples can be found in the (@fir-examples@ subdirectory)(https://gitlab.com/sheaf/fir/tree/master/fir-examples)
+of the project's repository.
 
 -}
 
@@ -82,7 +83,7 @@ module FIR
   , CompilerFlag(Debug, NoCode)
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
-  , (Control.Type.Optic.:*:)
+  , (Control.Type.Optic.:*:), Control.Type.Optic.Prod, Control.Type.Optic.EndProd
   , (Control.Type.Optic.:.:)
   , Control.Type.Optic.Joint
   , Control.Type.Optic.AnIndex
@@ -91,9 +92,10 @@ module FIR
   , Control.Type.Optic.ReifiedGetter(view)
   , Control.Type.Optic.ReifiedSetter(set)
   , Control.Type.Optic.ReifiedLens(over)
+  , module Data.Product
   , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST((:$), Lit, Pair, Ops)
+  , FIR.AST.AST((:$), Lit, Ops)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.AST.HasUndefined(undefined)
   , FIR.Binding.BindingsMap
@@ -114,6 +116,8 @@ module FIR
   , FIR.Layout.Layout(..)
   , FIR.Layout.Poke(..)
   , FIR.Layout.pokeArray
+  , FIR.Layout.roundUp
+  , FIR.Layout.nextAligned
   , FIR.Pipeline.ShaderPipeline(..)
   , FIR.Pipeline.withVertexInput, FIR.Pipeline.withStructInput
   , FIR.Pipeline.ShaderPipelineWithInfo(..)
@@ -235,10 +239,11 @@ import Data.Tree.View
 import qualified Language.Haskell.TH        as TH
 import qualified Language.Haskell.TH.Syntax as TH
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack, unpack )
 
 -- fir
 import CodeGen.CodeGen
@@ -246,6 +251,7 @@ import CodeGen.State
 import Control.Arrow.Strength
 import Control.Monad.Indexed
 import Control.Type.Optic
+import Data.Product
 import Data.Type.Known
 import Data.Type.List
 import Data.Type.Map
@@ -312,7 +318,7 @@ data CompilerFlag
 
 -- | Functionality for compiling a program, saving the SPIR-V assembly at the given filepath.
 class CompilableProgram prog where
-  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either Text () )
+  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText () )
 
 instance KnownDefinitions defs => CompilableProgram (Program defs a) where
   compile filePath flags (Program program)
@@ -331,8 +337,8 @@ instance ( KnownDefinitions defs )
   compile filePath flags (FIR.Pipeline.ShaderStage prog)
     = compile filePath flags (Program @defs prog)
 
-instance TH.Lift Text where
-  lift t = [| Text.pack $(TH.lift $ Text.unpack t) |]
+instance TH.Lift ShortText where
+  lift t = [| ShortText.pack $(TH.lift $ ShortText.unpack t) |]
 
 -- | Utility function to run IO actions at compile time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.
@@ -347,19 +353,19 @@ instance TH.Lift Text where
 -- >        ]
 -- >   )
 --
--- This will compile the vertexShader @vertexShader@ at filepath @vertPath@,
+-- At compile time, this will compile the vertexShader @vertexShader@ at filepath @vertPath@,
 -- and similarly for the fragment shader.
 -- These can then be loaded into Vulkan shader modules for use in rendering.
-runCompilationsTH :: [ ( Text, IO (Either Text ()) ) ] -> TH.Q TH.Exp
+runCompilationsTH :: [ ( ShortText, IO (Either ShortText ()) ) ] -> TH.Q TH.Exp
 runCompilationsTH namedCompilations
   = TH.lift Prelude.=<< TH.runIO (combineCompilations namedCompilations)
     where
-      combineCompilations :: [ ( Text, IO (Either Text ()) ) ] -> IO (Either Text ())
+      combineCompilations :: [ ( ShortText, IO (Either ShortText ()) ) ] -> IO (Either ShortText ())
       combineCompilations
         = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right ()) )
         . traverse ( uncurry rightStrength )
 
-      combineResult :: Text -> Either Text () -> Either Text () -> Either Text ()
+      combineResult :: ShortText -> Either ShortText () -> Either ShortText () -> Either ShortText ()
       combineResult _    a           (Right _ ) = a
       combineResult name (Right _)   (Left err) = Left (name <> ": " <> err)
       combineResult name (Left errs) (Left err)

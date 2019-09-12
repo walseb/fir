@@ -72,6 +72,8 @@ import Control.Monad.Indexed
   ( (:=) )
 import Data.Function.Variadic
   ( NatVariadic )
+import Data.Product
+  ( HList )
 import Data.Type.Known
   ( Known, knownValue )
 import Data.Type.List
@@ -133,6 +135,10 @@ data AST :: Type -> Type where
   PrimOp :: ( PrimOp op a, PrimOpConstraint op a )
          => Proxy a -> Proxy op -> AST (PrimOpType op a)
 
+  -- | Create an object of the given type from its ID.
+  -- (These are the internal @SPIR-V@ identifiers, in SSA form.)
+  MkID :: (ID, SPIRV.PrimTy) -> AST a
+
   -- Indexed monadic operations (for the AST itself)
   -- | Indexed /return/
   Return :: AST (a -> (a := i) i)
@@ -140,8 +146,12 @@ data AST :: Type -> Type where
   Bind :: AST ( (a := j) i -> (a -> q j) -> q i )
 
   -- | Defining a new constant/variable.
-  Def :: forall k ps a i.
-        ( GHC.Stack.HasCallStack
+  Def :: forall
+          ( k  :: Symbol      )
+          ( ps :: Permissions )
+          ( a  :: Type        )
+          ( i  :: ASTState    )
+      . ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , Known Permissions ps
         , PrimTy a
@@ -159,8 +169,13 @@ data AST :: Type -> Type where
   -- * b: function return type (usually inferred),
   -- * j_bds: bindings state at end of function definition (usually inferred),
   -- * i: monadic state at function definition site (usually inferred).
-  FunDef :: forall name as b j_bds i.
-            ( GHC.Stack.HasCallStack
+  FunDef :: forall
+              ( name  :: Symbol      )
+              ( as    :: BindingsMap )
+              ( b     :: Type        )
+              ( j_bds :: BindingsMap )
+              ( i     :: ASTState    )
+         .  ( GHC.Stack.HasCallStack
             , KnownSymbol name
             , KnownVars as
             , PrimTy b
@@ -242,12 +257,15 @@ data AST :: Type -> Type where
       -> SOptic optic            -- ^ Singleton for the optic.
       -> AST ( Setter optic )
 
+  -- | If-then-else statement.
   If    :: ( GHC.Stack.HasCallStack
            , PrimTy a
            )
         => AST ( Bool -> a -> a -> a )
+  -- | Monadic if-then-else.
   IfM   :: GHC.Stack.HasCallStack
         => AST ( Bool -> (a := j) i -> (a := k) i -> (a := i) i )
+  -- | While loop.
   While :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (() := j) i -> (() := i) i )
 
@@ -256,44 +274,46 @@ data AST :: Type -> Type where
   -- | Embed a computation into one with larger starte.
   Embed :: Embeddable i j => AST ( (a := i) i -> (a := j) j )
 
-  -- functor/applicative operations
+  -- | fmap for functors within the AST.
   Fmap :: forall f a b. ( PrimFunc f, PrimTy a, KnownArity b )
        => AST ( (a -> b) -> f a -> f b )
+  -- | pure/return for applicative functors within the AST.
   Pure :: forall f a. ( PrimFunc f, KnownArity a )
        => AST ( a -> f a )
+  -- | ap/(<*>) for applicative functors within the AST.
   Ap   :: forall f a b. ( PrimFunc f, PrimTy a, KnownArity b )
        => AST ( f (a -> b) -> f a -> f b )
 
+  -- | Create a vector from its components.
   MkVector :: (KnownNat n, PrimTy a)
            => Proxy n
            -> Proxy a
            -> AST ( NatVariadic n a ( V n a ) )
+  -- | Graded mappend to concatenate objects (e.g. two vectors).
   GradedMappend :: ( GradedSemigroup g k, a ~ Grade k g i, b ~ Grade k g j )
     => AST ( a -> b -> Grade k g (i :<!>: j) )
 
-  -- Newtype wrapping/unwrapping.
+  -- | Newtype wrapping for matrices.
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
+  -- | Newtype unwrapping for matrices.
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
+  -- | Internal wrapping for image operands (to be deprecated, see (issue #66)[https://gitlab.com/sheaf/fir/issues/66]).
   Ops   :: ImageOperands props ops -> AST ( ImageOperands props ops )
+  -- | Coercions (unsafe).
   Coerce :: forall a b. AST (a -> b)
 
-  --MkStruct
-  --MkArray
+  -- MkStruct
+  -- MkArray
 
-  -- | Internal pair data type.
+  -- | Internal HList data type.
   --
   -- Only used for providing multiple run-time indices to product optics.
   -- See [FIR issue #13](https://gitlab.com/sheaf/fir/issues/13).
-  Pair :: AST ( a -> b -> (a,b) )
-  Fst  :: AST ( (a,b) -> a )
-  Snd  :: AST ( (a,b) -> b )
+  NilHList  :: AST ( HList '[] )
+  ConsHList :: PrimTy a => AST ( a -> HList as -> HList (a ': as) )
 
   -- | Undefined.
   Undefined :: PrimTy a => AST a
-
-  -- | As @SPIR-V@ is based around identifiers,
-  -- this function can be used to create values of any type using their IDs.
-  MkID :: (ID, SPIRV.PrimTy) -> AST a
 
 ------------------------------------------------
 
@@ -360,10 +380,9 @@ toTreeArgs Mat       as = return (Node "Mat"           as)
 toTreeArgs UnMat     as = return (Node "UnMat"         as)
 toTreeArgs (Ops _ )  as = return (Node "ImageOperands" as)
 toTreeArgs Coerce    as = return (Node "Coerce"        as)
-toTreeArgs Pair      as = return (Node "Pair"          as)
-toTreeArgs Fst       as = return (Node "Fst"           as)
-toTreeArgs Snd       as = return (Node "Snd"           as)
 toTreeArgs Undefined as = return (Node "Undefined"     as)
+toTreeArgs NilHList  as = return (Node "NilHListAST"  as)
+toTreeArgs ConsHList as = return (Node "ConsHListAST" as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs GradedMappend    as = return (Node "GradedMappend" as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)

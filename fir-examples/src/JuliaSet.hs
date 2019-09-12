@@ -4,7 +4,6 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -23,6 +22,8 @@ import Control.Monad.IO.Class
 import Data.Bits
 import Data.Coerce
   ( coerce )
+import Data.String
+  ( IsString )
 import Data.Traversable
   ( for )
 import Data.Word
@@ -50,10 +51,11 @@ import qualified SDL
 import qualified SDL.Event
 import qualified SDL.Raw.Event as SDL
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( unpack )
 
 -- transformers
 import Control.Monad.Trans.State.Lazy
@@ -94,7 +96,7 @@ import Vulkan.SDL
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either Text ()
+shaderCompilationResult :: Either ShortText ()
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Vertex shader"  , compileVertexShader   )
@@ -102,23 +104,26 @@ shaderCompilationResult
         ]
      )
 
+appName :: IsString a => a
+appName = "fir-examples - Julia set"
+
 juliaSet :: IO ()
 juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err )
+    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
   enableSDLLogging
   initializeSDL SDL.AbsoluteLocation
-  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Julia set"
+  window           <- logMsg "Creating SDL window"           *> createWindow appName
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
   extensionNames <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
   logMsg $ "Needed instance extensions are: " ++ show extensionNames
 
-  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance neededExtensions
+  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family"
       *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]

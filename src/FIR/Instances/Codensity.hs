@@ -299,8 +299,12 @@ instance {-# OVERLAPPABLE #-} ( j ~ i ) => HasUndefined (Codensity AST (a := j) 
 -- *@ps@: 'FIR.Binding.Permission's (readable, writable, ...),
 -- *@a@: type of definition,
 -- *@i@: state at start of definition (usually inferred).
-def :: forall k ps a i.
-       ( GHC.Stack.HasCallStack
+def :: forall
+         ( k  :: Symbol      )
+         ( ps :: Permissions )
+         ( a  :: Type        )
+         ( i  :: ASTState    )
+    .  ( GHC.Stack.HasCallStack
        , KnownSymbol k
        , Known Permissions ps
        , PrimTy a
@@ -320,8 +324,14 @@ def = fromAST ( Def @k @ps @a @i Proxy Proxy )
 -- * @j_bds@: bindings state at end of function body (usually inferred),
 -- * @i@: monadic state at start of function body (usually inferred),
 -- * @r@: function type itself, result of 'fundef' (usually inferred).
-fundef :: forall name as b j_bds i r.
-           ( GHC.Stack.HasCallStack
+fundef :: forall
+            ( name  :: Symbol      )
+            ( as    :: BindingsMap )
+            ( b     :: Type        )
+            ( j_bds :: BindingsMap )
+            ( i     :: ASTState    )
+            ( r     :: Type        )
+       .   ( GHC.Stack.HasCallStack
            , Syntactic r
            , Internal r ~ FunctionType as b
            , KnownSymbol name
@@ -456,7 +466,7 @@ assign = fromAST ( Assign @optic sLength opticSing )
 -- Like @get@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @use \@(Name k)@.
-get :: forall (k :: Symbol) a (i :: ASTState).
+get :: forall (k :: Symbol) (a :: Type) (i :: ASTState).
        ( KnownSymbol k
        , Gettable (Name k :: Optic '[] i a)
        , a ~ Has k i
@@ -468,7 +478,7 @@ get = use @(Name k :: Optic '[] i a)
 -- Like @put@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @assign \@(Name k)@.
-put :: forall (k :: Symbol) a (i :: ASTState).
+put :: forall (k :: Symbol) (a :: Type) (i :: ASTState).
        ( KnownSymbol k
        , Settable (Name k :: Optic '[] i a)
        , a ~ Has k i
@@ -480,7 +490,7 @@ put = assign @(Name k :: Optic '[] i a)
 -- | Like @modify@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @modifying \@(Name k)@.
-modify :: forall (k :: Symbol) a (i :: ASTState).
+modify :: forall (k :: Symbol) (a :: Type) (i :: ASTState).
           ( KnownSymbol k
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)

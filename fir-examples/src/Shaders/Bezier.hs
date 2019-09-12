@@ -5,7 +5,6 @@
 {-# LANGUAGE NamedWildCards         #-}
 {-# LANGUAGE OverloadedLabels       #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -18,9 +17,9 @@
 
 module Shaders.Bezier where
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import FIR
@@ -155,6 +154,7 @@ type GeometryDefs =
    , "main"      ':-> EntryPoint
                          '[ InputLines
                           , OutputTriangleStrip, OutputVertices 4
+                          , Invocations 1
                           ]
                           Geometry
    ]
@@ -170,15 +170,11 @@ geometry = shader do
   mvp <- use @(Name "ubo" :.: Name "mvp")
   w <- use @(Name "ubo" :.: Name "widths" :.: Index 0)
 
-  t0_ <- use @(Name "tangents" :.: Index 0)
-  t1_ <- use @(Name "tangents" :.: Index 1)
-  b_  <- use @(Name "ubo" :.: Name "binormal")
+  t0 <- use @(Name "tangents" :.: Index 0 :.: Swizzle "xyz")
+  t1 <- use @(Name "tangents" :.: Index 1 :.: Swizzle "xyz")
+  b  <- use @(Name "ubo" :.: Name "binormal" :.: Swizzle "xyz")
 
-  let -- having to do this separately because of a bug (issue #48)
-    t0 = view @(Swizzle "xyz") t0_
-    t1 = view @(Swizzle "xyz") t1_
-    b  = view @(Swizzle "xyz") b_
-
+  let
     Vec3 nx0 ny0 nz0 = w *^ ( b  `cross` t0 )
     Vec3 nx1 ny1 nz1 = w *^ ( t1 `cross` b  )
 
@@ -255,27 +251,27 @@ tesePath = "shaders/bezier_tese.spv"
 geomPath = "shaders/bezier_geom.spv"
 fragPath = "shaders/bezier_frag.spv"
 
-compileVertexShader :: IO ( Either Text () )
+compileVertexShader :: IO ( Either ShortText () )
 compileVertexShader = compile vertPath [] vertex
 
-compileTessellationControlShader :: IO ( Either Text () )
+compileTessellationControlShader :: IO ( Either ShortText () )
 compileTessellationControlShader = compile tescPath [] tessellationControl
 
-compileTessellationEvaluationShader :: IO ( Either Text () )
+compileTessellationEvaluationShader :: IO ( Either ShortText () )
 compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
 
-compileGeometryShader :: IO ( Either Text () )
+compileGeometryShader :: IO ( Either ShortText () )
 compileGeometryShader = compile geomPath [] geometry
 
-compileFragmentShader :: IO ( Either Text () )
+compileFragmentShader :: IO ( Either ShortText () )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = withStructInput @VertexInput @(PatchesOfSize 5)
-  $  StartPipeline
-  :> (vertex                , vertPath)
-  :> (tessellationControl   , tescPath)
-  :> (tessellationEvaluation, tesePath)
-  :> (geometry              , geomPath)
-  :> (fragment              , fragPath)
+  $    StartPipeline
+  :>-> (vertex                , vertPath)
+  :>-> (tessellationControl   , tescPath)
+  :>-> (tessellationEvaluation, tesePath)
+  :>-> (geometry              , geomPath)
+  :>-> (fragment              , fragPath)

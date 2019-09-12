@@ -1,26 +1,25 @@
-{-# LANGUAGE BlockArguments         #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE NamedWildCards         #-}
-{-# LANGUAGE OverloadedLabels       #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
-{-# LANGUAGE PartialTypeSignatures  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE RebindableSyntax       #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE NamedWildCards        #-}
+{-# LANGUAGE OverloadedLabels      #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RebindableSyntax      #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Shaders.Offscreen where
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import FIR
@@ -76,15 +75,15 @@ vertPath, fragPath :: FilePath
 vertPath = "shaders/offscreen_vert.spv"
 fragPath = "shaders/offscreen_frag.spv"
 
-compileVertexShader :: IO ( Either Text () )
+compileVertexShader :: IO ( Either ShortText () )
 compileVertexShader = compile vertPath [] vertex
 
-compileFragmentShader :: IO ( Either Text () )
+compileFragmentShader :: IO ( Either ShortText () )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = withStructInput @VertexInput @(Triangle List)
-  $  StartPipeline
-  :> (vertex  , vertPath)
-  :> (fragment, fragPath)
+  $    StartPipeline
+  :>-> (vertex  , vertPath)
+  :>-> (fragment, fragPath)

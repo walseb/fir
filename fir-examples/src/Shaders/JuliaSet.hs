@@ -1,15 +1,14 @@
 {-# OPTIONS_GHC -Wno-missing-local-signatures #-}
 
-{-# LANGUAGE BlockArguments         #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE NamedWildCards         #-}
-{-# LANGUAGE OverloadedLabels       #-}
-{-# LANGUAGE PackageImports         #-}
-{-# LANGUAGE PartialTypeSignatures  #-}
-{-# LANGUAGE RebindableSyntax       #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE NamedWildCards        #-}
+{-# LANGUAGE OverloadedLabels      #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE RebindableSyntax      #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeOperators         #-}
 
 module Shaders.JuliaSet where
 
@@ -17,9 +16,9 @@ module Shaders.JuliaSet where
 import GHC.TypeNats
   ( KnownNat )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- vector
 import qualified Data.Vector as Array
@@ -35,7 +34,7 @@ import Math.Linear
 type VertexInput
   = '[ Slot 0 0 ':-> V 3 Float ]
 
-------------------------------------------------
+-------------------------------------
 -- vertex shader
 
 type VertexDefs =
@@ -162,15 +161,15 @@ vertPath, fragPath :: FilePath
 vertPath = "shaders/juliaset_vert.spv"
 fragPath = "shaders/juliaset_frag.spv"
 
-compileVertexShader :: IO ( Either Text () )
+compileVertexShader :: IO ( Either ShortText () )
 compileVertexShader = compile vertPath [] vertex
 
-compileFragmentShader :: IO ( Either Text () )
+compileFragmentShader :: IO ( Either ShortText () )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = withStructInput @VertexInput @(Triangle List)
-  $  StartPipeline
-  :> (vertex  , vertPath)
-  :> (fragment, fragPath)
+  $    StartPipeline
+  :>-> (vertex  , vertPath)
+  :>-> (fragment, fragPath)

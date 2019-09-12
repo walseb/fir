@@ -5,13 +5,52 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
-{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
+
+{-|
+Module: FIR.Definition
+
+In this module, a definition refers to a type-level annotation the user
+can/must provide to describe the interface of a SPIR-V module.
+
+For example, a typical fragment shader for mapping a texture could
+declare the following definitions:
+
+> type FragmentDefs =
+>   '[ "in_colour"   ':-> Input      '[ Location 0 ]                 (V 4 Float)
+>    , "in_uv"       ':-> Input      '[ Location 1 ]                 (V 2 Float)
+>    , "texture"     ':-> Texture2D  '[ Binding 0, DescriptorSet 0 ] (RGBA8 UNorm)
+>    , "out_colour"  ':-> Output     '[ Location 0 ]                 (V 4 Float)
+>    , "main"        ':-> EntryPoint '[ OriginUpperLeft ]            Fragment
+>    ]
+>
+> fragment :: ShaderStage "main" FragmentShader FragmentDefs _endState
+> fragment = ...
+
+There are three types of definitions:
+
+  * global variables that belong to the interface (inputs, outputs, uniform constants such as textures, etc),
+  * functions that are going to be defined,
+  * entry points that are going to be defined.
+
+In the above example all definitions are of the first kind,
+save for the last definition which declares an entry point.
+
+The definitions allow the user to specify, within a SPIR-V module, detailed information about the interface.
+
+For instance, in the above example, the inputs/outputs are annotated with location information,
+whereas the texture (a uniform constant) is annotated with its binding and descriptor set.
+See "FIR.Layout" for further details concerning such annotations.
+
+On the other hand, the execution model (in this case the fragment shader) is given its execution modes
+(in this case, specifying that the origin for the coordinate system used by fragments is
+in the upper-left corner).
+-}
 
 module FIR.Definition where
 
@@ -33,9 +72,9 @@ import Data.Map
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import CodeGen.State
@@ -80,6 +119,8 @@ import qualified SPIRV.Storage         as Storage
 -- annotating top-level definitions with necessary information
 -- for instance, annotating layout information
 
+-- | Definitions are top-level type-level annotations which provide
+-- the necessary information for a SPIR-V module.
 data Definition where
   Global     :: SPIRV.StorageClass -> [ SPIRV.Decoration Nat ] -> Type -> Definition
   Function   :: SPIRV.FunctionControl -> [Symbol :-> Binding] -> Type -> Definition
@@ -134,9 +175,9 @@ instance ( Known SPIRV.ExecutionModel stage, Known [SPIRV.ExecutionMode Nat] mod
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
   annotations
-    :: ( Map Text                         ( SPIRV.PointerTy, SPIRV.Decorations )
-       , Map Text                         SPIRV.FunctionControl
-       , Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes
+    :: ( Map  ShortText                        ( SPIRV.PointerTy, SPIRV.Decorations )
+       , Map  ShortText                        SPIRV.FunctionControl
+       , Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
        )
 
 instance KnownDefinitions '[] where
@@ -152,7 +193,7 @@ instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
            AnnotateGlobal     x      -> ( Map.insert k x g, f, e )
            AnnotateFunction   x      -> ( g, Map.insert k x f, e )
            AnnotateEntryPoint (s, x) -> ( g, f, Map.insert l x e )
-              where l :: ( Text, SPIRV.ExecutionModel )
+              where l :: ( ShortText, SPIRV.ExecutionModel )
                     l = (k,s)
 
 type family StartState (defs :: [ Symbol :-> Definition ]) :: ASTState where
@@ -195,7 +236,7 @@ type family DefinitionInsertEntryPointInfo
   -- 'SPIRV.ValidateExecutionModes' never returns Nothing, it throws a type error instead
   -- this trick forces evaluation of "SPIRV.ValidateExecutionModes"
   -- ( this fixes [issue #43](https://gitlab.com/sheaf/fir/issues/43) )
-    = TypeError ( 'Text "Invalid entry point execution modes (unreachable)" )
+    = TypeError ( Text "Invalid entry point execution modes (unreachable)" )
   DefinitionInsertEntryPointInfo k ('Just nfo) nfos
     = InsertEntryPointInfo
         ( 'EntryPointInfo k nfo '( '[], '[] ) 'Declared )
@@ -229,20 +270,20 @@ type family ValidateGlobal
   ValidateGlobal Storage.UniformConstant '[] (Image ty) = Nothing
   ValidateGlobal Storage.UniformConstant (dec ': _) (Image _)
     = TypeError
-        ( 'Text "Invalid decoration " :<>: ShowType dec :<>: 'Text " applied to image." )
+        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
   ValidateGlobal Storage.UniformConstant _ nonImageTy
     = TypeError
-        (    'Text "Uniform constant global expected to point to an image, but points to "
-        :<>: ShowType nonImageTy :<>: 'Text " instead."
+        (    Text "Uniform constant global expected to point to an image, but points to "
+        :<>: ShowType nonImageTy :<>: Text " instead."
         )
   ValidateGlobal Storage.Image '[] (Image ty) = Nothing
   ValidateGlobal Storage.Image  (dec ': _) (Image _)
     = TypeError
-        ( 'Text "Invalid decoration " :<>: ShowType dec :<>: 'Text " applied to image." )
+        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
   ValidateGlobal Storage.Image  _ nonImageTy
     = TypeError
-        (    'Text "Image global expected to point to an image, but points to "
-        :<>: ShowType nonImageTy :<>: 'Text " instead."
+        (    Text "Image global expected to point to an image, but points to "
+        :<>: ShowType nonImageTy :<>: Text " instead."
         )
   ValidateGlobal Storage.Uniform decs (Struct as)
     = If ( ValidUniformDecorations decs (Struct as))
@@ -254,15 +295,15 @@ type family ValidateGlobal
         ( Nothing ) -- unreachable
   ValidateGlobal Storage.Uniform _ ty
     = TypeError
-        (    'Text "Uniform buffer should be backed by a struct or array containing a struct;"
-        :$$: 'Text "found type " :<>: ShowType ty :<>: 'Text " instead."
+        (    Text "Uniform buffer should be backed by a struct or array containing a struct;"
+        :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
   ValidateGlobal Storage.StorageBuffer _ (Struct as) = Just (Struct as)
   ValidateGlobal Storage.StorageBuffer _ (Array n (Struct as)) = Just (Array n (Struct as))
   ValidateGlobal Storage.StorageBuffer _ ty
     = TypeError
-        (    'Text "Uniform storage buffer should be backed by a struct or array containing a struct;"
-        :$$: 'Text "found type " :<>: ShowType ty :<>: 'Text " instead."
+        (    Text "Uniform storage buffer should be backed by a struct or array containing a struct;"
+        :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
   -- TODO
   ValidateGlobal Storage.Input  _ _ = Nothing
@@ -283,14 +324,14 @@ type family HasBinding ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
   HasBinding ( _ ': decs ) = HasBinding decs
   HasBinding '[]
     = TypeError
-        ( 'Text "Uniform buffer is missing a 'Binding' decoration." )
+        ( Text "Uniform buffer is missing a 'Binding' decoration." )
 
 type family HasDescriptorSet ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
   HasDescriptorSet ( SPIRV.DescriptorSet _ ': _ ) = 'True
   HasDescriptorSet ( _ ': decs ) = HasDescriptorSet decs
   HasDescriptorSet '[]
     = TypeError
-        ( 'Text "Uniform buffer is missing a 'DescriptorSet' decoration." )
+        ( Text "Uniform buffer is missing a 'DescriptorSet' decoration." )
 
 --------------------------------------------------------------------------
 
@@ -305,4 +346,3 @@ initialCGContext =
         , userFunctions
         , userEntryPoints
         }
-

@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 
@@ -37,9 +36,9 @@ import Control.Monad.Reader
 import Control.Monad.State
   ( MonadState , StateT , runStateT )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- transformers
 import Control.Monad.Trans.Class
@@ -59,16 +58,16 @@ import CodeGen.State
 -- monad for code generation
 
 type CGMonad 
-  = FreshSuccT CGState    -- supply of fresh variable IDs using CGState (see below)
-      ( ReaderT CGContext -- context for code generation
-        ( StateT CGState  -- state (including for instance a map of which types have been defined)
-          ( ExceptT Text  -- for errors during code-generation
-              Binary.PutM -- to write instructions in binary form
+  = FreshSuccT CGState        -- supply of fresh variable IDs using CGState (see below)
+      ( ReaderT CGContext     -- context for code generation
+        ( StateT CGState      -- state (including for instance a map of which types have been defined)
+          ( ExceptT ShortText -- for errors during code-generation
+              Binary.PutM     -- to write instructions in binary form
           )
         )
       )
 deriving instance MonadReader CGContext CGMonad
-deriving instance MonadError  Text      CGMonad
+deriving instance MonadError  ShortText CGMonad
 -- other instances automatically derived from the definition of FreshSuccT:
 -- Functor, Applicative, Monad, MonadState CGState, MonadFresh ID
 
@@ -150,7 +149,7 @@ tryToUseWith _key f creation =
 runExceptTPutM :: ExceptT e Binary.PutM a -> Either e (a, ByteString)
 runExceptTPutM = runExceptT >>> uncurry leftStrength . Binary.runPutM
 
-runCGMonad :: CGContext -> CGState -> CGMonad r -> Either Text (r, CGState, ByteString)
+runCGMonad :: CGContext -> CGState -> CGMonad r -> Either ShortText (r, CGState, ByteString)
 runCGMonad context state
   =   runFreshSuccT  
   >>> ( `runReaderT` context )

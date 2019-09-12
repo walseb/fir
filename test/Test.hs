@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports    #-}
 {-# LANGUAGE TupleSections     #-}
 
 module Test where
@@ -38,7 +37,7 @@ import System.Process
   , waitForProcess
   )
 
--- text-utf8
+-- text
 import Data.Text
   ( Text )
 import qualified Data.Text    as Text
@@ -72,6 +71,7 @@ tests = [ ( "Array"        </> "Applicative"   , Validate  )
         , ( "Optics"       </> "NoStructIndex" , TypeCheck )
         , ( "Optics"       </> "NoVectorIndex" , TypeCheck )
         , ( "Optics"       </> "Overlapping"   , TypeCheck )
+        , ( "Optics"       </> "ProductIndices", TypeCheck )
         , ( "Optics"       </> "PureProducts"  , TypeCheck )
         , ( "Optics"       </> "Various"       , Validate  )
         , ( "PrimOps"      </> "Rounding"      , Validate  )
@@ -119,20 +119,20 @@ data TestOutput
   deriving ( Eq, Show )
 
 ghc :: FilePath
-ghc = "C:\\" </> "ghc" </> "ghc-8.6.5" </> "bin" </> "ghc" <.> "exe"
+ghc = "ghc"
 
 ghci :: FilePath
-ghci = "C:\\" </> "ghc" </> "ghc-8.6.5" </> "bin" </> "ghci" <.> "exe"
+ghci = "ghci"
 
 validator :: FilePath
 validator = "spirv-val"
 
 codeGen, validate :: FilePath -> IO TestOutput
-codeGen  testName = compileTest testName [Debug, NoCode]
-validate testName = compileTest testName [Debug]
+codeGen  testName = compileTest [Debug, NoCode] testName 
+validate testName = compileTest [Debug]         testName 
 
-compileTest :: FilePath -> [CompilerFlag] -> IO TestOutput
-compileTest testName flags = do
+compileTest :: [CompilerFlag] -> FilePath -> IO TestOutput
+compileTest flags testName = do
   srcExists <- doesFileExist src
   case srcExists of
     False -> pure ( Failure MissingSource )
@@ -210,7 +210,7 @@ compileTest testName flags = do
   where dir  = "test" </> "Tests"
         src  = dir </> testName <.> "hs"        
         test = dir </> testName <.> "fail"
-        spv    = dir </> testName <.> "spv"
+        spv  = dir </> testName <.> "spv"
         compile =  "compile "
                 <> Text.pack (show spv)
                 <> " "

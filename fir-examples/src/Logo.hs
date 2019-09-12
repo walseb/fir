@@ -4,7 +4,6 @@
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -29,6 +28,8 @@ import Data.Foldable
   ( for_ )
 import Data.Monoid
   ( Sum(getSum) )
+import Data.String
+  ( IsString )
 import Data.Traversable
   ( for )
 import Data.Word
@@ -55,10 +56,11 @@ import Control.Monad.Managed
 import qualified SDL
 import qualified SDL.Event
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( unpack )
 
 -- transformers
 import Control.Monad.Trans.State.Lazy
@@ -102,29 +104,32 @@ import Vulkan.SDL
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either Text ()
+shaderCompilationResult :: Either ShortText ()
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Compute shader", compileComputeShader) ]
      )
 
+appName :: IsString a => a
+appName = "fir-examples - Logo"
+
 logo :: IO ()
 logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
   case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> Text.unpack err )
+    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
     Right _   -> logMsg ( "Shaders were succesfully compiled." )
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow "fir-examples - Logo"
+  window           <- logMsg "Creating SDL window"           *> createWindow appName
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
   extensionNames <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
   logMsg $ "Needed instance extensions are: " ++ show extensionNames
 
-  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance neededExtensions
+  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family"
     *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_COMPUTE_BIT]

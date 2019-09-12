@@ -1,11 +1,21 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
+
+{-|
+Module: SPIRV.Builtin
+
+Enumeration of SPIR-V built-in variables. Used both at the type-level and value-level.
+
+See the SPIR-V specification, section 3.21 __BuiltIn__.
+
+Refer to "FIR.BuiltIn" for usage in this library.
+
+-}
 
 module SPIRV.Builtin
   ( Builtin(..)
@@ -17,9 +27,9 @@ module SPIRV.Builtin
 import Data.Word
   ( Word32 )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import Data.Binary.Class.Put
@@ -76,7 +86,7 @@ data Builtin
   | InstanceIndex
   deriving ( Show, Eq, Ord )
 
-readBuiltin :: Text -> Maybe Builtin
+readBuiltin :: ShortText -> Maybe Builtin
 readBuiltin "gl_Position"                  = Just Position
 readBuiltin "gl_PointSize"                 = Just PointSize
 readBuiltin "gl_ClipDistance"              = Just ClipDistance

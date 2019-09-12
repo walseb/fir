@@ -46,7 +46,7 @@ logMsg = liftIO . putStrLn
 
 throwVkResult :: MonadIO m => Vulkan.VkResult -> m ()
 throwVkResult Vulkan.VK_SUCCESS = pure ()
-throwVkResult res = fail ( show res )
+throwVkResult res = error ( show res )
 
 mainLoop :: Monad m => m Quit -> m ()
 mainLoop mb

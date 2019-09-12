@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PackageImports   #-}
 {-# LANGUAGE RankNTypes       #-}
 
 {-|
@@ -52,10 +51,11 @@ import Control.Lens
 import Control.Monad.State
   ( MonadState )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( unpack )
 
 -- fir
 import CodeGen.Instruction
@@ -97,54 +97,54 @@ data CGState
       , functionContext     :: VLFunctionContext
 
       -- | Capability requirements that have been declared.
-      , neededCapabilities  :: Set                             SPIRV.Capability
+      , neededCapabilities  :: Set                                   SPIRV.Capability
 
       -- | IDs of all used extended instruction sets.
-      , knownExtInsts       :: Map SPIRV.ExtInst               ID
+      , knownExtInsts       :: Map SPIRV.ExtInst                     ID
 
       -- | IDs of constant text literals.
-      , knownStringLits     :: Map Text                        ID
+      , knownStringLits     :: Map ShortText                         ID
 
       -- | IDs which have been annotated with a name / member name.
-      , names               :: Set                             (ID, Either Text (Word32, Text))
+      , names               :: Set                                   (ID, Either ShortText (Word32, ShortText))
 
       -- | Entry point IDs.
-      , entryPoints         :: Map (Text, SPIRV.ExecutionModel) ID
+      , entryPoints         :: Map (ShortText, SPIRV.ExecutionModel) ID
 
       -- | Entry point interfaces, keeping track of which global variables are used.
-      , interfaces          :: Map (Text, SPIRV.ExecutionModel) (Map Text ID)
+      , interfaces          :: Map (ShortText, SPIRV.ExecutionModel) (Map ShortText ID)
 
       -- | Decorations for given types.
-      , decorations         :: Map ID                          SPIRV.Decorations
+      , decorations         :: Map ID                                SPIRV.Decorations
 
       -- | Decorations for members of a given struct type.
-      , memberDecorations   :: Map (TyID, Word32)              SPIRV.Decorations
+      , memberDecorations   :: Map (TyID, Word32)                    SPIRV.Decorations
 
       -- | Map of all declared types.
-      , knownTypes          :: Map SPIRV.PrimTy                Instruction
+      , knownTypes          :: Map SPIRV.PrimTy                      Instruction
 
       -- | Map of all declared constants.
-      , knownConstants      :: Map AConstant                   Instruction
+      , knownConstants      :: Map AConstant                         Instruction
 
       -- | Map of all types who have a corresponding "Undefined" instruction.
-      , knownUndefineds     :: Map SPIRV.PrimTy                (ID, TyID)
+      , knownUndefineds     :: Map SPIRV.PrimTy                      (ID, TyID)
 
       -- | Which top-level global (input/output) variables have been used?
-      , usedGlobals         :: Map Text                        (ID, SPIRV.PointerTy)
+      , usedGlobals         :: Map ShortText                         (ID, SPIRV.PointerTy)
 
       -- | Top-level bindings available, such as top-level functions.
-      , knownBindings       :: Map Text                        (ID, SPIRV.PrimTy)
+      , knownBindings       :: Map ShortText                         (ID, SPIRV.PrimTy)
 
       -- | Variables declared by the user in the program.
-      , localBindings       :: Map Text                        (ID, SPIRV.PrimTy)
+      , localBindings       :: Map ShortText                         (ID, SPIRV.PrimTy)
 
       -- | IDs of locally declared variables (floated to the top of the function definition).
-      , localVariables      :: Map ID                          SPIRV.PointerTy
+      , localVariables      :: Map ID                                SPIRV.PointerTy
 
       -- | Pointer ID associated to a given ID.
       -- Used to keep track of auxiliary temporary pointers
       -- (e.g. a pointer created for a runtime access chain operation).
-      , temporaryPointers   :: Map ID                          (ID, PointerState)
+      , temporaryPointers   :: Map ID                                (ID, PointerState)
       }
   deriving Show
 
@@ -187,19 +187,19 @@ data CGContext
   = CGContext
      { -- | User defined inputs/outputs (not builtins).
        userGlobals
-          :: Map Text (SPIRV.PointerTy, SPIRV.Decorations)
+          :: Map ShortText (SPIRV.PointerTy, SPIRV.Decorations)
 
        -- | User defined functions (not entry points).
      , userFunctions
-          :: Map Text SPIRV.FunctionControl
+          :: Map ShortText SPIRV.FunctionControl
 
        -- | User defined entry points.
      , userEntryPoints
-          :: Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes
+          :: Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
 
        -- | User defined images.
      , userImages
-          :: Map Text SPIRV.Image
+          :: Map ShortText SPIRV.Image
 
        -- | Whether to turn on debug mode,
        -- which adds extra source information in the generated SPIR-V assembly.
@@ -249,40 +249,40 @@ _knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )
 _knownExtInst :: SPIRV.ExtInst -> Lens' CGState (Maybe ID)
 _knownExtInst ext = _knownExtInsts . at ext
 
-_knownStringLits :: Lens' CGState (Map Text ID)
+_knownStringLits :: Lens' CGState (Map ShortText ID)
 _knownStringLits = lens knownStringLits ( \s v -> s { knownStringLits = v } )
 
-_knownStringLit :: Text -> Lens' CGState (Maybe ID)
+_knownStringLit :: ShortText -> Lens' CGState (Maybe ID)
 _knownStringLit lit = _knownStringLits . at lit
 
-_names :: Lens' CGState ( Set (ID, Either Text (Word32, Text)) )
+_names :: Lens' CGState ( Set (ID, Either ShortText (Word32, ShortText)) )
 _names = lens names ( \s v -> s { names = v } )
 
-_usedGlobals :: Lens' CGState (Map Text (ID, SPIRV.PointerTy))
+_usedGlobals :: Lens' CGState (Map ShortText (ID, SPIRV.PointerTy))
 _usedGlobals = lens usedGlobals ( \s v -> s { usedGlobals = v } )
 
-_usedGlobal :: Text -> Lens' CGState (Maybe (ID, SPIRV.PointerTy))
+_usedGlobal :: ShortText -> Lens' CGState (Maybe (ID, SPIRV.PointerTy))
 _usedGlobal name = _usedGlobals . at name
 
-_entryPoints :: Lens' CGState (Map (Text, SPIRV.ExecutionModel) ID)
+_entryPoints :: Lens' CGState (Map (ShortText, SPIRV.ExecutionModel) ID)
 _entryPoints = lens entryPoints ( \s v -> s { entryPoints = v } )
 
-_entryPoint :: Text -> SPIRV.ExecutionModel -> Lens' CGState (Maybe ID)
+_entryPoint :: ShortText -> SPIRV.ExecutionModel -> Lens' CGState (Maybe ID)
 _entryPoint name stage = _entryPoints . at (name, stage)
 
-_interfaces :: Lens' CGState (Map (Text, SPIRV.ExecutionModel) (Map Text ID))
+_interfaces :: Lens' CGState (Map (ShortText, SPIRV.ExecutionModel) (Map ShortText ID))
 _interfaces = lens interfaces ( \s v -> s { interfaces = v } )
 
-_interface :: Text -> SPIRV.ExecutionModel -> Lens' CGState (Maybe (Map Text ID))
+_interface :: ShortText -> SPIRV.ExecutionModel -> Lens' CGState (Maybe (Map ShortText ID))
 _interface stageName stage = _interfaces . at (stageName, stage)
 
-_interfaceBinding :: Text -> SPIRV.ExecutionModel -> Text -> Lens' CGState (Maybe ID)
+_interfaceBinding :: ShortText -> SPIRV.ExecutionModel -> ShortText -> Lens' CGState (Maybe ID)
 _interfaceBinding stageName stage varName
   = _interface stageName stage
   . affineTraverse
   . at varName
 
-_builtin :: Text -> SPIRV.ExecutionInfo Word32 stage -> Text -> Lens' CGState (Maybe ID)
+_builtin :: ShortText -> SPIRV.ExecutionInfo Word32 stage -> ShortText -> Lens' CGState (Maybe ID)
 _builtin stageName executionInfo builtinName
   = lens
       ( view _interfaceBuiltin )
@@ -306,8 +306,8 @@ _builtin stageName executionInfo builtinName
         builtinTy =
           fromMaybe
             ( error
-              ( "_builtin: builtin with name " ++ Text.unpack builtinName ++ " cannot be found,\n\
-                  \among builtins for " ++ show executionModel ++ " named " ++ Text.unpack stageName
+              ( "_builtin: builtin with name " ++ ShortText.unpack builtinName ++ " cannot be found,\n\
+                  \among builtins for " ++ show executionModel ++ " named " ++ ShortText.unpack stageName
               )
             )
             ( lookup builtinName $ modelBuiltins executionInfo )
@@ -345,16 +345,16 @@ _knownUndefineds = lens knownUndefineds ( \s v -> s { knownUndefineds = v } )
 _knownUndefined :: SPIRV.PrimTy -> Lens' CGState (Maybe (ID,TyID))
 _knownUndefined primTy = _knownUndefineds . at primTy
 
-_knownBindings :: Lens' CGState (Map Text (ID, SPIRV.PrimTy))
+_knownBindings :: Lens' CGState (Map ShortText (ID, SPIRV.PrimTy))
 _knownBindings = lens knownBindings ( \s v -> s { knownBindings = v } )
 
-_knownBinding :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
+_knownBinding :: ShortText -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _knownBinding binding = _knownBindings . at binding
 
-_localBindings :: Lens' CGState (Map Text (ID, SPIRV.PrimTy))
+_localBindings :: Lens' CGState (Map ShortText (ID, SPIRV.PrimTy))
 _localBindings = lens localBindings ( \s v -> s { localBindings = v } )
 
-_localBinding :: Text -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
+_localBinding :: ShortText -> Lens' CGState (Maybe (ID, SPIRV.PrimTy))
 _localBinding binding = _localBindings . at binding
 
 _localVariables :: Lens' CGState (Map ID SPIRV.PointerTy)
@@ -372,7 +372,7 @@ _temporaryPointer v = _temporaryPointers . at v
 
 _userGlobals
   :: Lens' CGContext
-        ( Map Text
+        ( Map ShortText
             ( SPIRV.PointerTy
             , SPIRV.Decorations
             )
@@ -380,7 +380,7 @@ _userGlobals
 _userGlobals = lens userGlobals ( \c v -> c { userGlobals = v } )
 
 _userGlobal
-  :: Text
+  :: ShortText
   -> Lens' CGContext
         ( Maybe
             ( SPIRV.PointerTy
@@ -389,22 +389,22 @@ _userGlobal
         )
 _userGlobal global = _userGlobals . at global
 
-_userFunctions :: Lens' CGContext ( Map Text SPIRV.FunctionControl )
+_userFunctions :: Lens' CGContext ( Map ShortText SPIRV.FunctionControl )
 _userFunctions = lens userFunctions ( \c v -> c { userFunctions = v } )
 
-_userFunction :: Text -> Lens' CGContext ( Maybe SPIRV.FunctionControl )
+_userFunction :: ShortText -> Lens' CGContext ( Maybe SPIRV.FunctionControl )
 _userFunction function = _userFunctions . at function
 
-_userEntryPoints :: Lens' CGContext ( Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes )
+_userEntryPoints :: Lens' CGContext ( Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes )
 _userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
 
-_userEntryPoint :: Text -> SPIRV.ExecutionModel -> Lens' CGContext ( Maybe SPIRV.ExecutionModes )
+_userEntryPoint :: ShortText -> SPIRV.ExecutionModel -> Lens' CGContext ( Maybe SPIRV.ExecutionModes )
 _userEntryPoint name stage = _userEntryPoints . at (name, stage)
 
-_userImages :: Lens' CGContext ( Map Text SPIRV.Image )
+_userImages :: Lens' CGContext ( Map ShortText SPIRV.Image )
 _userImages = lens userImages ( \c v -> c { userImages = v } )
 
-_userImage :: Text -> Lens' CGContext ( Maybe SPIRV.Image )
+_userImage :: ShortText -> Lens' CGContext ( Maybe SPIRV.Image )
 _userImage image = _userImages . at image
 
 _debugMode :: Lens' CGContext Bool
@@ -420,13 +420,13 @@ addCapabilities
   = traverse_ ( \cap -> assign ( _neededCapability cap ) (Just ()) )
 
 addName :: MonadState CGState m
-        => ID -> Text -> m ()
+        => ID -> ShortText -> m ()
 addName bdID name
   = modifying _names
       ( Set.insert (bdID, Left name) )
 
 addMemberName :: MonadState CGState m 
-              => TyID -> Word32 -> Text -> m ()
+              => TyID -> Word32 -> ShortText -> m ()
 addMemberName structTyID index name
   = modifying _names
       ( Set.insert (tyID structTyID, Right (index,name)) )

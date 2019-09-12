@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
@@ -34,8 +33,9 @@ import qualified Data.Map as Map
 import Control.Monad.Except
   ( throwError )
 
--- text-utf8
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Binary
@@ -67,6 +67,7 @@ import qualified SPIRV.Capability as SPIRV
   , dimCapabilities
   , msCapabilities
   , lodCapabilities
+  , gatherCapabilities
   )
 import SPIRV.Image
   ( DepthTesting(..), Projection(..) )
@@ -134,7 +135,7 @@ imageTexel (imgID, imgTy) ops coords
                                 )
                         _ -> throwError
                                 ( "codeGen: image sampling operation provided non-image \
-                                  \of type " <> Text.pack ( show imgTy )
+                                  \of type " <> ShortText.pack ( show imgTy )
                                 )
                 if gathering
                 then do
@@ -169,7 +170,7 @@ imageTexel (imgID, imgTy) ops coords
                           -> fst <$> removeSampler (imgID, plainImg)
                         _ -> throwError
                                ( "codeGen: image read operation provided non-image \
-                                 \of type " <> Text.pack ( show imgTy )
+                                 \of type " <> ShortText.pack ( show imgTy )
                                )
                 liftPut $ putInstruction Map.empty
                   Instruction
@@ -214,7 +215,7 @@ writeTexel (imgID, imgTy) ops coords texel
                 -> fst <$> removeSampler (imgID, plainImg)
               _ -> throwError
                      ( "codeGen: image write operation provided non-image \
-                       \of type " <> Text.pack ( show imgTy )
+                       \of type " <> ShortText.pack ( show imgTy )
                      )
       liftPut $ putInstruction Map.empty
         Instruction
@@ -324,9 +325,10 @@ addImageCapabilities sampling bm dim arrayness ms mbFmt
   = do
       ( addCapabilities . Compose )
         ( SPIRV.formatCapabilities <$> mbFmt )
-      addCapabilities ( SPIRV.msCapabilities ms )
-      addCapabilities ( SPIRV.lodCapabilities bm )
-      addCapabilities ( SPIRV.dimCapabilities sampling dim arrayness )
+      addCapabilities ( SPIRV.msCapabilities     ms )
+      addCapabilities ( SPIRV.lodCapabilities    bm )
+      addCapabilities ( SPIRV.gatherCapabilities bm )
+      addCapabilities ( SPIRV.dimCapabilities    sampling dim arrayness )
 
 --------------------------------------------------------------------------
 -- dealing with operands

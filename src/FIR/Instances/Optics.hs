@@ -13,7 +13,6 @@
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TemplateHaskell        #-} -- needed to help along GHC's SCC analysis
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -78,19 +77,26 @@ import Control.Type.Optic
   , Indices
   , Gettable, ReifiedGetter(view)
   , Settable, ReifiedSetter(set )
-  , Contained(..)
-  , ContainerKind, DegreeKind, LabelKind
-  , MonoContained(..)
-  , (:.:), (:*:), Id, AnIndex, Name, Joint
-  , Product
+  , Container(..)
+  , MonoContainer(..)
+  , (:.:), Id, AnIndex, Name, Joint
+  , ProductComponents(..)
   )
+import Data.Constraint.All
+  ( All )
 import Data.Type.Known
   ( Known )
 import Data.Function.Variadic
   ( ListVariadic )
+import Data.Product
+  ( IsProduct, AreProducts
+  , Distribute
+  , MapHList
+  )
 import Data.Type.List
-  ( type (:++:), Zip
+  ( type (:++:), ZipCons
   , SLength, KnownLength(sLength)
+  , SSameLength, SameLength(sSameLength)
   , Postpend
   )
 import Data.Type.Map
@@ -123,6 +129,7 @@ import Math.Linear
 ----------------------------------------------------------------------
 -- singletons
 
+-- | Singletons associated to the type-level optics used by this library.
 data SOptic (optic :: Optic i s a) :: Type where
   SId    :: SOptic Id
   SJoint :: SOptic Joint
@@ -154,29 +161,52 @@ data SOptic (optic :: Optic i s a) :: Type where
                                 i
                                 (ImageData props ops)
                         )
-  SComposeO :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
-               SLength is -> SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
+  SComposeO :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b)
+            .  SLength is -> SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
      --        ^^^^^^^^^^
      -- we need to know the length of the first list to generate code for composite optics
      -- see the function 'opticalTree' in the code generator
 
      -- similar remark applies to products
-  SProductO  :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js s b).
-                PrimTy (Product o1 o2) -- need to know result for SPIR-V code generation
-             => SLength is -> SLength js -> SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
+  SProd :: forall
+              ( iss :: [[Type]] )
+              ( k   :: Type     )
+              ( s   :: k        )
+              ( as  :: [Type]   )
+              ( os  :: ProductComponents iss s as)
+              ( js  :: [Type]   )
+              ( p   :: Type     )
+        .  ( IsProduct p as
+           , AreProducts js iss as
+           , PrimTy p -- need to know result for SPIR-V code generation
+           , All PrimTy as
+           )
+        => SSameLength (Distribute iss as) as
+        -> SProductComponents os
+        -> SOptic (Prod_ os :: Optic js s p)
+
+data SProductComponents (os :: ProductComponents iss s as) :: Type where
+  SEndProd  :: SProductComponents EndProd_
+  SProductO :: forall
+                ( k   :: Type     )
+                ( is  :: [Type]   )
+                ( s   :: k        )
+                ( a   :: Type     )
+                ( iss :: [[Type]] )
+                ( as  :: [Type]   )
+                ( o   :: Optic is s a )
+                ( os  :: ProductComponents iss s as )
+            .  SameLength is iss
+            => SOptic o
+            -> SProductComponents os
+            -> SProductComponents (ProductO o os :: ProductComponents (ZipCons is iss) s (a ': as))
 
 infixr 9 %:.:
-infixr 3 %:*:
 
 (%:.:) :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b).
            KnownLength is
         => SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
 o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
-
-(%:*:) :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js s b).
-          ( KnownLength is, KnownLength js, PrimTy (Product o1 o2) )
-        => SOptic o1 -> SOptic o2 -> SOptic (o1 :*: o2)
-o1 %:*: o2 = SProductO (sLength @_ @is) (sLength @_ @js) o1 o2
 
 showSOptic :: SOptic (o :: Optic is s a) -> String
 showSOptic SId    = "Id"
@@ -186,7 +216,12 @@ showSOptic (SIndex   _ _ n) = "Index "   ++ show n
 showSOptic (SBinding    k  ) = "Binding "    ++ show (symbolVal k)
 showSOptic (SImageTexel k _) = "ImageTexel " ++ show (symbolVal k)
 showSOptic (SComposeO _   o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
-showSOptic (SProductO _ _ o1 o2) = showSOptic o1 ++ " :*: " ++ showSOptic o2
+showSOptic (SProd _ comps) = "Prod ( " ++ showSProductComponents comps ++ " )"
+
+showSProductComponents :: SProductComponents os -> String
+showSProductComponents SEndProd = "EndProd"
+showSProductComponents (o `SProductO` os)
+  = showSOptic o ++ " :*: " ++ showSProductComponents os
 
 
 class KnownLength (Indices optic) => KnownOptic optic where
@@ -195,7 +230,7 @@ class KnownLength (Indices optic) => KnownOptic optic where
 instance ( empty ~ '[] ) => KnownOptic (Id_ :: Optic empty a a) where
   opticSing = SId
 instance ( empty ~ '[]
-         , MonoContained a
+         , MonoContainer a
          , mono ~ MonoType a
          )
        => KnownOptic (Joint_ :: Optic empty a mono) where
@@ -250,18 +285,40 @@ instance forall k is js ks (s :: ASTState) x a b
          )
        => KnownOptic ( (o1 `ComposeO` o2) :: Optic ks s b ) where
   opticSing = SBinding (Proxy @k) %:.: (opticSing @o)
-instance forall is js ks s a b c (o1 :: Optic is s a) (o2 :: Optic js s b).
-         ( KnownOptic o1
-         , KnownOptic o2
-         , ks ~ Zip is js
-         , c ~ Product o1 o2
-         , KnownLength is
+instance forall iss s as js p (os :: ProductComponents iss s as)
+       . ( KnownComponents os
+         , SameLength (Distribute iss as) as
          , KnownLength js
-         , KnownLength (Zip is js) -- deduced from the above two in concrete situations
-         , PrimTy c
+         , IsProduct p as
+         , AreProducts js iss as
+         , js ~ MapHList iss
+         , PrimTy p
+         , All PrimTy as
          )
-      => KnownOptic ((o1 `ProductO` o2) :: Optic ks s c) where
-  opticSing = (opticSing @o1) %:*: (opticSing @o2)
+       => KnownOptic (Prod_ os :: Optic js s p) where
+  opticSing = SProd sSameLength (componentsSing @os)
+
+class KnownComponents os where
+  componentsSing :: SProductComponents os
+instance ( as ~ '[] ) => KnownComponents ( EndProd_ :: ProductComponents iss s as )  where
+  componentsSing = SEndProd
+instance  forall
+            ( k   :: Type     )
+            ( is  :: [Type]   )
+            ( s   :: k        )
+            ( a   :: Type     )
+            ( iss :: [[Type]] )
+            ( jss :: [[Type]] )
+            ( as  :: [Type]   )
+            ( o   :: Optic is s a )
+            ( os  :: ProductComponents iss s as )
+           . ( KnownOptic o
+             , KnownComponents os
+             , SameLength is iss
+             , jss ~ ZipCons is iss
+             )
+           => KnownComponents (o `ProductO` os :: ProductComponents jss s (a ': as)) where
+  componentsSing = opticSing @o `SProductO` componentsSing @os
 
 --------------------------------------------------------------
 -- some trickery to account for peculiarities of image optics
@@ -1028,110 +1085,63 @@ type family StructElemFromIndex
 ----------------------------------------------------------------------
 -- type class instances for products
 
-type instance ContainerKind (V n a) = Type
-type instance DegreeKind    (V n a) = Nat
-type instance LabelKind     (V n a) = ()
 
-type instance ContainerKind (M m n a) = Type
-type instance DegreeKind    (M m n a) = Nat
-type instance LabelKind     (M m n a) = ()
-
-type instance ContainerKind (Struct (as :: [Symbol :-> Type])) = [Symbol :-> Type] -> Type
-type instance DegreeKind    (Struct (as :: [Symbol :-> Type])) = [Symbol :-> Type]
-type instance LabelKind     (Struct (as :: [Symbol :-> Type])) = (Symbol :-> Type)
-
-type instance ContainerKind (Array n a) = Type
-type instance DegreeKind    (Array n a) = Nat
-type instance LabelKind     (Array n a) = ()
-
-type instance ContainerKind (RuntimeArray a) = Type
-type instance DegreeKind    (RuntimeArray a) = ()
-type instance LabelKind     (RuntimeArray a) = ()
-
-
--- need to separate the above open type family instances before all their uses
--- needed because of [GHC trac #12088](https://gitlab.haskell.org/ghc/ghc/issues/12088)
--- see also [GHC trac #15987](https://gitlab.haskell.org/ghc/ghc/issues/15987#note_164461)
-$(pure [])
-
-instance Contained (V n a) where
-  type Container (V n a)   = V 0 a
-  type DegreeOf  (V n a)   = n
-  type LabelOf   (V n a) _ = '()
+instance Container (V n a) where
   type Overlapping (V n a) k _
     = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
                 :$$: Text "Maybe you intended to use a swizzle?"
                 )
 
-instance KnownNat n => Contained (M m n a) where
-  type Container (M m n a)   = M m 0 a
-  type DegreeOf  (M m n a)   = n
-  type LabelOf   (M m n a) _ = '()
+instance KnownNat n => Container (M m n a) where
   type Overlapping (M m n a) k _
     = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
 
-instance Contained (Struct (as :: [Symbol :-> Type])) where
-  type Container (Struct (as :: [Symbol :-> Type])) = ( Struct :: [Symbol:-> Type] -> Type )
-  type DegreeOf  (Struct (as :: [Symbol :-> Type])) = as
-  type LabelOf   (Struct (as :: [Symbol :-> Type])) (Field_ (k :: Symbol) :: Optic _ (Struct as) a)
-    = k ':-> a
-  type LabelOf   (Struct (as :: [Symbol :-> Type])) (Field_ (i :: Nat)    :: Optic _ (Struct as) a)
-    = Key ( StructElemFromIndex
-              (Text "key: ")
-              i as i as
-          )
-      ':-> a
+instance Container (Struct (as :: [Symbol :-> Type])) where
   type Overlapping (Struct (as :: [Symbol :-> Type])) k i
     = k == Key (StructElemFromIndex (Text "key: ") i as i as)
 
-instance Contained (Array n a) where
-  type Container (Array n a)   = Array 0 a
-  type DegreeOf  (Array n a)   = n
-  type LabelOf   (Array n a) _ = '()
+instance Container (Array n a) where
   type Overlapping (Array n a) k _
         = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
 
-instance Contained (RuntimeArray a) where
-  type Container (RuntimeArray a)   = RuntimeArray a
-  type DegreeOf  (RuntimeArray a)   = '()
-  type LabelOf   (RuntimeArray a) _ = '()
+instance Container (RuntimeArray a) where
   type Overlapping (RuntimeArray a) k _
         = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
 
 ----------------------------------------------------------------------
 -- type class instances for equalisers
 
-instance KnownNat n => MonoContained (Array n a) where
+instance KnownNat n => MonoContainer (Array n a) where
   type MonoType (Array n a) = a
   setAll a _ = MkArray @n $ Array.replicate (fromIntegral . natVal $ Proxy @n) a
 
-instance MonoContained (RuntimeArray a) where
+instance MonoContainer (RuntimeArray a) where
   type MonoType (RuntimeArray a) = a
   setAll a (MkRuntimeArray arr)
     = MkRuntimeArray $ Array.replicate n a
         where n = Array.length arr
 
 instance (KnownNat n, 1 <= n)
-      => MonoContained (V n a) where
+      => MonoContainer (V n a) where
   type MonoType (V n a) = a
   setAll = const . pure
 
 instance (KnownNat m, KnownNat n, 1 <= m)
-      => MonoContained (M m n a) where
+      => MonoContainer (M m n a) where
   type MonoType (M m n a) = V m a
   setAll = const . M . distribute . pure
 
-instance MonoContained (Struct (((k :: Symbol) ':-> v) ': '[]))
+instance MonoContainer (Struct (((k :: Symbol) ':-> v) ': '[]))
       where
   type MonoType (Struct ((k ':-> v) ': '[])) = v
   setAll = const . (:& End)
 
 instance {-# OVERLAPPABLE #-}
          ( AllValuesEqual k v as
-         , MonoContained (Struct as)
+         , MonoContainer (Struct as)
          , MonoType (Struct as) ~ v
          )
-       => MonoContained (Struct ((k ':-> v) ': as)) where
+       => MonoContainer (Struct ((k ':-> v) ': as)) where
   type MonoType (Struct ((k ':-> v) ': as)) = v
   setAll a (_ :& as) = a :& setAll a as
 

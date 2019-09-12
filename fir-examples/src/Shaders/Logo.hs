@@ -5,7 +5,6 @@
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -28,9 +27,9 @@ import GHC.TypeLits
 -- vector
 import qualified Data.Vector as Array
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import FIR
@@ -323,5 +322,5 @@ computeShader = Program $ entryPoint @"main" @Compute do
 compPath :: FilePath
 compPath = "shaders/logo_comp.spv"
 
-compileComputeShader :: IO ( Either Text () )
+compileComputeShader :: IO ( Either ShortText () )
 compileComputeShader = compile compPath [] computeShader

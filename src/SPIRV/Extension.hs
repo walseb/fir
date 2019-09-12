@@ -1,7 +1,17 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
+
+{-|
+Module: SPIRV.Extension
+
+This module enumerates SPIR-V extensions as well as extended instruction sets.
+These are used only at the value level.
+
+See SPIR-V specification §2.10 __Extended Instruction Sets__,
+as well as the SPIR-V registry for a complete list of SPIR-V extensions.
+
+-}
 
 module SPIRV.Extension where
 
@@ -9,9 +19,9 @@ module SPIRV.Extension where
 import Data.Word
   ( Word32 )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import Data.Binary.Class.Put
@@ -25,7 +35,7 @@ data ExtInst
   | GLSL
   deriving ( Show, Eq, Ord, Enum, Bounded )
 
-extInstName :: ExtInst -> Text
+extInstName :: ExtInst -> ShortText
 extInstName OpenCL = "OpenCL.std.100"
 extInstName GLSL   = "GLSL.std.450"
 

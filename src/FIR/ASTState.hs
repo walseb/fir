@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
@@ -32,9 +31,9 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( Nat )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import Data.Type.Known
@@ -83,8 +82,8 @@ type TLInterface
     , [ Symbol :-> TLInterfaceVariable ]
     )
 type VLInterface
-  = ( [ Text :-> VLInterfaceVariable ]
-    , [ Text :-> VLInterfaceVariable ]
+  = ( [ ShortText :-> VLInterfaceVariable ]
+    , [ ShortText :-> VLInterfaceVariable ]
     )
 
 
@@ -98,9 +97,9 @@ type TLFunctionContext
 -- | A value-level function context.
 type VLFunctionContext
   = FunctionContext
-      Text
+      ShortText
       Word32
-      [ ( Text, (SPIRV.PrimTy, Permissions) ) ]
+      [ ( ShortText, (SPIRV.PrimTy, Permissions) ) ]
       ( Maybe VLInterface )
 
 instance Demotable TLFunctionContext where
@@ -190,12 +189,12 @@ type family EntryPointInfos ( s :: ASTState ) :: [ EntryPointInfo ] where
   EntryPointInfos ('ASTState _ _ _ eps) = eps
 
 type family ExecutionContext ( s :: ASTState ) :: Maybe SPIRV.ExecutionModel where
-  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
+  ExecutionContext ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
     = Just stage
-  ExecutionContext' _
+  ExecutionContext _
     = Nothing
 
-executionContext :: VLFunctionContext -> Maybe (Text, SPIRV.ExecutionModel)
+executionContext :: VLFunctionContext -> Maybe (ShortText, SPIRV.ExecutionModel)
 executionContext (InEntryPoint stageName stageInfo _) = Just (stageName, SPIRV.modelOf stageInfo)
 executionContext _ = Nothing
 
@@ -204,7 +203,7 @@ type family ExecutionContext' ( s :: ASTState ) :: SPIRV.ExecutionModel where
     = stage
   ExecutionContext' _
     = TypeError
-        ( 'Text "Cannot access stage context: not within a stage." )
+        ( Text "Cannot access stage context: not within a stage." )
 
 type family ExecutionInfoContext
                 ( s :: ASTState )

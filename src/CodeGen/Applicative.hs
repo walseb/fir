@@ -4,7 +4,6 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -54,8 +53,9 @@ import Control.Lens
 import Control.Monad.Except
   ( throwError )
 
--- text-utf8
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Application
@@ -189,7 +189,7 @@ idiom (PureIdiom b)
                                  -> pure ty
                               ty -> throwError 
                                       ( "codeGen: matrix contains non-scalars of type "
-                                       <> Text.pack (show ty)
+                                       <> ShortText.pack (show ty)
                                       )
                       let colDim :: Word32
                           colDim = knownValue @m

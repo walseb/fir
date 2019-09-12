@@ -1,8 +1,15 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
+
+{-|
+Module: SPIRV.PrimTy
+
+This module enumerates the types that exist within the SPIR-V type system.
+
+See the SPIR-V specification, §3.22.6 __Type-Declaration instructions__.
+-}
 
 module SPIRV.PrimTy
   ( AggregateUsage(..)
@@ -17,9 +24,9 @@ import Data.Word
 import Prelude
   hiding (Integer, Floating)
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import SPIRV.Decoration
@@ -67,7 +74,7 @@ data PrimTy where
     , usage :: AggregateUsage
     } -> PrimTy
   Struct ::
-    { eltTys :: [( Maybe Text, PrimTy, Decorations )]
+    { eltTys :: [( Maybe ShortText, PrimTy, Decorations )]
     -- ^ the (optional) field names are only used to annotate the source code
     , decs   :: Decorations
     , usage  :: AggregateUsage

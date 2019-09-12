@@ -5,6 +5,17 @@
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeFamilies          #-}
 
+{-|
+Module: SPIRV.Storage
+
+This module enumerates SPIR-V storage classes.
+
+These are used both at the type-level and at the value-level.
+
+See the SPIR-V specification, §3.7 __Storage Class__.
+
+-}
+
 module SPIRV.Storage where
 
 -- fir

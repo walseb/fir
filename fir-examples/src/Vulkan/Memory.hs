@@ -86,10 +86,10 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
 
     memoryTypeIndex :: Vulkan.Word32
       <- case possibleMemoryTypeIndices of
-              [] -> fail $  "No available memory types with requirements:\n"
-                         ++ show memReqs
-                         ++ "\nand with flags:\n"
-                         ++ show requiredFlags
+              [] -> error $  "No available memory types with requirements:\n"
+                          ++ show memReqs
+                          ++ "\nand with flags:\n"
+                          ++ show requiredFlags
               ( i : _ ) -> pure i
 
     let

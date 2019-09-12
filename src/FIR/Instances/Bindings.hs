@@ -132,7 +132,7 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
   GetBinding k 'Nothing
    = TypeError
       (  Text "'get'/'use': no binding named " :<>: ShowType k :<>: Text " is in scope." )
-  PutBinding k ('Just (Var _ (Image _)))
+  GetBinding k ('Just (Var _ (Image _)))
     = TypeError 
           (     Text "'get'/'use': variable named " :<>: ShowType k :<>: Text " refers to an image."
            :$$: Text "To access image data, use the 'ImageTexel' optic or the 'imageRead' function."
@@ -801,7 +801,7 @@ type family SubsetBindings (is :: BindingsMap) (js :: BindingsMap) :: Constraint
     = If (i `Elem` js)
         ( SubsetBindings is js )
         ( TypeError
-           ( Text "'embed': cannot embed computation."
+           (     Text "'embed': cannot embed computation."
             :$$: Text "Binding " :<>: ShowType i
             :<>: Text " is missing in larger context "
             :<>: ShowType js
@@ -826,15 +826,15 @@ type family SubsetFunctionsRec
             :: Constraint where
   SubsetFunctionsRec k _ Nothing _ _
     = TypeError
-    ( Text "'embed': cannot embed computation."
+    (    Text "'embed': cannot embed computation."
     :$$: Text "Function named " :<>: ShowType k
     :<>: Text " is missing in larger context."
     )
   SubsetFunctionsRec _ f (Just f) fs gs
     = SubsetFunctions fs gs
-  SubsetFunctions k f (Just f') _ _
+  SubsetFunctionsRec k f (Just f') _ _
     = TypeError
-    ( Text "'embed': cannot embed computation."
+    (    Text "'embed': cannot embed computation."
     :$$: Text "Mismatch between functions of name " :<>: ShowType k
     :<>: Text "."
     :$$: Text "  - Smaller context function info: " :<>: ShowType f :<>: Text ","

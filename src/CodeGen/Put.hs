@@ -1,4 +1,3 @@
-{-# LANGUAGE PackageImports  #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module CodeGen.Put
@@ -12,9 +11,9 @@ import qualified Data.Binary.Put as Binary
 import Data.ByteString.Lazy
   ( ByteString )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- transformers
 import Control.Monad.Except
@@ -49,7 +48,7 @@ import CodeGen.State
 ----------------------------------------------------------------------------
 -- emit SPIR-V assembly (after code generation)
      
-putASM :: CGContext -> CGMonad r -> Either Text ByteString
+putASM :: CGContext -> CGMonad r -> Either ShortText ByteString
 putASM context mr
   = case runCGMonad context initialState mr of
 
@@ -63,7 +62,7 @@ putASM context mr
 ----------------------------------------------------------------------------
 -- floating various declarations to the top
 
-putDecs :: CGContext -> CGState -> ExceptT Text Binary.PutM ()
+putDecs :: CGContext -> CGState -> ExceptT ShortText Binary.PutM ()
 putDecs 
   CGContext { .. }
   CGState   { .. }

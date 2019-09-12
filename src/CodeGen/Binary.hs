@@ -12,8 +12,6 @@ module CodeGen.Binary where
 -- base
 import Data.Coerce
   ( coerce )
-import Data.Maybe
-  ( maybe )
 import Data.List
   ( sortOn)
 import Data.Foldable
@@ -38,10 +36,11 @@ import qualified Data.Set as Set
 import Control.Monad.Except
   ( ExceptT )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- transformers
 import Control.Monad.Trans.Class
@@ -150,7 +149,7 @@ putMemoryModel
                     EndArgs
         }
 
-putEntryPoint :: SPIRV.ExecutionModel -> Text -> ID -> Map Text ID -> Binary.Put
+putEntryPoint :: SPIRV.ExecutionModel -> ShortText -> ID -> Map ShortText ID -> Binary.Put
 putEntryPoint model modelName entryPointID interface
   = putInstruction Map.empty
       Instruction
@@ -160,19 +159,19 @@ putEntryPoint model modelName entryPointID interface
         , resTy     = Just . MkTyID $ SPIRV.executionModelID model
         , resID     = Just entryPointID
         , args      = Arg modelName
-                    $ toArgs interface -- 'Map Text ID' has the appropriate traversable instance
+                    $ toArgs interface -- 'Map ShortText ID' has the appropriate traversable instance
         }
 
 putEntryPoints
-  :: Map (Text, SPIRV.ExecutionModel) ID
-  -> Map (Text, SPIRV.ExecutionModel) (Map Text ID)
-  -> ExceptT Text Binary.PutM ()
+  :: Map (ShortText, SPIRV.ExecutionModel) ID
+  -> Map (ShortText, SPIRV.ExecutionModel) (Map ShortText ID)
+  -> ExceptT ShortText Binary.PutM ()
 putEntryPoints entryPointIDs
   = traverseWithKey_
       ( \(modelName, model) interface -> do
         entryPointID
           <- note
-              (  "putEntryPoints: " <> Text.pack (show model)
+              (  "putEntryPoints: " <> ShortText.pack (show model)
               <> " entry point named \"" <> modelName
               <> "\" not bound to any ID."
               )
@@ -196,15 +195,15 @@ putModelExecutionModes modelID
       )
 
 putExecutionModes
-  :: Map (Text, SPIRV.ExecutionModel) ID
-  -> Map (Text, SPIRV.ExecutionModel) SPIRV.ExecutionModes
-  -> ExceptT Text Binary.PutM ()
+  :: Map (ShortText, SPIRV.ExecutionModel) ID
+  -> Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
+  -> ExceptT ShortText Binary.PutM ()
 putExecutionModes entryPointIDs
   = traverseWithKey_
       ( \(modelName, model) executionModes -> do
         entryPointID
           <- note
-              (  "putExecutionModes: " <> Text.pack (show model)
+              (  "putExecutionModes: " <> ShortText.pack (show model)
               <> " entry point named \"" <> modelName
               <> "\" not bound to any ID."
               )
@@ -212,7 +211,7 @@ putExecutionModes entryPointIDs
         lift ( putModelExecutionModes entryPointID executionModes )
       )
 
-putKnownStringLits :: Map Text ID -> Binary.Put
+putKnownStringLits :: Map ShortText ID -> Binary.Put
 putKnownStringLits
   = traverseWithKey_
       ( \ lit ident -> putInstruction Map.empty
@@ -224,7 +223,7 @@ putKnownStringLits
           }
       )
 
-putBindingAnnotations :: Map Text ID -> Binary.Put
+putBindingAnnotations :: Map ShortText ID -> Binary.Put
 putBindingAnnotations
   = traverseWithKey_
       ( \ name ident -> putInstruction Map.empty
@@ -237,7 +236,7 @@ putBindingAnnotations
           }
       )
 
-putNames :: Set ( ID, Either Text (Word32, Text) ) -> Binary.Put
+putNames :: Set ( ID, Either ShortText (Word32, ShortText) ) -> Binary.Put
 putNames = traverse_
   ( \case
 
@@ -325,14 +324,14 @@ putUndefineds = traverse_
   )
 
 putGlobals :: Map SPIRV.PrimTy Instruction
-           -> Map Text (ID, SPIRV.PointerTy)
-           -> ExceptT Text Binary.PutM ()
+           -> Map ShortText (ID, SPIRV.PointerTy)
+           -> ExceptT ShortText Binary.PutM ()
 putGlobals typeIDs
   = traverse_
       ( \(globalID, ptrTy@(SPIRV.PointerTy storage _)) ->
         do  ptrTyID :: TyID
               <- note
-                   ( "putGlobals: pointer type " <> Text.pack (show ptrTy) <> " not bound to any ID." )
+                   ( "putGlobals: pointer type " <> ShortText.pack (show ptrTy) <> " not bound to any ID." )
                    ( coerce . resID =<< Map.lookup (SPIRV.pointerTy ptrTy) typeIDs )
             lift $ putInstruction Map.empty
                   Instruction

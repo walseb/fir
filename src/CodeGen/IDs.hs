@@ -3,7 +3,6 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
@@ -42,9 +41,9 @@ import Control.Monad.State
 import Control.Monad.Reader
   ( MonadReader )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import CodeGen.Instruction
@@ -97,8 +96,6 @@ import qualified SPIRV.Capability as SPIRV
   ( primTyCapabilities )
 import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.Extension  as SPIRV
-import qualified SPIRV.Image      as SPIRV
-  ( Image(..) )
 import qualified SPIRV.Image      as SPIRV.Image
 import qualified SPIRV.Operation  as SPIRV.Op
 import qualified SPIRV.PrimTy     as SPIRV
@@ -123,9 +120,9 @@ extInstID extInst =
 -- get an ID for a given type ( result ID of corresponding type constructor instruction )
 -- ( if one is known use it, otherwise recursively create fresh IDs for necessary types )
 typeID :: forall m.
-          ( MonadState CGState m
-          , MonadFresh ID      m
-          , MonadError Text    m -- only needed for the constant instruction call for array length
+          ( MonadState CGState   m
+          , MonadFresh ID        m
+          , MonadError ShortText m -- only needed for the constant instruction call for array length
           )
        => SPIRV.PrimTy -> m TyID
 typeID ty = TyID <$>
@@ -197,7 +194,7 @@ typeID ty = TyID <$>
                 ( traverse (fmap tyID . typeID . (\(_,y,_) -> y)) as ) -- return IDs of struct member types
                 ( \eltIDs structTyID ->
                   do
-                    let labelledElts :: [ (Maybe Text, Word32, SPIRV.Decorations) ]
+                    let labelledElts :: [ (Maybe ShortText, Word32, SPIRV.Decorations) ]
                         labelledElts =
                           ( zipWith
                             ( \i (k, _, eltDecs) -> (k, i, eltDecs) )
@@ -274,9 +271,9 @@ typeID ty = TyID <$>
 -- get the ID for a given constant, or create one if none exist
 -- this is the crucial location where we make use of singletons to perform type-case
 constID :: forall m a.
-           ( MonadState CGState m
-           , MonadFresh ID      m
-           , MonadError Text    m
+           ( MonadState CGState   m
+           , MonadFresh ID        m
+           , MonadError ShortText m
            , PrimTy a
            )
         => a -> m ID
@@ -379,11 +376,11 @@ infixl 6 <<?>
 (<<?>) = coerce ( (<>) @(Maybe (First x)) )
 
 bindingID :: forall m.
-             ( MonadState  CGState    m
-             , MonadReader CGContext  m
-             , MonadError  Text       m
-             , MonadFresh  ID         m
-             ) => Text -> m (ID, SPIRV.PrimTy)
+             ( MonadState  CGState   m
+             , MonadReader CGContext m
+             , MonadError  ShortText m
+             , MonadFresh  ID        m
+             ) => ShortText -> m (ID, SPIRV.PrimTy)
 bindingID varName
   = do  ctxt <- use _functionContext
 
@@ -408,9 +405,9 @@ bindingID varName
                 ( "codeGen: no binding with name " <> varName )
                 ( mbLoc <<?> mbKnown <<?> mbGlob )
 
-undefID :: ( MonadState CGState m
-           , MonadError Text    m
-           , MonadFresh ID      m
+undefID :: ( MonadState CGState   m
+           , MonadError ShortText m
+           , MonadFresh ID        m
            )
         => SPIRV.PrimTy -> m ID
 undefID ty =
@@ -425,11 +422,11 @@ undefID ty =
 --
 -- Automatically switches on this built-in in the interface of the relevant entry-point,
 -- by using the '_builtin' lens.
-builtinID :: ( MonadState CGState m
-             , MonadError Text    m
-             , MonadFresh ID      m
+builtinID :: ( MonadState CGState   m
+             , MonadError ShortText m
+             , MonadFresh ID        m
              )
-          => Text -> SPIRV.ExecutionInfo Word32 model -> Text -> SPIRV.PointerTy -> m ID
+          => ShortText -> SPIRV.ExecutionInfo Word32 model -> ShortText -> SPIRV.PointerTy -> m ID
 builtinID modelName modelInfo builtinName ptrTy =
   tryToUse ( _builtin modelName modelInfo builtinName )
     id
@@ -445,10 +442,10 @@ builtinID modelName modelInfo builtinName ptrTy =
 -- to the relevant stage interface if necessary.
 globalID :: ( MonadState  CGState   m
             , MonadReader CGContext m
-            , MonadError  Text      m
+            , MonadError  ShortText m
             , MonadFresh  ID        m
             )
-         => Text -> Maybe (Text, SPIRV.ExecutionModel) -> m ( Maybe (ID, SPIRV.PointerTy) )
+         => ShortText -> Maybe (ShortText, SPIRV.ExecutionModel) -> m ( Maybe (ID, SPIRV.PointerTy) )
 globalID globalName mbModel
   = do mbGlobID <- view ( _userGlobal globalName )
        case mbGlobID of
@@ -486,7 +483,7 @@ globalID globalName mbModel
                 pure ( Just (ident, laidOutPtrTy) )
 
 stringLitID :: (MonadState CGState m, MonadFresh ID m)
-          => Text -> m ID
+            => ShortText -> m ID
 stringLitID literal =
   tryToUse ( _knownStringLit literal )
     id

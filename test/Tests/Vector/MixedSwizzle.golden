@@ -1,57 +1,38 @@
 
 test\Tests\Vector\MixedSwizzle.hs:35:12: error:
-    • Cannot mix and match different swizzle sets.
+    * Cannot mix and match different swizzle sets.
       Swizzle set of "g" is "rgba".
       Swizzle set of "x" is "xyzw".
-    • In a stmt of a 'do' block:
+    * In a stmt of a 'do' block:
         col <- use @(Name "in_col" :.: Swizzle "rgxb")
-      In the third argument of ‘entryPoint’, namely
-        ‘do col <- use @(Name "in_col" :.: Swizzle "rgxb")
-            put @"out_col" col’
-      In the second argument of ‘($)’, namely
-        ‘entryPoint
+      In the third argument of `entryPoint', namely
+        `do col <- use @(Name "in_col" :.: Swizzle "rgxb")
+            put @"out_col" col'
+      In the second argument of `($)', namely
+        `entryPoint
            @"main"
            @Fragment
            do col <- use @(Name "in_col" :.: Swizzle "rgxb")
-              put @"out_col" col’
+              put @"out_col" col'
    |
 35 |     col <- use @(Name "in_col" :.: Swizzle "rgxb") -- cannot mix "rgba" and "xyzw"
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 test\Tests\Vector\MixedSwizzle.hs:35:12: error:
-    • Cannot mix and match different swizzle sets.
+    * Cannot mix and match different swizzle sets.
       Swizzle set of "g" is "rgba".
       Swizzle set of "x" is "xyzw".
-    • In a stmt of a 'do' block:
+    * In a stmt of a 'do' block:
         col <- use @(Name "in_col" :.: Swizzle "rgxb")
-      In the third argument of ‘entryPoint’, namely
-        ‘do col <- use @(Name "in_col" :.: Swizzle "rgxb")
-            put @"out_col" col’
-      In the second argument of ‘($)’, namely
-        ‘entryPoint
+      In the third argument of `entryPoint', namely
+        `do col <- use @(Name "in_col" :.: Swizzle "rgxb")
+            put @"out_col" col'
+      In the second argument of `($)', namely
+        `entryPoint
            @"main"
            @Fragment
            do col <- use @(Name "in_col" :.: Swizzle "rgxb")
-              put @"out_col" col’
-   |
-35 |     col <- use @(Name "in_col" :.: Swizzle "rgxb") -- cannot mix "rgba" and "xyzw"
-   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-test\Tests\Vector\MixedSwizzle.hs:35:12: error:
-    • Cannot mix and match different swizzle sets.
-      Swizzle set of "g" is "rgba".
-      Swizzle set of "x" is "xyzw".
-    • In a stmt of a 'do' block:
-        col <- use @(Name "in_col" :.: Swizzle "rgxb")
-      In the third argument of ‘entryPoint’, namely
-        ‘do col <- use @(Name "in_col" :.: Swizzle "rgxb")
-            put @"out_col" col’
-      In the second argument of ‘($)’, namely
-        ‘entryPoint
-           @"main"
-           @Fragment
-           do col <- use @(Name "in_col" :.: Swizzle "rgxb")
-              put @"out_col" col’
+              put @"out_col" col'
    |
 35 |     col <- use @(Name "in_col" :.: Swizzle "rgxb") -- cannot mix "rgba" and "xyzw"
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

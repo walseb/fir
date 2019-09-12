@@ -21,7 +21,7 @@ import Control.Monad
 import Control.Monad.IO.Class
   ( MonadIO, liftIO )
 import Data.Bits
-  ( (.&.) )
+  ( Bits((.&.)) )
 import Data.Foldable
   ( for_ )
 import Data.List
@@ -57,16 +57,28 @@ import Vulkan.Monad
 
 -----------------------------------------------------------------------------------------------------
 
-createVulkanInstance :: MonadManaged m => [ Vulkan.CString ] -> m Vulkan.VkInstance
-createVulkanInstance neededExtensions =
+createVulkanInstance :: MonadManaged m => String -> [ Vulkan.CString ] -> m Vulkan.VkInstance
+createVulkanInstance appName neededExtensions =
   let
+    appInfo :: Vulkan.VkApplicationInfo
+    appInfo =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_APPLICATION_INFO
+        &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
+        &* Vulkan.setStrRef @"pApplicationName" appName
+        &* Vulkan.set @"applicationVersion" 0
+        &* Vulkan.setStrRef @"pEngineName" "fir"
+        &* Vulkan.set @"engineVersion" 0
+        &* Vulkan.set @"apiVersion" Vulkan.VK_API_VERSION_1_1
+        )
+
     createInfo :: Vulkan.VkInstanceCreateInfo
     createInfo =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
         &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"pApplicationInfo" Vulkan.VK_NULL_HANDLE
+        &* Vulkan.setVkRef @"pApplicationInfo" appInfo
         &* Vulkan.setStrListCountAndRef
               @"enabledLayerCount" @"ppEnabledLayerNames"
               [ "VK_LAYER_LUNARG_standard_validation" ]
@@ -98,7 +110,7 @@ createPhysicalDevice vk = liftIO do
       pure ( physicalDevice, Vulkan.getField @"deviceType" properties )
 
   case filter (isSuitableDeviceType . snd) typedDevices of
-    [] -> fail "Could not find a suitable physical device"
+    [] -> error "Could not find a suitable physical device"
     ( ( d, _deviceType ) : _ds )
       -> pure d
 
@@ -137,7 +149,7 @@ findQueueFamilyIndex physicalDevice requiredFlags = liftIO do
       pure i
 
   case capableFamilyIndices of
-    []        -> fail "No queue family has sufficient capabilities"
+    []        -> error "No queue family has sufficient capabilities"
     ( i : _ ) -> pure i
 
 
@@ -230,7 +242,7 @@ chooseSwapchainFormat
           )
 
       case sortOn ( Down . score ) surfaceFormats of
-        [] -> fail "No formats found."
+        [] -> error "No formats found."
         ( best : _ )
           | Vulkan.VK_FORMAT_UNDEFINED <- Vulkan.getField @"format" best
             -> pure preferredFormat
@@ -821,7 +833,7 @@ assertSurfacePresentable physicalDevice queueFamilyIndex surface = liftIO do
           >=> throwVkResult
       )
 
-  unless ( bool == Vulkan.VK_TRUE ) ( fail "Unsupported surface" )
+  unless ( bool == Vulkan.VK_TRUE ) ( error "Unsupported surface" )
 
 
 submitCommandBuffer

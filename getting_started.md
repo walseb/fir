@@ -1,6 +1,9 @@
 # Getting started with FIR
 
 * [Installation instructions](#installation)
+  - [Installing the library](#library)
+  - [Installing the documentation](#docs)
+  - [Installing the built-in examples](#examples)
 * [Writing a simple shader](#simple-shader)
 * [Compiling shaders](#compiling)
 * [Inspecting the AST](#ast)
@@ -10,9 +13,11 @@
 <a name="installation"></a>
 ## Installation instructions
 
+<a name="library"></a>
+### Installing the library
 
 The library itself only has Haskell dependencies, so can easily be installed using a Haskell compiler and package manager:
- * FIR requires [GHC](https://www.haskell.org/ghc/), version 8.6 or greater. See the [GHC downloads page](https://www.haskell.org/ghc/download.html).
+ * FIR requires [GHC](https://www.haskell.org/ghc/), version 8.8 or greater. See the [GHC downloads page](https://www.haskell.org/ghc/download.html).
  * For the package manager, we'll use [cabal](https://www.haskell.org/cabal/download.html), version 3.0 or greater, but other package managers will work too.
 
 To use FIR in a project, with the GHC and cabal executables added to PATH, we can create a new cabal project using `cabal init`. We then specify a dependency on FIR by adding `fir` to the `build-depends` field of the generated `projectName.cabal` file.
@@ -37,7 +42,28 @@ packages: .
 After running `cabal update` to fetch the latest Haskell package list, run `cabal build` to build the project.
 
 
-This is all that's needed in order to compile shaders to SPIR-V. These SPIR-V files can then be used in any Vulkan program, in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
+This completes the required setup; you should now be ready to write shaders and compile them to SPIR-V by importing the library.
+A basic example of a shader written using this library is given [below](#simple-shader). This example [will compile to a SPIR-V file](#compiling), which can then be used in any Vulkan program, in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
+
+
+<a name="docs"></a>
+### Installing the documentation
+
+To build the documentation, we use Haddock. The `haddock` executable should be in the PATH, as it is bundled with GHC. Start building the documentation by running
+
+```
+> cabal haddock --haddock-options="--show-all --hyperlinked-source" --enable-documentation
+```
+
+The flag `--show-all` builds the documentation for all modules in FIR, including the internal ones.
+The flag `--hyperlinked-source` allows the source code to be browsed through haddock, including hyperlinking identifiers whenever possible.
+The flag `--enable-documentation` builds the documentation for all the dependencies.
+
+Upon completion, the documentation can be found in `fir/dist-newstyle/build/{arch}/{ghc-version}/{fir-version}/doc/html/fir/`; start browsing with `index.html`.
+
+
+<a name="examples"></a>
+### Installing the built-in examples
 
 Some [simple examples](fir-examples/readme.md) are included, which use the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings.
 Refer to the examples page for further information about the examples, including installation instructions.
@@ -45,9 +71,9 @@ Refer to the examples page for further information about the examples, including
 
 <a name="simple-shader"></a>
 ## Writing a simple shader
-To write a shader using FIR, begin by importing the module `FIR`.
-Additional functionality is provided by the modules `FIR.Linear` (vectors and matrices),
-`FIR.Quaternion` (quaternions) and `FIR.Labels` (optional imperative-like syntax using *OverloadedLabels*).
+To write a shader using FIR, create a new module which imports `FIR`.
+Additional functionality is provided by the modules `Math.Linear` (vectors and matrices),
+`Math.Quaternion` (quaternions) and `FIR.Labels` (optional imperative-like syntax using *OverloadedLabels*).
 
 The important types are:
 * __`AST a`__: code for a pure value of type `a`, represented internally as an abstract syntax tree.
@@ -70,6 +96,9 @@ More general operations such as `use` and `assign` are also available, which tak
 To illustrate, consider the following basic vertex shader (required language extensions omitted):
 
 ```haskell
+import FIR
+import Math.Linear
+
 type VertexShaderDefs =
   '[ "ubo"    ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
                       ( Struct '[ "mvp" ':->  M 4 4 Float ] )
@@ -91,20 +120,20 @@ The type-level map `VertexShaderDefs` provides the interface for the vertex shad
 
 To compile a shader, use the `compile` function:
 ```haskell
-compile :: FilePath -> [CompilerFlag] -> Program defs a -> IO ( Either Text () )
+compile :: FilePath -> [CompilerFlag] -> Program defs a -> IO ( Either ShortText () )
 ```
 To compile the above vertex shader, we can run the function
 ```haskell
-compileVertexShader :: IO ( Either Text () )
+compileVertexShader :: IO ( Either ShortText () )
 compileVertexShader = compile "vert.spv" [] vertexShader
 ```
 Sometimes it is more convenient to have the shaders be compiled when we compile our graphics application, as opposed to when we run it. To that end, a simple Template Haskell function is also provided:
 ```haskell
-runCompilationsTH :: [ ( Text, IO (Either Text ()) ) ] -> Q Exp
+runCompilationsTH :: [ ( ShortText, IO (Either ShortText ()) ) ] -> Q Exp
 ```
 To compile the above vertexShader at compile-time it suffices to perform a TH splice:
 ```haskell
-shaderCompilationResult :: Either Text ()
+shaderCompilationResult :: Either ShortText ()
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Simple vertex shader", compileVertexShader) ]

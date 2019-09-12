@@ -25,7 +25,7 @@ import GHC.TypeNats
 
 -- fir
 import Control.Monad.Indexed
-  ( (:=), pure, return, (>>), (>>=) )
+  ( (:=), pure, (>>), (>>=) )
 import Control.Type.Optic
   ( Optic, Name, AnIndex, (:.:) )
 import Data.Type.Known

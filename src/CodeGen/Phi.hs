@@ -1,4 +1,3 @@
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module CodeGen.Phi
@@ -19,9 +18,9 @@ import qualified Data.Map.Merge.Strict as Map
 import Control.Lens
   ( assign )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 
 -- fir
@@ -73,7 +72,10 @@ phiInstruction (v, ty) bdAndBlockIDs
           , args      = toArgs bdAndBlockIDs
           }
 
-phiInstructions :: ( Text -> Bool ) -> [ ID ] -> [ Map Text (ID, SPIRV.PrimTy) ] -> CGMonad (Map Text ID)
+phiInstructions :: ( ShortText -> Bool )
+                -> [ ID ]
+                -> [ Map ShortText (ID, SPIRV.PrimTy) ]
+                -> CGMonad (Map ShortText ID)
 phiInstructions isRelevant blocks bindings 
   = Map.traverseMaybeWithKey
       ( \ name idsAndTys ->

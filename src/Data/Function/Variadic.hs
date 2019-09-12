@@ -21,6 +21,8 @@ import Numeric.Half
   ( Half )
 
 -- fir
+import {-# SOURCE #-} Data.Product
+  ( HList )
 import {-# SOURCE #-} FIR.AST
   ( AST )
 import FIR.Prim.Array
@@ -75,3 +77,11 @@ type family ListVariadic (as :: [Type]) (b :: Type) = (r :: Type) | r -> as b wh
   ListVariadic '[] (Array n a) = Array n a
   ListVariadic '[] (RuntimeArray a) = RuntimeArray a
   ListVariadic '[] (AST a) = AST a
+  ListVariadic '[] (a1,a2) = (a1,a2)
+  ListVariadic '[] (a1,a2,a3) = (a1,a2,a3)
+  ListVariadic '[] (a1,a2,a3,a4) = (a1,a2,a3,a4)
+  ListVariadic '[] (a1,a2,a3,a4,a5) = (a1,a2,a3,a4,a5)
+  ListVariadic '[] (a1,a2,a3,a4,a5,a6) = (a1,a2,a3,a4,a5,a6)
+  ListVariadic '[] (a1,a2,a3,a4,a5,a6,a7) = (a1,a2,a3,a4,a5,a6,a7)
+  ListVariadic '[] (a1,a2,a3,a4,a5,a6,a7,a8) = (a1,a2,a3,a4,a5,a6,a7,a8)
+  ListVariadic '[] (HList as) = HList as

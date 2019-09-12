@@ -1,5 +1,14 @@
 {-# LANGUAGE PatternSynonyms #-}
 
+{-|
+Module: SPIRV.Operation
+
+Raw SPIR-V OpCodes. Used only at the value-level.
+
+See "SPIRV.PrimOp" which categorises operations.
+
+-}
+
 module SPIRV.Operation where
 
 -- base

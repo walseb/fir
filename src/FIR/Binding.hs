@@ -6,6 +6,12 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
+{-|
+Module: FIR.Binding
+
+Keeping track of variable and function bindings at the type-level.
+-}
+
 module FIR.Binding
   ( Permission(Read,Write), Permissions
   , R, W, RW
@@ -49,6 +55,9 @@ type R  = '[ 'Read  ]
 type W  = '[ 'Write ]
 type RW = '[ 'Read, 'Write ]
 
+-- | A binding consists of either:
+--   * a variable of given type and permissions (readable/writable), or
+--   * a function, with (named) arguments of given types, and given return type.
 data Binding where
   Variable   :: Permissions -> Type -> Binding
   Function   :: [Symbol :-> Binding] -> Type -> Binding

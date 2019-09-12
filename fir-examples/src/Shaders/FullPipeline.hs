@@ -5,7 +5,6 @@
 {-# LANGUAGE NamedWildCards         #-}
 {-# LANGUAGE OverloadedLabels       #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -18,9 +17,9 @@
 
 module Shaders.FullPipeline where
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import FIR
@@ -91,13 +90,13 @@ tessellationControl = shader do
 -- tessellation evaluation
 
 type TessellationEvaluationDefs =
-  '[ "in_cols" ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
-   , "out_col" ':-> Output     '[ Location 0 ] (V 4 Float)
-   , "ubo"          ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
-                          ( Struct '[ "mvp"    ':-> M 4 4 Float
-                                    , "origin" ':-> V 4 Float
-                                    ]
-                          )
+  '[ "in_cols" ':-> Input   '[ Location 0 ] (Array 3 (V 4 Float))
+   , "out_col" ':-> Output  '[ Location 0 ] (V 4 Float)
+   , "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+                     ( Struct '[ "mvp"    ':-> M 4 4 Float
+                               , "origin" ':-> V 4 Float
+                               ]
+                     )
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
@@ -115,7 +114,8 @@ tessellationEvaluation = shader do
   pos1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
   pos2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
   orig <- use @(Name "ubo" :.: Name "origin")
-  let t = 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
+
+  t <- def @"t" @R $ 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
   put @"gl_Position"
     ( t *^ orig ^+^ (1-t) *^ ( u *^ pos0 ^+^ v *^ pos1 ^+^ w *^ pos2 ) )
 
@@ -124,12 +124,13 @@ tessellationEvaluation = shader do
 -- geometry shader
 
 type GeometryDefs =
-  '[ "in_color"  ':-> Input      '[ Location 0 ] ( Array 3 (V 4 Float ) )
-   , "out_color" ':-> Output     '[ Location 0 ] ( V 4 Float )
-   , "normal"    ':-> Output     '[ Location 1 ] ( V 3 Float )
+  '[ "in_color"  ':-> Input  '[ Location 0 ] ( Array 3 (V 4 Float ) )
+   , "out_color" ':-> Output '[ Location 0 ] ( V 4 Float )
+   , "normal"    ':-> Output '[ Location 1 ] ( V 3 Float )
    , "main"      ':-> EntryPoint
                          '[ Triangles
                           , OutputTriangleStrip, OutputVertices 3
+                          , Invocations 1
                           ]
                           Geometry
    ]
@@ -142,8 +143,8 @@ geometry = shader do
   let
     Vec4 u1x u1y u1z _ = v1 ^-^ v0
     Vec4 u2x u2y u2z _ = v2 ^-^ v0
-    normal = normalise ( Vec3 u1x u1y u1z `cross` Vec3 u2x u2y u2z )
-  color <- get @"in_color"
+  normal <- def @"normal'" @R $ normalise ( Vec3 u1x u1y u1z `cross` Vec3 u2x u2y u2z )
+  color  <- get @"in_color"
 
   put @"normal" normal
   put @"gl_Position" v0
@@ -190,27 +191,27 @@ tesePath = "shaders/fullpipeline_tese.spv"
 geomPath = "shaders/fullpipeline_geom.spv"
 fragPath = "shaders/fullpipeline_frag.spv"
 
-compileVertexShader :: IO ( Either Text () )
+compileVertexShader :: IO ( Either ShortText () )
 compileVertexShader = compile vertPath [] vertex
 
-compileTessellationControlShader :: IO ( Either Text () )
+compileTessellationControlShader :: IO ( Either ShortText () )
 compileTessellationControlShader = compile tescPath [] tessellationControl
 
-compileTessellationEvaluationShader :: IO ( Either Text () )
+compileTessellationEvaluationShader :: IO ( Either ShortText () )
 compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
 
-compileGeometryShader :: IO ( Either Text () )
+compileGeometryShader :: IO ( Either ShortText () )
 compileGeometryShader = compile geomPath [] geometry
 
-compileFragmentShader :: IO ( Either Text () )
+compileFragmentShader :: IO ( Either ShortText () )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = withStructInput @VertexInput @(PatchesOfSize 3)
-  $  StartPipeline
-  :> (vertex                , vertPath)
-  :> (tessellationControl   , tescPath)
-  :> (tessellationEvaluation, tesePath)
-  :> (geometry              , geomPath)
-  :> (fragment              , fragPath)
+  $    StartPipeline
+  :>-> (vertex                , vertPath)
+  :>-> (tessellationControl   , tescPath)
+  :>-> (tessellationEvaluation, tesePath)
+  :>-> (geometry              , geomPath)
+  :>-> (fragment              , fragPath)

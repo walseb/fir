@@ -31,7 +31,7 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
-  ( Poke(..), Layout(Base, Extended, Locations), pokeArray )
+  ( Poke(..), Layout(Base, Extended, Locations), pokeArray, roundUp )
 
 -- fir-examples
 import Vulkan.Memory
@@ -106,13 +106,16 @@ createBuffer
   -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
 createBuffer device physicalDevice usage poking sizeInBytes =
   let
+
+    roundedSize = sizeInBytes `roundUp` 64 -- nonCoherentAtomSize
+
     createInfo :: Vulkan.VkBufferCreateInfo
     createInfo =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"size" sizeInBytes
+        &* Vulkan.set @"size"  roundedSize
         &* Vulkan.set @"usage" usage
         &* Vulkan.set @"sharingMode" Vulkan.VK_SHARING_MODE_EXCLUSIVE
         &* Vulkan.set @"queueFamilyIndexCount" 0
@@ -143,7 +146,7 @@ createBuffer device physicalDevice usage poking sizeInBytes =
 
           memPtr :: Vulkan.Ptr a
              <- coerce <$> allocaAndPeek
-                  ( Vulkan.vkMapMemory device memory 0 sizeInBytes Vulkan.VK_ZERO_FLAGS
+                  ( Vulkan.vkMapMemory device memory 0 roundedSize Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                   )
 

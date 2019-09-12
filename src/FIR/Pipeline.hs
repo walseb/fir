@@ -161,27 +161,27 @@ data ShaderStage
 
 data ShaderPipelineWithInfo (info :: PipelineInfo) where
   StartPipeline :: ShaderPipelineWithInfo TopOfPipe
-  (:>) :: ( Known SPIRV.Shader shader )
-       => ShaderPipelineWithInfo info
-       -> (ShaderStage name shader defs endState, String)
-       -> ShaderPipelineWithInfo
-            ( info `Into`
-              ( 'EntryPointInfo
-                    name
-                    ( GetExecutionInfo shader name endState )
-                    '( VariablesWithStorage SPIRV.Input  defs
-                     ,  VariablesWithStorage SPIRV.Output defs
-                     )
-                    'Defined
+  (:>->) :: ( Known SPIRV.Shader shader )
+         => ShaderPipelineWithInfo info
+         -> (ShaderStage name shader defs endState, String)
+         -> ShaderPipelineWithInfo
+              ( info `Into`
+                ( 'EntryPointInfo
+                      name
+                      ( GetExecutionInfo shader name endState )
+                      '( VariablesWithStorage SPIRV.Input  defs
+                       ,  VariablesWithStorage SPIRV.Output defs
+                       )
+                      'Defined
+                )
               )
-            )
 
 pipelineInfoShaders :: ShaderPipelineWithInfo info -> [(SPIRV.Shader, String)]
 pipelineInfoShaders = reverse . go []
   where
     go :: [(SPIRV.Shader, String)] -> ShaderPipelineWithInfo info2 -> [(SPIRV.Shader, String)]
     go paths StartPipeline = paths
-    go paths ( info :> ( (_ :: ShaderStage name shader defs endState) , path) )
+    go paths ( info :>-> ( (_ :: ShaderStage name shader defs endState) , path) )
       = go ( (knownValue @shader, path) : paths) info
 
 type BindingStrides = [ Nat :-> Nat ]
@@ -1108,15 +1108,15 @@ type family SuccNbComponentsIfMatching
     loc
     'False
       = TypeError
-      (    'Text ( "Mismatched components at " `AppendSymbol` ShowLocation loc `AppendSymbol` ":" )
-      :$$: 'Text "  - object of type " :<>: ShowType baseTy
-      :$$: 'Text ( "    based at " `AppendSymbol` ShowLocation baseLoc `AppendSymbol` ":" )
-      :$$: 'Text "    uses components of type " :<>: ShowType baseScalar :<>: Text ","
-      :$$: 'Text "  - object of type " :<>: ShowType otherTy
-      :$$: 'Text ( "    based at " `AppendSymbol` ShowLocation otherBase `AppendSymbol` ":" )
-      :$$: 'Text "    uses components of type " :<>: ShowType otherScalar :<>: Text "."
-      :$$: 'Text ""
-      :$$: 'Text "Note that all components within a given location must use the same component type."
+      (    Text ( "Mismatched components at " `AppendSymbol` ShowLocation loc `AppendSymbol` ":" )
+      :$$: Text "  - object of type " :<>: ShowType baseTy
+      :$$: Text ( "    based at " `AppendSymbol` ShowLocation baseLoc `AppendSymbol` ":" )
+      :$$: Text "    uses components of type " :<>: ShowType baseScalar :<>: Text ","
+      :$$: Text "  - object of type " :<>: ShowType otherTy
+      :$$: Text ( "    based at " `AppendSymbol` ShowLocation otherBase `AppendSymbol` ":" )
+      :$$: Text "    uses components of type " :<>: ShowType otherScalar :<>: Text "."
+      :$$: Text ""
+      :$$: Text "Note that all components within a given location must use the same component type."
       )
   SuccNbComponentsIfMatching
     _ _ _ nbComps

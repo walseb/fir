@@ -2,7 +2,6 @@
 
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE PackageImports         #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -40,9 +39,9 @@ import Data.Map
   ( Map )
 import qualified Data.Map as Map
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import Control.Monad.Indexed
@@ -96,7 +95,7 @@ data Program
 
 programGlobals :: forall bds j ctx funs eps a.
                   KnownInterface bds
-               => CodensityProgram ('ASTState bds ctx funs eps) j a -> Map Text SPIRV.PrimTy
+               => CodensityProgram ('ASTState bds ctx funs eps) j a -> Map ShortText SPIRV.PrimTy
 programGlobals _ = Map.fromList
                  . map ( second ( \ (ty, storage) -> SPIRV.Pointer storage ty ) )
                  $ knownInterface @bds

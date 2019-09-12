@@ -10,6 +10,16 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Math.Logic.Class
+
+This module overloads logical functionalities so that they can be used to manipulate ASTs:
+
+  * overloaded boolen operations such as @&&@, @||@, @xor@...
+  * overloaded if-then-else for use with @RebindableSyntax@,
+  * alternative @Eq@ and @Ord@ typeclasses which allow overloading with ASTs.
+-}
+
 module Math.Logic.Class where
 
 -- base

@@ -1,4 +1,3 @@
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
@@ -34,9 +33,9 @@ import Control.Monad.Reader
 import Control.Monad.State
   ( get, put )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import CodeGen.Binary
@@ -85,12 +84,12 @@ import qualified SPIRV.Stage     as SPIRV
 ----------------------------------
 -- dealing with function context
 
-inFunctionContext :: Text -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
+inFunctionContext :: ShortText -> [(ShortText, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
 inFunctionContext functionName as
   = inContext ( InFunction functionName as ) as
 
 inEntryPointContext
-  :: Text
+  :: ShortText
   -> SPIRV.ExecutionInfo Word32 model
   -> Maybe VLInterface
   -> CGMonad a
@@ -98,7 +97,7 @@ inEntryPointContext
 inEntryPointContext modelName modelInfo mbIface
   = inContext ( InEntryPoint modelName modelInfo mbIface ) []
 
-inContext :: forall a. VLFunctionContext -> [(Text, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
+inContext :: forall a. VLFunctionContext -> [(ShortText, (SPIRV.PrimTy, Permissions))] -> CGMonad a -> CGMonad a
 inContext context as body
   = do
       outsideBindings <- use _localBindings
@@ -110,7 +109,7 @@ inContext context as body
       -- and then declare these variables first before the rest of the body
       cgContext <- ask
       cgState   <- get
-      let bodyGenOutput :: Either Text (a, CGState, ByteString)
+      let bodyGenOutput :: Either ShortText (a, CGState, ByteString)
           bodyGenOutput = runCGMonad cgContext cgState body
       (a, bodyState, bodyASM)
         <- case bodyGenOutput of
@@ -150,9 +149,9 @@ declareFunctionCall res func argIDs
            }
        pure v
 
-declareFunction :: Text
+declareFunction :: ShortText
                 -> SPIRV.FunctionControl
-                -> [(Text, (SPIRV.PrimTy, Permissions))]
+                -> [(ShortText, (SPIRV.PrimTy, Permissions))]
                 -> SPIRV.PrimTy
                 -> CGMonad (ID, SPIRV.PrimTy)
                 -> CGMonad ID
@@ -202,7 +201,7 @@ declareFunction funName control as b body
     funTy = SPIRV.Function ( map (fst . snd) as ) b
 
 
-declareArgument :: Text -> (SPIRV.PrimTy, Permissions) -> CGMonad ID
+declareArgument :: ShortText -> (SPIRV.PrimTy, Permissions) -> CGMonad ID
 declareArgument argName (argTy, _)
   = createIDRec ( _localBinding argName )
      ( ( , argTy) <$> typeID argTy )
@@ -217,7 +216,7 @@ declareArgument argName (argTy, _)
      )
 
 declareEntryPoint
-  :: Text
+  :: ShortText
   -> SPIRV.ExecutionInfo Word32 model
   -> Maybe VLInterface
   -> CGMonad r

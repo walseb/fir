@@ -9,6 +9,21 @@
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 
+{-|
+Module: FIR.Prim.Op
+
+Recall that the AST has a 'FIR.AST.PrimOp' constructor
+of the following type:
+
+>   PrimOp :: ( PrimOp op a, PrimOpConstraint op a )
+>          => Proxy a -> Proxy op -> AST (PrimOpType op a)
+
+This module provides the wrapper type class 'PrimOp' which relates
+the internal SPIR-V operation names (as defined in "SPIRV.PrimOp")
+with their types within the context of the AST.
+
+-}
+
 module FIR.Prim.Op where
 
 -- base

@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports    #-}
 
 module CodeGen.Debug
   ( debug, putSrcInfo )
@@ -25,10 +24,11 @@ import Control.Lens
 import Control.Monad.Reader
   ( MonadReader )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Binary
@@ -56,14 +56,14 @@ import qualified SPIRV.Operation as SPIRV.Op
 debug :: MonadReader CGContext m => m () -> m ()
 debug action = (`when` action) =<< view _debugMode
 
-sourceInfo :: GHC.Stack.CallStack -> Maybe (Text, Word32, Word32)
+sourceInfo :: GHC.Stack.CallStack -> Maybe (ShortText, Word32, Word32)
 sourceInfo GHC.Stack.EmptyCallStack = Nothing
 sourceInfo (GHC.Stack.PushCallStack _ loc stack)
   = case sourceInfo stack of
       Nothing
-        -> Just ( Text.pack    $ GHC.Stack.srcLocFile      loc
-                , fromIntegral $ GHC.Stack.srcLocStartLine loc
-                , fromIntegral $ GHC.Stack.srcLocStartCol  loc
+        -> Just ( ShortText.pack $ GHC.Stack.srcLocFile      loc
+                , fromIntegral   $ GHC.Stack.srcLocStartLine loc
+                , fromIntegral   $ GHC.Stack.srcLocStartCol  loc
                 )
       Just info
         -> Just info

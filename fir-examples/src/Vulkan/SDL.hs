@@ -3,7 +3,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -17,6 +16,8 @@ import Control.Monad
   ( void )
 import Control.Monad.IO.Class
   ( MonadIO, liftIO )
+import Data.String
+  ( fromString )
 import qualified Foreign
 import Foreign.Ptr
   ( castPtr )
@@ -37,9 +38,11 @@ import qualified SDL.Internal.Types as SDL
 import qualified SDL.Raw
 import qualified SDL.Video.Vulkan
 
--- text
-import "text" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( unpack )
 
 -- vector
 import qualified Data.Vector.Storable as Vector
@@ -64,11 +67,11 @@ initializeSDL mouseLocationMode = do
   void ( SDL.setMouseLocationMode mouseLocationMode )
 
 
-createWindow :: MonadManaged m => Text -> m SDL.Window
+createWindow :: MonadManaged m => ShortText -> m SDL.Window
 createWindow title =
   manageBracket
     ( SDL.createWindow
-              title
+              ( fromString ( ShortText.unpack title ) )
               SDL.defaultWindow
                 { SDL.windowGraphicsContext = SDL.VulkanContext
                 , SDL.windowInitialSize = SDL.V2 1920 1080

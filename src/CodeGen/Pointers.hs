@@ -1,8 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -31,10 +29,11 @@ import Control.Monad.Except
 import Control.Lens
   ( use, assign )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Binary
@@ -87,8 +86,8 @@ instance Semigroup Safeness where
   _    <> _ = Unsafe
 
 data Indices
-  = CTInds [Word32]      -- compile-time indices
-  | RTInds Safeness [ID] -- run-time indices
+  = CTInds [Word32] -- compile-time indices
+  | RTInds [ID]     -- run-time indices
   deriving Show
 
 ----------------------------------------------------------------------------
@@ -123,16 +122,15 @@ declareVariable v ptrTy@(SPIRV.PointerTy storage _)
             , args      = Arg storage EndArgs
             }
 
-indicesIDs :: Indices -> CGMonad ( Safeness, [ID] )
-indicesIDs (CTInds ws)
-  = ( Safe, ) <$> traverse constID ws
-indicesIDs (RTInds safe is) = pure ( safe, is )
+indicesIDs :: Indices -> CGMonad [ID]
+indicesIDs (CTInds ws) = traverse constID ws
+indicesIDs (RTInds is) = pure is
 
 -- create a pointer into a composite object with a list of successive indices
-accessChain :: (ID, SPIRV.PointerTy) -> Indices -> CGMonad (ID, SPIRV.PointerTy)
-accessChain (basePtrID, SPIRV.PointerTy storage baseTy) indices
+accessChain :: (ID, SPIRV.PointerTy) -> Safeness -> Indices -> CGMonad (ID, SPIRV.PointerTy)
+accessChain (basePtrID, SPIRV.PointerTy storage baseTy) safe indices
   = do
-      (safe, is) <- indicesIDs indices
+      is <- indicesIDs indices
       -- We need to compute the accessee type from the pointer,
       -- because creating it from scratch using typeID risks creating
       -- an incorrectly decorated object.
@@ -140,8 +138,8 @@ accessChain (basePtrID, SPIRV.PointerTy storage baseTy) indices
       -- even though they appear identical on the Haskell side.)
       eltTy <-
         note ( "'accessChain': could not compute accessee type.\n\
-               \base: " <> Text.pack (show baseTy) <> "\n\
-               \indices: " <> Text.pack (show indices) <> "."
+               \base: " <> ShortText.pack (show baseTy) <> "\n\
+               \indices: " <> ShortText.pack (show indices) <> "."
              )
           =<< ( flip accessedTy baseTy <$> reverseLookupIndices indices )
       let opAccessChain
@@ -161,10 +159,9 @@ accessChain (basePtrID, SPIRV.PointerTy storage baseTy) indices
           }
       pure (v, accessPtrTy)
 
-
 reverseLookupIndices :: Indices -> CGMonad [ Maybe Word32 ]
-reverseLookupIndices (CTInds   is) = pure (map Just is)
-reverseLookupIndices (RTInds _ is) = traverse reverseConstantLookup is
+reverseLookupIndices (CTInds is) = pure (map Just is)
+reverseLookupIndices (RTInds is) = traverse reverseConstantLookup is
 
 reverseConstantLookup :: ID -> CGMonad (Maybe Word32)
 reverseConstantLookup c = do
@@ -189,7 +186,7 @@ reverseConstantLookup c = do
 ----------------------------------------------------------------------------
 -- load/store through pointers
 
-load :: (Text, ID) -> SPIRV.PointerTy -> CGMonad (ID, SPIRV.PrimTy)
+load :: (ShortText, ID) -> SPIRV.PointerTy -> CGMonad (ID, SPIRV.PrimTy)
 load (loadeeName, loadeeID) (SPIRV.PointerTy storage ty)
   = do
       context <- use _functionContext
@@ -217,7 +214,7 @@ loadInstruction ty loadeeID
             }
         pure (v, ty)
 
-store :: (Text, ID) -> ID -> SPIRV.PointerTy -> CGMonad ()
+store :: (ShortText, ID) -> ID -> SPIRV.PointerTy -> CGMonad ()
 store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
   = do
       context <- use _functionContext

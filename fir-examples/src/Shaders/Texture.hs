@@ -1,26 +1,25 @@
-{-# LANGUAGE BlockArguments         #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE NamedWildCards         #-}
-{-# LANGUAGE OverloadedLabels       #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
-{-# LANGUAGE PartialTypeSignatures  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE RebindableSyntax       #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE NamedWildCards        #-}
+{-# LANGUAGE OverloadedLabels      #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RebindableSyntax      #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Shaders.Texture where
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import FIR
@@ -34,19 +33,6 @@ type VertexInput
      , Slot 1 0 ':-> V 3 Float -- colour
      , Slot 2 0 ':-> V 2 Float -- UV coordinates
      ]
-
-type MyDefs =
-  '[ "ubo"    ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
-                      ( Struct '[ "mvp" ':->  M 4 4 Float ] )
-   , "in_pos" ':-> Input '[ Location 0 ] (V 4 Float)
-   , "main"   ':-> EntryPoint '[] Vertex
-   ]
-
-vertexShader :: Program MyDefs ()
-vertexShader = Program $ entryPoint @"main" @Vertex do
-  mvp <- use @(Name "ubo" :.: Name "mvp")
-  in_pos <- get @"in_pos"
-  put @"gl_Position" (mvp !*^ in_pos)
 
 ------------------------------------------------
 -- vertex shader
@@ -108,15 +94,15 @@ vertPath, fragPath :: FilePath
 vertPath = "shaders/texture_vert.spv"
 fragPath = "shaders/texture_frag.spv"
 
-compileVertexShader :: IO ( Either Text () )
+compileVertexShader :: IO ( Either ShortText () )
 compileVertexShader = compile vertPath [] vertex
 
-compileFragmentShader :: IO ( Either Text () )
+compileFragmentShader :: IO ( Either ShortText () )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = withStructInput @VertexInput @(Triangle List)
-  $  StartPipeline
-  :> (vertex  , vertPath)
-  :> (fragment, fragPath)
+  $    StartPipeline
+  :>-> (vertex  , vertPath)
+  :>-> (fragment, fragPath)

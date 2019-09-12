@@ -9,6 +9,7 @@ dist-newstyle/
 *.spv
 *.spv-asm
 *.glsl
+*.yaml
 
 /shaders/
 haddock-api/

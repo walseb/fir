@@ -11,6 +11,15 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+Module: SPIRV.Image
+
+SPIR-V image properties, image formats, and image operand names.
+
+See "FIR.Prim.Image" for their use within this library.
+
+-}
+
 module SPIRV.Image where
 
 -- base

@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE PackageImports       #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
@@ -9,13 +8,21 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-|
+Module: FIR.Builtin
+
+This module describes the built-in variables that are provided
+for each execution model in SPIR-V.
+
+For instance, in a vertex shader, one can always write position information
+into the built-in variable named @gl_Position@, of type @V 4 Float@.
+-}
+
 module FIR.Builtin where
 
 -- base
 import Control.Arrow
   ( second )
-import Data.Maybe
-  ( maybe )
 import Data.Proxy
   ( Proxy )
 import Data.Word
@@ -32,10 +39,11 @@ import qualified Data.Set as Set
 import Control.Monad.Except
   ( runExcept )
 
--- text-utf8
-import "text-utf8" Data.Text
-  ( Text )
-import qualified "text-utf8" Data.Text as Text
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( unpack )
 
 -- fir
 import Data.Type.Map
@@ -183,7 +191,7 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        ]
   -}
 
-shaderBuiltins :: ShaderInfo Word32 shader -> [ (Text, SPIRV.PointerTy) ]
+shaderBuiltins :: ShaderInfo Word32 shader -> [ (ShortText, SPIRV.PointerTy) ]
 shaderBuiltins VertexShaderInfo
   = builtinPointer ( knownInterface @(ModelBuiltins' VertexInfo) )
 shaderBuiltins (TessellationControlShaderInfo inputSize outputSize _)
@@ -203,7 +211,7 @@ shaderBuiltins FragmentShaderInfo
 shaderBuiltins (ComputeShaderInfo _)
   = builtinPointer ( knownInterface @(ModelBuiltins' (ComputeInfo '(1,1,1))) ) -- yet another
 
-modelBuiltins :: ExecutionInfo Word32 model -> [ (Text, SPIRV.PointerTy) ]
+modelBuiltins :: ExecutionInfo Word32 model -> [ (ShortText, SPIRV.PointerTy) ]
 modelBuiltins (ShaderExecutionInfo shaderInfo) = shaderBuiltins shaderInfo
 {-
 modelBuiltins KernelInfo
@@ -211,8 +219,8 @@ modelBuiltins KernelInfo
 -}
 
 builtinPointer
-    :: [ (Text, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
-    -> [ (Text, SPIRV.PointerTy) ]
+    :: [ (ShortText, (SPIRV.PrimTy, SPIRV.StorageClass)) ]
+    -> [ (ShortText, SPIRV.PointerTy) ]
 builtinPointer = map
   ( second $ \ (ty, storage)
       -> let usage =
@@ -224,7 +232,7 @@ builtinPointer = map
               Left err ->
                 error
                   ( "'modelBuiltins' bug: cannot infer layout of builtins.\n\
-                    \Reason provided: " <> Text.unpack err
+                    \Reason provided: " <> ShortText.unpack err
                   )
               Right laidOutPtr -> laidOutPtr
   )
@@ -234,7 +242,7 @@ builtinPointer = map
 -- slight indirection to account for complexities with 'gl_in', 'gl_out'
 -- (that is, inputs/outputs that are given as arrays of structs)
 
-builtinDecorations :: Text -> SPIRV.Decorations
+builtinDecorations :: ShortText -> SPIRV.Decorations
 builtinDecorations "gl_TessLevelInner"
   = Set.fromAscList [ SPIRV.Builtin SPIRV.TessLevelInner, SPIRV.Patch ]
 builtinDecorations "gl_TessLevelOuter"

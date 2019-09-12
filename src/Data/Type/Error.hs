@@ -1,0 +1,31 @@
+{-# LANGUAGE DataKinds     #-}
+{-# LANGUAGE PolyKinds     #-}
+{-# LANGUAGE TypeFamilies  #-}
+{-# LANGUAGE TypeOperators #-}
+
+module Data.Type.Error where
+
+-- base
+import Data.Kind
+  ( Constraint )
+import GHC.TypeLits
+  ( TypeError, ErrorMessage((:$$:)) )
+
+----------------------------------------------------------------------
+
+type family Try ( x :: Either ErrorMessage a ) :: a where
+  Try (Left  err) = TypeError err
+  Try (Right a  ) = a
+
+type family IsRight ( x :: Either ErrorMessage a ) :: Constraint where
+  IsRight (Left err) = TypeError err
+  IsRight _          = ()
+
+type family IfLeft ( x :: Either e a ) ( y :: Either e a ) :: Either e a where
+  IfLeft (Left _) y = y
+  IfLeft x        _ = x
+
+type family And ( x :: Either ErrorMessage () ) ( y :: Either ErrorMessage () ) :: Either ErrorMessage () where
+  And (Right _) y        = y
+  And (Left  x) (Left y) = Left (x :$$: y)
+  And (Left  x) _        = Left x

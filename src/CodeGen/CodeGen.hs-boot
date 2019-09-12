@@ -1,4 +1,4 @@
-module CodeGen.CodeGen(codeGen) where
+module CodeGen.CodeGen (codeGen) where
 
 -- fir
 import CodeGen.Instruction

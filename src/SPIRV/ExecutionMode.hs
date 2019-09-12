@@ -12,6 +12,19 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+Module: SPIRV.ExecutionMode
+
+This module enumerates SPIR-V execution modes. These are used both at the type-level and value-level.
+
+These annotate execution models / shader stages (see "SPIRV.Stage") with further information,
+such as the geometry type to use in a tessellation shader (points, triangles, quads, isolines),
+or the workgroup size in a compute shader.
+
+See the SPIR-V specification §3.6 __Execution Modes__.
+
+-}
+
 module SPIRV.ExecutionMode where
 
 -- base
@@ -289,7 +302,9 @@ type family ValidateExecutionModes
         )
         Nothing
   ValidateExecutionModes k Geometry modes
-    = If ( HasOneOf k Geometry '[ OutputPoints, OutputLineStrip, OutputTriangleStrip ] modes )
+    = If (  HasOneOf k Geometry '[ OutputPoints, OutputLineStrip, OutputTriangleStrip ] modes
+         && HasInvocations k modes
+         )
         ( Just
           ( GeometryInputInfo k modes )
         )
@@ -415,7 +430,7 @@ type family TessellationEvaluationMode
               ( modes :: [ ExecutionMode Nat ] )
             :: TessellationMode
             where
-  TessellationControlMbMode k modes
+  TessellationEvaluationMode k modes
     = ReadTessellationMode
         ( FromMaybe
           ( LookupOneOf k TessellationEvaluation
@@ -461,7 +476,7 @@ type family NoSizes
               ( modes     :: [ ExecutionMode Nat ] )
               :: Bool
               where
-  NoSizes _ _     _     '[]
+  NoSizes _ _  _     '[]
     = 'True
   NoSizes k em given (InputPoints ': _ )
     = TypeError
@@ -549,3 +564,18 @@ type family NoLocalSizes
   NoLocalSizes k em xyz ( _ ': modes )
     = NoLocalSizes k em xyz modes
 
+type family HasInvocations
+              ( k     :: Symbol                )
+              ( modes :: [ ExecutionMode Nat ] )
+           :: Bool
+           where
+  HasInvocations k '[]
+    = TypeError
+    (    Text (NamedExecutionModel k Geometry) :<>: Text " is missing the number of invocations."
+    :$$: Text "Expecting an 'Invocations i' execution mode, with 0 < i <= maxGeometryShaderInvocations."
+    )
+  HasInvocations k ( Invocations 0 ': _ )
+    = TypeError
+    ( Text (NamedExecutionModel k Geometry) :<>: Text ": number of invocations cannot be 0." )
+  HasInvocations k ( Invocations _ ': _ ) = True
+  HasInvocations k ( _ ': modes ) = HasInvocations k modes
