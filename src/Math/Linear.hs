@@ -106,7 +106,7 @@ import GHC.TypeLits.Compare
   ( (:<=?)(LE,NLE), (%<=?) )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal
-  , type (+), type (-) --, type (*)
+  , type (+), type (-), type (*)
   , CmpNat, type (<=), type (<=?)
   )
 import Numeric.Natural
@@ -242,6 +242,19 @@ tailV (_ :. as) = as
 headTailV :: (KnownNat n, 1 <= n) => V n a -> (a, V (n-1) a)
 headTailV (a :. as) = ( a, as )
 
+splitAtV
+  :: forall (s :: Nat) (n :: Nat) (a :: Type)
+  .  ( KnownNat s, KnownNat n, s <= n )
+  => V n a
+  -> ( V s a, V (n-s) a )
+splitAtV v = case Proxy @1 %<=? Proxy @s of
+  LE Refl -> case lte_transitive @1 @s @n of
+    Refl -> case headTailV v of
+      ( h, t ) -> case splitAtV @(s-1) t of
+        ( hs, d ) -> ( h :. hs, d )
+  NLE nle _ -> case deduceZero nle of
+    Refl -> ( VNil, v )
+
 instance (KnownNat n, Storable a) => Storable (V n a) where
   sizeOf :: V n a -> Int
   sizeOf _ = n * sizeOf (undefined :: a)
@@ -309,6 +322,12 @@ lemma3 :: forall j n. (KnownNat j, KnownNat n)
        -> ((j+1) <=? n) :~: 'False
        -> (j :~: n)
 lemma3 _ _ = unsafeCoerce Refl
+
+lte_transitive
+  :: forall i j k
+  .  ( KnownNat i, KnownNat j, KnownNat k, i <= j, j <= k )
+  => ( i <=? k ) :~: 'True
+lte_transitive = unsafeCoerce Refl
 
 -----------------------------------------------------------
 
@@ -385,10 +404,11 @@ instance (KnownLength rs, Replicated n a rs)
   toHList   = toHListVec   replication
 
 data Replication n a rs where
-  NilReplication :: Replication 0 a '[]
+  NilReplication  :: Replication 0 a '[]
   ConsReplication :: Replication n a rs -> Replication (1+n) a (a ': rs)
 
-class ( rs ~ Replicate n a, n ~ Length rs ) => Replicated n a rs | rs -> n where
+class ( rs ~ Replicate n a, KnownLength rs, n ~ Length rs )
+    => Replicated n a rs | rs -> n where
   replication :: Replication n a rs
 instance Replicated 0 a '[] where
   replication = NilReplication
@@ -650,6 +670,9 @@ blockSum mat1 mat2 = fmap (<!> pure zero) mat1 <!> fmap (pure zero <!>) mat2
 fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> V m (V l a)
 fromColumns = addCols ( pure VNil :: V m (V 0 a))
 
+joinV :: V m (V n a) -> V (m * n) a
+joinV VNil          = VNil
+joinV (row :. rows) = row <!> joinV rows
 
 ------------------------------------------------------------------
 -- matrix newtype
@@ -703,24 +726,31 @@ instance ( KnownNat m
   fromHList (col :> cols) = M $ addCol ( distribute (fromHListVec (replication @(n-1) @(V m a)) cols )) col
   toHList (M rows) = case distribute rows of
     ( col :. cols ) -> col :> toHListVec (replication @(n-1) @(V m a)) cols
-{-
+
 instance ( KnownNat n, 1 <= n
          , KnownNat m, 1 <= m
-         , Replicated (n*m-1) a rs
-         , KnownLength rs
+         , Replicated (m*n-1) a rs
          , Length rs ~ (n*m-1)
+         , (m*n) ~ (n*m)
+         , Replicate (n*m) a ~ (a ': rs) -- type checker unfortunately can't deduce this
          )
       => IsProduct (M m n a) (a ': rs)
       where
-  fromHList = fromHListMatrixEntries ( ConsReplication (replication @(n*m-1) @a) )
-  toHList   = toHListMatrixEntries   ( ConsReplication (replication @(n*m-1) @a) )
+  toHList   = toHList . joinV . distribute . unM
+  fromHList = M . distribute . splitRows . fromHList
 
-fromHListMatrixEntries :: Replication (n*m) a rs -> HList rs -> M m n a
-fromHListMatrixEntries = undefined
-
-toHListMatrixEntries :: Replication (n*m) a rs -> M m n a -> HList rs
-toHListMatrixEntries = undefined
--}
+splitRows
+  :: forall (n :: Nat) (m :: Nat) (a :: Type)
+  .  ( KnownNat n, KnownNat m )
+  => V (m*n) a -> V n (V m a)
+splitRows v = case Proxy @1 %<=? Proxy @n of
+  NLE nle Refl ->
+    case deduceZero nle of
+      Refl -> VNil
+  LE Refl ->
+    case splitAtV @m v of
+      ( row, next ) ->
+        row :. splitRows @(n-1) next
 
 instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
   type Grade Nat (M m 0 a) i = M m i a

@@ -95,11 +95,8 @@ m2 = view @(Prod (Col 2 :*: Col 1 :*: EndProd)) m1
 m3 :: M 4 2 Float
 m3 = view @(Prod (Col 2 :*: Col 3 :*: EndProd)) m1
 
-{-
 m4 :: M 2 2 Float
 m4 = view @(Prod (Entry 1 1 :*: Entry 1 2 :*: Entry 2 1 :*: Entry 2 2 :*: EndProd)) m1
--}
-
 
 m5 :: V 3 Float
 m5 = view @(Prod (Entry 1 1 :*: Entry 3 3 :*: Entry 2 0 :*: EndProd)) m1
@@ -142,15 +139,18 @@ nested5 =
        part
        nested1
 
-m6 :: M 3 3 Double
+m6 :: M 3 3 Float
 m6 = M ( V3
           (V3 0 1 2)
           (V3 3 4 5)
           (V3 6 7 8)
        )
 
-m7 :: M 3 3 Double
-m7 = set @( Prod @_ @_ @_ @(V 3 Double) ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 2 :*: EndProd ) :.: Joint ) 9 m6
+m7 :: M 3 3 Float
+m7 = set @( Prod @_ @_ @_ @(V 3 Float) ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 2 :*: EndProd ) :.: Joint ) 9 m6
 
-m8 :: M 3 3 Double
+m8 :: M 3 3 Float
 m8 = set @Center 9 m6
+
+m9 :: M 3 3 Float
+m9 = set @( Prod ( Entry 0 0 :*: Entry 2 0 :*: Entry 0 2 :*: Entry 2 2 :*: EndProd ) ) m4 m6
