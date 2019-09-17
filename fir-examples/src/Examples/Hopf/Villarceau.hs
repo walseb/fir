@@ -63,7 +63,7 @@ villarceauCircle
   -> Float     -- size of circle thickening
   -> Float     -- angle
   -> V 4 Float -- colour
-  -> Struct RawVertexInput
+  -> Struct VertexInput
 villarceauCircle c a circleThickening theta col
   =  villarceauCenter a theta
   :& c
@@ -80,7 +80,7 @@ villarceauCircles
   -> Int                 -- number of tori
   -> Array n (V 4 Float) -- gradient
   -> Float               -- angular offset
-  -> [Struct RawVertexInput]
+  -> [Struct VertexInput]
 villarceauCircles c a circleThickening n grad offset
   = [ villarceauCircle c a circleThickening (theta + offset) col
     | k <- [0 .. (n-1)]

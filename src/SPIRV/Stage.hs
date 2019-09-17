@@ -249,8 +249,8 @@ instance POrd ExecutionModel where
 
 type family ShaderName (s :: Shader) :: Symbol where
   ShaderName VertexShader                 = "Vertex shader"
-  ShaderName TessellationControlShader    = "Tessellation control shader"
-  ShaderName TessellationEvaluationShader = "Tessellation evaluation shader"
+  ShaderName TessellationControlShader    = "Tessellation Control shader"
+  ShaderName TessellationEvaluationShader = "Tessellation Evaluation shader"
   ShaderName GeometryShader = "Geometry shader"
   ShaderName FragmentShader = "Fragment shader"
   ShaderName ComputeShader  = "Compute shader"
@@ -259,25 +259,25 @@ type family StageName (s :: Stage) :: Symbol where
   StageName (ShaderStage s)                = ShaderName s
   StageName (MeshStage 'TaskShader)        = "Task shader"
   StageName (MeshStage 'MeshShader)        = "Mesh shader"
-  StageName (RayStage RayGenerationShader) = "Ray generation shader"
-  StageName (RayStage IntersectionShader)  = "Ray intersection shader"
-  StageName (RayStage AnyHitShader)        = "Any hit ray shader"
-  StageName (RayStage ClosestHitShader)    = "Closest hit ray shader"
-  StageName (RayStage MissShader)          = "Ray miss shader"
-  StageName (RayStage CallableShader)      = "Ray callable shader"
+  StageName (RayStage RayGenerationShader) = "Ray Generation shader"
+  StageName (RayStage IntersectionShader)  = "Ray Intersection shader"
+  StageName (RayStage AnyHitShader)        = "Any Hit ray shader"
+  StageName (RayStage ClosestHitShader)    = "Closest Hit ray shader"
+  StageName (RayStage MissShader)          = "Ray Miss shader"
+  StageName (RayStage CallableShader)      = "Ray Callable shader"
 
 type family ExecutionModelName (em :: ExecutionModel) :: Symbol where
   ExecutionModelName ('Stage s) = StageName s
   ExecutionModelName Kernel     = "Compute kernel"
 
 type family NamedShader (k :: Symbol) (s :: Shader) :: Symbol where
-  NamedShader k s = ShaderName s `AppendSymbol` "named \"" `AppendSymbol` k `AppendSymbol` "\""
+  NamedShader k s = ShaderName s `AppendSymbol` " named \"" `AppendSymbol` k `AppendSymbol` "\""
 
 type family NamedStage (k :: Symbol) (s :: Stage) :: Symbol where
-  NamedStage k s = StageName s `AppendSymbol` "named \"" `AppendSymbol` k `AppendSymbol` "\""
+  NamedStage k s = StageName s `AppendSymbol` " named \"" `AppendSymbol` k `AppendSymbol` "\""
 
 type family NamedExecutionModel (k :: Symbol) (em :: ExecutionModel) :: Symbol where
-  NamedExecutionModel k em = ExecutionModelName em `AppendSymbol` "named \"" `AppendSymbol` k `AppendSymbol` "\""
+  NamedExecutionModel k em = ExecutionModelName em `AppendSymbol` " named \"" `AppendSymbol` k `AppendSymbol` "\""
 
 --------------------------------------------------------------------------
 -- additional execution model information that needs to be known at the type-level

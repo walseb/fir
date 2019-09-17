@@ -340,7 +340,7 @@ instance ( KnownDefinitions defs )
 instance TH.Lift ShortText where
   lift t = [| ShortText.pack $(TH.lift $ ShortText.unpack t) |]
 
--- | Utility function to run IO actions at compile time using Template Haskell.
+-- | Utility function to run IO actions at compile-time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.
 --
 -- __Usage example__: in a module which imports this module and shaders
@@ -353,7 +353,7 @@ instance TH.Lift ShortText where
 -- >        ]
 -- >   )
 --
--- At compile time, this will compile the vertexShader @vertexShader@ at filepath @vertPath@,
+-- At compile-time, this will compile the vertexShader @vertexShader@ at filepath @vertPath@,
 -- and similarly for the fragment shader.
 -- These can then be loaded into Vulkan shader modules for use in rendering.
 runCompilationsTH :: [ ( ShortText, IO (Either ShortText ()) ) ] -> TH.Q TH.Exp

@@ -170,7 +170,7 @@ data ShaderPipelineWithInfo (info :: PipelineInfo) where
                       name
                       ( GetExecutionInfo shader name endState )
                       '( VariablesWithStorage SPIRV.Input  defs
-                       ,  VariablesWithStorage SPIRV.Output defs
+                       , VariablesWithStorage SPIRV.Output defs
                        )
                       'Defined
                 )
@@ -935,9 +935,9 @@ type family MatchingUnderlyingTypes
     = TypeError
         ( MismatchLocation loc
         :$$: Text "Output of " :<>: Text (NamedShader name1 stage1)
-        :<>: Text "is of type " :<>: ShowType ty1 :<>: Text ","
+        :<>: Text " is of type " :<>: ShowType ty1 :<>: Text ","
         :$$: Text "whereas input of " :<>: Text (NamedShader name2 stage2)
-        :<>: Text "is of type " :<>: ShowType ty2 :<>: Text "."
+        :<>: Text " is of type " :<>: ShowType ty2 :<>: Text "."
         )
 
 type family MismatchLocation ( loc :: (Nat,Nat) ) :: ErrorMessage where

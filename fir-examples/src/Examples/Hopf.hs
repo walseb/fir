@@ -275,7 +275,7 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
     nbCircles :: Int
     nbCircles = 10
 
-    toriVerts :: [ Struct RawVertexInput ]
+    toriVerts :: [ Struct VertexInput ]
     toriVerts
       =  villarceauCircles c1 a1 circleThickening nbCircles blues  0
       <> villarceauCircles c2 a2 circleThickening nbCircles greens ( 2 * pi / (3 * fromIntegral nbCircles) )

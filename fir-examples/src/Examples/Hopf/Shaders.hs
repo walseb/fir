@@ -29,30 +29,26 @@ import Math.Linear
 ------------------------------------------------
 -- pipeline input
 
-type RawVertexInput
+type VertexInput
   = '[ Slot 0 0 ':-> V 3 Float, Slot 0 3 ':-> Float -- pos, R
      , Slot 1 0 ':-> V 3 Float, Slot 1 3 ':-> Float -- normal, r
      , Slot 2 0 ':-> V 4 Float                      -- col
-     ]
-
-type VertexInput
-  = '[ Slot 0 0 ':-> V 4 Float -- pos & R
-     , Slot 1 0 ':-> V 4 Float -- normal & r
-     , Slot 2 0 ':-> V 4 Float -- col
      ]
 
 ------------------------------------------------
 -- vertex shader
 
 type VertexDefs =
-  '[ "in_pos_R"     ':-> Input  '[ Location 0 ] (V 4 Float)
-   , "in_normal_r"  ':-> Input  '[ Location 1 ] (V 4 Float)
+  '[ "in_pos"       ':-> Input  '[ Location 0 ] (V 3 Float)
+   , "in_R"         ':-> Input  '[ Location 0, Component 3 ] Float
+   , "in_normal"    ':-> Input  '[ Location 1 ] (V 3 Float)
+   , "in_r"         ':-> Input  '[ Location 1, Component 3 ] Float
    , "in_colour"    ':-> Input  '[ Location 2 ] (V 4 Float)
    
    , "out_colour"   ':-> Output '[ Location 0 ] (V 4 Float)
    , "out_R"        ':-> Output '[ Location 1 ] Float
    , "out_normal"   ':-> Output '[ Location 2 ] (V 3 Float)
-   , "out_r"        ':-> Output '[ Location 3 ] Float
+   , "out_r"        ':-> Output '[ Location 2, Component 3 ] Float
 
    , "main"         ':-> EntryPoint '[ ] Vertex
    ]
@@ -62,14 +58,13 @@ vertex = shader do
 
     put @"out_colour" =<< get @"in_colour"
 
-    ~(Vec4 px py pz big_R) <- get @"in_pos_R"
+    ~(Vec3 px py pz) <- get @"in_pos"
     put @"gl_Position" ( Vec4 px py pz 1 )
 
-    ~(Vec4 nx ny nz small_r) <- get @"in_normal_r"
-    put @"out_normal" ( Vec3 nx ny nz )
+    put @"out_normal" =<< get @"in_normal"
 
-    put @"out_R" big_R
-    put @"out_r" small_r
+    put @"out_R" =<< get @"in_R"
+    put @"out_r" =<< get @"in_r"
 
 ------------------------------------------------
 -- tessellation control
@@ -78,12 +73,12 @@ type TessellationControlDefs =
   '[ "in_col"     ':-> Input  '[ Location 0 ] (Array 1 (V 4 Float))
    , "in_R"       ':-> Input  '[ Location 1 ] (Array 1 Float)
    , "in_normal"  ':-> Input  '[ Location 2 ] (Array 1 (V 3 Float))
-   , "in_r"       ':-> Input  '[ Location 3 ] (Array 1 Float)
+   , "in_r"       ':-> Input  '[ Location 2, Component 3 ] (Array 1 Float)
  
    , "out_col"    ':-> Output '[ Location 0 ] (Array 1 (V 4 Float))
    , "out_R"      ':-> Output '[ Location 1 ] (Array 1 Float)
    , "out_normal" ':-> Output '[ Location 2 ] (Array 1 (V 3 Float))
-   , "out_r"      ':-> Output '[ Location 3 ] (Array 1 Float)
+   , "out_r"      ':-> Output '[ Location 2, Component 3 ] (Array 1 Float)
    , "main"       ':-> EntryPoint '[ SpacingEqual, VertexOrderCw, OutputVertices 1 ]
                         TessellationControl
    ]
@@ -118,7 +113,7 @@ type TessellationEvaluationDefs =
   '[ "in_col"     ':-> Input  '[ Location 0 ] (Array 1 (V 4 Float))
    , "in_R"       ':-> Input  '[ Location 1 ] (Array 1 Float)
    , "in_normal"  ':-> Input  '[ Location 2 ] (Array 1 (V 3 Float))
-   , "in_r"       ':-> Input  '[ Location 3 ] (Array 1 Float)
+   , "in_r"       ':-> Input  '[ Location 2, Component 3 ] (Array 1 Float)
    , "out_col"    ':-> Output '[ Location 0 ] (V 4 Float)
    , "ubo"        ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
                           ( Struct '[ "mvp"    ':-> M 4 4 Float

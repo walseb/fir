@@ -259,7 +259,7 @@ operationTree _ (SIndex s _ n)
   -- if accessing a runtime array, a compile-time index may be unsafe
   | SRuntimeArray <- s
   = pure $ Access Unsafe ( CTInds [n] ) `Then` Done
-  -- otherwise, a compile time index is guaranteed to be in-bounds
+  -- otherwise, a compile-time index is guaranteed to be in-bounds
   | otherwise
   = pure $ Access Safe ( CTInds [n] ) `Then` Done
 operationTree is (SComposeO lg1 opt1 opt2)

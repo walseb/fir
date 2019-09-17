@@ -9,6 +9,7 @@
 * [Inspecting the AST](#ast)
 * [Controlling inlining](#inlining)
 * [Using SPIR-V tools](#spirv)
+* [Creating a shader pipeline](#pipeline)
 
 <a name="installation"></a>
 ## Installation instructions
@@ -192,7 +193,7 @@ This produces the following SPIR-V (see the [section on SPIR-V tools](#spirv)):
 <a name="ast"></a>
 ## Inspecting the AST
 
-It is also possible to view the AST that this library generates, using the `ast` command. For instance:
+It is possible to view the AST that this library generates, using the `ast` command. For instance:
 
 ```
 > ast vertexShader
@@ -289,3 +290,78 @@ Example usage of SPIR-V tools:
 <div align="center">
 ![Control flow graph of compute shader for FIR logo](img/logo_compute_cfg.png)
 </div>
+
+
+<a name="pipeline"></a>
+## Creating a shader pipeline
+
+Graphics shaders, such as vertex or fragment shaders, cannot be used on their own.
+Instead, they must be combined into a graphics pipeline, where the output of one shader becomes the input for the next.
+
+Consider for example the following simple pipeline, consisting of a vertex shader fed into a fragment shader:
+
+```haskell
+type VertexInput =
+  '[ Slot 0 0 ':-> V 3 Float -- a 3-vector specifying position, located in slot 0, component 0
+   , Slot 1 0 ':-> V 4 Float -- a 4-vector specifying colour  , located in slot 1, component 0
+   ]
+
+type VertexDefs =
+  '[ "in_position" ':-> Input  '[ Location 0 ] (V 3 Float)
+   , "in_colour"   ':-> Input  '[ Location 1 ] (V 4 Float)
+   , "out_colour"  ':-> Output '[ Location 0 ] (V 4 Float)
+   , "ubo"         ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
+                          ( Struct '[ "mvp" ':-> M 4 4 Float ] )
+   , "main"        ':-> EntryPoint '[] Vertex
+   ]
+vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex = shader do
+  ~(Vec3 x y z) <- get @"in_position"
+  mvp <- use @(Name "ubo" :.: Name "mvp")
+  put @"gl_Position" ( mvp !*^ Vec4 x y z 1 )
+  put @"out_colour"  =<< get @"in_colour"
+
+type FragmentDefs =
+  '[ "in_colour"  ':-> Input      '[ Location 0 ] (V 4 Float)
+   , "out_colour" ':-> Output     '[ Location 0 ] (V 4 Float)
+   , "main"       ':-> EntryPoint '[ OriginUpperLeft ] Fragment
+   ]
+fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment = shader do
+  put @"out_colour" =<< get @"in_colour"
+
+
+shaderPipeline :: ShaderPipeline
+shaderPipeline
+  = withStructInput @VertexInput @(Triangle List)
+  $    StartPipeline
+  :>-> (vertex  , "shaders/vert.spv")
+  :>-> (fragment, "shaders/frag.spv")
+```
+
+Here, we specify:
+
+  * The type of the input to the pipeline. This consists of the following information:
+
+    - The primitive topology used for vertex input assembly. In this case, the topology is `Triangle List`, meaning that we are specifying a list of vertices, with consecutive groups of three vertices forming a triangle.
+    The primitive topology is supplied with type-level data of kind [FIR.Pipeline.PrimitiveTopology Nat](src/FIR/Pipeline.hs), such as `Points`, `Triangle Fan` or `PatchesOfSize 9`.
+
+    - The type of the data attached to each vertex. In this case we are attaching a structure to each vertex, of type `Struct VertexInput`. When it comes to performing a draw call using this pipeline, the Vulkan application will use a vertex buffer, which will need to have been appropriately populated with position and colour data for each vertex in the buffer.
+    
+    Note that we have to specify layout information using location and component slots, as explained in [FIR.Layout](src/FIR/Layout.hs).
+    
+    See also the [shaders from the Hopf fibration example](fir-examples/src/Examples/Hopf/Shaders.hs), which illustrate the usage of this layout information.
+
+  * The shaders which make up the pipeline, in the form of a snoc-list `StartPipeline :>-> shader_1 :>-> ... :>-> shader_n`.
+
+
+This library will then validate the pipeline at the type-level (i.e. at compile-time) to ensure that:
+
+  * the pipeline sequence is correct (e.g. vertex shader preceding fragment shader),
+  * the primitive topology is compatible with the shaders (e.g. in the presence of tessellation shaders, the primitive topology __must__ be `PatchesOfSize (n :: Nat)`),
+  * the shader interfaces match (including layout information and decorations).
+
+This is useful as it catches mistakes in shaders and shader interfaces (including some that the official Vulkan validator doesn't catch). Much better to get a compile-time type error that a black screen at runtime!
+
+
+Convenience functionality to create Vulkan graphics pipelines from such information is also provided, using the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings (see [`Vulkan.Pipeline.createGraphicsPipeline`](fir-examples/src/Vulkan/Pipeline.hs)).

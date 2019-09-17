@@ -13,7 +13,7 @@
 **FIR** is an embedded language for writing GPU shaders in Haskell, compiling to *SPIR-V* for use in *Vulkan* applications.
 
 FIR is intended as an alternative shading language to *GLSL*, providing amenities of modern functional programming such as a strong type-system, user-managed control-flow with monads and *do* notation, applicative/foldable/traversable functors, etc.
-The Haskell type system helps in verifying programs at compile time, especially with the use of *indexed monads* to keep track of program state and prevent invalid operations.
+The Haskell type system helps in verifying programs at compile-time, with the use of *indexed monads* to keep track of program state. Invalid behaviour is reported with custom type errors, preventing run-time errors and lost hours spent debugging a black screen.
 
 
 <a name="getting-started"></a>
@@ -22,9 +22,10 @@ The Haskell type system helps in verifying programs at compile time, especially 
 See [getting started](getting_started.md) for help on getting started, including:
   * installation instructions,
   * a simple vertex shader example,
-  * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools.
+  * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools,
+  * creating graphics pipelines, for use with the [vulkan-api](https://github.com/achirkin/vulkan) library.
 
-The haddock documentation is also worth perusing for specialised in-depth explanations; see the [getting started guide](getting_started.md#docs) for installation.
+The haddock documentation is also worth perusing for specialised in-depth explanations; see the [getting started guide](getting_started.md#docs) for an installation guide.
 
 <a name="examples"></a>
 # Examples

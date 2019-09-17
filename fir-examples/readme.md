@@ -70,7 +70,8 @@ for the Vulkan SDK on Linux.
 <a name="fullpipeline"></a>
 ### Full graphics pipeline
 <div align="center">
-![FullPipeline](../img/full_pipeline.png)
+![FullPipeline](../img/full_pipeline.png) <br>
+[Application](src/Examples/FullPipeline.hs)   •   [Shaders](src/Examples/FullPipeline/Shaders.hs)
 </div>
 
 A graphics pipeline containing all shader stages.
@@ -78,7 +79,8 @@ A graphics pipeline containing all shader stages.
 <a name="logo"></a>
 ### FIR logo
 <div align="center">
-![Compute](../img/logo.png)
+![Logo](../img/logo.png) <br>
+[Application](src/Examples/Logo.hs)   •   [Shaders](src/Examples/Logo/Shaders.hs)
 </div>
 
 Rendering the FIR logo using simple ray tracing in a compute shader.
@@ -86,17 +88,20 @@ Rendering the FIR logo using simple ray tracing in a compute shader.
 <a name="hopf"></a>
 ### Hopf fibration
 <div align="center">
-![Hopf](../img/hopf.png)
+![Hopf](../img/hopf.png) <br>
+[Application](src/Examples/Hopf.hs)   •   [Shaders](src/Examples/Hopf/Shaders.hs)
 </div>
 
-Illustration of fibers in the Hopf fibration.
-Each circle is thickened out to a torus using a tessellation shader.
+Illustration of fibers in the Hopf fibration; each circle is thickened out to a torus using a tessellation shader.
+
 Rendered using multisampling with Vulkan resolve attachments.
+Also illustrates how to specify location and component layout information in shaders.
 
 <a name="texture"></a>
 ### Texture sampling
 <div align="center">
-![Texture](../img/texture.png)
+![Texture](../img/texture.png) <br>
+[Application](src/Examples/Texture.hs)   •   [Shaders](src/Examples/Texture/Shaders.hs)
 </div>
 
 Demonstrates how to sample a texture.
@@ -104,7 +109,8 @@ Demonstrates how to sample a texture.
 <a name="julia"></a>
 ### Julia set
 <div align="center">
-![JuliaSet](../img/julia.png)
+![JuliaSet](../img/julia.png) <br>
+[Application](src/Examples/Julia.hs)   •   [Shaders](src/Examples/Julia/Shaders.hs)
 </div>
 
 Interactive Julia set rendering, computed within a fragment shader.
@@ -112,7 +118,8 @@ Interactive Julia set rendering, computed within a fragment shader.
 <a name="offscreen"></a>
 ### Offscreen rendering
 <div align="center">
-![Offscreen](../img/offscreen.png)
+![Offscreen](../img/offscreen.png) <br>
+[Application](src/Examples/Offscreen.hs)   •   [Shaders](src/Examples/Offscreen/Shaders.hs)
 </div>
 
 Offscreen rendering of a single frame.
@@ -120,7 +127,8 @@ Offscreen rendering of a single frame.
 <a name="bezier"></a>
 ### Bézier curves
 <div align="center">
-![Bezier](../img/bezier.png)
+![Bezier](../img/bezier.png) <br>
+[Application](src/Examples/Bezier.hs)   •   [Shaders](src/Examples/Bezier/Shaders.hs)
 </div>
 
 Work in progress: rendering Bézier curves using tessellation and geometry shaders.

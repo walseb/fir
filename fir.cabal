@@ -18,7 +18,7 @@ description:
 
   In effect, this replaces @GLSL@ as a shader language.
   This means the Haskell type-system and type-checker are put to use
-  in verifying programs at compile time.
+  in verifying programs at compile-time.
   Functional idioms, such as functor and applicative operations, are also supported.
 
   See the @fir-examples@ project subdirectory for fleshed out examples,
