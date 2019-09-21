@@ -422,7 +422,7 @@ loadThroughAccessChain' basePtr@(_, SPIRV.PointerTy _ eltTy) ( Combine (_ :: Pro
       base <- loadThroughAccessChain' basePtr Done
       vectorSwizzle base is
   | otherwise
-  =  compositeConstruct (primTy @p) =<< traverse (fmap fst . loadThroughAccessChain' basePtr) trees
+  = compositeConstruct (primTy @p) =<< traverse (fmap fst . loadThroughAccessChain' basePtr) trees
 loadThroughAccessChain' _ ( Join `Then` _ )
   = throwError "loadThroughAccessChain': unexpected 'Joint' optic used as a getter"
 

@@ -100,7 +100,7 @@ import FIR.Instances.Optics
 import FIR.Prim.Image
   ( ImageOperands )
 import FIR.Prim.Op
-  ( PrimOp(PrimOpType, PrimOpConstraint, opName) )
+  ( PrimOp(PrimOpType, opName) )
 import FIR.Prim.Singletons
   ( PrimTy, primTy, KnownVars
   , PrimFunc, primFuncName
@@ -132,8 +132,7 @@ data AST :: Type -> Type where
   -- | Haskell-level constants can be embedded into the AST.
   Lit :: ( PrimTy a, KnownArity a ) => a -> AST a
   -- | @SPIR-V@ primitive operations
-  PrimOp :: ( PrimOp op a, PrimOpConstraint op a )
-         => Proxy a -> Proxy op -> AST (PrimOpType op a)
+  PrimOp :: PrimOp op a => Proxy a -> Proxy op -> AST (PrimOpType op a)
 
   -- | Create an object of the given type from its ID.
   -- (These are the internal @SPIR-V@ identifiers, in SSA form.)
@@ -337,10 +336,12 @@ instance (Syntactic a, Syntactic b) => Syntactic (a -> b) where
 ------------------------------------------------
 
 -- | Utility function for defining primops.
-primOp :: forall a op r. ( PrimOp op a, PrimOpConstraint op a
-                         , Syntactic r, Internal r ~ PrimOpType op a
-                         )
-       => r 
+primOp :: forall a op r
+       .  ( PrimOp op a
+          , Syntactic r
+          , Internal r ~ PrimOpType op a
+          )
+       => r
 primOp = fromAST $ PrimOp @op @a Proxy Proxy
 
 -- | Types at which we can define "undefined."

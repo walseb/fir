@@ -94,13 +94,13 @@ import FIR.Instances.AST
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Op
-  ( PrimOp(..), SPrimOp(..)
-  , Vectorise(Vectorise)
+  ( PrimOp(..), SPrimOp(SMul)
+  , Vectorise(Vectorise), VecPrimOpType(VecPrimOpType)
   )
 import FIR.Prim.Singletons
   ( PrimTy, primTy
   , IntegralTy
-  , PrimFunc(distributeAST, primFuncSing)
+  , PrimFunc(primFuncSing, distDict), DistDict(DistDict)
   , SPrimFunc(..)
   , Arity(ZeroArity,SuccArity), KnownArity(arity)
   )
@@ -108,7 +108,6 @@ import Math.Algebra.Class
   ( Semiring((*)), Integral )
 import Math.Linear
   ( V, M, Semimodule((*^)) )
-import qualified SPIRV.PrimOp  as SPIRV
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 
@@ -260,20 +259,23 @@ idiom apIdiom@(ApIdiom idi (a :: AST (f a))) =
 
                       codeGen ( createArray @n @"__tmp_array" @"__tmp_arrayIndex" @b arrayFunction )
 
-applyIdiom :: forall f as a b.
-              ( PrimFunc f
-              , PrimTy a
-              , Applicative f
-              )
-           => Idiom f as (a -> b) -> AST (f a) -> f (AST b)
+applyIdiom
+  :: forall f as a b.
+     ( PrimFunc f
+     , PrimTy a
+     )
+  => Idiom f as (a -> b) -> AST (f a) -> f (AST b)
 applyIdiom (Val _) _
   = error "applyIdiom: unexpected value used as a function"
 applyIdiom (PureIdiom f) a
-  = fromAST f <$> distributeAST a
+  = case distDict @f @(AST a) of
+      DistDict ->
+        fromAST f <$> ( fromAST a :: f (AST a) )
 applyIdiom (ApIdiom f a') a
   = let f' :: f ( AST a -> AST b )
         f' = fromAST <$> applyIdiom f a'
-    in  f' <*> distributeAST a
+    in  case distDict @f @(AST a) of
+      DistDict -> f' <*> ( fromAST a :: f (AST a) )
 
 distributeMatrixIdiom
   :: forall m n as b.
@@ -281,12 +283,12 @@ distributeMatrixIdiom
   => Idiom (M m n) as b -> V m (Idiom (V n) as b)
 distributeMatrixIdiom (Val v)
   = case arity @b of
-      ZeroArity -> fmap Val . distributeAST @(V m) $ ( UnMat :$ v )
+      ZeroArity   -> fmap Val . fromAST $ ( UnMat :$ v )
       SuccArity _ -> error "distributeMatrixIdiom: unexpected value used as a function"
 distributeMatrixIdiom (PureIdiom f)
   = fmap PureIdiom . pure @(V m) $ f
 distributeMatrixIdiom (ApIdiom f a)
-  = ApIdiom <$> distributeMatrixIdiom f <*> distributeAST ( UnMat :$ a )
+  = ApIdiom <$> distributeMatrixIdiom f <*> fromAST ( UnMat :$ a )
 
 applyIdiomArray :: forall n ix as a b.
                   ( KnownNat n
@@ -327,7 +329,7 @@ sanitiseVectorisation' :: forall n ast. KnownNat n
                        => AST ast -> Maybe UAST
 sanitiseVectorisation'
 -- special case for 'vector times scalar' optimisation
-  ( PrimOp (_ :: Proxy a) (_ :: Proxy op) :$ v1 :$ v2)
+  ( PrimOp (_ :: Proxy a) (_ :: Proxy op) :$ v1 :$ v2 )
     | Just SMul <- opSing @_ @_ @op @a
     = case ( sanitiseVectorisation' @n v1, sanitiseVectorisation' @n v2 ) of
         ( Just (UAST (Pure :$ (b1 :: AST b1))), Just (UAST (Pure :$ (b2 :: AST b2))) )
@@ -388,66 +390,9 @@ unsafeVectorise (ApIdiom f (v :: AST (V n a)))
       ( unsafeVectorise f )
       ( Coerce @(V n a) @(FakeScalar n a) :$ v )
 
-vectorisePrimOp :: forall n a op. (KnownNat n, PrimOp op a, PrimOpConstraint op a)
+vectorisePrimOp :: forall n a op. (KnownNat n, PrimOp op a)
                 => Maybe UAST
-vectorisePrimOp = case opSing @_ @_ @op @a of
-  Just SAdd     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Add     )
-  Just SSub     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Sub     )
-  Just SNeg     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Neg     )
-  Just SMul     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Mul     )
-  Just SAbs     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Abs     )
-  Just SSign    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Sign    )
-  Just SDiv     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Div     )
-  Just SMod     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Mod     )
-  Just SRem     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.Rem     )
-  Just SSin     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FSin    ) 
-  Just SCos     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FCos    )
-  Just STan     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FTan    )
-  Just SAsin    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAsin   )
-  Just SAcos    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAcos   )
-  Just SAtan    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAtan   )
-  Just SSinh    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FSinh   )
-  Just SCosh    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FCosh   )
-  Just STanh    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FTanh   )
-  Just SAsinh   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAsinh  )
-  Just SAcosh   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAcosh  )
-  Just SAtanh   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAtanh  )
-  Just SAtan2   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FAtan2  )
-  Just SPow     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FPow    )
-  Just SExp     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FExp    )
-  Just SLog     -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FLog    )
-  Just SSqrt    -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FSqrt   )
-  Just SInvsqrt -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.FInvsqrt)
-  Just SBitAnd  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitAnd  )
-  Just SBitOr   -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitOr   )
-  Just SBitXor  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitXor  )
-  Just SBitNot  -> Just . UAST $ primOp @(V n a) @('Vectorise SPIRV.BitNot  )
-  Just bsr@SBitShiftRightArithmetic ->
-    case bsr of
-        (_ :: SPrimOp '(b,s) SPIRV.BitShiftRightArithmetic)
-          -> Just . UAST $ primOp @'(V n b, V n s) @('Vectorise SPIRV.BitShiftRightArithmetic)
-  Just bsl@SBitShiftLeft ->
-    case bsl of
-        (_ :: SPrimOp '(b,s) SPIRV.BitShiftLeft)
-          -> Just . UAST $ primOp @'(V n b, V n s) @('Vectorise SPIRV.BitShiftLeft)
-  Just conv@SConvert ->
-    case conv of
-        (_ :: SPrimOp '(x,y) SPIRV.Convert)
-          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.Convert)
-  Just trunc@STruncate ->
-    case trunc of
-        (_ :: SPrimOp '(x,y) SPIRV.CTruncate)
-          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CTruncate)
-  Just rd@SRound ->
-    case rd of
-        (_ :: SPrimOp '(x,y) SPIRV.CRound)
-          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CRound)
-  Just fl@SFloor ->
-    case fl of
-        (_ :: SPrimOp '(x,y) SPIRV.CFloor)
-          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CFloor)
-  Just cl@SCeiling ->
-    case cl of
-        (_ :: SPrimOp '(x,y) SPIRV.CCeiling)
-          -> Just . UAST $ primOp @'(V n x, V n y) @('Vectorise SPIRV.CCeiling)
+vectorisePrimOp = case vectorisation @_ @_ @op @a @n of
+  Just ( VecPrimOpType (_ :: Proxy v_a) )
+    -> Just . UAST $ primOp @v_a @('Vectorise op)
   _ -> Nothing

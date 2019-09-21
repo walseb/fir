@@ -85,6 +85,7 @@ import GHC.TypeNats
   ( Nat, KnownNat
   , type (+), type (-)
   , type (<=), CmpNat
+  , sameNat
   )
 
 -- half
@@ -137,7 +138,7 @@ import FIR.Prim.Op
 import FIR.Prim.Singletons
   ( PrimTy
   , ScalarTy, IntegralTy
-  , SPrimFunc(..), PrimFunc(..)
+  , SPrimFunc(..), PrimFunc(..), DistDict(DistDict)
   , KnownArity
   )
 import FIR.Prim.Struct
@@ -156,7 +157,7 @@ import Math.Linear
   , Inner(..), Cross(..)
   , Matrix(..), VectorOf
   , V, M(..)
-  , dfoldrV, buildV
+  , dfoldrV, buildV, mkVec
   , pattern V2, pattern V3, pattern V4
   )
 import Math.Logic.Bits
@@ -921,13 +922,13 @@ instance
 
 instance KnownNat n => PrimFunc (V n) where
   primFuncSing = SFuncVector @n
-  distributeAST = fromAST
+  distDict = DistDict
 instance ( KnownNat m, KnownNat n ) => PrimFunc (M m n) where
   primFuncSing = SFuncMatrix @m @n
-  distributeAST = error "distributeAST: todo for matrices"
+  distDict = DistDict
 instance KnownNat n => PrimFunc (Array n) where
   primFuncSing = SFuncArray @n
-  distributeAST = error "distributeAST: no distribute for arrays"
+  distDict = DistDict
 
 -----------------------------------------------
 -- * Syntactic instances
@@ -983,12 +984,14 @@ instance  ( KnownNat n
                   => Proxy i -> AST (V n (Internal a)) -> a
           builder _ v = fromAST ( View sLength (opticSing @(Index i)) :$ v )
 
-deriving instance
-    ( KnownNat m, KnownNat n
-    , Syntactic a
-    , ScalarTy (Internal a)
-    )
-  => Syntactic (M m n a)
+instance ( KnownNat m, KnownNat n
+         , Syntactic a
+         , PrimTy (Internal a)
+         )
+       => Syntactic (M m n a) where
+  type Internal (M m n a) = M m n (Internal a)
+  toAST (M m) = Mat :$ toAST m
+  fromAST = M . fromAST . ( UnMat :$ )
 
 -----------------------------------------------
 -- * Vectors and matrices
@@ -1066,7 +1069,16 @@ type instance VectorOf (AST (M 0 0 a)) = AST (V 0 a)
 instance (ScalarTy a, Floating a) => Matrix Nat (AST (M 0 0 a)) where
   type OfDims (AST (M 0 0 a)) Nat '(m,n) = AST (M m n a)
 
-  diag    = error "todo"
+  diag :: forall (n :: Nat). KnownNat n => AST a -> AST (M n n a)
+  diag a = toAST (M mat)
+    where
+      indicator :: (KnownNat i, KnownNat j) => Proxy i -> Proxy j -> AST a
+      indicator px1 px2 = case sameNat px1 px2 of
+        Just _ -> a
+        _      -> zero
+      mat :: V n (V n (AST a))
+      mat = mkVec @n ( \ px1 -> mkVec @n ( \ px2 -> indicator px1 px2 ) )
+
   konst a = Mat :$ pureAST (pureAST a)
 
   transpose :: forall n m. (KnownNat n, KnownNat m)

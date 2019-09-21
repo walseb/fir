@@ -65,7 +65,7 @@ import Data.Type.Known
 import Data.Type.Map
   ( (:->)((:->)) )
 import {-# SOURCE #-} FIR.AST
-  ( AST )
+  ( Syntactic(Internal) )
 import FIR.Binding
   ( Binding, BindingsMap, Var
   , Permission(Read,Write), Permissions
@@ -518,9 +518,18 @@ data SPrimFunc :: (Type -> Type) -> Type where
   SFuncMatrix  :: (KnownNat m, KnownNat n) => SPrimFunc (M m n)
   SFuncArray   :: KnownNat n => SPrimFunc (Array n)
 
+-- explicit dictionary passing workaround
+-- would like to use a quantified constraint instead
+-- (see (GHC issue #17226)[https://gitlab.haskell.org/ghc/ghc/issues/17226])
+data DistDict f a where
+  DistDict
+    :: ( Syntactic (f a), Internal (f a) ~ f (Internal a) )
+    => DistDict f a
+
 class Applicative f => PrimFunc f where
   primFuncSing :: SPrimFunc f
-  distributeAST :: PrimTy a => AST (f a) -> f (AST a)
+  distDict     :: ( Syntactic a, PrimTy (Internal a) )
+               => DistDict f a
 
 primFuncName :: forall f. PrimFunc f => String
 primFuncName

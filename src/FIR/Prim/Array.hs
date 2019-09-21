@@ -58,6 +58,8 @@ import Unsafe.Coerce
 import qualified Data.Vector as Array
 
 -- fir
+import {-# SOURCE #-} FIR.AST
+  ( Syntactic(..) )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
@@ -85,6 +87,11 @@ deriving instance Traversable (Array n)
 instance KnownNat n => Applicative (Array n) where
   pure = MkArray . Array.replicate (fromIntegral . natVal $ Proxy @n)
   (MkArray f) <*> (MkArray a) = MkArray (f <*> a)
+
+instance Syntactic a => Syntactic (Array n a) where
+  type Internal (Array n a) = Array n (Internal a)
+  toAST   = error "'toAST': cannot internalise array (todo)"
+  fromAST = error "'fromAST': cannot externalise array (todo)"
 
 
 instance GradedSemigroup (Array 0 a) Nat where

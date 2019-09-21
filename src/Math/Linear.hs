@@ -58,7 +58,7 @@ module Math.Linear
   , headV, tailV, headTailV
   , (^!), at
   , sum
-  , buildV
+  , buildV, mkVec
   , dfoldrV
   , unfold
   , pattern V0, pattern V1, pattern V2, pattern V3, pattern V4
@@ -323,6 +323,14 @@ lemma3 :: forall j n. (KnownNat j, KnownNat n)
        -> (j :~: n)
 lemma3 _ _ = unsafeCoerce Refl
 
+lemma4 :: forall j n. ( j <= n, 1 <= (n-j) )
+       => ( CmpNat j n :~: Prelude.LT )
+lemma4 = unsafeCoerce Refl
+
+lemma5 :: forall j n. ( j <= n, 1 <= (n-j) )
+       => ( (j+1) <=? n ) :~: 'True
+lemma5 = unsafeCoerce Refl
+
 lte_transitive
   :: forall i j k
   .  ( KnownNat i, KnownNat j, KnownNat k, i <= j, j <= k )
@@ -331,7 +339,7 @@ lte_transitive = unsafeCoerce Refl
 
 -----------------------------------------------------------
 
--- | Build a vector using an indexing function.
+-- | Build a vector by indexing into another object.
 buildV :: forall n a v. KnownNat n
        => ( forall i. (KnownNat i, CmpNat i n ~ Prelude.LT) => Proxy i -> v -> a) -- ^ Indexing function.
        -> v -- ^ Object to index into.
@@ -349,6 +357,20 @@ buildV f v = go @0 VNil where
         NLE Refl Refl
           -> case lemma3 @j @n Refl Refl of
                 Refl -> w
+
+-- | Build a vector using a generating function.
+mkVec :: forall n a. KnownNat n
+      => ( forall i. (KnownNat i, CmpNat i n ~ Prelude.LT) => Proxy i -> a)
+      -> V n a
+mkVec f = go @0
+  where
+    go :: forall j. (KnownNat j, j <= n) => V (n-j) a
+    go = case Proxy @1 %<=? Proxy @(n-j) of
+      NLE nle _ ->
+        case deduceZero nle of
+          Refl -> VNil
+      LE Refl -> case ( lemma4 @j @n, lemma5 @j @n ) of
+        (Refl, Refl) -> f ( Proxy @j ) :. go @(j+1)
 
 -- | Dependent fold of a vector.
 -- Folds a vector with a function whose type depends on the index.
@@ -369,11 +391,12 @@ unfold :: forall n a. KnownNat n
        -> a        -- ^ Starting value.
        -> V n a
 unfold f a 
-    = case Proxy @1 %<=? Proxy @n of
-           LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
-           NLE nle _ -> 
-            case deduceZero nle of
-                 Refl -> VNil
+  = case Proxy @1 %<=? Proxy @n of
+      LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
+      NLE nle _ -> 
+       case deduceZero nle of
+            Refl -> VNil
+
 
 {-# COMPLETE V0 #-}
 pattern V0 :: V 0 a
