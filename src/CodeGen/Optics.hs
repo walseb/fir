@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
@@ -6,6 +7,7 @@
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -58,6 +60,8 @@ import Control.Monad.Except
 -- text-short
 import Data.Text.Short
   ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
 import CodeGen.Application
@@ -69,9 +73,12 @@ import CodeGen.Application
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.Composite
-  ( compositeConstruct, compositeExtract, compositeInsert
+  ( compositeExtract, compositeInsert
   , vectorSwizzle
+  , productConstruct
   )
+import CodeGen.Debug
+  ( whenAsserting )
 import CodeGen.IDs
   ( constID )
 import CodeGen.Instruction
@@ -342,7 +349,7 @@ combinedIndices sSame@(SSameSucc sm) lg        (i `ConsAST` is) =
       case productsDict @is @jss @as of
         ConsProducts ->
           zipIndices @es @(Distribute ess as) allDict sSameLength
-            <$> deconstruct sLength i
+            <$> deconstruct allDict i
             <*> combinedIndices sm lg is
 
 zipIndices :: AllDict PrimTy is -> SSameLength is jss -> ASTs is -> ASTs (MapHList jss) -> ASTs (MapHList (ZipCons is jss))
@@ -352,17 +359,17 @@ zipIndices ConsDict (SSameSucc lg) (i `ConsAST` is) (js `ConsAST` jss) =
 
 deconstruct
   :: forall (p :: Type) (as :: [Type])
-  .  (IsProduct p as, All PrimTy as)
-  => SLength as -> AST p -> CGMonad (ASTs as)
-deconstruct SZero      _       = pure NilAST
-deconstruct _          (Lit x) = pure $ hListToASTs allDict (toHList @p @as x)
-deconstruct _          p
-  | Just hlist <- recogniseHList allDict p
+  .  IsProduct p as
+  => AllDict PrimTy as -> AST p -> CGMonad (ASTs as)
+deconstruct NilDict    _       = pure NilAST
+deconstruct dict       (Lit x) = pure $ hListToASTs dict (toHList @p @as x)
+deconstruct dict       p
+  | Just hlist <- recogniseHList dict p
   = pure hlist
   -- TODO: more cases to avoid spurious "compositeConstruct ---> compositeExtract"
-deconstruct (SSucc lg) p = do
+deconstruct ConsDict p = do
     composite <- codeGen p
-    compositeExtractAll composite (SSucc lg) 0
+    compositeExtractAll composite allDict 0
 
 
 recogniseHList :: AllDict PrimTy as -> AST p -> Maybe (ASTs as)
@@ -388,12 +395,55 @@ hListToASTs :: AllDict PrimTy as -> HList as -> ASTs as
 hListToASTs _        HNil      = NilAST
 hListToASTs ConsDict (a :> as) = Lit a `ConsAST` hListToASTs allDict as
 
-compositeExtractAll :: (ID, SPIRV.PrimTy) -> SLength as -> Word32 -> CGMonad (ASTs as)
-compositeExtractAll _     SZero     _ = pure NilAST
-compositeExtractAll comp (SSucc lg) i = do
-  extracted <- compositeExtract [i] comp
-  next      <- compositeExtractAll comp lg (succ i)
-  pure (MkID extracted `ConsAST` next)
+compositeExtractAll
+  :: forall (as :: [Type])
+  .  (ID, SPIRV.PrimTy)
+  -> AllDict PrimTy as
+  -> Word32
+  -> CGMonad (ASTs as)
+compositeExtractAll _                    NilDict  _ = pure NilAST
+-- special case for matrix entries:
+-- product for matrices can use individual components (rather than just columns)
+compositeExtractAll comp@(_,compTy) dict@ConsDict i
+  | SPIRV.Matrix {..} <- compTy
+  , SPIRV.Scalar entryTy == expectedTy
+  = do
+      extracted <- traverse (compositeExtract comp) $ [ [i,j] | j <- [0..pred rows] ]
+      makeIDsAndContinue (succ i) dict extracted
+
+        where
+          expectedTy :: SPIRV.PrimTy
+          expectedTy = case dict of
+            ( _ :: AllDict PrimTy (b ': bs) )
+              -> primTy @b
+
+          makeIDsAndContinue
+            :: Word32
+            -> AllDict PrimTy ts
+            -> [(ID, SPIRV.PrimTy)]
+            -> CGMonad (ASTs ts)
+          makeIDsAndContinue _        NilDict  _   = pure NilAST
+          makeIDsAndContinue nxt dict'          []  = compositeExtractAll comp dict' nxt
+          makeIDsAndContinue nxt dict'@ConsDict
+            ( extract@(_,extractedTy) : extracts ) =
+              case dict' of
+                ( _ :: AllDict PrimTy (c ': cs) )
+                  -> do
+                        whenAsserting . unless ( expectedTy == extractedTy ) $
+                          throwError $
+                            "'compositeExtractAll': assert failed\n"
+                            <> "expected type" <> ShortText.pack (show expectedTy)
+                            <> ", but composite component " <> ShortText.pack (show i)
+                            <> " has type " <> ShortText.pack (show extractedTy)
+
+                        next <- makeIDsAndContinue nxt allDict extracts
+                        pure $ MkID extract `ConsAST` next
+-- usual case
+compositeExtractAll comp ConsDict i =
+  do
+    extracted <- compositeExtract comp [i]
+    next      <- compositeExtractAll comp allDict (succ i)
+    pure $ MkID extracted `ConsAST` next
 
 ----------------------------------------------------------------------------
 -- code generation for optics
@@ -422,7 +472,7 @@ loadThroughAccessChain' basePtr@(_, SPIRV.PointerTy _ eltTy) ( Combine (_ :: Pro
       base <- loadThroughAccessChain' basePtr Done
       vectorSwizzle base is
   | otherwise
-  = compositeConstruct (primTy @p) =<< traverse (fmap fst . loadThroughAccessChain' basePtr) trees
+  = productConstruct (primTy @p) =<< traverse (loadThroughAccessChain' basePtr) trees
 loadThroughAccessChain' _ ( Join `Then` _ )
   = throwError "loadThroughAccessChain': unexpected 'Joint' optic used as a getter"
 
@@ -433,7 +483,7 @@ extractUsingGetter' base Done
   = pure base
 extractUsingGetter' base ( Access _ (CTInds is) `Then` ops )
   = do
-      newBase <- compositeExtract is base
+      newBase <- compositeExtract base is
       extractUsingGetter' newBase ops
 extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _) `Then` _ )
   -- run-time indices: revert to loading through pointers
@@ -452,7 +502,7 @@ extractUsingGetter' base@(_, eltTy) ( Combine (_ :: Proxy p) _ trees )
   | Just is <- swizzleIndices eltTy trees
   = vectorSwizzle base is
   | otherwise
-  = compositeConstruct (primTy @p) =<< traverse (fmap fst . extractUsingGetter' base) trees
+  = productConstruct (primTy @p) =<< traverse (extractUsingGetter' base) trees
 extractUsingGetter' _ ( Join `Then` _ )
   = throwError "extractUsingGetter': unexpected 'Joint' optic used as a getter"
 
@@ -466,9 +516,9 @@ storeThroughAccessChain' basePtr        val ( Access safe is `Then` ops)
       newBasePtr <- accessChain basePtr safe is
       storeThroughAccessChain' newBasePtr val ops
 storeThroughAccessChain' basePtr        val ( Combine (_ :: Proxy p) (_ :: Proxy as) trees )
-  = successiveStores basePtr trees =<< deconstruct @p @as sLength (unsafeCoerce val)
+  = successiveStores basePtr trees =<< deconstruct @p @as allDict (unsafeCoerce val)
 --storeThroughAccessChain' basePtr val ( Join `Then` Combine _ trees )
---  = jointStores basePtr trees =<< deconstruct @p @as sLength (unsafeCoerce val)
+--  = jointStores basePtr trees =<< deconstruct @p @as allDict (unsafeCoerce val)
 storeThroughAccessChain' _              _ ( Join `Then` _ )
   = throwError "storeThroughAccessChain': joint setter TODO"
 

@@ -201,9 +201,11 @@ data CGContext
      , userImages
           :: Map ShortText SPIRV.Image
 
-       -- | Whether to turn on debug mode,
-       -- which adds extra source information in the generated SPIR-V assembly.
-     , debugMode :: Bool
+       -- | Whether to add extra source information in the generated SPIR-V assembly.
+     , debugging :: Bool
+
+       -- | Whether to enable assertions.
+     , asserting :: Bool
      }
 
 emptyContext :: CGContext
@@ -213,7 +215,8 @@ emptyContext
       , userFunctions   = Map.empty
       , userEntryPoints = Map.empty
       , userImages      = Map.empty
-      , debugMode       = True
+      , debugging       = True
+      , asserting       = True
       }
 
 ----------------------------------------------------------------------------
@@ -407,8 +410,11 @@ _userImages = lens userImages ( \c v -> c { userImages = v } )
 _userImage :: ShortText -> Lens' CGContext ( Maybe SPIRV.Image )
 _userImage image = _userImages . at image
 
-_debugMode :: Lens' CGContext Bool
-_debugMode = lens debugMode ( \c v -> c { debugMode = v } )
+_debugging :: Lens' CGContext Bool
+_debugging = lens debugging ( \c v -> c { debugging = v } )
+
+_asserting :: Lens' CGContext Bool
+_asserting = lens asserting ( \c v -> c { asserting = v } )
 
 -----------------------------------------------------------------------------
 -- * Helper state update functions

@@ -157,7 +157,7 @@ import Math.Linear
   , Inner(..), Cross(..)
   , Matrix(..), VectorOf
   , V, M(..)
-  , dfoldrV, buildV, mkVec
+  , dfoldrV, buildV
   , pattern V2, pattern V3, pattern V4
   )
 import Math.Logic.Bits
@@ -979,10 +979,10 @@ instance  ( KnownNat n
           res' = unB res
 
   fromAST :: AST (V n (Internal a)) -> V n a
-  fromAST = buildV builder
+  fromAST v = buildV @n builder
     where builder :: forall i. (KnownNat i, CmpNat i n ~ Prelude.LT)
-                  => Proxy i -> AST (V n (Internal a)) -> a
-          builder _ v = fromAST ( View sLength (opticSing @(Index i)) :$ v )
+                  => Proxy i -> a
+          builder _ = fromAST ( View sLength (opticSing @(Index i)) :$ v )
 
 instance ( KnownNat m, KnownNat n
          , Syntactic a
@@ -1077,7 +1077,7 @@ instance (ScalarTy a, Floating a) => Matrix Nat (AST (M 0 0 a)) where
         Just _ -> a
         _      -> zero
       mat :: V n (V n (AST a))
-      mat = mkVec @n ( \ px1 -> mkVec @n ( \ px2 -> indicator px1 px2 ) )
+      mat = buildV @n ( \ px1 -> buildV @n ( \ px2 -> indicator px1 px2 ) )
 
   konst a = Mat :$ pureAST (pureAST a)
 

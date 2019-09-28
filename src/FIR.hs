@@ -80,7 +80,7 @@ of the project's repository.
 module FIR 
   ( compile, runCompilationsTH
   , DrawableProgramAST(ast)
-  , CompilerFlag(Debug, NoCode)
+  , CompilerFlag(..)
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
   , (Control.Type.Optic.:*:), Control.Type.Optic.Prod, Control.Type.Optic.EndProd
@@ -314,6 +314,7 @@ instance DrawableProgramAST (CodensityProgram (StartState defs) endState ())
 data CompilerFlag
   = NoCode -- ^ Don't emit any SPIR-V code.
   | Debug  -- ^ Include additional debug instructions, such as source-code line-number annotations.
+  | Assert -- ^ Include additional assertions.
   deriving ( Prelude.Eq, Show )
 
 -- | Functionality for compiling a program, saving the SPIR-V assembly at the given filepath.
@@ -329,7 +330,10 @@ instance KnownDefinitions defs => CompilableProgram (Program defs a) where
                     ( ByteString.writeFile filePath bin )
                   Prelude.pure (Right ())
       where cgContext :: CGContext
-            cgContext = (initialCGContext @defs) { debugMode = Debug `elem` flags }
+            cgContext = (initialCGContext @defs)
+              { debugging = Debug  `elem` flags
+              , asserting = Assert `elem` flags
+              }
 
 instance ( KnownDefinitions defs )
       => CompilableProgram (FIR.Pipeline.ShaderStage name stage defs endState)

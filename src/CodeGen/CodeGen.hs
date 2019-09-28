@@ -73,7 +73,7 @@ import CodeGen.CFG
 import CodeGen.Composite
   ( compositeConstruct, compositeExtract )
 import CodeGen.Debug
-  ( debug, putSrcInfo )
+  ( whenDebugging, putSrcInfo )
 import CodeGen.Functions
   ( declareFunction, declareFunctionCall, declareEntryPoint )
 import CodeGen.IDs
@@ -196,7 +196,7 @@ codeGen (Undefined :: AST a)
 codeGen (Def (_ :: Proxy name) (_ :: Proxy ps) :$ a)
   = do  let name     = knownValue @name
             writable = Write `elem` (knownValue @ps)
-        debug ( putSrcInfo GHC.Stack.callStack ) 
+        whenDebugging ( putSrcInfo GHC.Stack.callStack )
         cgRes@(a_ID, a_ty) <- codeGen a
         
         -- check if we should make this into a pointer or not
@@ -230,7 +230,7 @@ codeGen (FunDef (_ :: Proxy name) (_ :: Proxy as) (_ :: Proxy b) :$ body)
         retTy  = primTy     @b
         name   = knownValue @name
     in do
-      debug ( putSrcInfo GHC.Stack.callStack )
+      whenDebugging ( putSrcInfo GHC.Stack.callStack )
       control <- fromMaybe SPIRV.NoFunctionControl <$> view ( _userFunction name )
       funID   <- declareFunction name control as retTy (codeGen body)
       pure ( funID , SPIRV.Function (map (fst . snd) as) retTy )
@@ -239,7 +239,7 @@ codeGen (Entry (_ :: Proxy name) (_ :: Proxy stageInfo) :$ body)
   = let name      = knownValue @name
         stageInfo = knownValue @stageInfo
     in do
-      debug ( putSrcInfo GHC.Stack.callStack )
+      whenDebugging ( putSrcInfo GHC.Stack.callStack )
       entryPointID <- declareEntryPoint name stageInfo Nothing (codeGen body) -- TODO
       pure ( entryPointID, SPIRV.Function [] SPIRV.Unit )
 
@@ -444,15 +444,15 @@ codeGen (GradedMappend :$ (a :: AST a) :$ (b :: AST b))
           if m /= m' || s /= s'
           then throwError "codeGen: graded semigroup operation on incompatible matrices"
           else do
-            cols1 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..n -1]
-            cols2 <- traverse ( \i -> fst <$> compositeExtract [i] (b_ID, b_ty) ) [0..n'-1]
+            cols1 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..n -1]
+            cols2 <- traverse ( \i -> fst <$> compositeExtract (b_ID, b_ty) [i] ) [0..n'-1]
             compositeConstruct (SPIRV.Matrix m (n+n') s) (cols1 ++ cols2)
         ( SPIRV.Struct as _ _, SPIRV.Struct bs _ _ ) ->
           do
             let lg  = fromIntegral (length as)
                 lg' = fromIntegral (length bs)
-            elts1 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg -1]
-            elts2 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg'-1]
+            elts1 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg -1]
+            elts2 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg'-1]
             compositeConstruct
               ( SPIRV.Struct (as ++ bs) Set.empty SPIRV.NotForBuiltins )
               ( elts1 ++ elts2 )
@@ -461,8 +461,8 @@ codeGen (GradedMappend :$ (a :: AST a) :$ (b :: AST b))
           then throwError "codeGen: graded semigroup operation on incompatible arrays"
           else do
             -- should probably use a loop instead of this, but nevermind
-            elts1 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg -1]
-            elts2 <- traverse ( \i -> fst <$> compositeExtract [i] (a_ID, a_ty) ) [0..lg'-1]
+            elts1 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg -1]
+            elts2 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg'-1]
             compositeConstruct
               ( SPIRV.Array (lg + lg') eltTy Set.empty SPIRV.NotForBuiltins )
               ( elts1 ++ elts2 )

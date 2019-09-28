@@ -27,7 +27,7 @@ import GHC.TypeNats
 import Control.Monad.Indexed
   ( (:=), pure, (>>), (>>=) )
 import Control.Type.Optic
-  ( Optic, Name, AnIndex, (:.:) )
+  ( Name, AnIndex, (:.:) )
 import Data.Type.Known
   ( knownValue )
 import Data.Type.Map
@@ -65,8 +65,6 @@ import FIR.Prim.Singletons
 -- but allows it to be uninitialised.
 --
 -- Runs in an environment with no local state.
--- This __unsafely__ assumes that @ixName@ is not already defined
--- in the current state.
 createArray :: forall n arrName ixName a i j ctx funs eps.
              ( KnownNat n
              , KnownSymbol ixName
@@ -74,7 +72,7 @@ createArray :: forall n arrName ixName a i j ctx funs eps.
              , PrimTy a
              , i ~ ( 'ASTState '[ arrName ':-> Var RW (Array n a) ] ctx funs eps )
              , j ~ AddBinding ixName (Var RW Word32) i
-             , Has ixName j ~ Word32
+             , Has ixName  j ~ Word32
              , Has arrName j ~ Array n a
              , CanGet ixName  j
              , CanPut ixName  j
@@ -88,7 +86,7 @@ createArray arrayFunction = toAST $ locally @i @j do
   def @ixName @RW @Word32 @i 0
   while ( get @ixName < pure (Lit arrayLg) ) do
     i <- get @ixName
-    assign @(Name arrName :.: (AnIndex Word32 :: Optic _ (Array n a) _))
+    assign @(Name arrName :.: AnIndex Word32)
       i (arrayFunction i)
     put @ixName (i+1)
   get @arrName

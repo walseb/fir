@@ -6,6 +6,7 @@
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
+--{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -526,7 +527,9 @@ data DistDict f a where
     :: ( Syntactic (f a), Internal (f a) ~ f (Internal a) )
     => DistDict f a
 
-class Applicative f => PrimFunc f where
+class ( Applicative f
+    --, forall a. (Syntactic a, PrimTy (Internal a)) => Syntactic (f a)
+      ) => PrimFunc f where
   primFuncSing :: SPrimFunc f
   distDict     :: ( Syntactic a, PrimTy (Internal a) )
                => DistDict f a

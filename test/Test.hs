@@ -129,8 +129,8 @@ validator :: FilePath
 validator = "spirv-val"
 
 codeGen, validate :: FilePath -> IO TestOutput
-codeGen  testName = compileTest [Debug, NoCode] testName 
-validate testName = compileTest [Debug]         testName 
+codeGen  testName = compileTest [Debug, Assert, NoCode] testName
+validate testName = compileTest [Debug, Assert]         testName
 
 compileTest :: [CompilerFlag] -> FilePath -> IO TestOutput
 compileTest flags testName = do

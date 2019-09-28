@@ -47,7 +47,7 @@ import qualified Data.Set as Set
 
 -- lens
 import Control.Lens
-  ( assign )
+  ( use, assign )
 
 -- mtl
 import Control.Monad.Except
@@ -163,9 +163,9 @@ idiomatic :: AnyIdiom -> CGMonad (ID, SPIRV.PrimTy)
 idiomatic ( AnyIdiom (AnIdiom idi) ) = idiom idi
 
 -- codeGen for an idiom
-idiom :: forall f as b. ( Applicative f, PrimFunc f )
-             => Idiom f as b
-             -> CGMonad (ID, SPIRV.PrimTy)
+idiom :: forall f as b. PrimFunc f
+      => Idiom f as b
+      -> CGMonad (ID, SPIRV.PrimTy)
 idiom (Val fb) = codeGen fb
 idiom (PureIdiom b)
   = do
@@ -255,27 +255,31 @@ idiom apIdiom@(ApIdiom idi (a :: AST (f a))) =
                       resArrPtrID <- fst <$> temporaryVariable arrID resArrPtrTy
                       let resArr = (resArrPtrID, resArrPtrTy)
 
-                      assign ( _localBinding "__tmp_array" ) ( Just $ second SPIRV.pointerTy resArr )
+                      oldTmpArray      <- use ( _localBinding "__tmp_array"      )
+                      oldTmpArrayIndex <- use ( _localBinding "__tmp_arrayIndex" )
 
-                      codeGen ( createArray @n @"__tmp_array" @"__tmp_arrayIndex" @b arrayFunction )
+                      assign ( _localBinding "__tmp_array"      ) ( Just $ second SPIRV.pointerTy resArr )
+                      assign ( _localBinding "__tmp_arrayIndex" ) Nothing
+
+                      res <- codeGen ( createArray @n @"__tmp_array" @"__tmp_arrayIndex" @b arrayFunction )
+
+                      assign ( _localBinding "__tmp_array"      ) oldTmpArray
+                      assign ( _localBinding "__tmp_arrayIndex" ) oldTmpArrayIndex
+
+                      pure res
 
 applyIdiom
-  :: forall f as a b.
-     ( PrimFunc f
+  :: forall f as a b
+  .  ( PrimFunc f
      , PrimTy a
      )
   => Idiom f as (a -> b) -> AST (f a) -> f (AST b)
-applyIdiom (Val _) _
-  = error "applyIdiom: unexpected value used as a function"
-applyIdiom (PureIdiom f) a
-  = case distDict @f @(AST a) of
-      DistDict ->
-        fromAST f <$> ( fromAST a :: f (AST a) )
-applyIdiom (ApIdiom f a') a
-  = let f' :: f ( AST a -> AST b )
-        f' = fromAST <$> applyIdiom f a'
-    in  case distDict @f @(AST a) of
-      DistDict -> f' <*> ( fromAST a :: f (AST a) )
+applyIdiom i a = case distDict @f @(AST a) of
+  DistDict ->
+    case i of
+      PureIdiom f    ->   fromAST f                     <$> ( fromAST a :: f (AST a) )
+      ApIdiom   f a' -> ( fromAST <$> applyIdiom f a' ) <*> ( fromAST a :: f (AST a) )
+      Val _           -> error "applyIdiom: unexpected value used as a function"
 
 distributeMatrixIdiom
   :: forall m n as b.

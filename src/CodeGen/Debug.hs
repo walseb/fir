@@ -2,7 +2,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module CodeGen.Debug
-  ( debug, putSrcInfo )
+  ( whenDebugging, whenAsserting
+  , putSrcInfo
+  )
   where
 
 -- base
@@ -46,15 +48,19 @@ import CodeGen.Monad
   )
 import CodeGen.State
   ( CGContext
-  , _debugMode
+  , _debugging
+  , _asserting
   )
 import qualified SPIRV.Operation as SPIRV.Op
 
 ----------------------------------------------------------------------------
 -- debugging annotations
 
-debug :: MonadReader CGContext m => m () -> m ()
-debug action = (`when` action) =<< view _debugMode
+whenDebugging :: MonadReader CGContext m => m () -> m ()
+whenDebugging action = (`when` action) =<< view _debugging
+
+whenAsserting :: MonadReader CGContext m => m () -> m ()
+whenAsserting action = (`when` action) =<< view _asserting
 
 sourceInfo :: GHC.Stack.CallStack -> Maybe (ShortText, Word32, Word32)
 sourceInfo GHC.Stack.EmptyCallStack = Nothing

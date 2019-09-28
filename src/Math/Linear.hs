@@ -58,7 +58,7 @@ module Math.Linear
   , headV, tailV, headTailV
   , (^!), at
   , sum
-  , buildV, mkVec
+  , buildV
   , dfoldrV
   , unfold
   , pattern V0, pattern V1, pattern V2, pattern V3, pattern V4
@@ -182,7 +182,7 @@ instance (KnownNat n, Binary a) => Binary (V n a) where
                            get 
                            $ get @(V (n-1) a)
             NLE nle _ ->
-              case deduceZero nle of
+              case lt1_is_Zero nle of
                    Refl -> pure VNil
 
 instance KnownNat n => Distributive (V n) where
@@ -194,7 +194,7 @@ instance KnownNat n => Distributive (V n) where
                    . strong
                    . fmap headTailV
         NLE nle _ ->
-          case deduceZero nle of
+          case lt1_is_Zero nle of
                Refl -> const VNil
     
 instance KnownNat n => Applicative (V n) where
@@ -252,7 +252,7 @@ splitAtV v = case Proxy @1 %<=? Proxy @s of
     Refl -> case headTailV v of
       ( h, t ) -> case splitAtV @(s-1) t of
         ( hs, d ) -> ( h :. hs, d )
-  NLE nle _ -> case deduceZero nle of
+  NLE nle _ -> case lt1_is_Zero nle of
     Refl -> ( VNil, v )
 
 instance (KnownNat n, Storable a) => Storable (V n a) where
@@ -306,30 +306,16 @@ sum = getSum #. foldMap Sum
 -- some basic facts about inequalities, bypassing the type-checker
 -- a proper solution would be to use a type-checking plugin for this
 
-deduceZero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
-deduceZero _ = unsafeCoerce Refl
+lt1_is_Zero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
+lt1_is_Zero _ = unsafeCoerce Refl
 
-lemma1 :: forall j n. (KnownNat j, KnownNat n)
-       => ((j+1) <=? n) :~: 'True -> (CmpNat j n :~: Prelude.LT)
-lemma1 _ = unsafeCoerce Refl
-
-lemma2 :: forall j n. (KnownNat j, KnownNat n, j <= n, 1 <= j)
-       => CmpNat (n-j) n :~: 'Prelude.LT
-lemma2 = unsafeCoerce Refl
-
-lemma3 :: forall j n. (KnownNat j, KnownNat n)
-       => (j     <=? n) :~: 'True
-       -> ((j+1) <=? n) :~: 'False
-       -> (j :~: n)
-lemma3 _ _ = unsafeCoerce Refl
-
-lemma4 :: forall j n. ( j <= n, 1 <= (n-j) )
+lemma1 :: forall j n. ( j <= n, 1 <= (n-j) )
        => ( CmpNat j n :~: Prelude.LT )
-lemma4 = unsafeCoerce Refl
+lemma1 = unsafeCoerce Refl
 
-lemma5 :: forall j n. ( j <= n, 1 <= (n-j) )
+lemma2 :: forall j n. ( j <= n, 1 <= (n-j) )
        => ( (j+1) <=? n ) :~: 'True
-lemma5 = unsafeCoerce Refl
+lemma2 = unsafeCoerce Refl
 
 lte_transitive
   :: forall i j k
@@ -339,37 +325,18 @@ lte_transitive = unsafeCoerce Refl
 
 -----------------------------------------------------------
 
--- | Build a vector by indexing into another object.
-buildV :: forall n a v. KnownNat n
-       => ( forall i. (KnownNat i, CmpNat i n ~ Prelude.LT) => Proxy i -> v -> a) -- ^ Indexing function.
-       -> v -- ^ Object to index into.
-       -> V n a
-buildV f v = go @0 VNil where
-  go :: forall j. (KnownNat j, j <= n)
-     => V j a
-     -> V n a
-  go w =
-    case Proxy @(j+1) %<=? Proxy @n of
-        LE Refl
-          -> case (lemma1 @j @n Refl, lemma2 @(j+1) @n) of
-                (Refl, Refl)
-                  -> go @(j+1) (f (Proxy @(n-(j+1))) v :. w)
-        NLE Refl Refl
-          -> case lemma3 @j @n Refl Refl of
-                Refl -> w
-
 -- | Build a vector using a generating function.
-mkVec :: forall n a. KnownNat n
+buildV :: forall n a. KnownNat n
       => ( forall i. (KnownNat i, CmpNat i n ~ Prelude.LT) => Proxy i -> a)
       -> V n a
-mkVec f = go @0
+buildV f = go @0
   where
     go :: forall j. (KnownNat j, j <= n) => V (n-j) a
     go = case Proxy @1 %<=? Proxy @(n-j) of
       NLE nle _ ->
-        case deduceZero nle of
+        case lt1_is_Zero nle of
           Refl -> VNil
-      LE Refl -> case ( lemma4 @j @n, lemma5 @j @n ) of
+      LE Refl -> case ( lemma1 @j @n, lemma2 @j @n ) of
         (Refl, Refl) -> f ( Proxy @j ) :. go @(j+1)
 
 -- | Dependent fold of a vector.
@@ -394,7 +361,7 @@ unfold f a
   = case Proxy @1 %<=? Proxy @n of
       LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
       NLE nle _ -> 
-       case deduceZero nle of
+       case lt1_is_Zero nle of
             Refl -> VNil
 
 
@@ -666,7 +633,7 @@ identityMat :: forall n a. (KnownNat n, Ring a) => V n (V n a)
 identityMat =
   case (Proxy :: Proxy 1) %<=? (Proxy :: Proxy n) of
        LE Refl   -> (1 :. pure 0) :. fmap (0:.) (identityMat :: V (n-1) (V (n-1) a) )
-       NLE nle _ -> case deduceZero nle of
+       NLE nle _ -> case lt1_is_Zero nle of
                          Refl -> VNil
 
 newtype WrappedMatrix m n a k = WrappedMatrix { wrappedMatrix :: V m (V (n+k) a) }
@@ -768,7 +735,7 @@ splitRows
   => V (m*n) a -> V n (V m a)
 splitRows v = case Proxy @1 %<=? Proxy @n of
   NLE nle Refl ->
-    case deduceZero nle of
+    case lt1_is_Zero nle of
       Refl -> VNil
   LE Refl ->
     case splitAtV @m v of

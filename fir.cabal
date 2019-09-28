@@ -186,6 +186,8 @@ library
       , mtl
       , transformers
       , tree-view
+      , split
+          >= 0.2.3.3
       , text-short
           >= 0.1.2
       , vector

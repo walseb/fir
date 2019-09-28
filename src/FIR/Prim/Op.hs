@@ -83,7 +83,7 @@ class PrimOp (op :: opKind) (a :: k) | op -> k where
   opName :: SPIRV.PrimOp
   opSing :: Maybe (SPrimOp a op)
   opSing = Nothing
-  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n op)
+  vectorisation :: KnownNat n => Maybe (VecPrimOpType n op)
   vectorisation = Nothing
 
 -- some singletons for primitive operations
@@ -93,7 +93,9 @@ data SPrimOp (a :: k) (op :: opKind) :: Type where
   
 -- data type recording type-level information regarding vectorisation of primops
 data VecPrimOpType (n :: Nat) op where
-  VecPrimOpType :: ( PrimOp ('Vectorise op) vec ) => Proxy vec -> VecPrimOpType n op
+  VecPrimOpType :: PrimOp ('Vectorise op) vec => Proxy vec -> VecPrimOpType n op
+
+newtype Vectorise a = Vectorise a
 
 -------------------------------------------------------------------------------
 -- instances
@@ -406,7 +408,6 @@ instance PrimOp SPIRV.EndGeometryPrimitive (i :: ASTState) where
 
 -- vector operations
 -- doing it by hand because I'm an idiot who doesn't know better
-newtype Vectorise a = Vectorise a
 
 val :: forall n. KnownNat n => Word32
 val = fromIntegral ( natVal (Proxy @n) )
