@@ -1,5 +1,5 @@
 
-test\Tests\Optics\Overlapping.hs:34:5: error:
+test\Tests\Optics\Overlapping.hs:33:5: error:
     * Cannot create product setter.
       Name "field_0" and index 0 refer to the same field.
     * In a stmt of a 'do' block:
@@ -29,5 +29,5 @@ test\Tests\Optics\Overlapping.hs:34:5: error:
                         :*: Index 0 :*: EndProd) :: Optic '[] MyStruct OtherStruct))
                (Lit (4 :& 5 :& End))
    |
-34 |     assign
+33 |     assign
    |     ^^^^^^^...

@@ -50,7 +50,7 @@ import qualified Data.Text.IO as Text
 
 -- fir
 import FIR
-  ( CompilerFlag(NoCode, Debug) )
+  ( CompilerFlag(..) )
 
 --------------------------------------------------
 
@@ -64,6 +64,7 @@ tests = [ ( "Array"        </> "Applicative"   , Validate  )
         , ( "Images"       </> "Gather"        , Validate  )
         , ( "Images"       </> "Sample"        , Validate  )
         , ( "Matrix"       </> "Applicative"   , Validate  )
+        , ( "Optics"       </> "ASTIndices"    , Validate  )
         , ( "Optics"       </> "ASTProducts"   , Validate  )
         , ( "Optics"       </> "MVP1"          , Validate  )
         , ( "Optics"       </> "MVP2"          , Validate  )

@@ -95,7 +95,7 @@ module FIR
   , module Data.Product
   , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST((:$), Lit, Ops)
+  , FIR.AST.AST((:$), Lit, Ops, NilHList, ConsHList)
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.AST.HasUndefined(undefined)
   , FIR.Binding.BindingsMap
