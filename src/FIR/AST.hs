@@ -43,6 +43,8 @@ import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
+import Data.Word
+  ( Word32 )
 import qualified GHC.Stack
 import GHC.TypeLits
   ( Symbol, KnownSymbol, symbolVal )
@@ -98,7 +100,10 @@ import FIR.Instances.Bindings
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
 import FIR.Prim.Image
-  ( ImageOperands )
+  ( ImageOperands, OperandName(..)
+  , ImageComponent
+  )
+import qualified FIR.Prim.Image as Image
 import FIR.Prim.Op
   ( PrimOp(PrimOpType, opName) )
 import FIR.Prim.Singletons
@@ -110,6 +115,7 @@ import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(Grade, (:<!>:)) )
 import Math.Linear
   ( V, M )
+import qualified SPIRV.Image  as SPIRV
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 import qualified SPIRV.Stage  as SPIRV
@@ -296,10 +302,104 @@ data AST :: Type -> Type where
   Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
   -- | Newtype unwrapping for matrices.
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
-  -- | Internal wrapping for image operands (to be deprecated, see (issue #66)[https://gitlab.com/sheaf/fir/issues/66]).
-  Ops   :: ImageOperands props ops -> AST ( ImageOperands props ops )
   -- | Coercions (unsafe).
   Coerce :: forall a b. AST (a -> b)
+
+  -- | Undefined.
+  Undefined :: PrimTy a => AST a
+
+  -- Image operands
+  -- | End of list of image operands.
+  NilOps :: AST (ImageOperands props '[])
+  -- | Use projective coordinates.
+  --
+  -- Must be provided after all other operands,
+  -- except possibly 'Dref'.
+  Proj :: Image.CanAddProj ops
+       => AST ( ImageOperands props ops )
+       -> AST ( ImageOperands props (ProjectiveCoords ': ops) )
+  -- | Provide a depth-comparison reference value.
+  --
+  -- Must be provided after all other operands,
+  -- except possibly 'Proj'.
+  Dref :: Image.CanAddDref ops
+       => AST ( ImageComponent props ) -- ^ Reference value used to perform the depth comparison.
+       -> AST ( ImageOperands props ops )
+       -> AST ( ImageOperands props (DepthComparison ': ops) )
+  -- | Add a bias to the implicit level of detail.
+  Bias :: ( Image.BasicDim "Bias" props
+          , Image.NoMS "Bias" props
+          , Image.NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.Bias)) ops
+          , Image.NoLODOps "Bias" '[SPIRV.LOD, SPIRV.Grad] ops
+          )
+       => AST (  ImageComponent props ) -- ^ Bias.
+       -> AST ( ImageOperands props ops )
+       -> AST ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.Bias) ': ops) )
+  -- | Provide an explicit level of detail.
+  LOD  :: ( Image.BasicDim "LOD" props
+          , Image.NoMS "LOD" props
+          , Image.NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.LOD)) ops
+          , Image.NoLODOps "LOD" '[SPIRV.Bias, SPIRV.Grad, SPIRV.MinLOD] ops
+          )
+       => AST ( ImageComponent props ) -- ^ LOD.
+       -> AST ( ImageOperands props ops )
+       -> AST ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.LOD ) ': ops) )
+  -- | Specify the minimum level of detail to use
+  -- when sampling the image.
+  MinLOD :: ( Image.BasicDim "MinLOD" props
+            , Image.NoMS "MinLOD" props
+            , Image.NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.MinLOD)) ops
+            , Image.NoLODOps "MinLOD" '[SPIRV.LOD, SPIRV.Bias] ops
+            )
+         => AST ( ImageComponent props ) -- ^ Minimum LOD.
+         -> AST ( ImageOperands props ops )
+         -> AST ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.MinLOD ) ': ops) )
+  -- | Provide explicit derivatives.
+  Grad :: ( vec ~ Image.GradCoordinates props ops
+          , Image.NoMS "Grad" props
+          , Image.NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.Grad)) ops
+          , Image.NoLODOps "Grad" '[ SPIRV.Bias, SPIRV.LOD ] ops
+          )
+       => ( AST vec, AST vec ) -- ^ Gradient: ( df\/dx, df\/dy ).
+       -> AST ( ImageOperands props ops )
+       -> AST ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.Grad) ': ops) )
+  -- | Add a constant offset to the coordinates.
+  ConstOffsetBy
+    :: ( PrimTy vec
+       , vec ~ Image.OffsetCoordinates props ops
+       , Image.NoDuplicate (BaseOperand SPIRV.ConstOffset) ops
+       , Image.NotCubeDim "ConstOffsetBy" props
+       )
+    => vec -- Offset (a Haskell constant).
+    -> AST ( ImageOperands props ops )
+    -> AST ( ImageOperands props (BaseOperand SPIRV.ConstOffset ': ops) )
+  -- | Add an offset to the coordinates.
+  OffsetBy
+    :: ( PrimTy vec
+       , vec ~ Image.OffsetCoordinates props ops
+       , Image.NoDuplicate (BaseOperand SPIRV.Offset) ops
+       , Image.NotCubeDim "OffsetBy" props
+       )
+    => AST vec -- Offset.
+    -> AST (ImageOperands props ops)
+    -> AST (ImageOperands props (BaseOperand SPIRV.Offset ': ops))
+  Gather
+    :: ( Image.NotCubeDim "Gather" props
+       , Image.NoDuplicate (BaseOperand SPIRV.ConstOffsets) ops
+       , Image.NoLODOps "Gather" '[ SPIRV.LOD, SPIRV.Grad, SPIRV.Bias, SPIRV.MinLOD ] ops
+       , Image.UsesAffineCoords ops
+       )
+    => Image.GatherInfo (Image.WhichGather ops)
+    -> AST (ImageOperands props ops)
+    -> AST (ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops))
+  -- | Specify which sample number to use in a multi-sampled image.
+  SampleNo
+    :: ( Image.CanMultiSample props
+       , Image.NoDuplicate (BaseOperand SPIRV.Sample) ops
+       )
+    => AST Word32  -- ^ Sample number.
+    -> AST (ImageOperands props ops)
+    -> AST (ImageOperands props (BaseOperand SPIRV.Sample ': ops))
 
   -- MkStruct
   -- MkArray
@@ -310,9 +410,6 @@ data AST :: Type -> Type where
   -- See [FIR issue #13](https://gitlab.com/sheaf/fir/issues/13).
   NilHList  :: AST ( HList '[] )
   ConsHList :: PrimTy a => AST ( a -> HList as -> HList (a ': as) )
-
-  -- | Undefined.
-  Undefined :: PrimTy a => AST a
 
 ------------------------------------------------
 
@@ -379,11 +476,53 @@ toTreeArgs Return    as = return (Node "Return"        as)
 toTreeArgs Bind      as = return (Node "Bind"          as)
 toTreeArgs Mat       as = return (Node "Mat"           as)
 toTreeArgs UnMat     as = return (Node "UnMat"         as)
-toTreeArgs (Ops _ )  as = return (Node "ImageOperands" as)
 toTreeArgs Coerce    as = return (Node "Coerce"        as)
 toTreeArgs Undefined as = return (Node "Undefined"     as)
 toTreeArgs NilHList  as = return (Node "NilHListAST"  as)
 toTreeArgs ConsHList as = return (Node "ConsHListAST" as)
+toTreeArgs NilOps    as = return (Node "NilOps" as)
+toTreeArgs (Proj ops) as = do
+  a <- toTreeArgs ops []
+  pure $ Node "Proj" (a:as)
+toTreeArgs (Dref ref ops) as = do
+  r <- toTreeArgs ref []
+  a <- toTreeArgs ops []
+  pure $ Node "Dref" (r:a:as)
+toTreeArgs (Bias bias ops) as = do
+  b <- toTreeArgs bias []
+  a <- toTreeArgs ops  []
+  pure $ Node "Bias=" (b:a:as)
+toTreeArgs (LOD lod ops) as = do
+  l <- toTreeArgs lod []
+  a <- toTreeArgs ops []
+  pure $ Node "LOD" (l:a:as)
+toTreeArgs (MinLOD lod ops) as = do
+  l <- toTreeArgs lod []
+  a <- toTreeArgs ops []
+  pure $ Node "MinLOD" (l:a:as)
+toTreeArgs (Grad (dfdx, dfdy) ops) as = do
+  x <- toTreeArgs dfdx []
+  y <- toTreeArgs dfdy []
+  a <- toTreeArgs ops  []
+  pure $ Node "Grad" (x:y:a:as)
+toTreeArgs (ConstOffsetBy vec ops) as = do
+  a <- toTreeArgs ops []
+  pure $ Node "ConstOffsetBy" (pure (show vec):a:as)
+toTreeArgs (OffsetBy vec ops) as = do
+  v <- toTreeArgs vec []
+  a <- toTreeArgs ops []
+  pure $ Node "OffsetBy" (v:a:as)
+toTreeArgs (Gather (Image.ComponentWithOffsets comp offs) ops) as = do
+  c <- toTreeArgs comp []
+  a <- toTreeArgs ops  []
+  pure $ Node "GatherComponentWithOffsets" (c:pure (show offs):a:as)
+toTreeArgs (Gather (Image.DepthWithOffsets offs) ops) as = do
+  a <- toTreeArgs ops  []
+  pure $ Node "GatherDepthWithOffsets" (pure (show offs):a:as)
+toTreeArgs (SampleNo no ops) as = do
+  n <- toTreeArgs no  []
+  a <- toTreeArgs ops []
+  pure $ Node "SampleNo" (n:a:as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs GradedMappend    as = return (Node "GradedMappend" as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)

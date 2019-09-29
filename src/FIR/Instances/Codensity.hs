@@ -176,8 +176,6 @@ import FIR.Prim.Image
   )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
-import FIR.Synonyms
-  ( pattern NoOperands )
 import Math.Algebra.Class
   ( AdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring
@@ -538,7 +536,7 @@ imageRead = use
                     i
                     ( ImageData props '[] )
            )
-          NoOperands
+          NilOps
 
 -- | Write directly to an image (without a sampler).
 --
@@ -577,7 +575,7 @@ imageWrite = assign
                      i
                      ( ImageData props '[] )
             )
-           NoOperands
+           NilOps
 
 --------------------------------------------------------------------------
 -- geometry shader primitive instructions

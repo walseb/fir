@@ -56,9 +56,17 @@ import CodeGen.State
   ( addCapabilities )
 import Data.Type.Known
   ( Known, knownValue )
+import FIR.AST
+  ( AST
+    ( NilOps, Proj, Dref, Bias
+    , LOD, MinLOD, Grad
+    , ConstOffsetBy, OffsetBy
+    , Gather, SampleNo
+    )
+   )
 import FIR.Prim.Image
   ( ImageProperties, ImageAndCoordinate(..)
-  , ImageOperands(..), OperandName
+  , ImageOperands, OperandName
   , GatherInfo(..)
   , knownImage
   )
@@ -87,14 +95,14 @@ import qualified SPIRV.ScalarTy
 
 
 imageTexel
-      :: forall
-            ( props :: ImageProperties )
-            ( ops   :: [OperandName]   )
-      .  ( Known ImageProperties props )
-      => (ID, SPIRV.PrimTy)
-      -> ImageOperands props ops
-      -> ID
-      -> CGMonad (ID, SPIRV.PrimTy)
+  :: forall
+        ( props :: ImageProperties )
+        ( ops   :: [OperandName]   )
+  .  ( Known ImageProperties props )
+  => (ID, SPIRV.PrimTy)
+  -> AST (ImageOperands props ops)
+  -> ID
+  -> CGMonad (ID, SPIRV.PrimTy)
 imageTexel (imgID, imgTy) ops coords
   = do
       ( bm, operandsArgs ) <- operandsToArgs ops
@@ -190,13 +198,14 @@ imageTexel (imgID, imgTy) ops coords
       pure (v, imgResTy)
 
 
-writeTexel :: forall props ops.
-              ( Known ImageProperties props )
-           => (ID, SPIRV.PrimTy)
-           -> ImageOperands props ops
-           -> ID
-           -> ID
-           -> CGMonad ()
+writeTexel
+  :: forall props ops
+  .  ( Known ImageProperties props )
+  => (ID, SPIRV.PrimTy)
+  -> AST (ImageOperands props ops)
+  -> ID
+  -> ID
+  -> CGMonad ()
 writeTexel (imgID, imgTy) ops coords texel
   = do
       let SPIRV.Image.Image
@@ -333,8 +342,8 @@ addImageCapabilities sampling bm dim arrayness ms mbFmt
 --------------------------------------------------------------------------
 -- dealing with operands
 
-operands :: ImageOperands props ops -> CGMonad (Word32, [(ID, Word32)])
-operands Done       = pure  ( 0x0000, [] )
+operands :: AST (ImageOperands props ops) -> CGMonad (Word32, [(ID, Word32)])
+operands NilOps     = pure  ( 0x0000, [] )
 operands (Proj ops) = first ( 0x0002 .|. ) <$> operands ops
 operands (Dref dref ops)
   = do
@@ -419,7 +428,10 @@ operands (MinLOD lod ops)
       pure ( opBit .|. bm
            , insertBy (comparing snd) (i, opBit) nxt
            )
-
+operands ops
+  = throwError 
+  $ "'operands': image operands not of the expected form\n"
+  <> ShortText.pack (show ops)
 
 opArgs :: Word32 -> [(ID, Word32)] -> Args
 opArgs _  [] = EndArgs
@@ -432,7 +444,7 @@ opArgs bm ops
       ( shiftR bm 8 ) -- bitmask first, with bottom byte removed
       ( toArgs (map fst ops) ) -- then the IDs in order
 
-operandsToArgs :: ImageOperands props ops -> CGMonad (Word32, Args)
+operandsToArgs :: AST (ImageOperands props ops) -> CGMonad (Word32, Args)
 operandsToArgs ops = (fst &&& uncurry opArgs) <$> operands ops
 
 stableSplice :: Ord b => ( [a], b ) -> [ (a,b) ] -> [ (a,b) ]

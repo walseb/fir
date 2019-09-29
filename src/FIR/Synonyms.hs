@@ -49,7 +49,7 @@ import Control.Type.Optic
   , EndProd
   )
 import FIR.AST
-  ( AST(Ops) )
+  ( AST(Gather) )
 import FIR.Definition
   ( Definition(Global) )
 import qualified FIR.Definition as Def
@@ -59,10 +59,8 @@ import FIR.Instances.Optics
   ( )
 import FIR.Prim.Image
   ( ImageProperties(Properties)
-  , Image, ImageOperands, GatherInfo(..)
+  , Image, GatherInfo(..)
   )
-import qualified FIR.Prim.Image as Op -- for image operands
-  ( ImageOperands(..) )
 import FIR.Prim.Struct
   ( LocationSlot(LocationSlot) )
 import Math.Linear
@@ -151,31 +149,10 @@ type StorageImage decs props
       decs
       ( Image props )
 
--- pattern synonyms for image operands
--- these perform wrapping/unwrapping for nicer user syntax... quite hacky
-pattern Done                  = Ops  Op.Done
-pattern Proj              ops = Ops (Op.Proj              (UnOps ops))
-pattern Dref         dref ops = Ops (Op.Dref         dref (UnOps ops))
-pattern Bias            b ops = Ops (Op.Bias            b (UnOps ops))
-pattern LOD           lod ops = Ops (Op.LOD           lod (UnOps ops))
-pattern MinLOD        lod ops = Ops (Op.MinLOD        lod (UnOps ops))
-pattern Grad         grad ops = Ops (Op.Grad         grad (UnOps ops))
-pattern ConstOffsetBy off ops = Ops (Op.ConstOffsetBy off (UnOps ops))
-pattern OffsetBy      off ops = Ops (Op.OffsetBy      off (UnOps ops))
-pattern Gather       info ops = Ops (Op.Gather       info (UnOps ops))
-pattern SampleNo       no ops = Ops (Op.SampleNo       no (UnOps ops))
-
--- shorthands
-pattern NoOperands = Done
+-- shorthand pattern synonyms for image operands
 pattern DepthTestOffsets offs ops = Gather (DepthWithOffsets offs) ops
 pattern GatherComponentWithOffsets component offs ops
   = Gather (ComponentWithOffsets component offs) ops
-
-
-pattern UnOps :: AST (ImageOperands props ops) -> ImageOperands props ops
-pattern UnOps astOps <- ( Ops -> astOps )
-  where UnOps (Ops ops) = ops
-        UnOps _ = error "image operands not of the expected form"
 
 -----------------------------------------------------
 -- helper type family for choosing image texel type

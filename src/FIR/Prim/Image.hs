@@ -31,15 +31,22 @@ module FIR.Prim.Image
   -- ** Type reflection of image properties
   -- $reflection
   , ImageAndCoordinate(..)
+  , ImageComponent
   , knownImage, knownImageCoordinateComponent
 
   -- * Image operands
-  , OperandName(..), ImageOperands(..)
+  , OperandName(..), ImageOperands
   -- ** Specific data type for gathering operations
   , GatherInfo(..)
 
   -- * Compute the coordinate and texel type of an image
   , ImageCoordinates, ImageData
+
+  -- * Helper type families for checking validity of image operands
+  , CanAddProj, CanAddDref, BasicDim, NotCubeDim
+  , NoMS, NoDuplicate, CanMultiSample
+  , NoLODOps, UsesAffineCoords
+  , WhichGather, GradCoordinates, OffsetCoordinates
   )
   where
 
@@ -71,9 +78,7 @@ import {-# SOURCE #-} FIR.AST
 import FIR.Prim.Array
   ( Array )
 import {-# SOURCE #-} FIR.Prim.Singletons
-  ( PrimTy
-  , ScalarTy, scalarTy
-  )
+  ( ScalarTy, scalarTy )
 import Math.Algebra.Class
   ( Floating, Integral )
 import Math.Linear
@@ -90,7 +95,7 @@ import SPIRV.Image
   , Projection(..)
   )
 import qualified SPIRV.Image    as SPIRV
-  ( Image(..), Operand(..), LODOperand(..) )
+  ( Image(..), Operand(..) )
 import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy )
 
@@ -207,10 +212,8 @@ data OperandName
 
 -- | == Image operands.
 --
--- __Warning__  Users of the library should use the pattern synonyms
--- defined in "FIR.Synonyms" to provide image operands.
--- (Those synonyms, but not the constructors provided here,
--- are exported by default by this library.)
+-- This is an empty data type, but values of type @AST (ImageOperands props ops)@
+-- can be constructed using the constructors of the AST.
 --
 -- === Overview
 -- Image operands behave like a linked list of operands, with a /twist/:
@@ -220,7 +223,7 @@ data OperandName
 --
 -- Consider for instance the image operands:
 --
---    @ Grad grad $ Proj $ Done @
+--    @ Grad grad $ Proj $ NilOps @
 --
 -- These can loosely be thought of as a list of operands
 --
@@ -240,102 +243,6 @@ data ImageOperands
        ( ops   :: [OperandName]   )
      :: Type
      where
-  -- | End of list.
-  Done :: ImageOperands props '[ ]
-  -- | Use projective coordinates.
-  --
-  -- Must be provided after all other operands,
-  -- except possibly 'Dref'.
-  Proj :: ( CanAddProj ops )
-       => ImageOperands props ops
-       -> ImageOperands props (ProjectiveCoords ': ops)
-  -- | Provide a depth-comparison reference value.
-  --
-  -- Must be provided after all other operands,
-  -- except possibly 'Proj'.
-  Dref :: ( CanAddDref ops )
-       => AST (ImageComponent props) -- ^ Reference value used to perform the depth comparison.
-       -> ImageOperands props ops
-       -> ImageOperands props (DepthComparison ': ops)
-  -- | Add a bias to the implicit level of detail.
-  Bias :: ( BasicDim "Bias" props
-          , NoMS "Bias" props
-          , NoDuplicate (BaseOperand ('LODOperand SPIRV.Bias)) ops
-          , NoLODOps "Bias" '[SPIRV.LOD, SPIRV.Grad] ops
-          )
-       => AST (ImageComponent props) -- ^ Bias.
-       -> ImageOperands props ops 
-       -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Bias) ': ops)
-  -- | Provide an explicit level of detail.
-  LOD  :: ( BasicDim "LOD" props
-          , NoMS "LOD" props
-          , NoDuplicate (BaseOperand ('LODOperand SPIRV.LOD)) ops
-          , NoLODOps "LOD" '[SPIRV.Bias, SPIRV.Grad, SPIRV.MinLOD] ops
-          )
-       => AST (ImageComponent props) -- ^ LOD.
-       -> ImageOperands props ops
-       -> ImageOperands props (BaseOperand ('LODOperand SPIRV.LOD ) ': ops)
-  -- | Specify the minimum level of detail to use
-  -- when sampling the image.
-  MinLOD :: ( BasicDim "MinLOD" props
-            , NoMS "MinLOD" props
-            , NoDuplicate (BaseOperand ('LODOperand SPIRV.MinLOD)) ops
-            , NoLODOps "MinLOD" '[SPIRV.LOD, SPIRV.Bias] ops
-            )
-         => AST (ImageComponent props) -- ^ Minimum LOD.
-         -> ImageOperands props ops
-         -> ImageOperands props (BaseOperand ('LODOperand SPIRV.MinLOD ) ': ops)
-  -- | Provide explicit derivatives.
-  Grad :: ( vec ~ GradCoordinates props ops
-          , NoMS "Grad" props
-          , NoDuplicate (BaseOperand ('LODOperand SPIRV.Grad)) ops
-          , NoLODOps "Grad" '[ SPIRV.Bias, SPIRV.LOD ] ops
-          )
-       => ( AST vec, AST vec ) -- ^ Gradient: ( df\/dx, df\/dy ).
-       -> ImageOperands props ops
-       -> ImageOperands props (BaseOperand ('LODOperand SPIRV.Grad) ': ops)
-  -- | Add a constant offset to the coordinates.
-  ConstOffsetBy
-    :: ( PrimTy vec
-       , vec ~ OffsetCoordinates props ops
-       , NoDuplicate (BaseOperand SPIRV.ConstOffset) ops
-       , NotCubeDim "ConstOffsetBy" props
-       )
-    => vec -- Offset (a Haskell constant).
-    -> ImageOperands props ops
-    -> ImageOperands props (BaseOperand SPIRV.ConstOffset ': ops)
-  -- | Add an offset to the coordinates.
-  OffsetBy
-    :: ( PrimTy vec
-       , vec ~ OffsetCoordinates props ops
-       , NoDuplicate (BaseOperand SPIRV.Offset) ops
-       , NotCubeDim "OffsetBy" props
-       )
-    => AST vec -- Offset.
-    -> ImageOperands props ops
-    -> ImageOperands props (BaseOperand SPIRV.Offset ': ops)
-  -- | Specify which 4 offsets to use for a 'gather' operation,
-  -- which reads 4 texels at a time.
-  --
-  -- If not performing a depth test, an additional
-  -- index must be provided to specify which component to access.
-  Gather
-    :: ( NotCubeDim "Gather" props
-       , NoDuplicate (BaseOperand SPIRV.ConstOffsets) ops
-       , NoLODOps "Gather" '[ SPIRV.LOD, SPIRV.Grad, SPIRV.Bias, SPIRV.MinLOD ] ops
-       , UsesAffineCoords ops
-       )
-    => GatherInfo (WhichGather ops)
-    -> ImageOperands props ops
-    -> ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops)
-  -- | Specify which sample number to use in a multi-sampled image.
-  SampleNo
-    :: ( CanMultiSample props
-       , NoDuplicate (BaseOperand SPIRV.Sample) ops
-       )
-    => AST Word32  -- ^ Sample number.
-    -> ImageOperands props ops
-    -> ImageOperands props (BaseOperand SPIRV.Sample ': ops)
 
 -----------------------------------------------------------
 -- data type for gather image operand

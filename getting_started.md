@@ -221,6 +221,13 @@ Bind
 
 The AST pretty-printing is performed using the [tree-view](http://hackage.haskell.org/package/tree-view) package.
 
+If you get an error when attempting to pretty-print an AST, such as:
+
+> *** Exception: <stdout>: hPutChar: invalid argument (invalid character)
+
+it might be necessary to set your console to support UTF-8 output.
+On Windows, this can be achieved with the command `chcp.com 65001`.
+
 <a name="inlining"></a>
 ## Controlling inlining
 

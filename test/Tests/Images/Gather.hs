@@ -35,5 +35,5 @@ program =
     pos   <- get @"in_pos"
     let offsetArray :: Array 4 (V 2 Int32)
         offsetArray = mkArray (Array.fromList [V2 0 0, V2 0 1, V2 1 0, V2 1 1])
-    col <- use @(ImageTexel "image") (Gather (ComponentWithOffsets 0 offsetArray) Done) pos
+    col <- use @(ImageTexel "image") (Gather (ComponentWithOffsets 0 offsetArray) NilOps) pos
     put @"out_col" col

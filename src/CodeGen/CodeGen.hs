@@ -257,7 +257,7 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
       -- image
       SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
         -> case is of 
-            ( astOps `ConsAST` coords `ConsAST` NilAST )
+            ( ops `ConsAST` coords `ConsAST` NilAST )
               -> do
                     let imgName = knownValue @name
                     bd@(bdID, bdTy) <- bindingID imgName
@@ -266,10 +266,6 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
                                 -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
                               _ -> pure bd
                     (cdID, _) <- codeGen coords
-                    ops <- case astOps of
-                              Ops rawOps -> pure rawOps
-                              _ -> throwError
-                                      "codeGen: image operands not of the expected form"
                     imageTexel img ops cdID
 
       SComposeO _ (SBinding (_ :: Proxy name )) getter ->
@@ -286,7 +282,7 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
         (SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props ))
         getter
          -> case is of
-              ( astOps `ConsAST` coords `ConsAST` nextindices )
+              ( ops `ConsAST` coords `ConsAST` nextindices )
                 ->
                   do 
                     -- copy-pasted from above
@@ -297,10 +293,6 @@ codeGen (OpticUse (AnIndexedOptic singOptic is))
                                 -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
                               _ -> pure bd
                     (cdID, _) <- codeGen coords
-                    ops <- case astOps of
-                              Ops rawOps -> pure rawOps
-                              _ -> throwError
-                                      "codeGen: image operands not of the expected form"
                     -- end of copy-paste
                     texel <- imageTexel img ops cdID
                     extractUsingGetter texel getter nextindices
@@ -355,7 +347,7 @@ codeGen (OpticAssign (AnIndexedAssignment singOptic is a))
       -- image
       SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
         -> case is of 
-            ( astOps `ConsAST` coords `ConsAST` NilAST )
+            ( ops `ConsAST` coords `ConsAST` NilAST )
               -> do
                     let imgName = knownValue @name
                     bd@(bdID, bdTy) <- bindingID imgName
@@ -365,10 +357,6 @@ codeGen (OpticAssign (AnIndexedAssignment singOptic is a))
                               _ -> pure bd
                     (cdID , _) <- codeGen coords
                     (texID, _) <- codeGen a
-                    ops <- case astOps of
-                              Ops rawOps -> pure rawOps
-                              _ -> throwError
-                                      "codeGen: image operands not of the expected form."
                     writeTexel img ops cdID texID
                     pure (ID 0, SPIRV.Unit) -- ID should never be used
 

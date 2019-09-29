@@ -46,7 +46,7 @@ fragment :: Program FragmentDefs ()
 fragment =
   Program $ entryPoint \@"main" \@Fragment do
     pos <- get \@"in_pos"
-    col <- use \@(ImageTexel "image") NoOperands pos
+    col <- use \@(ImageTexel "image") NilOps pos
     put \@"out_col" col
 @
 
@@ -56,7 +56,7 @@ Note the lens-like operations:
     @'FIR.Instances.Codensity.use' \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
     This operation is similar to @get@ in a state monad, except that an additional binding name
     is provided via a type application.
-  - @'FIR.Instances.Codensity.use' \@(ImageTexel "image") NoOperands pos@ samples the provided image
+  - @'FIR.Instances.Codensity.use' \@(ImageTexel "image") NilOps pos@ samples the provided image
     at coordinates @pos@. Additional image operands can be provided for this sampling operation,
     such as an explicit level of detail or whether to use projective coordinates
     (refer to the SPIR-V specification for further information concerning image operands).
@@ -95,7 +95,16 @@ module FIR
   , module Data.Product
   , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST((:$), Lit, Ops, NilHList, ConsHList)
+  , FIR.AST.AST
+    ( (:$), Lit
+    -- image operands
+    , NilOps, Proj, Dref, Bias
+    , LOD, MinLOD, Grad
+    , ConstOffsetBy, OffsetBy
+    , Gather, SampleNo
+    -- internal hlist
+    , NilHList, ConsHList
+    )
   , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
   , FIR.AST.HasUndefined(undefined)
   , FIR.Binding.BindingsMap
