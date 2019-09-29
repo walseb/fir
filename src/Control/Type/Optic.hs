@@ -318,9 +318,7 @@ type family (:*:) (o :: Optic is s a) (os :: ProductComponents iss s as) :: Prod
   ( o :: Optic is s a ) :*: EndProd_
     = o `ProductO` ( EndProd_ :: ProductComponents (Replicate (Length is) '[]) s '[] )
   ( o :: Optic is s a ) :*: ( os :: ProductComponents iss s as )
-    = ( ( o `ProductO` os :: ProductComponents (ZipCons is iss) s (a ': as) )
-        `WithKind` ( ProductComponents (ProductIndices is os) s (a ': as) )
-      )
+    = ( o `ProductO` os :: ProductComponents (ProductIndices is os) s (a ': as) )
 -- | Empty set of optic components.
 type family EndProd :: ProductComponents '[] s '[] where
   EndProd = EndProd_
@@ -333,10 +331,6 @@ type Prod (os :: ProductComponents iss s as)
   = ( Prod_ os :: Optic (MapHList iss) s p )
 -- TODO: it would be nice to have "p" as a first argument for visible kind application
 -- (this might require standalone kind signatures?)
-
-
-type family WithKind (x :: a) b :: b where
-  WithKind (x :: b) b = x
 
 type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
   ShowOptic Id_ = Text "Id"
