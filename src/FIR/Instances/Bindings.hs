@@ -265,7 +265,7 @@ type family GetFunctionInfoFromLookup
     )
 
 -- | Adds a function binding to the indexed monadic state.
-type family AddFunBinding (k :: Symbol) (as :: BindingsMap) (b :: Type) (s :: ixState) :: ASTState where
+type family AddFunBinding (k :: Symbol) (as :: BindingsMap) (b :: Type) (s :: ASTState) :: ASTState where
   AddFunBinding k as b ('ASTState bds ctx funs eps)
   -- 'ValidFunDef' should have already checked that name 'k' is not already in use
     = 'ASTState (Insert k (Fun as b) bds) ctx (SetFunctionDefined k funs) eps
