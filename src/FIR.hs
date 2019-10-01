@@ -1,6 +1,7 @@
 {-# OPTIONS_HADDOCK ignore-exports #-}
 
 {-# LANGUAGE AllowAmbiguousTypes  #-}
+{-# LANGUAGE CPP                  #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
@@ -350,9 +351,6 @@ instance ( KnownDefinitions defs )
   compile filePath flags (FIR.Pipeline.ShaderStage prog)
     = compile filePath flags (Program @defs prog)
 
-instance TH.Lift ShortText where
-  lift t = [| ShortText.pack $(TH.lift $ ShortText.unpack t) |]
-
 -- | Utility function to run IO actions at compile-time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.
 --
@@ -383,3 +381,10 @@ runCompilationsTH namedCompilations
       combineResult name (Right _)   (Left err) = Left (name <> ": " <> err)
       combineResult name (Left errs) (Left err)
         = Left (errs <> "\n" <> name <> ": " <> err)
+
+-- Template Haskell 'Lift' instance for ShortText, needed for the above
+instance TH.Lift ShortText where
+  lift      t = [|  ShortText.pack  $(TH.lift      $ ShortText.unpack t)  |]
+#if MIN_VERSION_template_haskell(2,16,0)
+  liftTyped t = [|| ShortText.pack $$(TH.liftTyped $ ShortText.unpack t) ||]
+#endif

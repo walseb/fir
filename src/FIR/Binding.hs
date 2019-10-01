@@ -68,7 +68,7 @@ type Fun as b = 'Function as b
 
 type BindingsMap = Map Symbol Binding
 
-type family FunctionType (as :: BindingsMap) (b :: Type) = (res :: Type) where
+type family FunctionType (as :: BindingsMap) (b :: Type) where
   FunctionType  '[]                b = b
   FunctionType  ((_ ':-> a) ': as) b = BindingType a -> FunctionType as b
 
