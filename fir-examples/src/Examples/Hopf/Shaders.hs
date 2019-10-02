@@ -1,20 +1,10 @@
-{-# LANGUAGE BlockArguments         #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE NamedWildCards         #-}
-{-# LANGUAGE OverloadedLabels       #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PackageImports         #-}
-{-# LANGUAGE PartialTypeSignatures  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE RebindableSyntax       #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE RebindableSyntax      #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeOperators         #-}
 
 module Examples.Hopf.Shaders where
 
