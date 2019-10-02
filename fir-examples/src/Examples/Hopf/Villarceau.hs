@@ -109,21 +109,21 @@ gradient t colors
 
 
 sunset :: Array 3 (V 4 Float)
-sunset = mkArray . Array.fromList $ fmap (fmap (\n -> n / 255))
+sunset = mkArray . Array.fromList $ fmap (fmap (/255))
   [ V4 224  28  11 255
   , V4 224 154  11 255
   , V4 224  28  11 255
   ]
 
 blues :: Array 3 (V 4 Float)
-blues = mkArray . Array.fromList $ fmap (fmap (\n -> n / 255))
+blues = mkArray . Array.fromList $ fmap (fmap (/255))
   [ V4 138  43 226 255
   , V4  30 144 255 255
   , V4 138  43 226 255
   ]
 
 greens :: Array 3 (V 4 Float)
-greens = mkArray . Array.fromList $ fmap (fmap (\n -> n / 255))
+greens = mkArray . Array.fromList $ fmap (fmap (/255))
   [ V4  29 173  51 255
   , V4  86 188  35 255
   , V4 138 193  36 255

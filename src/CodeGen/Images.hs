@@ -332,7 +332,7 @@ requireImageCapabilities
   -> CGMonad ()
 requireImageCapabilities sampling bm dim arrayness ms mbFmt
   = do
-      ( traverse_ requireCapabilities )
+      traverse_ requireCapabilities
         ( SPIRV.formatCapabilities <$> mbFmt )
       requireCapabilities ( SPIRV.msCapabilities     ms )
       requireCapabilities ( SPIRV.lodCapabilities    bm )

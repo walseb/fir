@@ -100,8 +100,8 @@ initialObserver
       }
 
 p, n :: Float
-p =   1
-n = (-1)
+p =  1
+n = -1
 
 strafeDir :: SDL.Scancode -> V 3 Float
 strafeDir SDL.ScancodeW      = V3 0 0 p

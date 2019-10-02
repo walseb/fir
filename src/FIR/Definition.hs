@@ -6,7 +6,6 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecordWildCards       #-}
@@ -385,11 +384,11 @@ type family ValidateGlobal
   ValidateGlobal Storage.Uniform decs (Struct as)
     = If ( ValidUniformDecorations decs (Struct as))
         ( Just (Struct as) )
-        ( Nothing ) -- unreachable
+        Nothing -- unreachable
   ValidateGlobal Storage.Uniform decs (Array n (Struct as))
     = If ( ValidUniformDecorations decs (Array n (Struct as)) )
         ( Just (Array n (Struct as)) )
-        ( Nothing ) -- unreachable
+        Nothing -- unreachable
   ValidateGlobal Storage.Uniform _ ty
     = TypeError
         (    Text "Uniform buffer should be backed by a struct or array containing a struct;"

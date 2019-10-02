@@ -9,7 +9,6 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
 
 module Vulkan.Pipeline where
 
@@ -90,7 +89,7 @@ assemblyInfo primTop =
     )
 
 tessellationInfo
-  :: PrimitiveTopology Word32 -> Maybe (Vulkan.VkPipelineTessellationStateCreateInfo)
+  :: PrimitiveTopology Word32 -> Maybe Vulkan.VkPipelineTessellationStateCreateInfo
 tessellationInfo (PatchesOfSize pts) =
   (Just . Vulkan.createVk )
      (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO
