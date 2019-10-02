@@ -115,7 +115,6 @@ library
       , CodeGen.Phi
       , CodeGen.Pointers
       , CodeGen.PrimOps
-      , CodeGen.Put
       , CodeGen.State
       , Control.Arrow.Strength
       , Control.Monad.Indexed
@@ -156,6 +155,7 @@ library
       , FIR.Swizzle
       , FIR.Synonyms
       , FIR.Temp
+      , Instances.TH.Lift
       , Math.Algebra.Class
       , Math.Algebra.GradedSemigroup
       , Math.Logic.Bits

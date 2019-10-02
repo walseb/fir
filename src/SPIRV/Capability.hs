@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveLift                 #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
@@ -17,6 +18,10 @@ module SPIRV.Capability where
 import Data.Word
   ( Word32 )
 
+-- template-haskell
+import Language.Haskell.TH.Syntax
+  ( Lift )
+
 -- fir
 import Data.Binary.Class.Put
   ( Put )
@@ -24,7 +29,7 @@ import Data.Binary.Class.Put
 --------------------------------------------------
 
 newtype Capability = Capability Word32
-  deriving ( Eq, Ord, Put )
+  deriving ( Eq, Ord, Put, Lift )
 
 instance Show Capability where
   show capability = "Capability " ++ showCapability capability

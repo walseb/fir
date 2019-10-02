@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PackageImports      #-}
 {-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
@@ -53,6 +54,8 @@ import CodeGen.Instruction
   )
 import CodeGen.Monad
   ( note )
+import CodeGen.State
+  ( CGContext(..), CGState(..) )
 import Data.Binary.Class.Put
   ( Put(put, wordCount) )
 import Data.Containers.Traversals
@@ -67,6 +70,42 @@ import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Stage         as SPIRV
 
 ----------------------------------------------------------------------------
+-- emitting a SPIR-V module
+-- some instruction need to be floated to the top
+
+putModule :: CGContext -> CGState -> ExceptT ShortText Binary.PutM ()
+putModule
+  CGContext { .. }
+  CGState   { .. }
+  = do
+    lift $ do putHeader               ( idNumber currentID )
+              putCapabilities         neededCapabilities
+              putExtensions           neededExtensions
+              putExtendedInstructions knownExtInsts
+              putMemoryModel
+    let knownBindingIDs = fmap fst knownBindings
+        usedGlobalIDs   = fmap fst usedGlobals
+    putEntryPoints    entryPoints interfaces
+    putExecutionModes entryPoints userEntryPoints
+    lift $ do
+              putKnownStringLits      knownStringLits
+              putBindingAnnotations   knownBindingIDs
+              putBindingAnnotations   usedGlobalIDs
+              putNames                names
+              putDecorations          decorations
+              putMemberDecorations    memberDecorations
+
+              -- Type and constant declarations need to be interleaved.
+              -- For instance, an array type needs to have
+              -- its length (a constant) defined earlier.
+              putTypesAndConstants    knownTypes knownConstants
+
+              putUndefineds           knownUndefineds
+
+    putGlobals knownTypes usedGlobals
+
+----------------------------------------------------------------------------
+-- individual binary instructions
 
 putInstruction :: Map SPIRV.ExtInst ID -> Instruction -> Binary.Put
 putInstruction extInsts

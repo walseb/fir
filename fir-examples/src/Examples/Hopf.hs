@@ -80,6 +80,7 @@ import FIR
   , Layout(Extended)
   , Struct(..)
   , (:->)((:->))
+  , ModuleRequirements
   )
 import Math.Linear
 
@@ -89,13 +90,15 @@ import Examples.Hopf.Villarceau
 import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
+import Vulkan.Features
+  ( requiredFeatures )
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.SDL
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either ShortText ()
+shaderCompilationResult :: Either ShortText ModuleRequirements
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Vertex shader"                 , compileVertexShader                 )
@@ -111,9 +114,10 @@ appName = "fir-examples - Hopf fibration"
 hopf :: IO ()
 hopf = ( runManaged . ( `evalStateT` initialState ) ) do
 
-  case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
-    Right _   -> logMsg ( "Shaders were succesfully compiled." )
+  ( reqs :: ModuleRequirements ) <-
+    case shaderCompilationResult of
+      Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
+      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
@@ -129,11 +133,9 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
   queueFamilyIndex <- logMsg "Finding suitable queue family"
       *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]
 
-  let features :: Maybe Vulkan.VkPhysicalDeviceFeatures
-      features = Just $ Vulkan.createVk
-          ( Vulkan.set @"tessellationShader" Vulkan.VK_TRUE )
-  device  <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex features
-  surface <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
+  features <- liftIO ( requiredFeatures reqs )
+  device   <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex features
+  surface  <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
 
   assertSurfacePresentable physicalDevice queueFamilyIndex surface
 

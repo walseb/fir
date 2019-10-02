@@ -83,6 +83,7 @@ import FIR
   ( runCompilationsTH
   , Layout(Extended), Poke(poke)
   , (:->)((:->)), Struct((:&),End)
+  , ModuleRequirements
   )
 import qualified FIR
 import Math.Linear
@@ -98,13 +99,15 @@ import Examples.Logo.Shaders
 import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
+import Vulkan.Features
+  ( requiredFeatures )
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.SDL
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either ShortText ()
+shaderCompilationResult :: Either ShortText ModuleRequirements
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Compute shader", compileComputeShader) ]
@@ -116,9 +119,10 @@ appName = "fir-examples - Logo"
 logo :: IO ()
 logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
-  case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
-    Right _   -> logMsg ( "Shaders were succesfully compiled." )
+  ( reqs :: ModuleRequirements ) <-
+    case shaderCompilationResult of
+      Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
+      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
@@ -134,8 +138,9 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
   queueFamilyIndex <- logMsg "Finding suitable queue family"
     *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_COMPUTE_BIT]
 
-  device  <- logMsg "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex Nothing
-  surface <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
+  features <- liftIO ( requiredFeatures reqs )
+  device   <- logMsg "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex features
+  surface  <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
 
   assertSurfacePresentable physicalDevice queueFamilyIndex surface
 

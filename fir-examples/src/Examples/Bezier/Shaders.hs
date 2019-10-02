@@ -251,19 +251,19 @@ tesePath = "shaders/bezier_tese.spv"
 geomPath = "shaders/bezier_geom.spv"
 fragPath = "shaders/bezier_frag.spv"
 
-compileVertexShader :: IO ( Either ShortText () )
+compileVertexShader :: IO ( Either ShortText ModuleRequirements )
 compileVertexShader = compile vertPath [] vertex
 
-compileTessellationControlShader :: IO ( Either ShortText () )
+compileTessellationControlShader :: IO ( Either ShortText ModuleRequirements )
 compileTessellationControlShader = compile tescPath [] tessellationControl
 
-compileTessellationEvaluationShader :: IO ( Either ShortText () )
+compileTessellationEvaluationShader :: IO ( Either ShortText ModuleRequirements )
 compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
 
-compileGeometryShader :: IO ( Either ShortText () )
+compileGeometryShader :: IO ( Either ShortText ModuleRequirements )
 compileGeometryShader = compile geomPath [] geometry
 
-compileFragmentShader :: IO ( Either ShortText () )
+compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline

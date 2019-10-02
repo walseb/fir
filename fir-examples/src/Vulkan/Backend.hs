@@ -157,9 +157,9 @@ createLogicalDevice
   :: MonadManaged m
   => Vulkan.VkPhysicalDevice
   -> Int
-  -> Maybe Vulkan.VkPhysicalDeviceFeatures
+  -> Vulkan.VkPhysicalDeviceFeatures
   -> m Vulkan.VkDevice
-createLogicalDevice physicalDevice queueFamilyIndex mbFeatures =
+createLogicalDevice physicalDevice queueFamilyIndex features =
   let
     queueCreateInfo :: Vulkan.VkDeviceQueueCreateInfo
     queueCreateInfo =
@@ -170,48 +170,26 @@ createLogicalDevice physicalDevice queueFamilyIndex mbFeatures =
         &* Vulkan.setListCountAndRef @"queueCount" @"pQueuePriorities" [ 1.0 :: Float ]
         )
 
-
-
     deviceCreateInfo :: Vulkan.VkDeviceCreateInfo
-    deviceCreateInfo = case mbFeatures of
-      Nothing ->
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
-          &* Vulkan.set @"pNext" Foreign.nullPtr
-          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-          &* Vulkan.setListCountAndRef
-                @"queueCreateInfoCount"
-                @"pQueueCreateInfos"
-                [ queueCreateInfo ]
-          &* Vulkan.setListCountAndRef
-                @"enabledLayerCount"
-                @"ppEnabledLayerNames"
-                []
-          &* Vulkan.setListCountAndRef
-                @"enabledExtensionCount"
-                @"ppEnabledExtensionNames"
-                [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
-          &* Vulkan.set @"pEnabledFeatures" Vulkan.vkNullPtr
-          )
-      Just features ->
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
-          &* Vulkan.set @"pNext" Foreign.nullPtr
-          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-          &* Vulkan.setListCountAndRef
-                @"queueCreateInfoCount"
-                @"pQueueCreateInfos"
-                [ queueCreateInfo ]
-          &* Vulkan.setListCountAndRef
-                @"enabledLayerCount"
-                @"ppEnabledLayerNames"
-                []
-          &* Vulkan.setListCountAndRef
-                @"enabledExtensionCount"
-                @"ppEnabledExtensionNames"
-                [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
-          &* Vulkan.setVkRef @"pEnabledFeatures" features
-          )
+    deviceCreateInfo =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
+        &* Vulkan.set @"pNext" Foreign.nullPtr
+        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
+        &* Vulkan.setListCountAndRef
+              @"queueCreateInfoCount"
+              @"pQueueCreateInfos"
+              [ queueCreateInfo ]
+        &* Vulkan.setListCountAndRef
+              @"enabledLayerCount"
+              @"ppEnabledLayerNames"
+              []
+        &* Vulkan.setListCountAndRef
+              @"enabledExtensionCount"
+              @"ppEnabledExtensionNames"
+              [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
+        &* Vulkan.setVkRef @"pEnabledFeatures" features
+        )
 
   in
     managedVulkanResource

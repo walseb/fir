@@ -58,6 +58,7 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 import FIR
   ( runCompilationsTH
   , Struct(..)
+  , ModuleRequirements
   )
 import Math.Linear
   ( pattern V3 )
@@ -67,12 +68,14 @@ import Examples.Offscreen.Shaders
 import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
+import Vulkan.Features
+  ( requiredFeatures )
 import Vulkan.Monad
 import Vulkan.Pipeline
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either ShortText ()
+shaderCompilationResult :: Either ShortText ModuleRequirements
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Vertex shader"  , compileVertexShader  )
@@ -86,16 +89,18 @@ appName = "fir-examples - Offscreen"
 offscreen :: IO ()
 offscreen = runManaged do
 
-  case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
-    Right _   -> logMsg ( "Shaders were succesfully compiled." )
+  ( reqs :: ModuleRequirements ) <-
+    case shaderCompilationResult of
+      Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
+      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
 
   vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName []
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family"
       *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]
 
-  device           <- logMsg "Creating logical device"       *> createLogicalDevice  physicalDevice queueFamilyIndex Nothing
+  features <- liftIO ( requiredFeatures reqs )
+  device   <- logMsg "Creating logical device"       *> createLogicalDevice  physicalDevice queueFamilyIndex features
 
 
   let

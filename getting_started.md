@@ -121,20 +121,20 @@ The type-level map `VertexShaderDefs` provides the interface for the vertex shad
 
 To compile a shader, use the `compile` function:
 ```haskell
-compile :: FilePath -> [CompilerFlag] -> Program defs a -> IO ( Either ShortText () )
+compile :: FilePath -> [CompilerFlag] -> Program defs a -> IO ( Either ShortText ModuleRequirements )
 ```
 To compile the above vertex shader, we can run the function
 ```haskell
-compileVertexShader :: IO ( Either ShortText () )
+compileVertexShader :: IO ( Either ShortText ModuleRequirements )
 compileVertexShader = compile "vert.spv" [] vertexShader
 ```
 Sometimes it is more convenient to have the shaders be compiled when we compile our graphics application, as opposed to when we run it. To that end, a simple Template Haskell function is also provided:
 ```haskell
-runCompilationsTH :: [ ( ShortText, IO (Either ShortText ()) ) ] -> Q Exp
+runCompilationsTH :: [ ( ShortText, IO (Either ShortText ModuleRequirements) ) ] -> Q Exp
 ```
 To compile the above vertexShader at compile-time it suffices to perform a TH splice:
 ```haskell
-shaderCompilationResult :: Either ShortText ()
+shaderCompilationResult :: Either ShortText ModuleRequirements
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Simple vertex shader", compileVertexShader) ]

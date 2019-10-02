@@ -43,6 +43,7 @@ library
     , Simulation.Observer
     , Vulkan.Backend
     , Vulkan.Buffer
+    , Vulkan.Features
     , Vulkan.Formats
     , Vulkan.Memory
     , Vulkan.Monad
@@ -62,6 +63,8 @@ library
         >= 1.1.4 && <= 1.4
     , JuicyPixels
         >= 3.3.2
+    , containers
+        >= 0.6.0.1
     , vector
         >= 0.12.0.1
     , bytestring

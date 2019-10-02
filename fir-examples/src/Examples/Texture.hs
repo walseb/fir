@@ -82,6 +82,7 @@ import FIR
   , Struct(..)
   , Poke(poke)
   , Layout(Extended)
+  , ModuleRequirements
   )
 import Math.Linear
 
@@ -90,13 +91,15 @@ import Examples.Texture.Shaders
 import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
+import Vulkan.Features
+  ( requiredFeatures )
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.SDL
 
 ----------------------------------------------------------------------------
 
-shaderCompilationResult :: Either ShortText ()
+shaderCompilationResult :: Either ShortText ModuleRequirements
 shaderCompilationResult
   = $( runCompilationsTH
         [ ("Vertex shader"  , compileVertexShader  )
@@ -110,9 +113,10 @@ appName = "fir-examples - Texture"
 texture :: IO ()
 texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
-  case shaderCompilationResult of
-    Left  err -> logMsg ( "Shader compilation was unsuccessful:\n" <> ShortText.unpack err )
-    Right _   -> logMsg ( "Shaders were succesfully compiled." )
+  ( reqs :: ModuleRequirements ) <-
+    case shaderCompilationResult of
+      Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
+      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
@@ -129,7 +133,8 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
       *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]
 
 
-  device      <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex Nothing
+  features    <- liftIO ( requiredFeatures reqs )
+  device      <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex features
   commandPool <- logMsg "Creating command pool"   *> createCommandPool    device queueFamilyIndex
   queue       <- getQueue device 0
   surface     <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance

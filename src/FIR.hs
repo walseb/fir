@@ -1,10 +1,13 @@
 {-# OPTIONS_HADDOCK ignore-exports #-}
 
 {-# LANGUAGE AllowAmbiguousTypes  #-}
-{-# LANGUAGE CPP                  #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DeriveLift           #-}
+{-# LANGUAGE DerivingVia          #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE PolyKinds            #-}
@@ -82,6 +85,7 @@ module FIR
   ( compile, runCompilationsTH
   , DrawableProgramAST(ast)
   , CompilerFlag(..)
+  , ModuleRequirements(..)
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
   , (Control.Type.Optic.:*:), Control.Type.Optic.Prod, Control.Type.Optic.EndProd
@@ -151,6 +155,7 @@ module FIR
   , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Bits
   , module Math.Logic.Class
+  , module SPIRV.Capability
   , SPIRV.Control.Inlineability(..)
   , SPIRV.Control.SideEffects(..)
   , SPIRV.Control.FunctionControl
@@ -158,6 +163,7 @@ module FIR
   , SPIRV.Decoration.Decoration(..)
   , SPIRV.ExecutionMode.ExecutionMode(..)
   , SPIRV.ExecutionMode.InputVertices -- synonym of 'OutputVertices' for tessellation evaluation shaders
+  , module SPIRV.Extension
   , SPIRV.Stage.Vertex
   , SPIRV.Stage.TessellationControl
   , SPIRV.Stage.TessellationEvaluation
@@ -233,9 +239,23 @@ import Data.Word
   ( Word8, Word16, Word32, Word64 )
 import Data.Int
   ( Int8, Int16, Int32, Int64 )
+import GHC.Generics
+  ( Generic )
+
+-- template-haskell
+import qualified Language.Haskell.TH        as TH
+import qualified Language.Haskell.TH.Syntax as TH
 
 -- bytestring
 import qualified Data.ByteString.Lazy as ByteString
+
+-- containers
+import Data.Set
+  ( Set )
+
+-- generic-monoid
+import Data.Monoid.Generic
+  ( GenericSemigroup(..), GenericMonoid(..) )
 
 -- half
 import Numeric.Half
@@ -245,15 +265,9 @@ import Numeric.Half
 import Data.Tree.View
   ( drawTree )
 
--- template-haskell
-import qualified Language.Haskell.TH        as TH
-import qualified Language.Haskell.TH.Syntax as TH
-
 -- text-short
 import Data.Text.Short
   ( ShortText )
-import qualified Data.Text.Short as ShortText
-  ( pack, unpack )
 
 -- fir
 import CodeGen.CodeGen
@@ -287,13 +301,19 @@ import FIR.Synonyms
     ( Col_, Col__, Ix_, Ix__
     , RowRes, ColRes, DiagRes, EntryRes
     ) -- internal helpers
+import Instances.TH.Lift
+  ( ) -- Lift instances for ShortText, Set
 import Math.Algebra.Class
 import Math.Algebra.GradedSemigroup
 import Math.Logic.Bits
 import Math.Logic.Class
+import SPIRV.Capability
+import qualified SPIRV.Capability as SPIRV
 import SPIRV.Control
 import SPIRV.Decoration
 import SPIRV.ExecutionMode
+import SPIRV.Extension
+import qualified SPIRV.Extension as SPIRV
 import SPIRV.Image
 import SPIRV.Stage
 
@@ -327,18 +347,38 @@ data CompilerFlag
   | Assert -- ^ Include additional assertions.
   deriving ( Prelude.Eq, Show )
 
+-- | Information about requirements for a given SPIR-V module,
+-- such as which SPIR-V capabilities and extensions are needed.
+--
+-- This information can be useful to compute Vulkan requirements.
+data ModuleRequirements
+  = ModuleRequirements
+  { requiredCapabilities :: Set SPIRV.Capability
+  , requiredExtensions   :: Set SPIRV.Extension
+  }
+  deriving ( Prelude.Eq, Show, Generic )
+  deriving Semigroup via GenericSemigroup ModuleRequirements
+  deriving Monoid    via GenericMonoid    ModuleRequirements
+  deriving TH.Lift
+
 -- | Functionality for compiling a program, saving the SPIR-V assembly at the given filepath.
 class CompilableProgram prog where
-  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText () )
+  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText ModuleRequirements )
 
 instance KnownDefinitions defs => CompilableProgram (Program defs a) where
   compile filePath flags (Program program)
     = case runCodeGen cgContext (toAST program) of
         Left  err -> Prelude.pure ( Left err )
-        Right bin
+        Right (bin, CGState { neededCapabilities, neededExtensions } )
           ->  do  Monad.unless ( NoCode `elem` flags )
                     ( ByteString.writeFile filePath bin )
-                  Prelude.pure (Right ())
+                  let
+                    reqs :: ModuleRequirements
+                    reqs = ModuleRequirements
+                      { requiredCapabilities = neededCapabilities
+                      , requiredExtensions   = neededExtensions
+                      }
+                  Prelude.pure (Right reqs)
       where cgContext :: CGContext
             cgContext = (initialCGContext @defs)
               { debugging = Debug  `elem` flags
@@ -367,24 +407,23 @@ instance ( KnownDefinitions defs )
 -- At compile-time, this will compile the vertexShader @vertexShader@ at filepath @vertPath@,
 -- and similarly for the fragment shader.
 -- These can then be loaded into Vulkan shader modules for use in rendering.
-runCompilationsTH :: [ ( ShortText, IO (Either ShortText ()) ) ] -> TH.Q TH.Exp
+runCompilationsTH :: [ ( ShortText, IO (Either ShortText ModuleRequirements) ) ] -> TH.Q TH.Exp
 runCompilationsTH namedCompilations
   = TH.lift Prelude.=<< TH.runIO (combineCompilations namedCompilations)
     where
-      combineCompilations :: [ ( ShortText, IO (Either ShortText ()) ) ] -> IO (Either ShortText ())
       combineCompilations
-        = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right ()) )
+        :: [ ( ShortText, IO (Either ShortText ModuleRequirements) ) ]
+        -> IO (Either ShortText ModuleRequirements)
+      combineCompilations
+        = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right mempty) )
         . traverse ( uncurry rightStrength )
 
-      combineResult :: ShortText -> Either ShortText () -> Either ShortText () -> Either ShortText ()
-      combineResult _    a           (Right _ ) = a
-      combineResult name (Right _)   (Left err) = Left (name <> ": " <> err)
-      combineResult name (Left errs) (Left err)
-        = Left (errs <> "\n" <> name <> ": " <> err)
-
--- Template Haskell 'Lift' instance for ShortText, needed for the above
-instance TH.Lift ShortText where
-  lift      t = [|  ShortText.pack  $(TH.lift      $ ShortText.unpack t)  |]
-#if MIN_VERSION_template_haskell(2,16,0)
-  liftTyped t = [|| ShortText.pack $$(TH.liftTyped $ ShortText.unpack t) ||]
-#endif
+      combineResult
+        :: ShortText
+        -> Either ShortText ModuleRequirements
+        -> Either ShortText ModuleRequirements
+        -> Either ShortText ModuleRequirements
+      combineResult _    (Right rs  ) (Right ss) = Right (rs <> ss)
+      combineResult _    (Left  errs) (Right _ ) = Left  errs
+      combineResult name (Right _   ) (Left err) = Left  (name <> ": " <> err)
+      combineResult name (Left errs ) (Left err) = Left  (errs <> "\n" <> name <> ": " <> err)

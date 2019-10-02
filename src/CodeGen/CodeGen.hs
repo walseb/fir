@@ -65,7 +65,7 @@ import CodeGen.Application
 import CodeGen.Applicative
   ( idiomatic, pattern Idiomatic )
 import CodeGen.Binary
-  ( putInstruction )
+  ( putModule, putInstruction )
 import CodeGen.CFG
   ( block, branch, branchConditional
   , selectionMerge
@@ -96,6 +96,7 @@ import CodeGen.Monad
   , MonadFresh(fresh)
   , liftPut
   , note
+  , runExceptTPutM
   )
 import CodeGen.Optics
   ( loadThroughAccessChain
@@ -111,14 +112,13 @@ import CodeGen.Optics
   , IndexedAssignment(AnIndexedAssignment)
   , ASTs(NilAST,ConsAST)
   )
-import CodeGen.Put
-  ( putASM )
 import CodeGen.State
   ( CGState(currentBlock, localBindings)
   , CGContext
   , _currentBlock, _functionContext
   , _localBindings, _localBinding
   , _userFunction
+  , initialState
   )
 import Data.Type.Known
   ( knownValue )
@@ -146,12 +146,23 @@ import qualified SPIRV.PrimTy    as SPIRV
 import qualified SPIRV.Storage   as Storage
 
 ----------------------------------------------------------------------------
+-- run the code generator with given context to create a SPIR-V module
+
+runCodeGen :: CGContext -> AST ast -> Either ShortText (ByteString, CGState)
+runCodeGen context ast
+  = case runCGMonad context (initialState context) (codeGen ast) of
+
+      Right (_, cgState, body)
+        -> case runExceptTPutM $ putModule context cgState of
+              Right ((), decs) -> Right ( decs <> body, cgState )
+              Left err         -> Left err
+
+      Left err -> Left err
+
+----------------------------------------------------------------------------
 -- main code generator
 
-runCodeGen :: CGContext -> AST a -> Either ShortText ByteString
-runCodeGen context = putASM context . codeGen
-
-codeGen :: forall ast. AST ast -> CGMonad (ID, SPIRV.PrimTy)
+codeGen :: AST ast -> CGMonad (ID, SPIRV.PrimTy)
 codeGen (Return :$ a) = codeGen a
 codeGen (Applied (MkID idTy@(i,ty)) as)
   = case as of

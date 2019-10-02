@@ -85,10 +85,10 @@ vertPath, fragPath :: FilePath
 vertPath = "shaders/texture_vert.spv"
 fragPath = "shaders/texture_frag.spv"
 
-compileVertexShader :: IO ( Either ShortText () )
+compileVertexShader :: IO ( Either ShortText ModuleRequirements )
 compileVertexShader = compile vertPath [] vertex
 
-compileFragmentShader :: IO ( Either ShortText () )
+compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
 compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline

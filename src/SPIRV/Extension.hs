@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveLift                 #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -16,11 +17,17 @@ as well as the SPIR-V registry for a complete list of SPIR-V extensions.
 
 module SPIRV.Extension where
 
+-- template-haskell
+import Language.Haskell.TH.Syntax
+  ( Lift )
+
 -- text-short
 import Data.Text.Short
   ( ShortText )
 
 -- fir
+import Instances.TH.Lift
+  ( ) -- Lift instance for ShortText
 import Data.Binary.Class.Put
   ( Put )
 
@@ -42,6 +49,7 @@ extInstName GLSL   = "GLSL.std.450"
 newtype Extension = Extension ShortText
   deriving newtype ( Eq, Ord, Put )
   deriving stock   Show
+  deriving Lift
 
 pattern SPV_AMD_shader_explicit_vertex_parameter :: Extension
 pattern SPV_AMD_shader_explicit_vertex_parameter = Extension "SPV_AMD_shader_explicit_vertex_parameter"
