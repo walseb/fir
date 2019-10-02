@@ -25,6 +25,7 @@ import Control.Monad.Trans.Class
 import CodeGen.Binary
   ( putHeader
   , putCapabilities
+  , putExtensions
   , putExtendedInstructions
   , putMemoryModel
   , putEntryPoints
@@ -50,7 +51,7 @@ import CodeGen.State
      
 putASM :: CGContext -> CGMonad r -> Either ShortText ByteString
 putASM context mr
-  = case runCGMonad context initialState mr of
+  = case runCGMonad context (initialState context) mr of
 
       Right (_, cgState, body)
         -> case runExceptTPutM $ putDecs context cgState of
@@ -69,6 +70,7 @@ putDecs
   = do
     lift $ do putHeader               ( idNumber currentID )
               putCapabilities         neededCapabilities
+              putExtensions           neededExtensions
               putExtendedInstructions knownExtInsts
               putMemoryModel
     let knownBindingIDs = fmap fst knownBindings

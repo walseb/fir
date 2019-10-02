@@ -49,9 +49,6 @@ import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
 import Data.Type.Ord
   ( POrd(Compare) )
-import SPIRV.Capability
-  ( Capability )
-import qualified SPIRV.Capability as Capability
 
 -------------------------------------------------------
 -- execution models / stages
@@ -118,24 +115,6 @@ stageID (RayStage    s) = fromIntegral ( fromEnum s + 5313 )
 executionModelID :: ExecutionModel -> Word32
 executionModelID (Stage s) = stageID s
 executionModelID Kernel    = 6
-
-shaderCapabilities :: Shader -> [ Capability ]
-shaderCapabilities VertexShader                 = [ Capability.Shader       ]
-shaderCapabilities TessellationControlShader    = [ Capability.Tessellation ] --- |
-shaderCapabilities TessellationEvaluationShader = [ Capability.Tessellation ] --- |-- shader capability implied
-shaderCapabilities GeometryShader               = [ Capability.Geometry     ] --- |
-shaderCapabilities FragmentShader               = [ Capability.Shader       ]
-shaderCapabilities ComputeShader                = [ Capability.Shader       ]
-
-stageCapabilities :: Stage -> [ Capability ]
-stageCapabilities (ShaderStage s) = shaderCapabilities s
-stageCapabilities (MeshStage   _) = [ Capability.MeshShadingNV ]
-stageCapabilities (RayStage    _) = [ Capability.RayTracingNV  ]
-
-executionModelCapabilities :: ExecutionModel -> [ Capability ]
-executionModelCapabilities (Stage s) = stageCapabilities s
-executionModelCapabilities Kernel    = [ Capability.Kernel ]
-
 
 
 type Vertex                 = 'Stage ('ShaderStage 'VertexShader)

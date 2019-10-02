@@ -17,8 +17,8 @@ import Control.Arrow
   ( first, (&&&) )
 import Data.Bits
   ( Bits((.|.), shiftR, testBit) )
-import Data.Functor.Compose
-  ( Compose(Compose) )
+import Data.Foldable
+  ( traverse_ )
 import Data.List
   ( insertBy )
 import Data.Ord
@@ -53,7 +53,7 @@ import CodeGen.Monad
   , MonadFresh(fresh)
   )
 import CodeGen.State
-  ( addCapabilities )
+  ( requireCapabilities )
 import Data.Type.Known
   ( Known, knownValue )
 import FIR.AST
@@ -70,24 +70,24 @@ import FIR.Prim.Image
   , GatherInfo(..)
   , knownImage
   )
-import qualified SPIRV.Capability as SPIRV
+import SPIRV.Image
+  ( DepthTesting(..), Projection(..) )
+import qualified SPIRV.Image        as SPIRV
+import qualified SPIRV.Image
+  ( Image(Image) )
+import qualified SPIRV.Operation    as SPIRV
+  ( Operation )
+import qualified SPIRV.Operation    as SPIRV.Op
+import qualified SPIRV.PrimTy       as SPIRV
+import qualified SPIRV.PrimTy
+  ( PrimTy(Image, SampledImage) )
+import qualified SPIRV.Requirements as SPIRV
   ( formatCapabilities
   , dimCapabilities
   , msCapabilities
   , lodCapabilities
   , gatherCapabilities
   )
-import SPIRV.Image
-  ( DepthTesting(..), Projection(..) )
-import qualified SPIRV.Image      as SPIRV
-import qualified SPIRV.Image
-  ( Image(Image) )
-import qualified SPIRV.Operation  as SPIRV
-  ( Operation )
-import qualified SPIRV.Operation  as SPIRV.Op
-import qualified SPIRV.PrimTy     as SPIRV
-import qualified SPIRV.PrimTy
-  ( PrimTy(Image, SampledImage) )
 import qualified SPIRV.ScalarTy
   ( ScalarTy(Integer, Floating) )
 
@@ -192,7 +192,7 @@ imageTexel (imgID, imgTy) ops coords
                 pure False
 
       -- declare capabilities
-      addImageCapabilities sampling bm dim arrayness ms mbFmt
+      requireImageCapabilities sampling bm dim arrayness ms mbFmt
       
       -- return the result ID
       pure (v, imgResTy)
@@ -238,7 +238,7 @@ writeTexel (imgID, imgTy) ops coords texel
           }
 
       -- declare capabilities
-      addImageCapabilities False 0 dim arrayness ms mbFmt
+      requireImageCapabilities False 0 dim arrayness ms mbFmt
       
       -- return the result ID
       pure ()
@@ -322,7 +322,7 @@ gatherOperation DepthTest   = SPIRV.Op.ImageDrefGather
 --------------------------------------------------------------------------
 -- capabilities
 
-addImageCapabilities
+requireImageCapabilities
   :: Bool
   -> Word32
   -> SPIRV.Dimensionality
@@ -330,14 +330,14 @@ addImageCapabilities
   -> SPIRV.MultiSampling
   -> Maybe (SPIRV.ImageFormat Word32)
   -> CGMonad ()
-addImageCapabilities sampling bm dim arrayness ms mbFmt
+requireImageCapabilities sampling bm dim arrayness ms mbFmt
   = do
-      ( addCapabilities . Compose )
+      ( traverse_ requireCapabilities )
         ( SPIRV.formatCapabilities <$> mbFmt )
-      addCapabilities ( SPIRV.msCapabilities     ms )
-      addCapabilities ( SPIRV.lodCapabilities    bm )
-      addCapabilities ( SPIRV.gatherCapabilities bm )
-      addCapabilities ( SPIRV.dimCapabilities    sampling dim arrayness )
+      requireCapabilities ( SPIRV.msCapabilities     ms )
+      requireCapabilities ( SPIRV.lodCapabilities    bm )
+      requireCapabilities ( SPIRV.gatherCapabilities bm )
+      requireCapabilities ( SPIRV.dimCapabilities    sampling dim arrayness )
 
 --------------------------------------------------------------------------
 -- dealing with operands

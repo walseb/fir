@@ -1,11 +1,15 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingVia           #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
@@ -59,6 +63,8 @@ import Data.Kind
   ( Type )
 import Data.Type.Bool
   ( If, type (&&) )
+import GHC.Generics
+  ( Generic )
 import GHC.TypeLits
   ( Symbol
   , TypeError, ErrorMessage(..)
@@ -69,8 +75,20 @@ import GHC.TypeNats
 -- containers
 import Data.Map
   ( Map )
-import qualified Data.Map.Strict as Map
+import Data.Set
+  ( Set )
 import qualified Data.Set as Set
+  ( fromList )
+
+-- lens
+import Control.Lens
+  ( Lens', lens, at
+  , set, over
+  )
+
+-- generic-monoid
+import Data.Monoid.Generic
+  ( GenericSemigroup(..), GenericMonoid(..) )
 
 -- text-short
 import Data.Text.Short
@@ -90,11 +108,13 @@ import FIR.ASTState
   , EntryPointInfo(EntryPointInfo)
   )
 import qualified FIR.ASTState as ASTState
+  ( FunctionContext(TopLevel) )
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
 import FIR.Instances.Bindings
   ( InsertEntryPointInfo )
 import qualified FIR.Binding as Binding
+  ( Binding(Function) )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Image
@@ -103,13 +123,32 @@ import FIR.Prim.Singletons
   ( PrimTy, primTy )
 import FIR.Prim.Struct
   ( Struct )
+import qualified SPIRV.Capability      as SPIRV
+  ( Capability )
 import qualified SPIRV.Control         as SPIRV
+  ( FunctionControl )
 import qualified SPIRV.Decoration      as SPIRV
+  ( Decoration(Binding, DescriptorSet)
+  , Decorations
+  )
 import qualified SPIRV.ExecutionMode   as SPIRV
+  ( ExecutionMode, ExecutionModes
+  , ValidateExecutionModes
+  )
+import qualified SPIRV.Extension       as SPIRV
+  ( Extension )
 import qualified SPIRV.Image           as SPIRV
   ( Image(imageUsage), ImageUsage(Sampled) )
 import qualified SPIRV.PrimTy          as SPIRV
+  ( PrimTy(Image, SampledImage)
+  , PointerTy(PointerTy)
+  )
+import qualified SPIRV.Requirements    as SPIRV
+  ( globalCapabilities, globalExtensions
+  , executionModelCapabilities, executionModelExtensions
+  )
 import qualified SPIRV.Stage           as SPIRV
+  ( ExecutionModel, ExecutionInfo )
 import qualified SPIRV.Storage         as SPIRV
   ( StorageClass )
 import qualified SPIRV.Storage         as Storage
@@ -130,6 +169,58 @@ data Annotate
   = AnnotateGlobal     ( SPIRV.PointerTy, SPIRV.Decorations )
   | AnnotateFunction   SPIRV.FunctionControl
   | AnnotateEntryPoint ( SPIRV.ExecutionModel, SPIRV.ExecutionModes )
+
+data Annotations
+  = Annotations
+    { globalAnnotations      :: Map  ShortText                        ( SPIRV.PointerTy, SPIRV.Decorations )
+    , functionAnnotations    :: Map  ShortText                        SPIRV.FunctionControl
+    , executionAnnotations   :: Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
+    , annotationCapabilities :: Set                                   SPIRV.Capability
+    , annotationExtensions   :: Set                                   SPIRV.Extension
+    }
+  deriving (Show, Eq, Generic)
+  deriving Semigroup via GenericSemigroup Annotations
+  deriving Monoid    via GenericMonoid    Annotations
+
+_globalAnnotations :: Lens' Annotations (Map ShortText (SPIRV.PointerTy, SPIRV.Decorations))
+_globalAnnotations = lens globalAnnotations ( \anns v -> anns { globalAnnotations = v } )
+
+_globalAnnotation :: ShortText -> Lens' Annotations (Maybe (SPIRV.PointerTy, SPIRV.Decorations))
+_globalAnnotation name = _globalAnnotations . at name
+
+_functionAnnotations :: Lens' Annotations (Map ShortText SPIRV.FunctionControl)
+_functionAnnotations = lens functionAnnotations ( \anns v -> anns { functionAnnotations = v } )
+
+_functionAnnotation :: ShortText -> Lens' Annotations (Maybe SPIRV.FunctionControl)
+_functionAnnotation name = _functionAnnotations . at name
+
+_executionAnnotations :: Lens' Annotations (Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes)
+_executionAnnotations = lens executionAnnotations ( \anns v -> anns { executionAnnotations = v } )
+
+_executionAnnotation
+  :: ShortText -> SPIRV.ExecutionModel
+  -> Lens' Annotations (Maybe SPIRV.ExecutionModes)
+_executionAnnotation name em = _executionAnnotations . at (name, em)
+
+_annotationCapabilities :: Lens' Annotations (Set SPIRV.Capability)
+_annotationCapabilities = lens annotationCapabilities ( \anns v -> anns { annotationCapabilities = v } )
+
+_annotationExtensions :: Lens' Annotations (Set SPIRV.Extension)
+_annotationExtensions = lens annotationExtensions ( \anns v -> anns { annotationExtensions = v } )
+
+--------------------------------------------------------------------------
+-- reification of type-level definitions/annotations
+
+initialCGContext :: forall defs. KnownDefinitions defs => CGContext
+initialCGContext =
+  let Annotations {..} = annotations @defs
+  in  emptyContext
+        { userGlobals      = globalAnnotations
+        , userFunctions    = functionAnnotations
+        , userEntryPoints  = executionAnnotations
+        , userCapabilities = annotationCapabilities
+        , userExtensions   = annotationExtensions
+        }
 
 instance Demotable Definition where
   type Demote Definition = Annotate
@@ -174,27 +265,33 @@ instance ( Known SPIRV.ExecutionModel stage, Known [SPIRV.ExecutionMode Nat] mod
             )
 
 class KnownDefinitions (defs :: [ Symbol :-> Definition ]) where
-  annotations
-    :: ( Map  ShortText                        ( SPIRV.PointerTy, SPIRV.Decorations )
-       , Map  ShortText                        SPIRV.FunctionControl
-       , Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
-       )
+  annotations :: Annotations
 
 instance KnownDefinitions '[] where
-  annotations = ( Map.empty, Map.empty, Map.empty )
+  annotations = mempty
 
 instance (Known Symbol k, Known Definition def, KnownDefinitions defs)
       => KnownDefinitions ((k ':-> def) ': defs)
       where
   annotations
-    = let (g,f,e) = annotations @defs
-          k = knownValue @k
+    = let anns = annotations @defs
+          k    = knownValue @k
       in case knownValue @def of
-           AnnotateGlobal     x      -> ( Map.insert k x g, f, e )
-           AnnotateFunction   x      -> ( g, Map.insert k x f, e )
-           AnnotateEntryPoint (s, x) -> ( g, f, Map.insert l x e )
-              where l :: ( ShortText, SPIRV.ExecutionModel )
-                    l = (k,s)
+           AnnotateGlobal     x@(SPIRV.PointerTy _ ty, _)
+             -> set ( _globalAnnotation    k  ) (Just x)
+              . over _annotationCapabilities    (SPIRV.globalCapabilities ty <>)
+              . over _annotationExtensions      (SPIRV.globalExtensions   ty <>)
+              $ anns
+           AnnotateFunction   x
+             -> set ( _functionAnnotation  k  ) (Just x) anns
+           AnnotateEntryPoint (s, x)
+             -> set ( _executionAnnotation k s) (Just x)
+              . over _annotationCapabilities    (SPIRV.executionModelCapabilities s <>)
+              . over _annotationExtensions      (SPIRV.executionModelExtensions   s <>)
+              $ anns
+
+--------------------------------------------------------------------------
+-- computing type-level states from type-level definitions
 
 type family StartState (defs :: [ Symbol :-> Definition ]) :: ASTState where
   StartState defs
@@ -332,17 +429,3 @@ type family HasDescriptorSet ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
   HasDescriptorSet '[]
     = TypeError
         ( Text "Uniform buffer is missing a 'DescriptorSet' decoration." )
-
---------------------------------------------------------------------------
-
-initialCGContext :: forall defs. KnownDefinitions defs => CGContext
-initialCGContext =
-  let (   userGlobals
-        , userFunctions
-        , userEntryPoints
-        ) = annotations @defs
-  in emptyContext
-        { userGlobals
-        , userFunctions
-        , userEntryPoints
-        }

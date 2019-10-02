@@ -65,9 +65,9 @@ import CodeGen.State
   , _localVariables
   , _interface
   , _entryPoint
-  , addCapabilities
+  , requireCapabilities
   )
-import Data.Map.Traverse
+import Data.Containers.Traversals
   ( traverseWithKey_ )
 import FIR.Binding
   ( Permissions )
@@ -76,10 +76,17 @@ import FIR.ASTState
   , VLFunctionContext
   , VLInterface
   )
-import qualified SPIRV.Control   as SPIRV
-import qualified SPIRV.Operation as SPIRV.Op
-import qualified SPIRV.PrimTy    as SPIRV
-import qualified SPIRV.Stage     as SPIRV
+import qualified SPIRV.Control      as SPIRV
+  ( FunctionControl, pattern NoFunctionControl )
+import qualified SPIRV.Operation    as SPIRV.Op
+import qualified SPIRV.PrimTy       as SPIRV
+  ( PrimTy(..) )
+import qualified SPIRV.Requirements as SPIRV
+  ( executionModelCapabilities )
+import qualified SPIRV.Stage        as SPIRV
+  ( ExecutionModel, ExecutionInfo
+  , modelOf
+  )
 
 ----------------------------------
 -- dealing with function context
@@ -233,8 +240,8 @@ declareEntryPoint modelName modelInfo mbIface body
         -- initialise entry point with empty interface
         -- (loading/storing should add to the interface as needed)
         assign ( _interface modelName model ) (Just Map.empty)
-        -- add the required capabilities
-        addCapabilities ( SPIRV.executionModelCapabilities model )
+        -- set the required capabilities
+        requireCapabilities ( SPIRV.executionModelCapabilities model )
 
         liftPut $ putInstruction Map.empty
           Instruction

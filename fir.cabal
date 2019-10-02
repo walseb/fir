@@ -122,8 +122,8 @@ library
       , Control.Type.Optic
       , Data.Binary.Class.Put
       , Data.Constraint.All
+      , Data.Containers.Traversals
       , Data.Function.Variadic
-      , Data.Map.Traverse
       , Data.Product
       , Data.Type.Error
       , Data.Type.Known
@@ -170,6 +170,7 @@ library
       , SPIRV.Operation
       , SPIRV.PrimOp
       , SPIRV.PrimTy
+      , SPIRV.Requirements
       , SPIRV.ScalarTy
       , SPIRV.Stage
       , SPIRV.Storage
@@ -192,8 +193,6 @@ library
           >= 0.1.2
       , vector
           >= 0.12.0.3
-      , data-binary-ieee754
-          >= 0.4.4
       , half
           >= 0.3
       , lens
@@ -208,6 +207,8 @@ library
           >= 0.7
       , ghc-typelits-natnormalise 
           >= 0.7
+      , generic-monoid
+          >= 0.1.0.0
       -- for testing
       , text
           >= 1.2.3.1

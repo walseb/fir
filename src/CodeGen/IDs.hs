@@ -71,7 +71,7 @@ import CodeGen.State
   , _usedGlobal
   , _userGlobal
   , _interfaceBinding
-  , addCapabilities
+  , requireCapabilities
   , addName, addMemberName
   , addDecorations
   , addMemberDecoration, addMemberDecorations
@@ -91,20 +91,21 @@ import FIR.Prim.Struct
   ( traverseStruct )
 import Math.Linear
   ( M(unM), Matrix(transpose) )
-import qualified SPIRV.Builtin    as SPIRV
-import qualified SPIRV.Capability as SPIRV
-  ( primTyCapabilities )
-import qualified SPIRV.Decoration as SPIRV
-import qualified SPIRV.Extension  as SPIRV
-import qualified SPIRV.Image      as SPIRV.Image
-import qualified SPIRV.Operation  as SPIRV.Op
-import qualified SPIRV.PrimTy     as SPIRV
-import qualified SPIRV.PrimTy     as SPIRV.PrimTy
+import qualified SPIRV.Builtin      as SPIRV
+import qualified SPIRV.Decoration   as SPIRV
+import qualified SPIRV.Extension    as SPIRV
+  ( ExtInst )
+import qualified SPIRV.Image        as SPIRV.Image
+import qualified SPIRV.Operation    as SPIRV.Op
+import qualified SPIRV.PrimTy       as SPIRV
+import qualified SPIRV.PrimTy       as SPIRV.PrimTy
 import           SPIRV.PrimTy
   ( AggregateUsage(..) )
-import qualified SPIRV.ScalarTy   as SPIRV
-import qualified SPIRV.Stage      as SPIRV
-import qualified SPIRV.Storage    as Storage
+import qualified SPIRV.Requirements as SPIRV
+  ( primTyCapabilities )
+import qualified SPIRV.ScalarTy     as SPIRV
+import qualified SPIRV.Stage        as SPIRV
+import qualified SPIRV.Storage      as Storage
 
 ----------------------------------------------------------------------------
 -- instructions generated along the way that need to be floated to the top
@@ -128,7 +129,7 @@ typeID :: forall m.
 typeID ty = TyID <$>
   tryToUseWith _knownPrimTy
     ( coerce . fromJust . resID ) -- type constructor instructions always have a result ID
-    do addCapabilities ( SPIRV.primTyCapabilities ty )
+    do requireCapabilities ( SPIRV.primTyCapabilities ty )
        case ty of
 
         SPIRV.Matrix m n a -> 

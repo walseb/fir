@@ -83,6 +83,10 @@ import qualified SPIRV.Storage as Storage
 
 --------------------------------------------------------------------------
 
+type Float16 = Half
+type Float32 = Float
+type Float64 = Double
+
 -- synonyms for (decorated) globals
 type UniformConstant decs ty = Global Storage.UniformConstant decs ty
 type Input           decs ty = Global Storage.Input           decs ty

@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns   #-}
 {-# LANGUAGE RankNTypes       #-}
 
 {-|
@@ -24,8 +25,6 @@ adds itself to the relevant entry point interface, and sets the necessary decora
 module CodeGen.State where
 
 -- base
-import Data.Foldable
-  ( traverse_ )
 import Data.Maybe
   ( fromMaybe )
 import Data.Word
@@ -62,6 +61,8 @@ import CodeGen.Instruction
   ( ID(ID), TyID(tyID)
   , Instruction
   )
+import Data.Containers.Traversals
+  ( traverseSet_ )
 import FIR.Builtin
   ( modelBuiltins, builtinDecorations )
 import FIR.ASTState
@@ -73,6 +74,7 @@ import qualified SPIRV.Control       as SPIRV
 import qualified SPIRV.Decoration    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV
 import qualified SPIRV.Extension     as SPIRV
+  ( ExtInst, Extension )
 import qualified SPIRV.Image         as SPIRV
 import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Stage         as SPIRV
@@ -98,6 +100,9 @@ data CGState
 
       -- | Capability requirements that have been declared.
       , neededCapabilities  :: Set                                   SPIRV.Capability
+
+      -- | Needed extensions.
+      , neededExtensions    :: Set                                   SPIRV.Extension
 
       -- | IDs of all used extended instruction sets.
       , knownExtInsts       :: Map SPIRV.ExtInst                     ID
@@ -153,13 +158,14 @@ data PointerState
   | Modified
   deriving ( Eq, Show )
 
-initialState :: CGState
-initialState
+initialState :: CGContext -> CGState
+initialState CGContext { userCapabilities, userExtensions }
   = CGState
       { currentID           = ID 1
       , currentBlock        = Nothing
       , functionContext     = TopLevel
-      , neededCapabilities  = Set.empty
+      , neededCapabilities  = userCapabilities
+      , neededExtensions    = userExtensions
       , knownExtInsts       = Map.empty
       , knownStringLits     = Map.empty
       , names               = Set.empty
@@ -197,6 +203,14 @@ data CGContext
      , userEntryPoints
           :: Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
 
+     -- | Capabilities that are required (computed from user definitions).
+     , userCapabilities
+          :: Set                                   SPIRV.Capability
+
+     -- | Extensions that are required (computed from user definitions).
+     , userExtensions
+          :: Set                                   SPIRV.Extension
+
        -- | User defined images.
      , userImages
           :: Map ShortText SPIRV.Image
@@ -211,12 +225,14 @@ data CGContext
 emptyContext :: CGContext
 emptyContext
   = CGContext
-      { userGlobals     = Map.empty
-      , userFunctions   = Map.empty
-      , userEntryPoints = Map.empty
-      , userImages      = Map.empty
-      , debugging       = True
-      , asserting       = True
+      { userGlobals      = Map.empty
+      , userFunctions    = Map.empty
+      , userEntryPoints  = Map.empty
+      , userCapabilities = Set.empty
+      , userExtensions   = Set.empty
+      , userImages       = Map.empty
+      , debugging        = True
+      , asserting        = True
       }
 
 ----------------------------------------------------------------------------
@@ -245,6 +261,12 @@ _neededCapabilities = lens neededCapabilities ( \s v -> s { neededCapabilities =
 
 _neededCapability :: SPIRV.Capability -> Lens' CGState (Maybe ())
 _neededCapability capability = _neededCapabilities . at capability
+
+_neededExtensions :: Lens' CGState (Set SPIRV.Extension)
+_neededExtensions = lens neededExtensions ( \s v -> s { neededExtensions = v } )
+
+_neededExtension :: SPIRV.Extension -> Lens' CGState (Maybe ())
+_neededExtension extension = _neededExtensions . at extension
 
 _knownExtInsts :: Lens' CGState (Map SPIRV.ExtInst ID)
 _knownExtInsts = lens knownExtInsts ( \s v -> s { knownExtInsts = v } )
@@ -404,6 +426,12 @@ _userEntryPoints = lens userEntryPoints ( \c v -> c { userEntryPoints = v } )
 _userEntryPoint :: ShortText -> SPIRV.ExecutionModel -> Lens' CGContext ( Maybe SPIRV.ExecutionModes )
 _userEntryPoint name stage = _userEntryPoints . at (name, stage)
 
+_userCapabilities :: Lens' CGContext (Set SPIRV.Capability)
+_userCapabilities = lens userCapabilities ( \c v -> c { userCapabilities = v } )
+
+_userExtensions :: Lens' CGContext (Set SPIRV.Extension)
+_userExtensions = lens userExtensions ( \c v -> c { userExtensions = v } )
+
 _userImages :: Lens' CGContext ( Map ShortText SPIRV.Image )
 _userImages = lens userImages ( \c v -> c { userImages = v } )
 
@@ -419,11 +447,17 @@ _asserting = lens asserting ( \c v -> c { asserting = v } )
 -----------------------------------------------------------------------------
 -- * Helper state update functions
 
-addCapabilities :: forall t m.
-                  ( Traversable t, MonadState CGState m )
-                => t SPIRV.Capability -> m ()
-addCapabilities
-  = traverse_ ( \cap -> assign ( _neededCapability cap ) (Just ()) )
+requireCapability :: MonadState CGState m => SPIRV.Capability -> m ()
+requireCapability cap = assign ( _neededCapability cap ) (Just ())
+
+requireCapabilities :: MonadState CGState m => Set SPIRV.Capability -> m ()
+requireCapabilities = traverseSet_ requireCapability
+
+requireExtension :: MonadState CGState m => SPIRV.Extension -> m ()
+requireExtension ext = assign ( _neededExtension ext ) (Just ())
+
+requireExtensions :: MonadState CGState m => Set SPIRV.Extension -> m ()
+requireExtensions = traverseSet_ requireExtension
 
 addName :: MonadState CGState m
         => ID -> ShortText -> m ()

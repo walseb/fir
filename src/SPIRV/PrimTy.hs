@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
 {-|
@@ -16,6 +17,7 @@ module SPIRV.PrimTy
   , PrimTy(..)
   , PointerTy(PointerTy, pointerTy) -- constructor (PtrTy) not exported
   , tyOp
+  , scalars
   ) where
 
 -- base
@@ -32,7 +34,7 @@ import Data.Text.Short
 import SPIRV.Decoration
   ( Decorations )
 import SPIRV.Image
-  ( Image )
+  ( Image(texelComponent) )
 import SPIRV.Operation
   hiding ( Function, Image, SampledImage )
 import SPIRV.ScalarTy
@@ -115,3 +117,18 @@ tyOp Pointer            {} = TypePointer
 tyOp Image              {} = TypeImage
 tyOp Sampler               = TypeSampler
 tyOp SampledImage       {} = TypeSampledImage
+
+scalars :: PrimTy -> [ ScalarTy ]
+scalars Unit                     = [ ]
+scalars Boolean                  = [ ]
+scalars (Scalar s)               = [ s ]
+scalars (Vector _ a)             = scalars a
+scalars (Matrix _ _ a)           = [ a ]
+scalars (Array { eltTy })        = scalars eltTy
+scalars (RuntimeArray { eltTy }) = scalars eltTy
+scalars (Struct { eltTys })      = scalars =<< map ( \(_,ty,_) -> ty ) eltTys
+scalars (Pointer _ ty)           = scalars ty
+scalars (Function as b)          = scalars b ++ ( scalars =<< as )
+scalars (Image img)              = [ texelComponent img ]
+scalars Sampler                  = [ ]
+scalars (SampledImage img)       = [ texelComponent img ]

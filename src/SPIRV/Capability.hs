@@ -1,6 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms            #-}
-{-# LANGUAGE ViewPatterns               #-}
 
 {-|
 Module: SPIRV.Capability
@@ -15,22 +14,12 @@ See the SPIR-V specification, section 3.31 __Capability__.
 module SPIRV.Capability where
 
 -- base
-import Data.Bits
-  ( Bits(testBit) )
 import Data.Word
   ( Word32 )
 
 -- fir
 import Data.Binary.Class.Put
   ( Put )
-import qualified SPIRV.Image    as Image
-import           SPIRV.Operation
-  hiding ( Capability )
-import qualified SPIRV.PrimOp   as PrimOp
-import qualified SPIRV.PrimTy   as PrimTy
-import           SPIRV.ScalarTy
-  ( Width(..) )
-import qualified SPIRV.ScalarTy as ScalarTy
 
 --------------------------------------------------
 
@@ -280,64 +269,3 @@ showCapability MultiViewport = "MultiViewport"
 showCapability MeshShadingNV = "MeshShadingNV"
 showCapability RayTracingNV  = "RayTracingNV"
 showCapability (Capability i) = show i
-
-
-primOpCapabilities :: PrimOp.PrimOp -> [ Capability ]
-primOpCapabilities ( PrimOp.op -> SatConvertSToU ) = [ Kernel ]
-primOpCapabilities ( PrimOp.op -> SatConvertUToS ) = [ Kernel ]
-primOpCapabilities ( PrimOp.MatOp {}             ) = [ Matrix ]
-primOpCapabilities _                               = [ ]
-
-primTyCapabilities :: PrimTy.PrimTy -> [ Capability ]
-primTyCapabilities ( PrimTy.Matrix _ _ ty ) = Matrix : primTyCapabilities (PrimTy.Scalar ty)
-primTyCapabilities ( PrimTy.Vector n   ty )
-    | n > 4     = Vector16 : primTyCapabilities ty
-    | otherwise =            primTyCapabilities ty
-primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ W8 ) ) = [ Int8  ]
-primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ W16) ) = [ Int16 ]
-primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ W64) ) = [ Int64 ]
-primTyCapabilities ( PrimTy.Scalar (ScalarTy.Integer _ _  ) ) = [ ]
-primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  W16) ) = [ Float16 ]
-primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  W64) ) = [ Float64 ]
-primTyCapabilities ( PrimTy.Scalar (ScalarTy.Floating  _  ) ) = [ ]
-primTyCapabilities _                                          = [ ]
-
-formatCapabilities :: Image.ImageFormat Word32 -> [ Capability ]
-formatCapabilities format
-  = case Image.requiredFormatUsage format of
-      Just Image.Storage   -> [ Shader, StorageImageExtendedFormats ]
-      _                    -> [ Shader ]
-
-dimCapabilities :: Bool -> Image.Dimensionality -> Image.Arrayness -> [ Capability ]
-dimCapabilities True  Image.Rect        _             = [ Shader, SampledRect ]
-dimCapabilities False Image.Rect        _             = [ Shader, SampledRect, ImageRect ]
-dimCapabilities _     Image.SubpassData _             = [ Shader, InputAttachment ]
-dimCapabilities False Image.OneD        _             = [ Sampled1D ]
-dimCapabilities True  Image.OneD        _             = [ Sampled1D, Image1D ]
-dimCapabilities True  Image.Cube        Image.Arrayed = [ SampledCubeArray ]
-dimCapabilities True  Image.Buffer      _             = [ SampledBuffer ]
-dimCapabilities False Image.Buffer      _             = [ SampledBuffer, ImageBuffer ]
-dimCapabilities _     _                 _             = [ ]
-
-msCapabilities :: Image.MultiSampling -> [ Capability ]
-msCapabilities Image.MultiSampled = [ ImageMSArray ]
-msCapabilities _                  = [ ]
-
--- lod capability from image operand bitmask
--- (note that the bitmask is shifted up one byte from what SPIR-V uses)
-lodCapabilities :: Word32 -> [ Capability ]
-lodCapabilities bm
-  -- uses the LOD operand
-  | bm `testBit` 9  = [ Kernel, ImageBasic, ImageMipmap ]
-  -- uses the MinLOD opeand
-  | bm `testBit` 15 = [ Shader, MinLod ]
-  | otherwise       = [ ]
-
--- whether the ImageGatherExtended capability is required
-gatherCapabilities :: Word32 -> [ Capability ]
-gatherCapabilities bm
-  |  bm `testBit` 12 -- Offset operand
-  || bm `testBit` 13 -- ConstOffsets operand
-  = [ ImageGatherExtended ]
-  | otherwise
-  = [ ]

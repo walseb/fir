@@ -30,7 +30,6 @@ import Data.Map.Strict
 import qualified Data.Map.Strict as Map
 import Data.Set
   ( Set )
-import qualified Data.Set as Set
 
 -- mtl
 import Control.Monad.Except
@@ -56,12 +55,13 @@ import CodeGen.Monad
   ( note )
 import Data.Binary.Class.Put
   ( Put(put, wordCount) )
-import Data.Map.Traverse
-  ( traverseWithKey_ )
+import Data.Containers.Traversals
+  ( traverseWithKey_, traverseSet_ )
 import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.Decoration    as SPIRV
 import qualified SPIRV.ExecutionMode as SPIRV
 import qualified SPIRV.Extension     as SPIRV
+  ( Extension, ExtInst, extInstName )
 import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Stage         as SPIRV
@@ -84,7 +84,7 @@ putInstruction extInsts
               traverse_ put opResID
               put opArgs
 
-           
+
       SPIRV.Op.ExtCode ext extOpCode ->
         case Map.lookup ext extInsts of
           Nothing    -> pure ()
@@ -112,19 +112,32 @@ putHeader bound
       ]
 
 putCapabilities :: Set SPIRV.Capability -> Binary.Put
-putCapabilities
-  = Set.foldr' ( \cap p -> p >> putCap cap ) (pure ()) -- traverse_ for sets
-      where 
-        putCap :: SPIRV.Capability -> Binary.Put
-        putCap cap 
-          = putInstruction Map.empty 
-              Instruction 
-                { operation = SPIRV.Op.Capability
-                , resTy     = Nothing
-                , resID     = Nothing
-                , args      = Arg cap
-                              EndArgs
-                }
+putCapabilities = traverseSet_ putCap
+  where
+    putCap :: SPIRV.Capability -> Binary.Put
+    putCap cap 
+      = putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.Capability
+            , resTy     = Nothing
+            , resID     = Nothing
+            , args      = Arg cap
+                          EndArgs
+            }
+
+putExtensions :: Set SPIRV.Extension -> Binary.Put
+putExtensions = traverseSet_ putExt
+  where
+    putExt :: SPIRV.Extension -> Binary.Put
+    putExt ext
+      = putInstruction Map.empty
+          Instruction
+            { operation = SPIRV.Op.Extension
+            , resTy     = Nothing
+            , resID     = Nothing
+            , args      = Arg ext
+                          EndArgs
+            }
 
 putExtendedInstructions :: Map SPIRV.ExtInst ID -> Binary.Put
 putExtendedInstructions

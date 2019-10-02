@@ -27,33 +27,30 @@ module Data.Binary.Class.Put
   ) where
 
 -- base
+import Data.Coerce
+  ( coerce )
 import Data.Int
   ( Int8,Int16,Int32,Int64 )
 import Data.Semigroup
   ( stimes )
 import Data.Word
   ( Word8,Word16,Word32,Word64 )
+import Foreign.C.Types
+  ( CUShort(CUShort) )
 
 -- binary
-import qualified Data.Binary     as Binary
-  ( put )
 import qualified Data.Binary.Put as Binary
   ( PutM
-  , putWord8
+  , putWord8, putWord16le
   , putWord32le, putWord64le
   , putInt32le, putInt64le
+  , putFloatle, putDoublele
   , putShortByteString
   )
 
--- data-binary-ieee754
-import qualified Data.Binary.IEEE754 as Binary.IEEE754
-  ( putFloat32le, putFloat64le )
-
 -- half
 import Numeric.Half
-  ( Half )
-import qualified Numeric.Half as Half
-  ( fromHalf )
+  ( Half(Half) )
 
 -- text-short
 import Data.Text.Short
@@ -115,15 +112,17 @@ instance Put Int64 where
   wordCount _ = 2
 
 instance Put Half where
-  put = Binary.put . Half.fromHalf
+  put h = do
+    Binary.putWord16le (coerce h)
+    Binary.putWord16le 0
   wordCount _ = 1
 
 instance Put Float where
-  put = Binary.IEEE754.putFloat32le
+  put = Binary.putFloatle
   wordCount _ = 1
 
 instance Put Double where
-  put = Binary.IEEE754.putFloat64le
+  put = Binary.putDoublele
   wordCount _ = 2
 
 -- | @C@-style string
