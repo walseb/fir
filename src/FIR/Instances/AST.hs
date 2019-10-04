@@ -39,9 +39,6 @@ module FIR.Instances.AST
     ASTFunctor(fmapAST)
   , ASTApplicative(pureAST, (<**>)), (<$$>)
 
-  -- helper typeclass to avoid conversions when 'id' suffices
-  , WhichConversion(conversion)
-
     -- patterns for vectors
   , pattern Vec2, pattern Vec3, pattern Vec4
 
@@ -138,6 +135,7 @@ import FIR.Prim.Op
 import FIR.Prim.Singletons
   ( PrimTy
   , ScalarTy, IntegralTy
+  , ScalarFromTy, TypeFromScalar
   , SPrimFunc(..), PrimFunc(..), DistDict(DistDict)
   , KnownArity
   )
@@ -167,7 +165,8 @@ import Math.Logic.Class
   , Choose(..)
   , Ord(..)
   )
-import qualified SPIRV.PrimOp as SPIRV
+import qualified SPIRV.ScalarTy as SPIRV
+import qualified SPIRV.PrimOp   as SPIRV
 
 --------------------------------------------------------------------------------------
 -- Instances for AST type
@@ -338,19 +337,71 @@ instance (ScalarTy a, Unsigned a) => Unsigned (AST a) where
 -- $conversions
 -- Instance for 'Convert', 'Rounding'.
 
--- Helper type class to choose which conversion function to use,
--- depending on whether @a ~ b@.
-class WhichConversion a b (useIdentity :: Bool) where
+-- Helpers to choose which conversion function to use.
+--   * Can use identity function when @a ~ b@.
+--   * For converting from different sign + different width integer types,
+--   two operations are needed: resizing + bitcast.
+--   The intermediate type is recorded.
+data WhichConversion
+  = UseIdentity
+  | UseConversion
+  | UseConversionThenBitcast Type
+
+type family ChooseConversion (a :: Type) (b :: Type) :: WhichConversion where
+  ChooseConversion a a = UseIdentity
+  ChooseConversion a b =
+    ChooseConversionFromScalars
+      a ( ScalarFromTy a )
+      b ( ScalarFromTy b )
+
+type family ChooseConversionFromScalars
+              ( a :: Type ) ( sa :: SPIRV.ScalarTy )
+              ( b :: Type ) ( sb :: SPIRV.ScalarTy )
+            :: WhichConversion
+            where
+  ChooseConversionFromScalars
+    _ _
+    _ ( SPIRV.Floating w )
+      = UseConversion
+  ChooseConversionFromScalars
+    a ( SPIRV.Floating v )
+    b _
+      = TypeError
+        (    Text "Cannot convert from type " :<>: ShowType a
+        :$$: Text "to type " :<>: ShowType b
+        )
+  ChooseConversionFromScalars
+    _ ( SPIRV.Integer s v )
+    _ ( SPIRV.Integer s w )
+      = UseConversion
+  ChooseConversionFromScalars
+    _ ( SPIRV.Integer r w )
+    _ ( SPIRV.Integer s w )
+      = UseConversion -- (strictly speaking this ends up being a bitcast)
+  ChooseConversionFromScalars
+    _ ( SPIRV.Integer r v )
+    _ ( SPIRV.Integer s w )
+      = UseConversionThenBitcast
+          ( TypeFromScalar ( SPIRV.Integer r w ) )
+
+class DispatchConversion a b (useIdentity :: WhichConversion) where
   conversion :: AST a -> AST b
 
-instance (ScalarTy a, ScalarTy b, Convert '(a,b)) => WhichConversion a b 'False where
-  conversion = primOp @'(a,b) @SPIRV.Convert
-instance ScalarTy a => WhichConversion a a 'True where
+instance ScalarTy a => DispatchConversion a a UseIdentity where
   conversion = id
+instance (ScalarTy a, ScalarTy b, Convert '(a,b)) => DispatchConversion a b 'UseConversion where
+  conversion = primOp @'(a,b) @SPIRV.Convert
+instance ( ScalarTy a, ScalarTy b, ScalarTy x
+         , Convert '(a,x), Convert '(x,b)
+         )
+       => DispatchConversion a b ('UseConversionThenBitcast x) where
+  conversion
+    = ( primOp @'(x,b) @SPIRV.Convert :: AST x -> AST b )
+    . ( primOp @'(a,x) @SPIRV.Convert :: AST a -> AST x )
 
-instance ( ScalarTy a, ScalarTy b, WhichConversion a b (a == b) )
+instance ( ScalarTy a, ScalarTy b, DispatchConversion a b (ChooseConversion a b) )
        => Convert '(AST a, AST b) where
-  convert = conversion @a @b @(a==b)
+  convert = conversion @a @b @(ChooseConversion a b)
 
 instance {-# OVERLAPPING #-}
          ( ScalarTy a, Rounding '(a,a) )

@@ -107,23 +107,39 @@ data SScalarTy :: Type -> Type where
   SFloat  :: SScalarTy Float
   SDouble :: SScalarTy Double
 
-type family Integrality (sTy :: SScalarTy ty) :: SPIRV.ScalarTy where
-  Integrality SWord8  = SPIRV.Integer Unsigned W8
-  Integrality SWord16 = SPIRV.Integer Unsigned W16
-  Integrality SWord32 = SPIRV.Integer Unsigned W32
-  Integrality SWord64 = SPIRV.Integer Unsigned W64
-  Integrality SInt8   = SPIRV.Integer Signed   W8
-  Integrality SInt16  = SPIRV.Integer Signed   W16
-  Integrality SInt32  = SPIRV.Integer Signed   W32
-  Integrality SInt64  = SPIRV.Integer Signed   W64
-  Integrality SHalf   = SPIRV.Floating         W16
-  Integrality SFloat  = SPIRV.Floating         W32
-  Integrality SDouble = SPIRV.Floating         W64
+type ScalarFromTy (ty :: Type)
+  = ( ScalarFromSScalar ( ScalarTySing ty ) :: SPIRV.ScalarTy )
+
+type family ScalarFromSScalar (sTy :: SScalarTy ty) :: SPIRV.ScalarTy where
+  ScalarFromSScalar SWord8  = SPIRV.Integer Unsigned W8
+  ScalarFromSScalar SWord16 = SPIRV.Integer Unsigned W16
+  ScalarFromSScalar SWord32 = SPIRV.Integer Unsigned W32
+  ScalarFromSScalar SWord64 = SPIRV.Integer Unsigned W64
+  ScalarFromSScalar SInt8   = SPIRV.Integer Signed   W8
+  ScalarFromSScalar SInt16  = SPIRV.Integer Signed   W16
+  ScalarFromSScalar SInt32  = SPIRV.Integer Signed   W32
+  ScalarFromSScalar SInt64  = SPIRV.Integer Signed   W64
+  ScalarFromSScalar SHalf   = SPIRV.Floating         W16
+  ScalarFromSScalar SFloat  = SPIRV.Floating         W32
+  ScalarFromSScalar SDouble = SPIRV.Floating         W64
+
+type family TypeFromScalar ( scalar :: SPIRV.ScalarTy ) :: Type where
+  TypeFromScalar (SPIRV.Integer Unsigned W8 ) = Word8
+  TypeFromScalar (SPIRV.Integer Unsigned W16) = Word16
+  TypeFromScalar (SPIRV.Integer Unsigned W32) = Word32
+  TypeFromScalar (SPIRV.Integer Unsigned W64) = Word64
+  TypeFromScalar (SPIRV.Integer Signed   W8 ) = Int8
+  TypeFromScalar (SPIRV.Integer Signed   W16) = Int16
+  TypeFromScalar (SPIRV.Integer Signed   W32) = Int32
+  TypeFromScalar (SPIRV.Integer Signed   W64) = Int64
+  TypeFromScalar (SPIRV.Floating         W16) = Half
+  TypeFromScalar (SPIRV.Floating         W32) = Float
+  TypeFromScalar (SPIRV.Floating         W64) = Double
 
 type family ScalarWidth (sTy :: SScalarTy ty) :: Nat where
   ScalarWidth sTy
    = SPIRV.WidthToNat
-        ( SPIRV.ScalarWidth ( Integrality sTy ) )
+        ( SPIRV.ScalarWidth ( ScalarFromSScalar sTy ) )
 
 -- singleton data type
 data SPrimTy :: Type -> Type where

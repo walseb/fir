@@ -84,7 +84,7 @@ import FIR.Prim.Image
   , OperandName(DepthComparison, BaseOperand)
   )
 import FIR.Prim.Singletons
-  ( Integrality, ScalarTySing )
+  ( ScalarFromTy )
 import SPIRV.Image
   ( ImageUsage(Sampled, Storage)
   , ImageFormat(ImageFormat), RequiredFormatUsage
@@ -647,10 +647,10 @@ type family ValidImageRead
   ValidImageRead
     ( Properties coords res _ depth _ ms usage fmt )
     ops
-      = ( AllowedIndexing (Integrality (ScalarTySing coords)) ms usage
-        , CheckDepthTest (DepthComparison `Elem` ops) (Integrality (ScalarTySing coords)) depth
-        , CheckLODOperands (Integrality (ScalarTySing coords)) ops
-        , CompatibleFormat (Integrality (ScalarTySing res)) usage fmt
+      = ( AllowedIndexing (ScalarFromTy coords) ms usage
+        , CheckDepthTest (DepthComparison `Elem` ops) (ScalarFromTy coords) depth
+        , CheckLODOperands (ScalarFromTy coords) ops
+        , CompatibleFormat (ScalarFromTy res) usage fmt
         )
 
 -- | Check that we can write to an image.
@@ -680,8 +680,8 @@ type family ValidImageWrite
   ValidImageWrite
     ( Properties coords res _ _ _ _ usage fmt )
     ops
-      = ( IntegralIndexing (Integrality (ScalarTySing coords))
-        , CompatibleFormat (Integrality (ScalarTySing res)) usage fmt
+      = ( IntegralIndexing (ScalarFromTy coords)
+        , CompatibleFormat (ScalarFromTy res) usage fmt
         , AllowedWriteOps ops
         )
 

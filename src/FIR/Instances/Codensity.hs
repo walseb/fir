@@ -98,8 +98,6 @@ import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
-import Data.Type.Equality
-  ( type (==) )
 import qualified GHC.Stack
 import GHC.TypeLits
   ( Symbol, KnownSymbol
@@ -150,7 +148,7 @@ import FIR.Definition
   , StartBindings, EndBindings
   )
 import FIR.Instances.AST
-  ( WhichConversion(conversion) ) -- plus instances
+  ( )
 import FIR.Instances.Bindings
   ( ValidDef, AddBinding, Has
   , ValidFunDef, AddFunBinding, FunctionTypes
@@ -812,13 +810,14 @@ instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Codensity AST (AST a := 
 
 -- $conversions
 -- Instance for 'Convert', 'Rounding'.
-instance ( ScalarTy a, ScalarTy b, WhichConversion a b (a==b)
+instance ( ScalarTy a, ScalarTy b
+         , Convert '(AST a, AST b)
          , j ~ i, k ~ i, l ~ i
          )
          => Convert '( Codensity AST (AST a := j) i
                      , Codensity AST (AST b := l) k
                      ) where
-  convert = ixFmap (conversion @a @b @(a==b))
+  convert = ixFmap ( convert @'(AST a, AST b) )
 
 instance ( ScalarTy a, ScalarTy b, Rounding '(AST a, AST b)
          , j ~ i, k ~ i, l ~ i

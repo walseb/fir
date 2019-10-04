@@ -83,7 +83,7 @@ import FIR.Layout
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
-  ( SKPrimTy, Integrality )
+  ( SKPrimTy, ScalarFromSScalar )
 import FIR.Prim.Struct
   ( Struct, LocationSlot(LocationSlot) )
 import FIR.Program
@@ -1045,7 +1045,7 @@ type family ComputeFormats
             where
   ComputeFormats '[] = '[]
   ComputeFormats ( ( loc ':-> Provenance loc ( _ :: SKPrimTy ty ) scalar ) ': slots )
-    = ComputeFormatsFromBaseSlot loc ty ( Integrality scalar ) 1 slots
+    = ComputeFormatsFromBaseSlot loc ty ( ScalarFromSScalar scalar ) 1 slots
   ComputeFormats ( ( loc ':-> Provenance loc' ( _ :: SKPrimTy ty ) _ ) ': _ )
     = TypeError
     (    Text "Internal error: slot provenance has not been encountered."
@@ -1074,7 +1074,7 @@ type family ComputeFormatsFromBaseSlot
         ': ComputeFormatsFromBaseSlot
             ( 'LocationSlot l 0 )
             newTy
-            ( Integrality newScalar )
+            ( ScalarFromSScalar newScalar )
             1
             slots
   ComputeFormatsFromBaseSlot
@@ -1084,9 +1084,9 @@ type family ComputeFormatsFromBaseSlot
           baseLoc baseTy baseScalar
           ( SuccNbComponentsIfMatching
               baseLoc   baseTy  baseScalar nbComps
-              otherBase otherTy ( Integrality otherScalar )
+              otherBase otherTy ( ScalarFromSScalar otherScalar )
               loc
-              ( baseScalar == Integrality otherScalar )
+              ( baseScalar == ScalarFromSScalar otherScalar )
           )
           slots
 

@@ -201,7 +201,6 @@ module FIR
   , Prelude.Either(..), Prelude.either
   , Prelude.fst, Prelude.snd
   , Prelude.curry, Prelude.uncurry
-  , Prelude.Float, Prelude.Double
   , Prelude.subtract
   , Prelude.Semigroup(..), Prelude.Monoid(..)
   , Prelude.id, Prelude.const, (Prelude..)
@@ -222,6 +221,9 @@ module FIR
   , Data.Int.Int32
   , Data.Int.Int64
   , Numeric.Half.Half
+  , Prelude.Float
+  , Prelude.Double
+  -- deliberately not re-exporing Int/Word
 
   -- overloaded strings syntax
   , Data.String.IsString(..)
@@ -283,8 +285,6 @@ import FIR.ASTState
 import FIR.Binding
 import FIR.Definition
 import FIR.Instances.AST
-  hiding
-    ( WhichConversion(..) ) -- internal helper
 import FIR.Instances.Codensity
 import FIR.Instances.Images
 import FIR.Instances.Optics

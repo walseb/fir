@@ -206,7 +206,7 @@ equalityOp Equal    Boolean                = LogicalEqual
 equalityOp NotEqual (Scalar (Floating  _)) = FOrdNotEqual
 equalityOp NotEqual (Scalar (Integer _ _)) = INotEqual
 equalityOp NotEqual Boolean                = LogicalNotEqual
-equalityOp primOp ty = error $ "unsupported type " ++ show ty ++ " with equality operation " ++ show primOp
+equalityOp primOp ty = error $ "internal error: unsupported type " ++ show ty ++ " with equality operation " ++ show primOp
 
 orderOp :: OrdPrimOp -> ScalarTy -> (Operation, PrimTy)
 orderOp GT  (Integer Unsigned _) = ( UGreaterThan        , Boolean )
@@ -249,14 +249,14 @@ numericOp Sub  (Floating         w) = ( FSub   , Floating         w )
 numericOp Sub  (Integer s        w) = ( ISub   , Integer s        w ) -- technically can call subtraction on unsigned integer types
 numericOp Neg  (Floating         w) = ( FNegate, Floating         w )
 numericOp Neg  (Integer Signed   w) = ( SNegate, Integer Signed   w )
-numericOp Neg  (Integer Unsigned _) = error "'negate' called on unsigned type"
+numericOp Neg  (Integer Unsigned _) = error "internal error: 'negate' called on unsigned type"
 -- signed
 numericOp Abs  (Floating         w) = ( FAbs   , Floating         w )
 numericOp Abs  (Integer Signed   w) = ( SAbs   , Integer Signed   w )
-numericOp Abs  (Integer Unsigned _) = error "'abs' called on unsigned type"
+numericOp Abs  (Integer Unsigned _) = error "internal error: 'abs' called on unsigned type"
 numericOp Sign (Floating         w) = ( FSign  , Floating         w )
 numericOp Sign (Integer Signed   w) = ( SSign  , Integer Signed   w )
-numericOp Sign (Integer Unsigned _) = error "'signum' called on unsigned type"
+numericOp Sign (Integer Unsigned _) = error "internal error: 'signum' called on unsigned type"
 -- division ring
 numericOp Div  (Floating         w) = ( FDiv   , Floating         w )
 numericOp Div  (Integer  _       _) = error "internal error: Div used with integral type"
@@ -294,13 +294,13 @@ floatingOp FInvsqrt = Invsqrt
 vectorOp :: VecPrimOp -> Word32 -> ScalarTy -> (Operation, PrimTy)
 vectorOp (Vectorise prim) n s  = ( op prim, Vector n (Scalar s) )
 vectorOp DotV   _ (Floating w) = ( Dot, Scalar (Floating w) )
-vectorOp DotV   _ _            = error "Dot product: vector elements must be of floating-point type."
+vectorOp DotV   _ _            = error "internal error: dot product: vector elements must be of floating-point type."
 vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Scalar (Floating w)) )
-vectorOp VMulK  _ _            = error "Scalar multiplication: vector elements must be of floating-point type (sorry!)."
+vectorOp VMulK  _ _            = error "internal error: scalar multiplication: vector elements must be of floating-point type."
 vectorOp CrossV n (Floating w) = ( Cross, Vector n (Scalar (Floating w)) )
-vectorOp CrossV _ _            = error "Cross product: vector elements must be of floating-point type."
+vectorOp CrossV _ _            = error "internal error: cross product: vector elements must be of floating-point type."
 vectorOp NormaliseV n (Floating w) = ( Normalize, Vector n (Scalar (Floating w)) )
-vectorOp NormaliseV _ _            = error "Normalise: vector elements must be of floating-point type."
+vectorOp NormaliseV _ _            = error "internal error: normalise: vector elements must be of floating-point type."
 
 matrixOp :: MatPrimOp -> Word32 -> Word32 -> ScalarTy -> (Operation, PrimTy)
 matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
@@ -317,8 +317,12 @@ convOp Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF, Floati
 convOp Convert (Integer Unsigned _) (Floating         w) = ( ConvertUToF, Floating         w )
 convOp Convert (Floating         _) (Integer Signed   w) = ( ConvertFToS, Integer Signed   w )
 convOp Convert (Floating         _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
-convOp Convert (Integer Unsigned _) (Integer Signed   w) = ( BitCast    , Integer Signed   w ) -- technically not allowed between different widths
-convOp Convert (Integer Signed   _) (Integer Unsigned w) = ( BitCast    , Integer Unsigned w ) -- but that's what glslangvalidator does...
+convOp Convert (Integer Unsigned v) (Integer Signed   w)
+  | v == w = ( BitCast    , Integer Signed   w )
+  | otherwise = error "internal error: unsupported conversion between integer types of different width and sign"
+convOp Convert (Integer Signed   v) (Integer Unsigned w)
+  | v == w = ( BitCast    , Integer Unsigned w )
+  | otherwise = error "internal error: unsupported conversion between integer types of different width and sign"
 convOp Convert (Floating         v) (Floating         w)
   | v /= w = ( FConvert, Floating         w)
 convOp Convert (Integer Signed   v) (Integer Signed   w)
@@ -329,18 +333,18 @@ convOp CTruncate (Floating _) (Integer Signed   w) = ( ConvertFToS, Integer Sign
 convOp CTruncate (Floating _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
 convOp CTruncate (Floating v) (Floating w)
   | v == w    = ( Trunc, Floating w )
-  | otherwise = error $ "unsupported truncation between floating point types of different widths"
+  | otherwise = error "internal error: unsupported truncation between floating point types of different widths"
 convOp CRound    (Floating v) (Floating w)
   | v == w    = ( Round, Floating w )
-  | otherwise = error $ "unsupported rounding between floating point types of different widths"
+  | otherwise = error "internal error: unsupported rounding between floating point types of different widths"
 convOp CFloor    (Floating v) (Floating w)
   | v == w    = ( Floor, Floating w )
-  | otherwise = error $ "unsupported floor operation between floating point types of different widths"
+  | otherwise = error "internal error: unsupported floor operation between floating point types of different widths"
 convOp CCeiling (Floating v) (Floating w)
   | v == w    = ( Ceil, Floating w )
-  | otherwise = error $ "unsupported ceiling operation between floating point types of different widths"
+  | otherwise = error "internal error: unsupported ceiling operation between floating point types of different widths"
 convOp cOp a b
-  = error $ "unsupported operation " ++ show cOp ++ " from type " ++ show a ++ " to type " ++ show b
+  = error $ "internal error: unsupported operation " ++ show cOp ++ " from type " ++ show a ++ " to type " ++ show b
 
 geomOp :: GeomPrimOp -> (Operation, PrimTy)
 geomOp EmitGeometryVertex   = ( EmitVertex  , Unit )
