@@ -57,6 +57,12 @@ allTests
     , Folder "Matrix"
           [ ( "Applicative", Validate )
           ]
+    , Folder "Module"
+          [ ( "DiffStageDiffName", Validate  )
+          , ( "DiffStageSameName", Validate  )
+          , ( "SameStageDiffName", Validate  )
+          , ( "SameStageSameName", Typecheck )
+          ]
     , Folder "Optics"
           [ ( "ASTIndices"    , Validate  )
           , ( "ASTProducts"   , Validate  )
@@ -104,4 +110,3 @@ allTests
           , ( "V3Double_Double"       , Typecheck )
           ]
     ]
-

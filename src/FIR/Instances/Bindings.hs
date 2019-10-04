@@ -526,8 +526,7 @@ type family InsertEntryPointInfoWithComparison
       _
     = TypeError
         (    Text "'entryPoint': duplicate entry point declaration."
-        :$$: Text "There already exists a " :<>: ShowType s
-        :<>: Text " entry point with name " :<>: ShowType k :<>: Text "."
+        :$$: Text "There already exists a " :<>: Text (SPIRV.NamedExecutionModel k s) :<>: Text "."
         )
   InsertEntryPointInfoWithComparison cmpName cmpStage nfo1 nfo2 nfos
     = If ( cmpName == LT || ( cmpName == EQ && cmpStage == LT ) )
