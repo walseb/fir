@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections     #-}
 
 module Test where
 
@@ -27,13 +26,17 @@ import System.Directory
 
 -- filepath
 import System.FilePath
-  ( (</>), (<.>), replaceExtension, splitFileName )
+  ( (</>), (<.>)
+  , replaceExtension, splitFileName
+  )
 
 -- process
 import System.Process
   ( proc, createProcess
-  , CreateProcess(std_in, std_out, std_err)
-  , StdStream(UseHandle, CreatePipe)
+  , CreateProcess
+      ( std_in, std_out, std_err )
+  , StdStream
+      ( UseHandle, CreatePipe )
   , waitForProcess
   )
 
@@ -44,6 +47,7 @@ import qualified Data.Text    as Text
   ( pack, lines
   , take, drop, dropWhile
   , dropAround, breakOn
+  , null
   )
 import qualified Data.Text.IO as Text
   ( readFile, hPutStrLn )
@@ -54,68 +58,22 @@ import FIR
 
 --------------------------------------------------
 
-tests :: [ (FilePath, Test) ]
-tests = [ ( "Array"        </> "Applicative"    , Validate  )
-        , ( "Bits"         </> "Bits"           , Validate  )
-        , ( "Bits"         </> "Zipbits"        , Validate  )
-        , ( "Control"      </> "Loop"           , Validate  )
-        , ( "Geometry"     </> "Geometry"       , Validate  )
-        , ( "Geometry"     </> "NotGeometry"    , TypeCheck )
-        , ( "Images"       </> "Gather"         , Validate  )
-        , ( "Images"       </> "Sample"         , Validate  )
-        , ( "Matrix"       </> "Applicative"    , Validate  )
-        , ( "Optics"       </> "ASTIndices"     , Validate  )
-        , ( "Optics"       </> "ASTProducts"    , Validate  )
-        , ( "Optics"       </> "MVP1"           , Validate  )
-        , ( "Optics"       </> "MVP2"           , Validate  )
-        , ( "Optics"       </> "NoMatrixIndex"  , TypeCheck )
-        , ( "Optics"       </> "NoStructField"  , TypeCheck )
-        , ( "Optics"       </> "NoStructIndex"  , TypeCheck )
-        , ( "Optics"       </> "NoVectorIndex"  , TypeCheck )
-        , ( "Optics"       </> "Overlapping"    , TypeCheck )
-        , ( "Optics"       </> "ProductIndices" , TypeCheck )
-        , ( "Optics"       </> "PureProducts"   , TypeCheck )
-        , ( "Optics"       </> "Various"        , Validate  )
-        , ( "PrimOps"      </> "Rounding"       , Validate  )
-        , ( "Small"        </> "HalfArithmetic" , Validate  )
-        , ( "Small"        </> "HalfInputOutput", Validate  )
-        , ( "Small"        </> "IntArithmetic"  , Validate  )
-        , ( "Small"        </> "IntInputOutput" , Validate  )
-        , ( "Tessellation" </> "Control"        , Validate  )
-        , ( "Tessellation" </> "Evaluation"     , Validate  )
-        , ( "Vector"       </> "Applicative"    , Validate  )
-        , ( "Vector"       </> "Functor"        , Validate  )
-        , ( "Vector"       </> "Swizzle"        , Validate  )
-        , ( "Vector"       </> "MixedSwizzle"   , TypeCheck )
-        ]
-
-runTests :: IO [ (FilePath, Test, TestOutput) ]
-runTests = traverse
-              ( \(file, test) -> ( file, test, ) <$> runTest test file )
-              tests
-
-runTest :: Test -> FilePath -> IO TestOutput
-runTest TypeCheck = typeCheck
-runTest CodeGen   = codeGen
-runTest Validate  = validate
-
---------------------------------------------------
--- truly disgusting testing setup
-
 data Test
-  = TypeCheck
+  = Typecheck
   | CodeGen
   | Validate
   deriving ( Eq, Show )
 
 data TestFailure
   = MissingSource
-  | WrongTypeCheckOutput
-  | ExpectedTypeCheck
-  | UnexpectedTypeCheck
+  | WrongTypecheckOutput
+  | ExpectedTypecheck
+  | UnexpectedTypecheck
   | CodeGenFail  Text
   | ValidateFail Text
   | CGOutputParseError
+  | ModuleError
+  | OtherError
   deriving ( Eq, Show )
 
 data TestOutput
@@ -124,11 +82,16 @@ data TestOutput
   | NewTest
   deriving ( Eq, Show )
 
+runTest :: Test -> FilePath -> IO TestOutput
+runTest Typecheck = typeCheck
+runTest CodeGen   = codeGen
+runTest Validate  = validate
+
+--------------------------------------------------
+-- truly disgusting testing setup
+
 ghc :: FilePath
 ghc = "ghc"
-
-ghci :: FilePath
-ghci = "ghci"
 
 validator :: FilePath
 validator = "spirv-val"
@@ -147,17 +110,18 @@ compileTest flags testName = do
         [   (out, outHandle)
           , (err, errHandle)
           ] <- replicateM 2
-                ( ( uncurry openBinaryTempFile )
-                      ( second
-                          ( `replaceExtension` "tmp" )
-                          ( splitFileName src )
-                      )
-                )
+                $ ( uncurry openBinaryTempFile )
+                    ( second
+                        ( `replaceExtension` "tmp" )
+                        ( splitFileName src )
+                    )
         let codeGenProcess
-              = ( proc ghci [ src
-                            , "-w"
-                            , "-package", "fir"
-                            ]
+              = ( proc ghc [ "--interactive"
+                           , src
+                           , "-w"
+                           , "-package", "fir"
+                           , "-threaded"
+                           ]
                 ) { std_in  = CreatePipe
                   , std_out = UseHandle outHandle
                   , std_err = UseHandle errHandle
@@ -172,22 +136,37 @@ compileTest flags testName = do
 
         testContents <- Text.readFile out
         let res = parseCGOutput testContents
-        case res of
-          Failure ExpectedTypeCheck
+        res' <- case res of
+          Failure ExpectedTypecheck
             -> do renameFile err test
                   removeFile out
-          Failure _
+                  pure res
+          Failure (CodeGenFail _)
             -> do renameFile out test
                   removeFile err
+                  pure res
+          Failure _
+            -> do removeFile out
+                  errLines <- dropWhile ignoreLineText . Text.lines <$> Text.readFile err
+                  case errLines of
+                    ( l1 : _ )
+                      | Text.take 43 l1 == "<command line>: cannot satisfy -package fir"
+                      -> do removeFile err
+                            pure (Failure ModuleError)
+                    _ -> do renameFile err test
+                            pure res
           Success
             -> do removeFile out
                   removeFile err
                   failExists <- doesFileExist test
                   when ( NoCode `elem` flags && failExists ) ( removeFile test )
-          _ -> do removeFile out
+                  pure res
+          NewTest
+            -> do removeFile out
                   removeFile err
-        if res /= Success || NoCode `elem` flags
-        then pure res
+                  pure res
+        if res' /= Success || NoCode `elem` flags
+        then pure res'
         else
           do  (val, valHandle) <-
                   ( uncurry openBinaryTempFile )
@@ -240,6 +219,7 @@ typeCheck testName = do
                            , "-w"
                            , "-fno-code"
                            , "-package", "fir"
+                           , "-threaded"
                            ]
                 ) { std_err = UseHandle tempHandle }
         (_, _, _, processHandle)
@@ -248,23 +228,30 @@ typeCheck testName = do
         hClose tempHandle
         testContents <- ByteString.readFile temp
         removeFile temp
-        let testResult = parseTcOutput testContents
+        let mbTcOutput = parseTcOutput testContents
 
-        goldenExists <- doesFileExist gold
+        case mbTcOutput of
+          Nothing -> pure ( Failure ModuleError )
+          Just tcOutput -> do
 
-        if goldenExists
-        then do golden <- ByteString.readFile gold
-                if golden == testResult
-                then do pure Success                        
-                else do ByteString.writeFile test testResult
-                        if golden == cleanTc
-                        then do pure ( Failure ExpectedTypeCheck)                            
-                        else if testResult == cleanTc
-                             then pure ( Failure UnexpectedTypeCheck )
-                             else pure ( Failure WrongTypeCheckOutput )
+            goldenExists <- doesFileExist gold
 
-        else do ByteString.writeFile gold testResult
-                pure NewTest
+            if goldenExists
+            then do
+              golden <- ByteString.readFile gold
+              if golden == tcOutput
+              then pure Success
+              else do
+                ByteString.writeFile test tcOutput
+                if golden == cleanTc
+                then pure ( Failure ExpectedTypecheck)
+                else
+                  if tcOutput == cleanTc
+                  then pure ( Failure UnexpectedTypecheck )
+                  else pure ( Failure WrongTypecheckOutput )
+
+            else do ByteString.writeFile gold tcOutput
+                    pure NewTest
 
     where dir  = "test" </> "Tests"
           src  = dir </> testName <.> "hs"
@@ -274,34 +261,47 @@ typeCheck testName = do
 cleanTc :: ByteString
 cleanTc = "No type-checking errors."
 
-parseTcOutput :: ByteString -> ByteString
-parseTcOutput contents = go ( dropWhile ignore ( ByteString.lines contents ) )
-  where
-    go :: [ByteString] -> ByteString
-    go [] = cleanTc
-    go ls = ByteString.unlines ls
+ignoreLineBS :: ByteString -> Bool
+ignoreLineBS string
+  |    ByteString.null string
+    || ByteString.take 4  string == "GHCi"
+    || ByteString.take 26 string == "Loaded package environment"
+  = True
+  | otherwise
+  = False
 
-    ignore :: ByteString -> Bool
-    ignore string
-      |    ByteString.null string
-        || ByteString.take 26 string == "Loaded package environment"
-      = True
+ignoreLineText :: Text -> Bool
+ignoreLineText string
+  |    Text.null string
+    || Text.take 4  string == "GHCi"
+    || Text.take 26 string == "Loaded package environment"
+  = True
+  | otherwise
+  = False
+
+parseTcOutput :: ByteString -> Maybe ByteString
+parseTcOutput contents = go ( dropWhile ignoreLineBS ( ByteString.lines contents ) )
+  where
+    go :: [ByteString] -> Maybe ByteString
+    go [] = Just cleanTc
+    go ls@(l:_)
+      | ByteString.take 43 l == "<command line>: cannot satisfy -package fir"
+      = Nothing
       | otherwise
-      = False
+      = Just $ ByteString.unlines ls
 
 parseCGOutput :: Text -> TestOutput
 parseCGOutput contents
-  = let ls = Text.lines contents
+  = let ls = dropWhile ignoreLineText (Text.lines contents)
     in case ls of
-          l1 : l2 : l3 : l4 : _
-            |  Text.take 4 l1 == "GHCi"
-            && Text.take 8 l2 == "[1 of 1]"
-            -> case l3 of
+          l1 : l2 : l3 : _
+            | Text.take 8 l1 == "[1 of 1]"
+            -> case l2 of
                   "Ok, one module loaded."
-                     -> let l4' = Text.drop 2
+                     -> let l3' = Text.drop 2
                                 . Text.dropWhile ( /= '>' )
-                                $ l4
-                        in case Text.breakOn " " l4' of
+                                $ l3
+                        in case Text.breakOn " " l3' of
                               ( "Left", rest )
                                 -> Failure ( CodeGenFail
                                                ( Text.dropAround (== '\"' )
@@ -313,6 +313,6 @@ parseCGOutput contents
                                 -> Success
                               _ -> Failure CGOutputParseError
                   "Failed, no modules loaded."
-                     -> Failure ExpectedTypeCheck
-                  _  -> Failure CGOutputParseError
-          _ -> Failure CGOutputParseError
+                     -> Failure ExpectedTypecheck
+                  _  -> Failure OtherError
+          _ -> Failure OtherError

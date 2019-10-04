@@ -11,8 +11,7 @@ test\Tests\Optics\NoStructField.hs:42:17: error:
             #gl_Position .= position'
       In a stmt of a 'do' block:
         entryPoint
-          @"main"
-          @Vertex
+          @"main" @Vertex
           do position <- use @(Name "vertexData" :.: Name "inexistent")
              #gl_Position .= position
    |

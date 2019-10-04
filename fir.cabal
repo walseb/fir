@@ -90,6 +90,9 @@ library
 
     hs-source-dirs:
         src
+      -- modules required for testing
+      -- (temporarily included here)
+      , test
   
     exposed-modules:
         FIR
@@ -180,9 +183,9 @@ library
           >= 4.13
       , template-haskell
           >= 2.15
-      , filepath
       , binary
       , bytestring
+          >= 0.10.9.0
       , containers
       , mtl
       , transformers
@@ -209,11 +212,14 @@ library
           >= 0.7
       , generic-monoid
           >= 0.1.0.0
-      -- for testing
+      -- packages required for testing
+      -- (temporarily included here)
       , text
           >= 1.2.3.1
       , directory
           >= 1.3.3.0
+      , filepath
+          >= 1.4.2.1
       , process
           >= 1.6.3.0
 
@@ -232,3 +238,40 @@ library
         -fwarn-missing-local-signatures
         -fwarn-incomplete-uni-patterns
         -- -fwarn-redundant-constraints
+
+
+test-suite fir-tests
+
+    type:
+      detailed-0.9
+
+    hs-source-dirs:
+      test
+
+    test-module:
+      CabalTests
+
+    other-modules:
+        Test
+      , Tests
+      , Folders
+
+    build-depends:
+        fir
+      , base
+          >= 4.13
+      , bytestring
+          >= 0.10.9.0
+      , text
+          >= 1.2.3.1
+      , directory
+          >= 1.3.3.0
+      , filepath
+          >= 1.4.2.1
+      , process
+          >= 1.6.3.0
+      --, Cabal
+      --    >= 3.0.0.0
+
+    default-language:
+        Haskell2010

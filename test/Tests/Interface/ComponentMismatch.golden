@@ -1,0 +1,17 @@
+
+test\Tests\Interface\ComponentMismatch.hs:56:5: error:
+    * Interface mismatch at location 0.
+      Output of Vertex shader named "main" is of type V 4 Float,
+      whereas input of Fragment shader named "main" is of type V 3 Float.
+    * In the expression:
+        withStructInput @VertexInput @(Triangle List)
+          $ StartPipeline :>-> (vertex, "vertex.spv")
+              :>-> (fragment, "fragment.spv")
+      In an equation for `shaderPipeline':
+          shaderPipeline
+            = withStructInput @VertexInput @(Triangle List)
+                $ StartPipeline :>-> (vertex, "vertex.spv")
+                    :>-> (fragment, "fragment.spv")
+   |
+56 |   = withStructInput @VertexInput @(Triangle List)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...

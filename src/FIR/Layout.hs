@@ -696,25 +696,27 @@ type family EnumSlots
     = TypeError
         ( Text "Vertex binding: booleans not supported. Convert to 'Word32' instead." )
   EnumSlots ('LocationSlot l c) ty (SKScalar s)
-    = If ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 )
+    = If ( c :<= 3 && ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 ) )
         ( ( EnumConsecutiveSlots ('LocationSlot l c) ty )
           `ZipValue`
           ( Provenance ('LocationSlot l c) (SKScalar s) s )
         )
         ( TypeError
-          (    Text "Vertex binding: cannot position " :<>: ShowType ty :<>: Text " at location " :<>: ShowType l
-          :<>: Text " with odd component " :<>: ShowType c :<>: Text "."
+          (    Text "Vertex binding: cannot position value of type " :<>: ShowType ty
+          :$$: Text " at location " :<>: ShowType l
+          :<>: Text " with component " :<>: ShowType c :<>: Text "."
           )
         )
   EnumSlots ('LocationSlot l c) (V n a) (SKVector s)
-    = If ( c == 0 || ( c `Mod` 2 == 0 && n :<= 2 && ScalarWidth s :<= 32 ) )
+    = If ( c == 0 || ( c `Mod` 2 == 0 && c :<= 3 && n :<= 2 && ScalarWidth s :<= 32 ) )
        (  ( EnumConsecutiveSlots ('LocationSlot l c) (V n a) )
           `ZipValue`
           ( Provenance ('LocationSlot l c) (SKVector s) s )
        )
        ( TypeError
-          (    Text "Vertex binding: cannot position vector " :<>: ShowType (V n a)
-          :<>: Text " at location " :<>: ShowType l
+          (    Text "Vertex binding: cannot position vector of type"
+          :<>: ShowType (V n a)
+          :$$: Text "at location " :<>: ShowType l
           :<>: Text " with component " :<>: ShowType c :<>: Text "."
           )
        )
@@ -730,14 +732,23 @@ type family EnumSlots
   EnumSlots loc (Array 0 a) (SKArray _  ) = '[]
   EnumSlots loc (Array 1 a) (SKArray elt) = EnumSlots loc a elt
   EnumSlots ('LocationSlot l c) (Array n a) (SKArray elt)
-    =    EnumSlots
-            ('LocationSlot l c)
-            a
-            elt
-    :++: EnumSlots
-            ( 'LocationSlot (l + 1 + ( Pred (SizeOf Locations a) `Div` 4) ) c )
-            ( Array (n-1) a )
-            ( SKArray elt )
+    =  If ( c :<= 3 )
+        (     EnumSlots
+                ('LocationSlot l c)
+                a
+                elt
+        :++:  EnumSlots
+                ( 'LocationSlot (l + 1 + ( Pred (SizeOf Locations a) `Div` 4) ) c )
+                ( Array (n-1) a )
+                ( SKArray elt )
+        )
+        ( TypeError
+           (    Text "Vertex binding: cannot position array of type" :<>: ShowType (Array n a)
+           :$$: Text "at location " :<>: ShowType l
+           :<>: Text " with component " :<>: ShowType c :<>: Text "."
+           :$$: Text "Component cannot be greater than 3."
+           )
+        )
   EnumSlots _ (RuntimeArray _) (SKRuntimeArray _)
     = TypeError
         ( Text "Vertex binding: runtime arrays not supported." )

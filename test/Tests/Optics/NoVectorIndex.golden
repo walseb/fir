@@ -10,8 +10,7 @@ test\Tests\Optics\NoVectorIndex.hs:36:17: error:
             #gl_Position .= position'
       In a stmt of a 'do' block:
         entryPoint
-          @"main"
-          @Vertex
+          @"main" @Vertex
           do position <- use @(Name "vertexData" :.: Index 4)
              #gl_Position .= position
    |
