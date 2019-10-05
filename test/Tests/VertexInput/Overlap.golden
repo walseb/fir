@@ -1,8 +1,8 @@
 
 test\Tests\VertexInput\Overlap.hs:55:5: error:
     * Overlap at location 1, component 0:
-        - V GHC.Types.Any Double based at location 0, component 0,
-        - V GHC.Types.Any Float based at location 1, component 0.
+        - V 4 Double based at location 0, component 0,
+        - V 4 Float based at location 1, component 0.
     * In the expression:
         withStructInput @VertexInput @(Triangle List)
           $ StartPipeline :>-> (vertex, "vertex.spv")
@@ -18,8 +18,8 @@ test\Tests\VertexInput\Overlap.hs:55:5: error:
 
 test\Tests\VertexInput\Overlap.hs:55:5: error:
     * Overlap at location 1, component 0:
-        - V GHC.Types.Any Double based at location 0, component 0,
-        - V GHC.Types.Any Float based at location 1, component 0.
+        - V 4 Double based at location 0, component 0,
+        - V 4 Float based at location 1, component 0.
     * In the expression:
         withStructInput @VertexInput @(Triangle List)
           $ StartPipeline :>-> (vertex, "vertex.spv")

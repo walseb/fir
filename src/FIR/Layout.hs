@@ -699,7 +699,7 @@ type family EnumSlots
     = If ( c :<= 3 && ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 ) )
         ( ( EnumConsecutiveSlots ('LocationSlot l c) ty )
           `ZipValue`
-          ( Provenance ('LocationSlot l c) (SKScalar s) s )
+          ( Provenance ('LocationSlot l c) (SKScalar s :: SKPrimTy ty) s )
         )
         ( TypeError
           (    Text "Vertex binding: cannot position value of type " :<>: ShowType ty
@@ -711,7 +711,7 @@ type family EnumSlots
     = If ( c == 0 || ( c `Mod` 2 == 0 && c :<= 3 && n :<= 2 && ScalarWidth s :<= 32 ) )
        (  ( EnumConsecutiveSlots ('LocationSlot l c) (V n a) )
           `ZipValue`
-          ( Provenance ('LocationSlot l c) (SKVector s) s )
+          ( Provenance ('LocationSlot l c) (SKVector s :: SKPrimTy (V n a)) s )
        )
        ( TypeError
           (    Text "Vertex binding: cannot position vector of type"
@@ -723,13 +723,13 @@ type family EnumSlots
   EnumSlots ('LocationSlot l 0) (M m n a) (SKMatrix s)
     = ( EnumConsecutiveSlots ('LocationSlot l 0) (M m n a) )
       `ZipValue`
-      ( Provenance ('LocationSlot l 0) (SKMatrix s) s )
+      ( Provenance ('LocationSlot l 0) (SKMatrix s :: SKPrimTy (M m n a)) s )
   EnumSlots ('LocationSlot l c) (M m n a) (SKMatrix _)
     = TypeError
         (    Text "Vertex binding: cannot position matrix at location " :<>: ShowType l
         :<>: Text " with non-zero component " :<>: ShowType c :<>: Text "."
         )
-  EnumSlots loc (Array 0 a) (SKArray _  ) = '[]
+  EnumSlots loc (Array 0 a) (SKArray _) = '[]
   EnumSlots loc (Array 1 a) (SKArray elt) = EnumSlots loc a elt
   EnumSlots ('LocationSlot l c) (Array n a) (SKArray elt)
     =  If ( c :<= 3 )
