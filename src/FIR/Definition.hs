@@ -53,6 +53,9 @@ See "FIR.Layout" for further details concerning such annotations.
 On the other hand, the execution model (in this case the fragment shader) is given its execution modes
 (in this case, specifying that the origin for the coordinate system used by fragments is
 in the upper-left corner).
+
+See also "FIR.Validation.Definitions", which provides type families
+used to validate user-provided definitions.
 -}
 
 module FIR.Definition where
@@ -60,8 +63,6 @@ module FIR.Definition where
 -- base
 import Data.Kind
   ( Type )
-import Data.Type.Bool
-  ( If, type (&&) )
 import GHC.Generics
   ( Generic )
 import GHC.TypeLits
@@ -110,26 +111,20 @@ import qualified FIR.ASTState as ASTState
   ( FunctionContext(TopLevel) )
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
-import FIR.Instances.Bindings
-  ( InsertEntryPointInfo )
 import qualified FIR.Binding as Binding
   ( Binding(Function) )
-import FIR.Prim.Array
-  ( Array )
 import FIR.Prim.Image
   ( Image, knownImage, ImageProperties )
 import FIR.Prim.Singletons
   ( PrimTy, primTy )
-import FIR.Prim.Struct
-  ( Struct )
+import FIR.Validation.Bindings
+  ( InsertEntryPointInfo )
 import qualified SPIRV.Capability      as SPIRV
   ( Capability )
 import qualified SPIRV.Control         as SPIRV
   ( FunctionControl )
 import qualified SPIRV.Decoration      as SPIRV
-  ( Decoration(Binding, DescriptorSet)
-  , Decorations
-  )
+  ( Decoration, Decorations )
 import qualified SPIRV.ExecutionMode   as SPIRV
   ( ExecutionMode, ExecutionModes
   , ValidateExecutionModes
@@ -150,8 +145,6 @@ import qualified SPIRV.Stage           as SPIRV
   ( ExecutionModel, ExecutionInfo )
 import qualified SPIRV.Storage         as SPIRV
   ( StorageClass )
-import qualified SPIRV.Storage         as Storage
-  ( StorageClass(..) )
 
 --------------------------------------------------------------------------
 -- annotating top-level definitions with necessary information
@@ -356,75 +349,3 @@ type family EndBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bind
     = Insert k (Binding.Function as b) (EndBindings defs)
   EndBindings (_ ': defs)
     = EndBindings defs
-
-type family ValidateGlobal
-              ( storage :: SPIRV.StorageClass       )
-              ( decs    :: [ SPIRV.Decoration Nat ] )
-              ( ty      :: Type                     )
-              :: Maybe Type -- returns 'Just ty' if block/layout decorations are needed (onto the type 'ty')
-              where
-  ValidateGlobal Storage.UniformConstant '[] (Image ty) = Nothing
-  ValidateGlobal Storage.UniformConstant (dec ': _) (Image _)
-    = TypeError
-        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
-  ValidateGlobal Storage.UniformConstant _ nonImageTy
-    = TypeError
-        (    Text "Uniform constant global expected to point to an image, but points to "
-        :<>: ShowType nonImageTy :<>: Text " instead."
-        )
-  ValidateGlobal Storage.Image '[] (Image ty) = Nothing
-  ValidateGlobal Storage.Image  (dec ': _) (Image _)
-    = TypeError
-        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
-  ValidateGlobal Storage.Image  _ nonImageTy
-    = TypeError
-        (    Text "Image global expected to point to an image, but points to "
-        :<>: ShowType nonImageTy :<>: Text " instead."
-        )
-  ValidateGlobal Storage.Uniform decs (Struct as)
-    = If ( ValidUniformDecorations decs (Struct as))
-        ( Just (Struct as) )
-        Nothing -- unreachable
-  ValidateGlobal Storage.Uniform decs (Array n (Struct as))
-    = If ( ValidUniformDecorations decs (Array n (Struct as)) )
-        ( Just (Array n (Struct as)) )
-        Nothing -- unreachable
-  ValidateGlobal Storage.Uniform _ ty
-    = TypeError
-        (    Text "Uniform buffer should be backed by a struct or array containing a struct;"
-        :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
-        )
-  ValidateGlobal Storage.StorageBuffer _ (Struct as) = Just (Struct as)
-  ValidateGlobal Storage.StorageBuffer _ (Array n (Struct as)) = Just (Array n (Struct as))
-  ValidateGlobal Storage.StorageBuffer _ ty
-    = TypeError
-        (    Text "Uniform storage buffer should be backed by a struct or array containing a struct;"
-        :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
-        )
-  -- TODO
-  ValidateGlobal Storage.Input  _ _ = Nothing
-  ValidateGlobal Storage.Output _ _ = Nothing
-  -- TODO
-  ValidateGlobal _ _ _ = Nothing
-
-type family ValidUniformDecorations
-              ( decs :: [ SPIRV.Decoration Nat ] )
-              ( ty   :: Type                     )
-            :: Bool
-            where
-  ValidUniformDecorations decs _
-    = HasBinding decs && HasDescriptorSet decs
-
-type family HasBinding ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
-  HasBinding ( SPIRV.Binding _ ': _ ) = 'True
-  HasBinding ( _ ': decs ) = HasBinding decs
-  HasBinding '[]
-    = TypeError
-        ( Text "Uniform buffer is missing a 'Binding' decoration." )
-
-type family HasDescriptorSet ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
-  HasDescriptorSet ( SPIRV.DescriptorSet _ ': _ ) = 'True
-  HasDescriptorSet ( _ ': decs ) = HasDescriptorSet decs
-  HasDescriptorSet '[]
-    = TypeError
-        ( Text "Uniform buffer is missing a 'DescriptorSet' decoration." )

@@ -38,6 +38,8 @@ import Math.Logic.Class
   ( Ord((<)) )
 import FIR.AST
   ( AST(Lit), Syntactic(toAST) )
+import FIR.ASTState
+  ( ASTState(..) )
 import FIR.Binding
   ( Var, RW )
 import FIR.Instances.AST
@@ -46,16 +48,14 @@ import FIR.Instances.Codensity
   ( def, get, put, assign
   , locally, while
   )
-import FIR.Instances.Bindings
-  ( Has, CanGet, CanPut
-  , ValidDef, AddBinding
-  )
-import FIR.ASTState
-  ( ASTState(..) )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
   ( PrimTy )
+import FIR.Validation.Bindings
+  ( Has, CanGet, CanPut
+  , ValidDef, AddBinding
+  )
 
 ----------------------------------------------------------------------------
 

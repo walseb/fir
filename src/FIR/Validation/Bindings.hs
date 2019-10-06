@@ -1,17 +1,16 @@
-{-# OPTIONS_HADDOCK ignore-exports #-}
-
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
-Module: FIR.Instances.Bindings
+Module: FIR.Validation.Bindings
 
-Auxiliary helper module providing checks for stateful operations,
-(such as 'FIR.Instances.Codensity.get', 'FIR.Instances.Codensity.put'),
+Validation module providing checks for stateful operations
+such as 'FIR.Instances.Codensity.get', 'FIR.Instances.Codensity.put',
 using type families with custom type errors.
 
 These are used, for instance, to prevent any name from being bound twice,
@@ -19,24 +18,7 @@ or accessing a binding that does not exist.
 
 -}
 
-module FIR.Instances.Bindings
-  ( Has, CanGet, CanPut
-  , ValidDef, AddBinding, AddFunBinding
-  , ValidFunDef, GetFunctionInfo, FunctionTypes
-  , FunctionDefinitionStartState
-  , FunctionDefinitionEndState
-  , ValidEntryPoint, SetInterface
-  , EntryPointStartState, EntryPointEndState
-  , InsertEntryPointInfo
-  , GetExecutionInfo
-  , LookupImageProperties
-  , ValidImageRead
-  , ValidImageWrite
-  , Embeddable
-  , DefiniteState
-  , ProvidedSymbol, ProvidedStage, ProvidedOptic
-  )
-  where
+module FIR.Validation.Bindings where
 
 -- base
 import Prelude
@@ -56,8 +38,6 @@ import GHC.TypeNats
   ( Nat )
 
 -- fir
-import Control.Type.Optic
-  ( Optic )
 import Data.Type.List
   ( Elem )
 import Data.Type.Map
@@ -80,25 +60,7 @@ import FIR.ASTState
   , EntryPointInfo(..), TLInterface
   )
 import FIR.Prim.Image
-  ( ImageProperties(Properties), Image
-  , OperandName(DepthComparison, BaseOperand)
-  )
-import FIR.Prim.Singletons
-  ( ScalarFromTy )
-import SPIRV.Image
-  ( ImageUsage(Sampled, Storage)
-  , ImageFormat(ImageFormat), RequiredFormatUsage
-  , Normalisation(..)
-  , HasDepth(..)
-  , MultiSampling(..)
-  , Operand(LODOperand)
-  )
-import qualified SPIRV.Image    as Image
-  ( Component(Integer, Floating)
-  , Operand(..)
-  )
-import qualified SPIRV.ScalarTy as SPIRV
-  ( ScalarTy(Integer, Floating) )
+  ( Image )
 import qualified SPIRV.Stage    as SPIRV
   ( ExecutionModel, NamedExecutionModel
   , ExecutionInfo
@@ -346,10 +308,10 @@ type family ValidFunDef
   ValidFunDef k as ('ASTState i 'TopLevel _ _) l
     = ( NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
       , ValidArguments k as (Remove i (Remove as l)) )
-        --     │             └━━━━━━┬━━━━━┘
-        --     │                         │
-        --     │                         │
-        --     │    local variables ├━━┘
+        --     │                      └━━━━━━┬━━━━━┘
+        --     │                             │
+        --     │                             │
+        --     │    local variables ├━━━━━━━━┘
         --     │
         --     └━━┤ check that none of the function arguments or local variables are themselves functions or images
 
@@ -603,181 +565,6 @@ type family BuiltinDoesNotAppearBefore
                 )
 
 -------------------------------------------------
--- * Constraints for images.
-
--- | Retrieve the properties of an image.
---
--- Throws a type error if there is no image with given name.
-type family LookupImageProperties (k :: Symbol) (i :: ASTState) :: ImageProperties where
-  LookupImageProperties k ('ASTState i _ _ _)
-    = ImagePropertiesFromLookup k i (Lookup k i)
-
-type family ImagePropertiesFromLookup
-              ( k      :: Symbol        )
-              ( i      :: BindingsMap   )
-              ( lookup :: Maybe Binding )
-            :: ImageProperties
-              where
-  ImagePropertiesFromLookup _ _ (Just (Var _ (Image props))) = props
-  ImagePropertiesFromLookup k i  Nothing
-    = TypeError (     Text "Expected an image, \
-                           \but nothing is bound by name " :<>: ShowType k
-                )
-  ImagePropertiesFromLookup k i (Just nonImage)
-    = TypeError (     Text "Unexpected type " :<>: ShowType nonImage
-                 :<>: Text " bound by name " :<>: ShowType k
-                 :$$: Text "Expected an image."
-                 )
-
--- | Check that we can read from an image.
---
--- Depending on the coordinate type, this is either a sampling operation
--- or a direct image read operation.
---
--- Throws a type error if the operation is incompatible with the given
--- image properties. For instance, if the image is a depth image,
--- a depth-comparison reference value must be provided.
---
--- Refer to the @SPIR-V@ specification for what operations are allowed.
-type family ValidImageRead
-              ( props :: ImageProperties )
-              ( ops   :: [OperandName]   )
-            :: Constraint where
-  ValidImageRead
-    ( Properties coords res _ depth _ ms usage fmt )
-    ops
-      = ( AllowedIndexing (ScalarFromTy coords) ms usage
-        , CheckDepthTest (DepthComparison `Elem` ops) (ScalarFromTy coords) depth
-        , CheckLODOperands (ScalarFromTy coords) ops
-        , CompatibleFormat (ScalarFromTy res) usage fmt
-        )
-
--- | Check that we can write to an image.
---
--- Throws a type error if:
---
---   * the image is not a storage image,
---   * the image is a depth image,
---   * the coordinate type is not an integral type,
---   * an operand is incompatible with the given image properties,
---   * an operand doesn't make sense for write operations.
---
--- Refer to the @SPIR-V@ specification for what operations are allowed.
-type family ValidImageWrite
-              ( props :: ImageProperties )
-              ( ops   :: [OperandName]   )
-           :: Constraint where
-  ValidImageWrite
-    ( Properties _ _ _ _ _ _ Sampled _ )
-    ops
-      = TypeError ( Text "Cannot write to a sampled image; must be a storage image." )
-  ValidImageWrite
-    ( Properties _ _ _ (Just DepthImage) _ _ _ _ )
-    ops
-      = TypeError ( Text "Cannot write to a depth image." )
-
-  ValidImageWrite
-    ( Properties coords res _ _ _ _ usage fmt )
-    ops
-      = ( IntegralIndexing (ScalarFromTy coords)
-        , CompatibleFormat (ScalarFromTy res) usage fmt
-        , AllowedWriteOps ops
-        )
-
-type family IntegralIndexing (inty :: SPIRV.ScalarTy) :: Constraint where
-  IntegralIndexing (SPIRV.Floating _)
-    = TypeError ( Text "Cannot write to an image using floating-point coordinates." )
-  IntegralIndexing _ = ()
-
--- Check whether floating-point coordinates are allowed.
-type family AllowedIndexing
-              ( inty  :: SPIRV.ScalarTy )
-              ( ms    :: MultiSampling  )
-              ( usage :: ImageUsage     )
-            :: Constraint where
-  AllowedIndexing (SPIRV.Floating _) _ Storage
-    = TypeError
-        ( Text "Cannot use floating-point coordinates with a storage image." )
-  AllowedIndexing (SPIRV.Floating _) MultiSampled _
-    = TypeError
-        ( Text "Cannot use floating-point coordinates with multi-sampling." )
-  AllowedIndexing _ _ _ = ()
-
--- Check that depth-testing is appropriately performed.
-type family CheckDepthTest
-              ( depthTesting :: Bool    )
-              ( inty  :: SPIRV.ScalarTy )
-              ( depth :: Maybe HasDepth )
-            :: Constraint where
-  CheckDepthTest False _ (Just DepthImage)
-    = TypeError
-        ( Text "Must use a depth comparison with this depth image." )
-  CheckDepthTest True _ (Just NotDepthImage)
-    = TypeError
-        ( Text "Cannot perform depth comparison: not a depth image." )
-  CheckDepthTest True (SPIRV.Integer _ _ ) _
-    = TypeError
-        ( Text "Cannot perform depth comparison using integral coordinates." )
-  CheckDepthTest _ _ _ = ()
-
--- If using integral coordinates, LOD instructions cannot be provided.
-type family CheckLODOperands
-                ( inty :: SPIRV.ScalarTy )
-                ( ops  :: [OperandName]  )
-              :: Constraint where
-  CheckLODOperands (SPIRV.Floating _) _ = ()
-  CheckLODOperands _ ( BaseOperand ('LODOperand lod) ': _ )
-    = TypeError 
-        ( ShowType lod :<>: Text " operand not allowed: using integral coordinates." )
-  CheckLODOperands inty ( op ': ops ) = CheckLODOperands inty ops
-  CheckLODOperands _ '[] = ()
-
-type family CompatibleFormat
-                ( inty  :: SPIRV.ScalarTy          )
-                ( usage :: ImageUsage              )
-                ( fmt   :: Maybe (ImageFormat Nat) )
-              :: Constraint
-              where
-  CompatibleFormat (SPIRV.Integer _ _) _ (Just ('ImageFormat (Image.Integer Normalised _) _))
-    = TypeError
-       (    Text "Expected a floating-point type, but provided an integer type."
-       :$$: Text "Image uses a normalised integer format, resulting in floating-point texel data."
-       )
-  CompatibleFormat (SPIRV.Integer _ _) _ (Just ('ImageFormat Image.Floating _))
-    = TypeError
-       (    Text "Expected a floating-point type, but provided an integer type."
-       :$$: Text "Image uses a floating-point format."
-       )
-  CompatibleFormat (SPIRV.Floating _) _ (Just ('ImageFormat (Image.Integer Unnormalised _) _))
-    = TypeError
-       (    Text "Expected an integral type, but provided a floating-point type."
-       :$$: Text "Image uses unnormalised integers, resulting in integral texel data."
-       )
-  CompatibleFormat _ Storage _
-    = ()
-  CompatibleFormat _ Sampled (Just fmt)
-    = If
-        ( RequiredFormatUsage fmt == Just Storage )
-        ( TypeError
-           (     Text "Image format " :<>: ShowType fmt
-            :<>: Text " can only be used with storage images."
-            )
-        )
-        ( () :: Constraint )
-
--- Only 'Sample' and 'Offset'/'ConstOffset' image operands allowed.
-type family AllowedWriteOps (ops :: [OperandName]) :: Constraint where
-  AllowedWriteOps '[] = ()
-  AllowedWriteOps (BaseOperand Image.Sample      ': ops) = AllowedWriteOps ops
-  AllowedWriteOps (BaseOperand Image.ConstOffset ': ops) = AllowedWriteOps ops
-  AllowedWriteOps (BaseOperand Image.Offset      ': ops) = AllowedWriteOps ops
-  AllowedWriteOps (op                            ': _  )
-    = TypeError (     Text "Image operand " :<>: ShowType op
-                 :<>: Text " cannot be used in conjunction \
-                           \with an image write operation."
-                )
-
--------------------------------------------------
 -- * Constraints for 'FIR.Instances.Codensity.embed'.
 
 type family Embeddable (i :: ASTState) (j :: ASTState) :: Constraint where
@@ -839,92 +626,3 @@ type family SubsetFunctionsRec
     :$$: Text "  - Smaller context function info: " :<>: ShowType f :<>: Text ","
     :$$: Text "  - Larger context function info: " :<>: ShowType f' :<>: Text "."
     )
-
--------------------------------------------------
--- * Checking for ambiguous type variables.
-
-data family Dummy :: k
-
-type family Assert ( err :: Constraint ) (ambig :: k) (x :: l) :: l where
-  Assert _ Dummy _ = Dummy
-  Assert _  _    l = l
-
--- | Check that monadic state is not ambiguous.
-type DefiniteState i = AssertDefiniteState i ( () :: Constraint )
-
-type family AssertDefiniteState ( i :: BindingsMap ) (x :: l) :: l where
-  AssertDefiniteState i x =
-    AssertProvidedBindings
-      ( TypeError
-          (    Text "Ambiguous state in indexed monad."
-          :$$: Text "Potential causes:"
-          :$$: Text "  - lack of a type signature indicating the starting monadic state,"
-          :$$: Text "  - an earlier overly general value (such as 'undefined') resulting in an ambiguous state."
-          :$$: Text " "
-          :$$: Text "If you are not expecting a specific state"
-          :$$: Text "    ( for instance if you are writing a function which is polymorphic over monadic state )"
-          :$$: Text "add the constraint 'DefiniteState " :<>: ShowType i :<>: Text "' "
-          :<>: Text "to defer this error message to the use-site."
-         )
-      )
-      i
-      x
-
-type family AssertProvidedBindings ( err :: Constraint ) ( i :: BindingsMap ) (x :: l) :: l where
-  AssertProvidedBindings _   ( ("dummy" ':-> Var '[] Dummy) ': nxt) x = Dummy
-  AssertProvidedBindings err ( _                            ': nxt) x = AssertProvidedBindings err nxt x
-  AssertProvidedBindings _ _ x = x
-
--- | Check that a type-level symbol is not ambiguous.
-type ProvidedSymbol k = AssertProvidedSymbol k ( () :: Constraint )
-type family AssertProvidedSymbol ( k :: Symbol ) (x :: l) :: l where
-  AssertProvidedSymbol k x =
-    Assert
-      ( TypeError
-          (      Text "Ambiguous type-level symbol."
-            :$$: Text "Suggestion: provide a specific name using a type application."
-            :$$: Text " "
-            :$$: Text "If you intend for " :<>: ShowType k :<>: Text " to remain un-instantiated,"
-            :$$: Text "add the constraint 'ProvidedSymbol " :<>: ShowType k :<>: Text "' "
-            :<>: Text "to defer this error message to the use-site."
-          )
-       )
-      k
-      x
-
--- | Check that a shader stage is not ambiguous.
-type family ProvidedStage ( s :: SPIRV.ExecutionModel ) :: Constraint where
-  ProvidedStage s =
-    Assert
-      ( TypeError
-          (      Text "Ambiguous entry point stage."
-            :$$: Text "Suggestion: specify the stage using a type application."
-            :$$: Text " "
-            :$$: Text "If you intend for " :<>: ShowType s :<>: Text " to remain un-instantiated,"
-            :$$: Text "add the constraint 'ProvidedStage " :<>: ShowType s :<>: Text "' "
-            :<>: Text "to defer this error message to the use-site."
-          )
-       )
-      s
-      ( () :: Constraint )
-
--- | Check that an optic is not ambiguous.
-type family ProvidedOptic ( optic :: Optic is s a ) :: Constraint where
-  ProvidedOptic (optic :: Optic is s a) =
-    Assert
-      ( TypeError
-          (     Text "Ambiguous type-level optic."
-           :$$: Text "Suggestion: provide a specific optic using a type application."
-           :$$: Text "Expecting an optic:"
-           :$$: Text "  - with run-time indices of types: " :<>: ShowType is
-           :$$: Text "  - focusing within an object of type " :<>: ShowType s
-           :$$: Text "  - onto an object of type " :<>: ShowType a
-           :$$: Text " "
-           :$$: Text "If " :<>: ShowType optic :<>: Text " is not intended to be a specific optic,"
-           :$$: Text "for instance if you are writing an optic-polymorphic function,"
-           :$$: Text "add the constraint 'ProvidedOptic " :<>: ShowType optic :<>: Text "' "
-           :<>: Text "to defer this error message to the use-site."
-          )
-       )
-      optic
-      ( () :: Constraint )

@@ -92,7 +92,7 @@ import FIR.Prim.Image
   , Image, ImageData, ImageCoordinates
   , OperandName, ImageOperands
   )
-import FIR.Instances.Bindings
+import FIR.Validation.Images
   ( LookupImageProperties
   , ValidImageRead, ValidImageWrite
   )

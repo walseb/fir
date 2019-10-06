@@ -143,7 +143,6 @@ library
       , FIR.Builtin
       , FIR.Definition
       , FIR.Instances.AST
-      , FIR.Instances.Bindings
       , FIR.Instances.Codensity
       , FIR.Instances.Images
       , FIR.Instances.Optics
@@ -157,6 +156,12 @@ library
       , FIR.Program
       , FIR.Swizzle
       , FIR.Synonyms
+      , FIR.Validation.Ambiguity
+      , FIR.Validation.Bindings
+      , FIR.Validation.Definitions
+      , FIR.Validation.Images
+      , FIR.Validation.Layout
+      , FIR.Validation.Pipeline
       , FIR.Temp
       , Instances.TH.Lift
       , Math.Algebra.Class
@@ -184,12 +189,17 @@ library
       , template-haskell
           >= 2.15
       , binary
+          >= 0.8.7.0
       , bytestring
           >= 0.10.9.0
       , containers
+          >= 0.6.2.1
       , mtl
+          >= 2.2.2
       , transformers
+          >= 0.5.6.2
       , tree-view
+          >= 0.5
       , split
           >= 0.2.3.3
       , text-short

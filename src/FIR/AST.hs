@@ -88,15 +88,6 @@ import FIR.Binding
   ( BindingsMap
   , FunctionType, Var, Permissions
   )
-import FIR.Instances.Bindings
-  ( ValidDef, ValidFunDef, FunctionTypes
-  , AddBinding, AddFunBinding
-  , FunctionDefinitionStartState, FunctionDefinitionEndState
-  , ValidEntryPoint, SetInterface
-  , GetExecutionInfo
-  , EntryPointStartState, EntryPointEndState
-  , Embeddable
-  )
 import FIR.Instances.Optics
   ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
 import FIR.Prim.Image
@@ -110,6 +101,15 @@ import FIR.Prim.Singletons
   ( PrimTy, primTy, KnownVars
   , PrimFunc, primFuncName
   , KnownArity
+  )
+import FIR.Validation.Bindings
+  ( ValidDef, ValidFunDef, FunctionTypes
+  , AddBinding, AddFunBinding
+  , FunctionDefinitionStartState, FunctionDefinitionEndState
+  , ValidEntryPoint, SetInterface
+  , GetExecutionInfo
+  , EntryPointStartState, EntryPointEndState
+  , Embeddable
   )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(Grade, (:<!>:)) )

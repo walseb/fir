@@ -1,7 +1,7 @@
 
 test\Tests\VertexInput\InvalidVectorComponent.hs:57:5: error:
-    * Vertex binding: cannot position vector V 4
-                                               Float at location 0 with component 2.
+    * Vertex binding: cannot position vector of type V 4 Float
+      at location 0 with component 2.
     * In the expression:
         withStructInput @VertexInput @(Triangle List)
           $ StartPipeline :>-> (vertex, "vertex.spv")
@@ -12,12 +12,13 @@ test\Tests\VertexInput\InvalidVectorComponent.hs:57:5: error:
                 $ StartPipeline :>-> (vertex, "vertex.spv")
                     :>-> (fragment, "fragment.spv")
    |
-57 |   = withStructInput @VertexInput @(Triangle List)
+57 |   = withStructInput @VertexInput @(Triangle List)
+
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
 
 test\Tests\VertexInput\InvalidVectorComponent.hs:57:5: error:
-    * Vertex binding: cannot position vector V 4
-                                               Float at location 0 with component 2.
+    * Vertex binding: cannot position vector of type V 4 Float
+      at location 0 with component 2.
     * In the expression:
         withStructInput @VertexInput @(Triangle List)
           $ StartPipeline :>-> (vertex, "vertex.spv")
@@ -28,5 +29,6 @@ test\Tests\VertexInput\InvalidVectorComponent.hs:57:5: error:
                 $ StartPipeline :>-> (vertex, "vertex.spv")
                     :>-> (fragment, "fragment.spv")
    |
-57 |   = withStructInput @VertexInput @(Triangle List)
+57 |   = withStructInput @VertexInput @(Triangle List)
+
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...

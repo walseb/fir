@@ -83,16 +83,16 @@ import Control.Type.Optic
   ( Optic, Name )
 import FIR.AST
   ( AST )
-import FIR.Binding
-  ( Var, R, RW )
-import FIR.Instances.Bindings
-  ( ValidDef, AddBinding, Has, CanGet, CanPut )
-import FIR.Instances.Codensity
-  ( def, use, assign, modifying )
 import FIR.ASTState
   ( ASTState )
+import FIR.Binding
+  ( Var, R, RW )
+import FIR.Instances.Codensity
+  ( def, use, assign, modifying )
 import FIR.Prim.Singletons
   ( PrimTy )
+import FIR.Validation.Bindings
+  ( ValidDef, AddBinding, Has, CanGet, CanPut )
 
 --------------------------------------------------------------------------
 -- overloaded labels

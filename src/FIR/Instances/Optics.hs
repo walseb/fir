@@ -104,7 +104,10 @@ import Data.Type.Map
   , Key, Value
   , Lookup
   )
-import qualified FIR.Instances.Bindings as Binding
+import qualified FIR.Validation.Bindings as Binding
+  ( Has, CanGet, CanPut )
+import FIR.Validation.Images
+  ( LookupImageProperties )
 import FIR.ASTState
   ( ASTState )
 import FIR.Prim.Array
@@ -343,7 +346,7 @@ instance {-# OVERLAPPING #-}
            ( imgData :: Type            )
          .
          ( KnownSymbol k
-         , Binding.LookupImageProperties k i ~ props
+         , LookupImageProperties k i ~ props
          , Known ImageProperties props
          , imgOps ~ ImageOperands props ops
          , imgCds ~ ImageCoordinates props ops

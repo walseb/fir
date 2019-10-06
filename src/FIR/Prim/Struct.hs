@@ -42,7 +42,7 @@ one instead specifies location slots (see "FIR.Layout"):
 
 module FIR.Prim.Struct
   ( Struct(End, (:&))
-  , LocationSlot(..)
+  , LocationSlot(..), ShowLocation
   , FieldKind(..)
   , StructFieldKind(fieldKind)
   , headS, tailS
@@ -56,10 +56,15 @@ import Control.Applicative
   ( liftA2 )
 import Data.Kind
   ( Type )
+import Data.Word
+  ( Word32 )
 import GHC.TypeLits
-  ( Symbol )
+  ( Symbol, AppendSymbol )
 import GHC.TypeNats
-  ( Nat )
+  ( Nat, KnownNat
+  , type (+), type(-), type (*)
+  , Mod, Div
+  )
 import Unsafe.Coerce
   ( unsafeCoerce )
 
@@ -70,6 +75,16 @@ import Data.Type.List
   ( type (:++:) )
 import Data.Type.Map
   ( (:->)((:->)), Key, Value )
+import Data.Type.Known
+  ( Demotable(Demote)
+  , Known(known), knownValue
+  )
+import Data.Type.Ord
+  ( POrd(Compare)
+  , PEnum(Succ, Pred, FromEnum, ToEnum)
+  )
+import Data.Type.String
+  ( ShowNat )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..)
   , GeneratedGradedSemigroup(..)
@@ -98,6 +113,13 @@ tailS (_ :& as) = as
 
 data LocationSlot n where
   LocationSlot :: n -> n -> LocationSlot n
+
+type family ShowLocation
+              ( slot :: LocationSlot Nat )
+            :: Symbol
+            where
+  ShowLocation ('LocationSlot l c)
+    = "location " `AppendSymbol` ShowNat l `AppendSymbol` ", component " `AppendSymbol` ShowNat c
 
 data FieldKind (fld :: Type) where
   NamedField    :: FieldKind Symbol
@@ -221,3 +243,33 @@ traverseStruct
 traverseStruct f
    = foldrStruct ( \a bs -> liftA2 (:) (f a) bs )
        ( pure [] )
+
+-----------------------------------------------------------
+-- instances for 'LocationSlot'
+
+instance Demotable (LocationSlot Nat) where
+  type Demote (LocationSlot Nat) = LocationSlot Word32
+
+instance (KnownNat l, KnownNat c) => Known (LocationSlot Nat) ('LocationSlot l c) where
+  known = LocationSlot (knownValue @l) (knownValue @c)
+
+instance POrd (LocationSlot Nat) where
+  type Compare ('LocationSlot l1 c1) ('LocationSlot l2 c2)
+    = Compare '(l1, c1) '(l2, c2) -- lexicographic ordering
+
+type family SuccLocationSlot (slot :: LocationSlot Nat) :: LocationSlot Nat where
+  SuccLocationSlot ('LocationSlot l 3) = 'LocationSlot (l+1) 0
+  SuccLocationSlot ('LocationSlot l c) = 'LocationSlot l (c+1)
+
+type family PredLocationSlot (slot :: LocationSlot Nat) :: LocationSlot Nat where
+  PredLocationSlot ('LocationSlot 0 0) = 'LocationSlot 0 0
+  PredLocationSlot ('LocationSlot l 0) = 'LocationSlot (l-1) 3
+  PredLocationSlot ('LocationSlot l c) = 'LocationSlot l (c-1)
+
+instance PEnum (LocationSlot Nat) where
+  type Succ loc = SuccLocationSlot loc
+  type Pred loc = PredLocationSlot loc
+  type FromEnum ('LocationSlot l c)
+    = 4 * l + c
+  type ToEnum n
+    = 'LocationSlot (n `Div` 4) (n `Mod` 4)

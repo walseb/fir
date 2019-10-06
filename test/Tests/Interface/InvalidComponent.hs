@@ -24,8 +24,8 @@ type VertexInput
 -- vertex shader
 
 type VertexDefs =
-  '[ "in1"  ':-> Input     '[ Location 0              ] ( V 4 Float )
-   , "in2"  ':-> Input     '[ Location 1              ] Double
+  '[ "in1"  ':-> Input      '[ Location 0              ] ( V 4 Float )
+   , "in2"  ':-> Input      '[ Location 1              ] Double
    , "out1" ':-> Output     '[ Location 0              ] ( V 4 Float )
    , "out2" ':-> Output     '[ Location 1, Component 1 ] Double
    , "main" ':-> EntryPoint '[                         ] Vertex

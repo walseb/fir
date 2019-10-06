@@ -32,6 +32,7 @@ There are three different situations one needs to account for:
   and Component information (see below).
 
 This module automatically performs layout of types according to the above rules.
+See also "FIR.Validation.Layout", which performs validation of user-supplied layouts.
 
 In the first two situations above, the shader that makes use of such structs
 must provide explicit Offset and Stride decorations. These offsets
@@ -105,8 +106,6 @@ For further reference, see:
 
 module FIR.Layout
   ( Layout(..)
-  , Slots, SlotProvenance(Provenance)
-  , ShowLocation
   , Poke(..), pokeArray
   , inferPointerLayout
   , roundUp, nextAligned
@@ -119,11 +118,7 @@ import Control.Monad
 import Data.Int
   ( Int8, Int16, Int32, Int64 )
 import Data.Kind
-  ( Type, Constraint )
-import Data.Type.Bool
-  ( If, type (&&), type (||) )
-import Data.Type.Equality
-  ( type (==) )
+  ( Type )
 import Data.Word
   ( Word8, Word16, Word32, Word64 )
 import Foreign.Ptr
@@ -131,13 +126,13 @@ import Foreign.Ptr
 import qualified Foreign.Storable as Storable
   ( poke )
 import GHC.TypeLits
-  ( Symbol, AppendSymbol
+  ( Symbol
   , TypeError, ErrorMessage(..)
   )
 import GHC.TypeNats
   ( Nat, KnownNat
   , type (<=), type (+), type (-), type (*)
-  , Div, Mod
+  , Mod
   )
 
 -- containers
@@ -168,27 +163,18 @@ import Data.Constraint.All
   , All(allDict)
   )
 import Data.Type.Known
-  ( Demotable(Demote), Known(known), knownValue )
-import Data.Type.List
-  ( type (:++:) )
+  ( Known, knownValue )
 import Data.Type.Map
-  ( Map, (:->)((:->)), Value
-  , Insert, ZipValue
-  )
+  ( (:->)((:->)), Value )
 import Data.Type.Nat
   ( NextPositivePowerOf2, RoundUp )
 import Data.Type.Ord
-  ( POrd(Compare, Max, (:<=))
-  , PEnum(Succ, Pred, FromEnum, ToEnum, IncFrom)
-  )
-import Data.Type.String
-  ( ShowNat )
+  ( POrd(Max) )
 import FIR.Prim.Array
-  ( Array(..), RuntimeArray )
+  ( Array(..) )
 import FIR.Prim.Singletons
-  ( ScalarTy, SScalarTy, ScalarWidth
-  , PrimTyMap(..), SPrimTyMap(..)
-  , SPrimTy(..), SKPrimTy(..), PrimTySing
+  ( ScalarTy, PrimTyMap(..), SPrimTyMap(..)
+  , SPrimTy(..)
   , primTySing
   )
 import qualified FIR.Prim.Singletons as Prim
@@ -199,6 +185,8 @@ import FIR.Prim.Struct
   , FieldKind(LocationField)
   , StructFieldKind(fieldKind)
   )
+import FIR.Validation.Layout
+  ( NbLocationsUsed, NoOverlappingSlots )
 import Math.Linear
   ( V, M(unM) )
 import qualified SPIRV.Decoration as SPIRV
@@ -235,45 +223,6 @@ class ( KnownNat (SizeOf    lay a)
 
   poke :: Ptr a -> a -> IO ()
 
--- | Annotating a given slot with extra information.
---
--- Note: this data-type does not refer to the slot being annotated,
--- as we use it in a map "[ LocationSlot Nat :-> SlotProvenance ]",
--- which annotates each slot with extra information.
-data SlotProvenance where
-  Provenance
-    :: LocationSlot Nat -- ^ Provenance (original location slot this slot is based off).
-    -> SKPrimTy  ty     -- ^ Type this slot is being used for.
-    -> SScalarTy scalar -- ^ Underlying scalar type.
-    -> SlotProvenance
-
-instance Demotable (LocationSlot Nat) where
-  type Demote (LocationSlot Nat) = LocationSlot Word32
-
-instance (KnownNat l, KnownNat c) => Known (LocationSlot Nat) ('LocationSlot l c) where
-  known = LocationSlot (knownValue @l) (knownValue @c)
-
-instance POrd (LocationSlot Nat) where
-  type Compare ('LocationSlot l1 c1) ('LocationSlot l2 c2)
-    = Compare '(l1, c1) '(l2, c2) -- lexicographic ordering
-
-type family SuccLocationSlot (slot :: LocationSlot Nat) :: LocationSlot Nat where
-  SuccLocationSlot ('LocationSlot l 3) = 'LocationSlot (l+1) 0
-  SuccLocationSlot ('LocationSlot l c) = 'LocationSlot l (c+1)
-
-type family PredLocationSlot (slot :: LocationSlot Nat) :: LocationSlot Nat where
-  PredLocationSlot ('LocationSlot 0 0) = 'LocationSlot 0 0
-  PredLocationSlot ('LocationSlot l 0) = 'LocationSlot (l-1) 3
-  PredLocationSlot ('LocationSlot l c) = 'LocationSlot l (c-1)
-
-instance PEnum (LocationSlot Nat) where
-  type Succ loc = SuccLocationSlot loc
-  type Pred loc = PredLocationSlot loc
-  type FromEnum ('LocationSlot l c)
-    = 4 * l + c
-  type ToEnum n
-    = 'LocationSlot (n `Div` 4) (n `Mod` 4)
-
 type family NextAligned (size :: Nat) (ali :: Nat) :: Nat where
   NextAligned size ali = NextAlignedWithRemainder size ali (size `Mod` ali)
 
@@ -285,6 +234,18 @@ type family NextAlignedWithRemainder
             where
   NextAlignedWithRemainder size _   0   = size
   NextAlignedWithRemainder size ali rem = size + ali - rem
+
+type family SumRoundedUpSizes (lay :: Layout) (ali :: Nat) (as :: [fld :-> Type]) :: Nat where
+  SumRoundedUpSizes _   _   '[]                    = 0
+  SumRoundedUpSizes lay ali ( ( _ ':-> a ) ': as ) =
+    NextAligned (SizeOf lay a) ali + SumRoundedUpSizes lay ali as
+
+type family MaximumAlignment (lay :: Layout) (as :: [fld :-> Type]) :: Nat where
+  MaximumAlignment lay '[] = 1
+  MaximumAlignment Extended ( ( _ ':-> a ) ': as )
+    = Max (Alignment Extended a) (MaximumAlignment Extended as) `RoundUp` 16
+  MaximumAlignment lay ( ( _ ':-> a ) ': as )
+    = Max (Alignment lay a) (MaximumAlignment lay as)
 
 roundUp :: Integral a => a -> a -> a
 roundUp n r = (n + r) - ( 1 + ( (n + r - 1) `mod` r ) )
@@ -515,7 +476,7 @@ instance
       :$$: Text "To use the 'Locations' layout, location/component information needs to be supplied, such as:"
       :$$: Text "    Struct '[ Slot 0 0 ':-> V 2 Float, Slot 0 2 ':-> V 2 Float ],"
       :$$: Text "where 'Slot l c' refers to the interface slot in location 'l' with component 'c',"
-      :$$: Text "with 0 <= l < maxVertexInputAttributes (at least 16), 0 <= b < 4."
+      :$$: Text "with 0 <= l < maxVertexInputAttributes (at least 16), 0 <= c < 4."
       )
   )
   => Poke (Struct (as :: [Symbol :-> Type])) Locations
@@ -582,191 +543,6 @@ instance forall (as :: [LocationSlot Nat :-> Type])
                   -> poke @b @Locations (castPtr ptr              ) b
                 _ -> poke @b @Locations (castPtr ptr `plusPtr` off) b
               poke @(Struct bs) @Locations (castPtr ptr) bs
-
-type family NoOverlappingSlots (as :: [LocationSlot Nat :-> Type]) :: Constraint where
-  NoOverlappingSlots as = SlotsDontOverlap (Slots as)
-
--- force evaluation of computation of all used slots, throwing a type error if any slots overlapped
--- the overlap checking is performed in the type family 'AddSlotsCheckingOverlap',
--- which is recursively called by the type family 'Slots'
-type family SlotsDontOverlap
-                (slots :: [ LocationSlot Nat :-> SlotProvenance ])
-              :: Constraint
-              where
-  SlotsDontOverlap '[]
-    = ()
-  SlotsDontOverlap ( slot ': slots )
-    = ( (() :: Constraint) , (() :: Constraint) ) -- disjoint from the previous equation
-
-type family SlotDoesNotAppear
-                ( slot     :: LocationSlot Nat )
-                ( slotProv :: SlotProvenance   )
-                ( slots    :: [ LocationSlot Nat :-> SlotProvenance ] )
-              :: Bool where
-  SlotDoesNotAppear _ _ '[] = 'True
-  SlotDoesNotAppear slot
-    ( Provenance base1 ( _ :: SKPrimTy ty1 ) _ )
-    ( ( slot ':-> Provenance base2 ( _ :: SKPrimTy ty2 ) _ ) ': _ )
-    = TypeError
-        (    Text "Overlap at " :<>: Text (ShowLocation slot ) :<>: Text ":"
-        :$$: Text "  - " :<>: ShowType ty1 :<>: Text " based at " :<>: Text (ShowLocation base1) :<>: Text ","
-        :$$: Text "  - " :<>: ShowType ty2 :<>: Text " based at " :<>: Text (ShowLocation base2) :<>: Text "."
-        )
-  SlotDoesNotAppear slot prov ( _ ': slots)
-    = SlotDoesNotAppear slot prov slots
-
-type family ShowLocation
-              ( slot :: LocationSlot Nat )
-            :: Symbol
-            where
-  ShowLocation ('LocationSlot l c)
-    = "location " `AppendSymbol` ShowNat l `AppendSymbol` ", component " `AppendSymbol` ShowNat c
-
-type family Slots
-              ( as :: [LocationSlot Nat :-> Type] )
-            :: Map (LocationSlot Nat) SlotProvenance
-            where
-  Slots '[] = '[]
-  Slots ( (slot ':-> ty) ': slots)
-    = AddSlotsCheckingOverlap (EnumSlots slot ty (PrimTySing ty)) (Slots slots)
-
-type family NbLocationsUsed
-              ( as :: [LocationSlot Nat :-> Type] )
-            :: Nat
-            where
-  NbLocationsUsed as = NbLocationsOfSlots (Slots as)
-
-type family NbLocationsOfSlots
-              ( slots :: Map (LocationSlot Nat) SlotProvenance )
-            :: Nat
-            where
-  NbLocationsOfSlots '[] = 0
-  NbLocationsOfSlots ( ( slot ':-> Provenance startLoc ty scalar ) ': slots )
-    = NbLocationsOfSlotsAcc
-        startLoc
-        startLoc
-        ( ( slot ':-> Provenance startLoc ty scalar ) ': slots )
-
-type family NbLocationsOfSlotsAcc
-              ( minLoc :: LocationSlot Nat )
-              ( maxLoc :: LocationSlot Nat )
-              ( slots :: [ LocationSlot Nat :-> SlotProvenance ] )
-            :: Nat
-            where
-  NbLocationsOfSlotsAcc ('LocationSlot minLoc _) ('LocationSlot maxLoc _) '[]
-    = 1 + maxLoc - minLoc
-  NbLocationsOfSlotsAcc minLoc maxLoc ( (loc ':-> _) ': locs )
-    = NbLocationsOfSlotsAcc minLoc (Max maxLoc loc) locs
-
-type family AddSlotsCheckingOverlap
-              ( locs       :: [ LocationSlot Nat :-> SlotProvenance ] )
-              ( slots      :: Map (LocationSlot Nat) SlotProvenance   )
-            :: Map (LocationSlot Nat) SlotProvenance
-            where
-  AddSlotsCheckingOverlap '[] slots = slots
-  AddSlotsCheckingOverlap ( ( loc ':-> prov ) ': locs ) slots
-    = If ( SlotDoesNotAppear loc prov slots )
-        ( AddSlotsCheckingOverlap locs ( Insert loc prov slots ) )
-        ( '[] ) -- unreachable
-
--- | Simple enumeration of consecutive slots,
--- as many as the size of the type.
---
--- Should not be used for compound types,
--- where the locations used are not necessarily consecutive.
-type family EnumConsecutiveSlots
-              ( startLoc :: LocationSlot Nat )
-              ( ty       :: Type )
-              :: [ LocationSlot Nat ]
-              where
-  EnumConsecutiveSlots loc ty
-    = IncFrom loc ( Pred ( SizeOf Locations ty `Div` 4 ) )
-
--- | Enumerate all slots used by a type beginning in a given location.
-type family EnumSlots
-              ( slot :: LocationSlot Nat )
-              ( ty   :: Type             )
-              ( sing :: SKPrimTy ty      )
-            :: Map (LocationSlot Nat) SlotProvenance
-            where
-  EnumSlots _ () SKUnit
-    = TypeError
-        ( Text "Vertex binding: unit type not supported." )
-  EnumSlots _ Bool SKBool
-    = TypeError
-        ( Text "Vertex binding: booleans not supported. Convert to 'Word32' instead." )
-  EnumSlots ('LocationSlot l c) ty (SKScalar s)
-    = If ( c :<= 3 && ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 ) )
-        ( ( EnumConsecutiveSlots ('LocationSlot l c) ty )
-          `ZipValue`
-          ( Provenance ('LocationSlot l c) (SKScalar s :: SKPrimTy ty) s )
-        )
-        ( TypeError
-          (    Text "Vertex binding: cannot position value of type " :<>: ShowType ty
-          :$$: Text " at location " :<>: ShowType l
-          :<>: Text " with component " :<>: ShowType c :<>: Text "."
-          )
-        )
-  EnumSlots ('LocationSlot l c) (V n a) (SKVector s)
-    = If ( c == 0 || ( c `Mod` 2 == 0 && c :<= 3 && n :<= 2 && ScalarWidth s :<= 32 ) )
-       (  ( EnumConsecutiveSlots ('LocationSlot l c) (V n a) )
-          `ZipValue`
-          ( Provenance ('LocationSlot l c) (SKVector s :: SKPrimTy (V n a)) s )
-       )
-       ( TypeError
-          (    Text "Vertex binding: cannot position vector of type"
-          :<>: ShowType (V n a)
-          :$$: Text "at location " :<>: ShowType l
-          :<>: Text " with component " :<>: ShowType c :<>: Text "."
-          )
-       )
-  EnumSlots ('LocationSlot l 0) (M m n a) (SKMatrix s)
-    = ( EnumConsecutiveSlots ('LocationSlot l 0) (M m n a) )
-      `ZipValue`
-      ( Provenance ('LocationSlot l 0) (SKMatrix s :: SKPrimTy (M m n a)) s )
-  EnumSlots ('LocationSlot l c) (M m n a) (SKMatrix _)
-    = TypeError
-        (    Text "Vertex binding: cannot position matrix at location " :<>: ShowType l
-        :<>: Text " with non-zero component " :<>: ShowType c :<>: Text "."
-        )
-  EnumSlots loc (Array 0 a) (SKArray _) = '[]
-  EnumSlots loc (Array 1 a) (SKArray elt) = EnumSlots loc a elt
-  EnumSlots ('LocationSlot l c) (Array n a) (SKArray elt)
-    =  If ( c :<= 3 )
-        (     EnumSlots
-                ('LocationSlot l c)
-                a
-                elt
-        :++:  EnumSlots
-                ( 'LocationSlot (l + 1 + ( Pred (SizeOf Locations a) `Div` 4) ) c )
-                ( Array (n-1) a )
-                ( SKArray elt )
-        )
-        ( TypeError
-           (    Text "Vertex binding: cannot position array of type" :<>: ShowType (Array n a)
-           :$$: Text "at location " :<>: ShowType l
-           :<>: Text " with component " :<>: ShowType c :<>: Text "."
-           :$$: Text "Component cannot be greater than 3."
-           )
-        )
-  EnumSlots _ (RuntimeArray _) (SKRuntimeArray _)
-    = TypeError
-        ( Text "Vertex binding: runtime arrays not supported." )
-  EnumSlots _ (Struct _) (SKStruct _)
-    = TypeError
-        ( Text "Vertex binding: nested structs not (yet?) supported." )
-
-type family SumRoundedUpSizes (lay :: Layout) (ali :: Nat) (as :: [fld :-> Type]) :: Nat where
-  SumRoundedUpSizes _   _   '[]                    = 0
-  SumRoundedUpSizes lay ali ( ( _ ':-> a ) ': as ) =
-    NextAligned (SizeOf lay a) ali + SumRoundedUpSizes lay ali as
-
-type family MaximumAlignment (lay :: Layout) (as :: [fld :-> Type]) :: Nat where
-  MaximumAlignment lay '[] = 1
-  MaximumAlignment Extended ( ( _ ':-> a ) ': as )
-    = Max (Alignment Extended a) (MaximumAlignment Extended as) `RoundUp` 16
-  MaximumAlignment lay ( ( _ ':-> a ) ': as )
-    = Max (Alignment lay a) (MaximumAlignment lay as)
 
 --------------------------------------------------------------------------------------------
 

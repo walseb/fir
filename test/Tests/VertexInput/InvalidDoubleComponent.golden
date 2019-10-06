@@ -1,6 +1,7 @@
 
 test\Tests\VertexInput\InvalidDoubleComponent.hs:55:5: error:
-    * Vertex binding: cannot position Double at location 1 with odd component 1.
+    * Vertex binding: cannot position scalar of type Double
+       at location 1 with component 1.
     * In the expression:
         withStructInput @VertexInput @(Triangle List)
           $ StartPipeline :>-> (vertex, "vertex.spv")
@@ -11,11 +12,13 @@ test\Tests\VertexInput\InvalidDoubleComponent.hs:55:5: error:
                 $ StartPipeline :>-> (vertex, "vertex.spv")
                     :>-> (fragment, "fragment.spv")
    |
-55 |   = withStructInput @VertexInput @(Triangle List)
+55 |   = withStructInput @VertexInput @(Triangle List)
+
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
 
 test\Tests\VertexInput\InvalidDoubleComponent.hs:55:5: error:
-    * Vertex binding: cannot position Double at location 1 with odd component 1.
+    * Vertex binding: cannot position scalar of type Double
+       at location 1 with component 1.
     * In the expression:
         withStructInput @VertexInput @(Triangle List)
           $ StartPipeline :>-> (vertex, "vertex.spv")
@@ -26,5 +29,6 @@ test\Tests\VertexInput\InvalidDoubleComponent.hs:55:5: error:
                 $ StartPipeline :>-> (vertex, "vertex.spv")
                     :>-> (fragment, "fragment.spv")
    |
-55 |   = withStructInput @VertexInput @(Triangle List)
+55 |   = withStructInput @VertexInput @(Triangle List)
+
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...

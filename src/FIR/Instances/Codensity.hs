@@ -25,6 +25,13 @@ This is done through type class overloading, here in the form of
 orphan instances for types of the form @Codensity AST (AST a := j) i@
 (representing stateful values in the EDSL).
 
+See also the validation modules:
+
+  * "FIR.Validation.Bindings" for stateful operations such as 'get'/'put',
+  and definitions (of variables, functions, entrypoints).
+  * "FIR.Validation.Images" for image read/write operations such as
+  'imageRead'/'imageWrite'.
+
 -}
 
 module FIR.Instances.Codensity
@@ -149,17 +156,6 @@ import FIR.Definition
   )
 import FIR.Instances.AST
   ( )
-import FIR.Instances.Bindings
-  ( ValidDef, AddBinding, Has
-  , ValidFunDef, AddFunBinding, FunctionTypes
-  , FunctionDefinitionStartState, FunctionDefinitionEndState
-  , ValidEntryPoint
-  , EntryPointStartState, EntryPointEndState
-  , SetInterface, GetExecutionInfo
-  , LookupImageProperties
-  , ValidImageRead, ValidImageWrite
-  , Embeddable
-  )
 import FIR.Instances.Images
   ( ImageTexel )
 import FIR.Instances.Optics
@@ -174,6 +170,19 @@ import FIR.Prim.Image
   )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
+import FIR.Validation.Bindings
+  ( ValidDef, AddBinding, Has
+  , ValidFunDef, AddFunBinding, FunctionTypes
+  , FunctionDefinitionStartState, FunctionDefinitionEndState
+  , ValidEntryPoint
+  , EntryPointStartState, EntryPointEndState
+  , SetInterface, GetExecutionInfo
+  , Embeddable
+  )
+import FIR.Validation.Images
+  ( LookupImageProperties
+  , ValidImageRead, ValidImageWrite
+  )
 import Math.Algebra.Class
   ( AdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring
