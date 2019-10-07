@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveFunctor          #-}
 {-# LANGUAGE DeriveFoldable         #-}
 {-# LANGUAGE DeriveTraversable      #-}
+{-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
@@ -78,12 +79,12 @@ mkArray arr
     in MkArray @n (Array.slice 0 n arr)
 
 
-deriving instance Eq   a => Eq   (Array l a)
-deriving instance Ord  a => Ord  (Array l a)
-deriving instance Show a => Show (Array l a)
-deriving instance Functor     (Array n)
-deriving instance Foldable    (Array n)
-deriving instance Traversable (Array n)
+deriving stock instance Eq   a => Eq   (Array l a)
+deriving stock instance Ord  a => Ord  (Array l a)
+deriving stock instance Show a => Show (Array l a)
+deriving stock instance Functor     (Array n)
+deriving stock instance Foldable    (Array n)
+deriving stock instance Traversable (Array n)
 instance KnownNat n => Applicative (Array n) where
   pure = MkArray . Array.replicate (fromIntegral . natVal $ Proxy @n)
   (MkArray f) <*> (MkArray a) = MkArray (f <*> a)
@@ -118,12 +119,12 @@ instance FreeGradedSemigroup (Array 0 a) Nat () where
 
 newtype RuntimeArray a = MkRuntimeArray (Array.Vector a)
 
-deriving instance Eq   a => Eq   (RuntimeArray a)
-deriving instance Ord  a => Ord  (RuntimeArray a)
-deriving instance Show a => Show (RuntimeArray a)
-deriving instance Functor     RuntimeArray
-deriving instance Foldable    RuntimeArray
-deriving instance Traversable RuntimeArray
+deriving stock instance Eq   a => Eq   (RuntimeArray a)
+deriving stock instance Ord  a => Ord  (RuntimeArray a)
+deriving stock instance Show a => Show (RuntimeArray a)
+deriving stock instance Functor     RuntimeArray
+deriving stock instance Foldable    RuntimeArray
+deriving stock instance Traversable RuntimeArray
 
 instance GradedSemigroup (RuntimeArray a) () where
   type Grade () (RuntimeArray a) '() = RuntimeArray a

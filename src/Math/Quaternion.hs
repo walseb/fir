@@ -2,9 +2,9 @@
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise       #-}
 
 {-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -51,7 +51,8 @@ import Math.Linear
 ----------------------------------------------------------------------------
 
 newtype Quaternion a = Quaternion { quaternion :: V 4 a }
- deriving ( Eq, Show, Functor, Applicative, Foldable, Traversable )
+ deriving stock   ( Eq, Show, Foldable, Traversable )
+ deriving newtype ( Functor, Applicative )
 
 instance Semiring a => Semimodule () (Quaternion a) where
   type Scalar (Quaternion a) = a

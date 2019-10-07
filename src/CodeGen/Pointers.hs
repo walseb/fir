@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -78,7 +79,7 @@ import qualified SPIRV.Storage   as Storage
 data Safeness
   = Unsafe
   | Safe
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 instance Semigroup Safeness where
   Safe <> x = x
@@ -87,7 +88,7 @@ instance Semigroup Safeness where
 data Indices
   = CTInds [Word32] -- compile-time indices
   | RTInds [ID]     -- run-time indices
-  deriving Show
+  deriving stock Show
 
 ----------------------------------------------------------------------------
 -- creating pointers

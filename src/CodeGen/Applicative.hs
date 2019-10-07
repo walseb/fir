@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
@@ -118,15 +119,15 @@ data Idiom (f :: Type -> Type) (as :: [Type]) (b :: Type) where
   Val       :: KnownArity b => AST (f b) -> Idiom f '[] b -- 'b' should never be a function type in this case
   PureIdiom :: forall f b. AST b -> Idiom f '[] b
   ApIdiom   :: (PrimTy a, KnownArity b) => Idiom f as (a -> b) -> AST (f a) -> Idiom f (as `Snoc` a) b
-deriving instance Show (Idiom f as b)
+deriving stock instance Show (Idiom f as b)
 
 data AnIdiom (f :: Type -> Type) (b :: Type) where
   AnIdiom :: Idiom f as b -> AnIdiom f b
-deriving instance Show (AnIdiom f b)
+deriving stock instance Show (AnIdiom f b)
 
 data AnyIdiom :: Type where
   AnyIdiom :: (Applicative f, PrimFunc f) => AnIdiom f b -> AnyIdiom
-deriving instance Show AnyIdiom
+deriving stock instance Show AnyIdiom
 
 anIdiom :: forall f b. (Applicative f, PrimFunc f, KnownArity b)
         => AST (f b) -> Maybe (AnIdiom f b)
@@ -313,9 +314,9 @@ applyIdiomArray (ApIdiom f arr') arr i
 -- awful hacks to use native SPIR-V vectorised instructions if possible
 
 newtype FakeVector n a = FakeVector (V n a)
-  deriving Show
+  deriving stock Show
 newtype FakeScalar n a = FakeScalar a
-  deriving Show
+  deriving stock Show
 
 type family Vectorisation (n :: Nat) (a :: Type) = (r :: Type) | r -> n a where
   Vectorisation n (a -> b) = FakeScalar n a -> Vectorisation n b

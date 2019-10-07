@@ -3,6 +3,7 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
@@ -205,7 +206,7 @@ data Layout
   = Base      -- ^ Layout used for storage buffers and push constants.
   | Extended  -- ^ Layout used for uniform buffers.
   | Locations -- ^ Layout used for vertex binding input data.
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 -- | Type-class for data that can be stored in memory,
 -- following the specified alignment requirements.

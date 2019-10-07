@@ -247,6 +247,7 @@ library
         -fno-warn-unused-do-bind
         -fwarn-missing-local-signatures
         -fwarn-incomplete-uni-patterns
+        -fwarn-missing-deriving-strategies
         -- -fwarn-redundant-constraints
 
 

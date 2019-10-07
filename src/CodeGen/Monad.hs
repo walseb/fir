@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -66,8 +67,8 @@ type CGMonad
           )
         )
       )
-deriving instance MonadReader CGContext CGMonad
-deriving instance MonadError  ShortText CGMonad
+deriving newtype instance MonadReader CGContext CGMonad
+deriving newtype instance MonadError  ShortText CGMonad
 -- other instances automatically derived from the definition of FreshSuccT:
 -- Functor, Applicative, Monad, MonadState CGState, MonadFresh ID
 
@@ -94,10 +95,10 @@ class Monad m => MonadFresh v m where
 
 newtype FreshSuccT s m a = FreshSuccT { runFreshSuccT :: m a }
 
-deriving instance Functor       m => Functor       (FreshSuccT s m)
-deriving instance Applicative   m => Applicative   (FreshSuccT s m)
-deriving instance Monad         m => Monad         (FreshSuccT s m)
-deriving instance MonadState  s m => MonadState  s (FreshSuccT s m)
+deriving newtype instance Functor       m => Functor       (FreshSuccT s m)
+deriving newtype instance Applicative   m => Applicative   (FreshSuccT s m)
+deriving newtype instance Monad         m => Monad         (FreshSuccT s m)
+deriving newtype instance MonadState  s m => MonadState  s (FreshSuccT s m)
 
 instance MonadTrans (FreshSuccT s) where
   lift = FreshSuccT

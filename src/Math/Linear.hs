@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -162,9 +163,9 @@ data V :: Nat -> Type -> Type where
   VNil :: V 0 a
   (:.) :: a -> V n a -> V (1+n) a
 
-deriving instance Functor     (V n)
-deriving instance Foldable    (V n)
-deriving instance Traversable (V n)
+deriving stock instance Functor     (V n)
+deriving stock instance Foldable    (V n)
+deriving stock instance Traversable (V n)
 
 instance (KnownNat n, Show a) => Show (V n a) where
   show :: V n a -> String
@@ -172,8 +173,8 @@ instance (KnownNat n, Show a) => Show (V n a) where
     where n :: String
           n = show (natVal (Proxy @n))
 
-deriving instance Prelude.Eq  a => Prelude.Eq  (V n a)
-deriving instance Prelude.Ord a => Prelude.Ord (V n a)
+deriving stock instance Prelude.Eq  a => Prelude.Eq  (V n a)
+deriving stock instance Prelude.Ord a => Prelude.Ord (V n a)
 
 instance (KnownNat n, Binary a) => Binary (V n a) where
   put = traverse_ put
@@ -676,21 +677,22 @@ joinV (row :. rows) = row <!> joinV rows
 -- as both these frameworks represent matrices in column major order.
 newtype M m n a = M { unM :: V m (V n a) }
 
-deriving instance Prelude.Eq a => Prelude.Eq (M m n a)
-deriving instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
-deriving instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
-deriving instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
-deriving instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
-deriving instance Functor (M m n)
+deriving newtype instance Prelude.Eq a => Prelude.Eq (M m n a)
+deriving newtype instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
+deriving newtype instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
+deriving newtype instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
+deriving newtype instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
+deriving stock   instance Functor (M m n)
 deriving via ( V m `Compose` V n )
-         instance (KnownNat m, KnownNat n) => Applicative (M m n)
-deriving instance (KnownNat m, KnownNat n) => Foldable    (M m n)
-deriving instance (KnownNat m, KnownNat n) => Traversable (M m n)
-deriving instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
-deriving instance (KnownNat n, KnownNat m, Storable a) => Storable (M m n a)
+                 instance (KnownNat m, KnownNat n) => Applicative (M m n)
+deriving stock   instance (KnownNat m, KnownNat n) => Foldable    (M m n)
+deriving stock   instance (KnownNat m, KnownNat n) => Traversable (M m n)
+deriving newtype instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
+deriving newtype instance (KnownNat n, KnownNat m, Storable a) => Storable (M m n a)
 
 deriving via '(V m (V n x), V m (V n y), V m (V n z))
-  instance (KnownNat m, KnownNat n, Choose b '(x,y,z)) => Choose b '(M m n x, M m n y, M m n z)
+                 instance (KnownNat m, KnownNat n, Choose b '(x,y,z))
+                       => Choose b '(M m n x, M m n y, M m n z)
 
 ------------------------------------------------------------------
 -- products for matrices

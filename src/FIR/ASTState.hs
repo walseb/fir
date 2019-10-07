@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
@@ -65,8 +66,8 @@ data FunctionContext lit nat bindings mbIface where
     -> mbIface
     -> FunctionContext lit nat bindings mbIface
 
-deriving instance ( Show lit, Show bindings, Show nat, Show mbIface )
-          => Show ( FunctionContext lit nat bindings mbIface )
+deriving stock instance ( Show lit, Show bindings, Show nat, Show mbIface )
+                      => Show ( FunctionContext lit nat bindings mbIface )
 
 
 type InterfaceVariable nat ty = ( [SPIRV.Decoration nat], ty )

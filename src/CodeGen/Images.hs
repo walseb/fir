@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -285,7 +286,7 @@ removeSampler (imgID, imgTy)
 data LODMethod
   = ImplicitLOD
   | ExplicitLOD
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 lodMethod :: Word32 -> LODMethod
 lodMethod bm

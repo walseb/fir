@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -32,7 +33,7 @@ import FIR.AST
 -- UAST = Untyped AST
 data UAST where
   UAST :: AST a -> UAST
-deriving instance Show UAST
+deriving stock instance Show UAST
 
 infixl 5 `SnocUAST`
 
@@ -41,7 +42,7 @@ infixl 5 `SnocUAST`
 data UASTs where
   NilUAST  :: UASTs
   SnocUAST :: UASTs -> AST a -> UASTs
-deriving instance Show UASTs
+deriving stock instance Show UASTs
 
 ----------------------------------------------------------------------------
 -- typed list of ASTs

@@ -3,6 +3,7 @@
 {-# LANGUAGE AllowAmbiguousTypes  #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DeriveLift           #-}
+{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE DerivingVia          #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -344,7 +345,7 @@ data CompilerFlag
   = NoCode -- ^ Don't emit any SPIR-V code.
   | Debug  -- ^ Include additional debug instructions, such as source-code line-number annotations.
   | Assert -- ^ Include additional assertions.
-  deriving ( Prelude.Eq, Show )
+  deriving stock ( Prelude.Eq, Show )
 
 -- | Information about requirements for a given SPIR-V module,
 -- such as which SPIR-V capabilities and extensions are needed.
@@ -355,10 +356,9 @@ data ModuleRequirements
   { requiredCapabilities :: Set SPIRV.Capability
   , requiredExtensions   :: Set SPIRV.Extension
   }
-  deriving ( Prelude.Eq, Show, Generic )
+  deriving stock ( Prelude.Eq, Show, Generic, TH.Lift )
   deriving Semigroup via GenericSemigroup ModuleRequirements
   deriving Monoid    via GenericMonoid    ModuleRequirements
-  deriving TH.Lift
 
 -- | Functionality for compiling a program, saving the SPIR-V assembly at the given filepath.
 class CompilableProgram prog where

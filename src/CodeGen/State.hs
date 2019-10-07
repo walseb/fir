@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NamedFieldPuns   #-}
-{-# LANGUAGE RankNTypes       #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE RankNTypes         #-}
 
 {-|
 Module: CodeGen.State
@@ -151,12 +152,12 @@ data CGState
       -- (e.g. a pointer created for a runtime access chain operation).
       , temporaryPointers   :: Map ID                                (ID, PointerState)
       }
-  deriving Show
+  deriving stock Show
 
 data PointerState
   = Fresh
   | Modified
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 initialState :: CGContext -> CGState
 initialState CGContext { userCapabilities, userExtensions }
@@ -221,6 +222,7 @@ data CGContext
        -- | Whether to enable assertions.
      , asserting :: Bool
      }
+  deriving stock Show
 
 emptyContext :: CGContext
 emptyContext

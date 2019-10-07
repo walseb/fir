@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
@@ -85,13 +86,14 @@ data PrimitiveConnectedness
   | Fan
   | AdjacencyList
   | AdjacencyStrip
-  deriving ( Eq, Ord, Show, Enum, Bounded )
+  deriving stock ( Eq, Ord, Show, Enum, Bounded )
 
 data PrimitiveTopology (n :: Type)
   = Points
   | Line          PrimitiveConnectedness
   | Triangle      PrimitiveConnectedness
   | PatchesOfSize n
+  deriving stock ( Eq, Show )
 
 instance Demotable PrimitiveConnectedness where
   type Demote PrimitiveConnectedness = PrimitiveConnectedness

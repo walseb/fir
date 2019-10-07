@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
@@ -208,7 +209,7 @@ data OperandName
   = DepthComparison  -- ^ Whether a depth-comparison is being performed.
   | ProjectiveCoords -- ^ Whether to use projective coordinates.
   | BaseOperand SPIRV.Image.Operand -- A @SPIR-V@ image "SPIRV.Image.Operand".
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 -- | == Image operands.
 --
@@ -250,7 +251,7 @@ data ImageOperands
 data Gather
   = ComponentGather
   | DrefGather
-  deriving ( Show, Eq, Ord, Bounded, Enum )
+  deriving stock ( Show, Eq, Ord, Bounded, Enum )
 
 -- | Information hat needs to be provided to the 'Gather' image operand.
 --

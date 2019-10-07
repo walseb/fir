@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE DerivingVia           #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -170,7 +171,7 @@ data Annotations
     , annotationCapabilities :: Set                                   SPIRV.Capability
     , annotationExtensions   :: Set                                   SPIRV.Extension
     }
-  deriving (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic)
   deriving Semigroup via GenericSemigroup Annotations
   deriving Monoid    via GenericMonoid    Annotations
 
