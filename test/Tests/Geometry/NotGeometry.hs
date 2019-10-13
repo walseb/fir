@@ -26,8 +26,8 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-program :: Program FragmentDefs ()
-program = Program do
+program :: Module FragmentDefs ()
+program = Module do
   entryPoint @"main" @Fragment do
     col <- get @"in_colour"
     put @"out_colour" col

@@ -13,6 +13,9 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
+-- check for valid placement of doubles
+
+------------------------------------------------
 -- pipeline input
 
 type VertexInput
@@ -29,7 +32,7 @@ type VertexDefs =
    , "main" ':-> EntryPoint '[            ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
   v <- get @"in"
   put @"out" ( ( convert :: AST Double -> AST Float ) <$$> v )
@@ -43,7 +46,7 @@ type FragmentDefs =
    , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     put @"out" =<< get @"in"
 
@@ -52,7 +55,7 @@ fragment = shader do
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  ,   "vertex.spv")
   :>-> (fragment, "fragment.spv")

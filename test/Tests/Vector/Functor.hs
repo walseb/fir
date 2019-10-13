@@ -21,15 +21,15 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "ubo"      ':-> Uniform  '[] ( Struct '[ "mvp" ':-> M 4 4 Float ] )
-     , "position" ':-> Input    '[] ( V 4 Float )
-     , "f"        ':-> Function '["u" ':-> Var R Float] Float
+  = '[ "ubo"      ':-> Uniform  '[ Binding 0, DescriptorSet 0 ] ( Struct '[ "mvp" ':-> M 4 4 Float ] )
+     , "position" ':-> Input    '[ Location 0 ] ( V 4 Float )
+     , "f"        ':-> Function '[ "u" ':-> Var R Float ] Float
      , "main"     ':-> EntryPoint '[] Vertex
      ]
 
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   (f :: AST Float -> AST Float) <- fundef @"f" do
     u <- use @(Name "u")

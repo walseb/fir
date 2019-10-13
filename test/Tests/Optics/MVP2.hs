@@ -18,16 +18,16 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0, Block ]
+type Defs = '[ "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
                                 ( Struct '[ "mvp" ':-> M 4 4 Float ] )
              , "in_pos"  ':-> Input  '[ Location 0 ] (V 4 Float) 
              , "out_pos" ':-> Output '[ Location 0 ] (V 4 Float) 
              , "main"    ':-> EntryPoint '[] Vertex
              ]
 
-program :: Program Defs ()
+program :: Module Defs ()
 program =
-  Program $ entryPoint @"main" @Vertex do
+  Module $ entryPoint @"main" @Vertex do
     ubo    <- use @(Name "ubo")
     let mvp = view @(Name "mvp") ubo
     in_pos <- get @"in_pos"

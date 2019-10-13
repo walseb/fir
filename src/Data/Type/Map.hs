@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -22,7 +23,7 @@ import Data.Type.Ord
 
 infixr 4 :->
 data (:->) k v = k :-> v
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 -- this synonym should only be used when we are working
 -- with lists that are known to be ordered
@@ -54,7 +55,9 @@ type family LookupKey (s :: k) (i :: [k :-> v]) :: Maybe k where
   LookupKey k ((k ':-> _) ': _) = 'Just k
   LookupKey k (_          ': b) = LookupKey k b
 
--- insert a key/value pair in an already-sorted map
+-- | Insert a key/value pair in an already-sorted map.
+--
+-- Throws an error if the key is already present.
 type family Insert (s :: k) (t :: v) (i :: Map k v) :: Map k v where
   Insert k v '[]              = '[ k ':-> v ]
   Insert k v ((k ':-> a) ': _) =
@@ -66,6 +69,17 @@ type family Insert (s :: k) (t :: v) (i :: Map k v) :: Map k v where
     If ( k :< l )
       ( (k ':-> v) ': (l ':-> a) ': b )
       ( (l ':-> a) ': Insert k v b )
+
+-- | Insert a key/value pair in an already-sorted map.
+--
+-- If a value already exists with that key, it gets overwritten with the new value.
+type family InsertOverwriting (s :: k) (t :: v) (i :: Map k v) :: Map k v where
+  InsertOverwriting k v '[]               = '[ k ':-> v ]
+  InsertOverwriting k v ((k ':-> a) ': b) = (k ':-> v) ': b
+  InsertOverwriting k v ((l ':-> a) ': b) =
+    If ( k :< l )
+      ( (k ':-> v) ': (l ':-> a) ': b )
+      ( (l ':-> a) ': InsertOverwriting k v b )
 
 type family Union (i :: Map k v) (j :: Map k v) :: Map k v where
   Union i '[]                = i

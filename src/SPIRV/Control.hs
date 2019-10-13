@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE PatternSynonyms       #-}
@@ -52,9 +53,9 @@ import Data.Type.Known
 -- function control
 
 data Inlineability = Inline | DontInline
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 data SideEffects = OnlyReads | NoSideEffects
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 type FunctionControl = ( Maybe Inlineability, Maybe SideEffects )
 
@@ -98,7 +99,7 @@ instance Known SideEffects 'NoSideEffects where
 data SelectionControl
   = Flatten
   | DontFlatten
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 instance Put SelectionControl where
   wordCount _ = 1
@@ -124,7 +125,7 @@ instance Known SelectionControl DontFlatten where
 data LoopUnrolling
   = Unroll
   | DontUnroll
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 data LoopDependency n
   = DependencyInfinite

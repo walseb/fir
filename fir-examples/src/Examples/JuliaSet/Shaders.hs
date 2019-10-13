@@ -42,7 +42,7 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[            ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
     ~(Vec3 x y z) <- get @"in_position"
     put @"gl_Position" (Vec4 x y z 1)
@@ -100,14 +100,14 @@ xWidth, yWidth :: AST Float
 xWidth = recip . fromIntegral $ xSamples
 yWidth = recip . fromIntegral $ ySamples
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
 
     ~(Vec4 x y _ _) <- #gl_FragCoord
     ~(Vec2 mx my) <- use @(Name "ubo" :.: Name "mousePos")
 
 
-    let (#<) = (<) @(Procedure _i _i _) -- disambiguate to help type inference
+    let (#<) = (<) @(Program _i _i _) -- disambiguate to help type inference
 
     #total     @Word32 #= 0
 
@@ -169,7 +169,7 @@ compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  , vertPath)
   :>-> (fragment, fragPath)

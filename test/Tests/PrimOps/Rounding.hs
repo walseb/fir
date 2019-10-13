@@ -17,15 +17,15 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "x"    ':-> Input  '[] Float
-             , "y"    ':-> Input  '[] Int32
-             , "z"    ':-> Input  '[] Float
-             , "out"  ':-> Output '[] (V 4 Float)
+type Defs = '[ "x"    ':-> Input  '[Location 0] Float
+             , "y"    ':-> Input  '[Location 1] Int32
+             , "z"    ':-> Input  '[Location 2] Float
+             , "out"  ':-> Output '[Location 0] (V 4 Float)
              , "main" ':-> EntryPoint '[] Vertex
              ]
 
-program :: Program Defs ()
-program = Program $ entryPoint @"main" @Vertex do
+program :: Module Defs ()
+program = Module $ entryPoint @"main" @Vertex do
 
   x <- get @"x"
   let x' = x - floor x

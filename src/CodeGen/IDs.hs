@@ -76,8 +76,6 @@ import CodeGen.State
   , addDecorations
   , addMemberDecoration, addMemberDecorations
   )
-import FIR.ASTState
-  ( FunctionContext(InEntryPoint), executionContext )
 import FIR.Builtin
   ( modelBuiltins )
 import FIR.Layout
@@ -89,6 +87,8 @@ import FIR.Prim.Singletons
   )
 import FIR.Prim.Struct
   ( traverseStruct )
+import FIR.ProgramState
+  ( FunctionContext(InEntryPoint), executionContext )
 import Math.Linear
   ( M(unM), Matrix(transpose) )
 import qualified SPIRV.Builtin      as SPIRV

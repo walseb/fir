@@ -42,7 +42,7 @@ module Math.Linear
 
   -- * Typeclasses
   -- ** Vectors
-  , Semimodule(..), Module(..), Inner(..), Cross(..)
+  , Semimodule(..), LinearModule(..), Inner(..), Cross(..)
   -- ** Matrices
   , VectorOf, Matrix(..)
 
@@ -488,7 +488,7 @@ class Semiring (Scalar v) => Semimodule d v | v -> d where
 --     * an action of R on M.
 --
 -- That is, we simply add additive inverses to the previous definition.
-class (Ring (Scalar v), Semimodule d v) => Module d v | v -> d where
+class (Ring (Scalar v), Semimodule d v) => LinearModule d v | v -> d where
   {-# MINIMAL (^-^) | (-^) #-}
   (^-^) :: ValidDim v d n => OfDim v d n -> OfDim v d n -> OfDim v d n
   (^-^) x y = x ^+^ ((-^) y)
@@ -512,7 +512,7 @@ class Semimodule d v => Inner d v where
 --
 -- This usually consists of a non-degenerate skew-symmetric bilinear multiplication satisfying the Jacobi identity.
 -- Over the real numbers, this implies the dimension is 3.
-class Module d v => Cross d v where
+class LinearModule d v => Cross d v where
   type CrossDim v d (n :: d) :: Constraint
   {-# MINIMAL (^×^) | cross #-}
   (^×^), cross :: (ValidDim v d n, CrossDim v d n) => OfDim v d n -> OfDim v d n -> OfDim v d n
@@ -529,7 +529,7 @@ instance Semiring a => Semimodule Nat (V 0 a) where
   (^+^) = liftA2 (+)
   v ^* k = fmap (*k) v
 
-instance Ring a => Module Nat (V 0 a) where
+instance Ring a => LinearModule Nat (V 0 a) where
   (^-^) = liftA2 (-)  
 
 instance (Semiring a, Floating a) => Inner Nat (V 0 a) where
@@ -562,17 +562,17 @@ squaredNorm :: (ValidDim v d n, Inner d v)
 squaredNorm v = dot v v
 
 -- | Quadrance between two points.
-quadrance :: (ValidDim v d n, Module d v, Inner d v)
+quadrance :: (ValidDim v d n, LinearModule d v, Inner d v)
        => OfDim v d n -> OfDim v d n -> Scalar v
 quadrance x y = squaredNorm (x ^-^ y)
 
 -- | Distance between two points.
-distance :: (Floating (Scalar v), ValidDim v d n, Module d v, Inner d v)
+distance :: (Floating (Scalar v), ValidDim v d n, LinearModule d v, Inner d v)
          => OfDim v d n -> OfDim v d n -> Scalar v
 distance x y = norm (x ^-^ y)
 
 -- | Linear interpolation between two points.
-along :: (ValidDim v d n, Module d v)
+along :: (ValidDim v d n, LinearModule d v)
       => Scalar v    -- ^ Interpolation coefficient. 0 = start, 1 = end.
       -> OfDim v d n -- ^ Start.
       -> OfDim v d n -- ^ End.
@@ -581,7 +581,7 @@ along t x y = (1-t) *^ x ^+^ t *^ y
 
 -- | Reflects a vector along a hyperplane, specified by a normal vector.
 -- /Computes the normalisation of the normal vector in the process./
-reflect :: (Floating (Scalar v), ValidDim v d n, Module d v, Inner d v)
+reflect :: (Floating (Scalar v), ValidDim v d n, LinearModule d v, Inner d v)
         => OfDim v d n -- ^ Vector to be reflected.
         -> OfDim v d n -- ^ A normal vector of the reflecting hyperplane.
         -> OfDim v d n
@@ -589,7 +589,7 @@ reflect v n = reflect' v (normalise n)
 
 -- | Same as 'reflect': reflects a vector along a hyperplane, specified by a normal vector.
 -- However, /__this function assumes the given normal vector is already normalised__/.
-reflect' :: (ValidDim v d n, Module d v, Inner d v)
+reflect' :: (ValidDim v d n, LinearModule d v, Inner d v)
          => OfDim v d n -- ^ Vector to be reflected.
          -> OfDim v d n -- ^ /__Normalised__/ normal vector of the reflecting hyperplane.
          -> OfDim v d n
@@ -608,12 +608,12 @@ projC x y = dot x y / dot y y
 -- | Orthogonality test.
 --
 -- /__Uses a precise equality test, so use at your own risk with floating point numbers.__/
-isOrthogonal :: (ValidDim v d n, Module d v, Inner d v, Eq (Scalar v))
+isOrthogonal :: (ValidDim v d n, LinearModule d v, Inner d v, Eq (Scalar v))
              => OfDim v d n -> OfDim v d n -> Logic (Scalar v)
 isOrthogonal v w = dot v w == 0
 
 -- | Gram-Schmidt algorithm.
-gramSchmidt :: (Floating (Scalar v), ValidDim v d n, Module d v, Inner d v)
+gramSchmidt :: (Floating (Scalar v), ValidDim v d n, LinearModule d v, Inner d v)
             => [OfDim v d n] -> [OfDim v d n]
 gramSchmidt []     = []
 gramSchmidt (x:xs) = x' : gramSchmidt (map (\v -> v ^-^ proj v x') xs)
@@ -786,7 +786,7 @@ type family VectorOf m :: Type
 -- | Typeclass for matrix operations.
 --
 -- The 'OfDims' associated type family allows the type class methods to involve various dimension indices.
-class Module d (VectorOf m) => Matrix d m | m -> d where
+class LinearModule d (VectorOf m) => Matrix d m | m -> d where
   type OfDims m d (ij :: (d, d)) = r | r -> m ij
   identity    :: ValidDim (VectorOf m) d i => OfDims m d '(i,i)
   diag        :: ValidDim (VectorOf m) d i => Scalar (VectorOf m) -> OfDims m d '(i,i)

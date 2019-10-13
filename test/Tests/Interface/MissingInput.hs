@@ -28,7 +28,7 @@ type VertexDefs =
    , "main" ':-> EntryPoint '[            ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
   put @"out" =<< get @"in"
 
@@ -42,7 +42,7 @@ type FragmentDefs =
    , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     put @"out" =<< get @"in1"
 
@@ -51,7 +51,7 @@ fragment = shader do
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  ,   "vertex.spv")
   :>-> (fragment, "fragment.spv")

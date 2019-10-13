@@ -13,7 +13,7 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
--- combined vertex and fragment shaders
+-- duplicate entrypoints (not allowed)
 
 type Defs =
   '[ "in"   ':-> Input      '[ Location 0 ] ( V 4 Float )
@@ -22,9 +22,9 @@ type Defs =
    , "main" ':-> EntryPoint '[            ] Vertex
    ]
 
-program :: Program Defs ()
-program = Program do
-  entryPoint @"main" @Vertex   do
+program :: Module Defs ()
+program = Module do
+  entryPoint @"main" @Vertex do
     put @"out" =<< get @"in"
   entryPoint @"main" @Vertex do
     put @"out" =<< get @"in"

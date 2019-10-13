@@ -22,8 +22,8 @@ import Math.Linear
 type MyStruct = Struct '[ "field_0" ':-> Float, "field_1" ':-> Bool ]
 type OtherStruct = Struct '[ "x" ':-> Float, "y" ':-> Float ]
 
-program :: Program '[ "main" ':-> EntryPoint '[] Vertex ] ()
-program = Program do
+program :: Module '[ "main" ':-> EntryPoint '[] Vertex ] ()
+program = Module do
 
   entryPoint @"main" @Vertex do
 

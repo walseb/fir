@@ -13,6 +13,10 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
+-- check overlap in vertex input
+-- ( V 4 Double spilling into next location slot )
+
+------------------------------------------------
 -- pipeline input
 
 type VertexInput
@@ -29,7 +33,7 @@ type VertexDefs =
    , "main" ':-> EntryPoint '[            ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
   vec <- get @"in"
   put @"out" ( ( convert :: AST Double -> AST Float ) <$$> vec )
@@ -43,7 +47,7 @@ type FragmentDefs =
    , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     put @"out" =<< get @"in"
 
@@ -52,7 +56,7 @@ fragment = shader do
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  ,   "vertex.spv")
   :>-> (fragment, "fragment.spv")

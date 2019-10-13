@@ -17,16 +17,14 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Output     '[] (V 4 Float)
-             , "main"     ':-> EntryPoint '[] Vertex
-             ]
+type Defs = '[ "main" ':-> EntryPoint '[] Vertex ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   entryPoint @"main" @Vertex do
 
-    let (#<) = (<) @(Procedure _i _i _) -- disambiguate to help type inference
+    let (#<) = (<) @(Program _i _i _) -- disambiguate to help type inference
 
     #t @Float #= 0
     #s @Float #= 1
@@ -45,4 +43,4 @@ program = Program do
     s <- #s
     t <- #t
 
-    #position .= Vec4 r s t 1
+    #gl_Position .= Vec4 r s t 1

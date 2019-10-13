@@ -63,13 +63,17 @@ class POrd a => PEnum a where
   type EnumFromTo (x :: a) (y :: a) :: [a]
   type EnumFromTo x y
     = EnumFromToDefault x y (x :> y)
-  type IncFrom (x :: a) (i :: Nat) :: [a]
-  type IncFrom x i
-    = EnumFromTo x ( ToEnum (FromEnum x + i) )
+  type EnumFromOfCount (x :: a) (i :: Nat) :: [a]
+  type EnumFromOfCount x i
+    = EnumFromOfCountDefault x i
 
 type family EnumFromToDefault (x :: a) (y :: a) (x_gt_y :: Bool) :: [a] where
   EnumFromToDefault _ _ 'True  = '[]
   EnumFromToDefault x y 'False = x ': EnumFromTo (Succ x) y
+
+type family EnumFromOfCountDefault (x :: a) (i :: Nat) :: [a] where
+  EnumFromOfCountDefault _ 0 = '[]
+  EnumFromOfCountDefault x i = x ': EnumFromOfCountDefault (Succ x) (Pred i)
 
 instance PEnum Nat where
   type Succ x     = x + 1

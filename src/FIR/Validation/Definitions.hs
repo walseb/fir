@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds      #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE PolyKinds            #-}
@@ -8,111 +9,217 @@
 {-|
 Module: FIR.Validation.Definitions
 
-Validate top-level "FIR.Definition.Definition"s.
+Validate individual top-level "FIR.Definition.Definition"s.
 
 For instance, this checks that uniform buffer objects are
 decorated with the required binding and descriptor set indices.
 
+Does __not__ perform validation of entry point interfaces,
+i.e. input/output variables.
+See "FIR.Validation.Interface".
+
 -}
 
 module FIR.Validation.Definitions
-  ( )
+  ( ValidDefinitions )
   where
 
 -- base
 import Data.Kind
-  ( Type )
-import Data.Type.Bool
-  ( If, type (&&) )
+  ( Type, Constraint )
 import GHC.TypeLits
-  ( TypeError, ErrorMessage(..) )
+  ( Symbol
+  , TypeError, ErrorMessage(..)
+  )
 import GHC.TypeNats
   ( Nat )
 
 -- fir
+import Data.Type.Map
+  ( (:->)((:->)) )
+import FIR.Definition
+  ( Definition(..)
+  , TriagedDefinitions
+  , TrieDefinitions
+  )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Image
   ( Image )
 import FIR.Prim.Struct
   ( Struct )
+import FIR.ProgramState
+  ( TLInterfaceVariable )
 import qualified SPIRV.Decoration as SPIRV
   ( Decoration(..) )
+import qualified SPIRV.Image      as SPIRV
+  ( ImageUsage )
+import qualified SPIRV.Image
+  ( ImageUsage(Sampled, Storage) )
 import qualified SPIRV.Storage    as SPIRV
   ( StorageClass )
 import qualified SPIRV.Storage    as Storage
   ( StorageClass(..) )
 
--------------------------------------------------
+------------------------------------------------------------------------
 
-type family ValidateGlobal
+-- | Validate user-supplied top-level 'FIR.Definition.Definition's.
+--
+-- Note that this only validates global variables and their layout,
+-- as other kinds of validation are performed elsewhere.
+-- See for instance 'FIR.Definition.StartState'.
+type ValidDefinitions ( defs :: [ Symbol :-> Definition ] )
+  = ( ValidTriagedDefinitions ( TrieDefinitions defs ) :: Constraint )
+
+
+type family ValidTriagedDefinitions ( defs :: TriagedDefinitions ) :: Constraint where
+  ValidTriagedDefinitions '( _, _, globs )
+    = ( ValidGlobals globs )
+  --   * not validating functions: no validation necessary
+  --   * not validating entry points: validation is done
+  --   as part of computation of entry point info
+
+type family ValidGlobals
+              ( globs :: [ SPIRV.StorageClass :-> [ Symbol :-> TLInterfaceVariable ] ] )
+              :: Constraint
+              where
+  ValidGlobals '[] = ( () :: Constraint )
+  ValidGlobals ( ( Storage.Input ':-> _ ) ': globs )
+  -- no validity checking for input variables (see "FIR.Validation.Interface")
+    = ValidGlobals globs
+  ValidGlobals ( ( Storage.Output ':-> _ ) ': globs )
+  -- no validity checking for output variables (see "FIR.Validation.Interface")
+    = ValidGlobals globs
+  ValidGlobals ( ( storage ':-> vars ) ': globs )
+    = ( MapValidGlobal storage vars
+      , ValidGlobals   globs
+      )
+
+
+type family MapValidGlobal
+              ( storage :: SPIRV.StorageClass )
+              ( globals :: [ Symbol :-> TLInterfaceVariable ] )
+            :: Constraint
+            where
+  MapValidGlobal _ '[] = ( () :: Constraint )
+  MapValidGlobal storage ( ( k ':-> '( decs, ty ) ) ': globals )
+    = ( ValidGlobal  k storage decs ty
+      , MapValidGlobal storage globals
+      )
+
+type family ValidGlobal
+              ( name    :: Symbol                   )
               ( storage :: SPIRV.StorageClass       )
               ( decs    :: [ SPIRV.Decoration Nat ] )
               ( ty      :: Type                     )
-              :: Maybe Type -- returns 'Just ty' if block/layout decorations are needed (onto the type 'ty')
+              :: Constraint
               where
-  ValidateGlobal Storage.UniformConstant '[] (Image ty) = Nothing
-  ValidateGlobal Storage.UniformConstant (dec ': _) (Image _)
+  ValidGlobal name Storage.UniformConstant decs (Image ty)
+    = ( ValidUniformDecorations
+        ( Text "Image named " :<>: ShowType name )
+        decs
+        (Image ty)
+      , ValidImageDecorations name SPIRV.Image.Sampled decs
+      )
+  ValidGlobal name Storage.UniformConstant _ nonImageTy
     = TypeError
-        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
-  ValidateGlobal Storage.UniformConstant _ nonImageTy
-    = TypeError
-        (    Text "Uniform constant global expected to point to an image, but points to "
+        (    Text "Uniform constant global named " :<>: ShowType name
+        :<>: Text " expected to point to an image, but points to "
         :<>: ShowType nonImageTy :<>: Text " instead."
         )
-  ValidateGlobal Storage.Image '[] (Image ty) = Nothing
-  ValidateGlobal Storage.Image  (dec ': _) (Image _)
+  ValidGlobal name Storage.Image decs (Image ty)
+    = ( ValidUniformDecorations
+        ( Text "Storage image named " :<>: ShowType name )
+        decs
+        (Image ty)
+      , ValidImageDecorations name SPIRV.Image.Storage decs
+      )
+  ValidGlobal name Storage.Image  _ nonImageTy
     = TypeError
-        ( Text "Invalid decoration " :<>: ShowType dec :<>: Text " applied to image." )
-  ValidateGlobal Storage.Image  _ nonImageTy
-    = TypeError
-        (    Text "Image global expected to point to an image, but points to "
+        (    Text "Image global named " :<>: ShowType name
+        :<>: Text " expected to point to an image, but points to "
         :<>: ShowType nonImageTy :<>: Text " instead."
         )
-  ValidateGlobal Storage.Uniform decs (Struct as)
-    = If ( ValidUniformDecorations decs (Struct as))
-        ( Just (Struct as) )
-        Nothing -- unreachable
-  ValidateGlobal Storage.Uniform decs (Array n (Struct as))
-    = If ( ValidUniformDecorations decs (Array n (Struct as)) )
-        ( Just (Array n (Struct as)) )
-        Nothing -- unreachable
-  ValidateGlobal Storage.Uniform _ ty
+  ValidGlobal name Storage.Uniform decs (Struct as)
+    = ValidUniformDecorations
+        ( Text "Uniform buffer named " :<>: ShowType name )
+        decs
+        (Struct as)
+  ValidGlobal name Storage.Uniform decs (Array n (Struct as))
+    = ValidUniformDecorations
+        ( Text "Uniform buffer named " :<>: ShowType name )
+        decs
+        (Array n (Struct as))
+  ValidGlobal name Storage.Uniform _ ty
     = TypeError
-        (    Text "Uniform buffer should be backed by a struct or array containing a struct;"
+        (    Text "Uniform buffer named " :<>: ShowType name
+        :<>: Text " should be backed by a struct or array containing a struct;"
         :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
-  ValidateGlobal Storage.StorageBuffer _ (Struct as) = Just (Struct as)
-  ValidateGlobal Storage.StorageBuffer _ (Array n (Struct as)) = Just (Array n (Struct as))
-  ValidateGlobal Storage.StorageBuffer _ ty
+  ValidGlobal name Storage.StorageBuffer decs (Struct as)
+      = ValidUniformDecorations
+          ( Text "Uniform storage buffer named " :<>: ShowType name )
+          decs
+          (Struct as)
+  ValidGlobal name Storage.StorageBuffer decs (Array n (Struct as))
+      = ValidUniformDecorations
+          ( Text "Uniform storage buffer named " :<>: ShowType name )
+          decs
+          (Array n (Struct as))
+  ValidGlobal name Storage.StorageBuffer _ ty
     = TypeError
-        (    Text "Uniform storage buffer should be backed by a struct or array containing a struct;"
+        (    Text "Uniform storage buffer named " :<>: ShowType name
+        :<>: Text " should be backed by a struct or array containing a struct;"
         :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
-  -- TODO
-  ValidateGlobal Storage.Input  _ _ = Nothing
-  ValidateGlobal Storage.Output _ _ = Nothing
-  -- TODO
-  ValidateGlobal _ _ _ = Nothing
+  ValidGlobal _ _ _ _ = ( () :: Constraint )
 
 type family ValidUniformDecorations
+              ( name :: ErrorMessage             )
               ( decs :: [ SPIRV.Decoration Nat ] )
               ( ty   :: Type                     )
-            :: Bool
+            :: Constraint
             where
-  ValidUniformDecorations decs _
-    = HasBinding decs && HasDescriptorSet decs
+  ValidUniformDecorations name decs _
+    = ( HasBinding name decs, HasDescriptorSet name decs )
 
-type family HasBinding ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
-  HasBinding ( SPIRV.Binding _ ': _ ) = 'True
-  HasBinding ( _ ': decs ) = HasBinding decs
-  HasBinding '[]
+type family HasBinding
+              ( name :: ErrorMessage             )
+              ( decs :: [ SPIRV.Decoration Nat ] )
+            :: Constraint
+            where
+  HasBinding _    ( SPIRV.Binding _ ': _ ) = ( () :: Constraint )
+  HasBinding name ( _ ': decs ) = HasBinding name decs
+  HasBinding name '[]
     = TypeError
-        ( Text "Uniform buffer is missing a 'Binding' decoration." )
+        ( name :<>: Text " is missing a 'Binding' decoration." )
 
-type family HasDescriptorSet ( decs :: [ SPIRV.Decoration Nat ] ) :: Bool where
-  HasDescriptorSet ( SPIRV.DescriptorSet _ ': _ ) = 'True
-  HasDescriptorSet ( _ ': decs ) = HasDescriptorSet decs
-  HasDescriptorSet '[]
+type family HasDescriptorSet
+              ( name :: ErrorMessage             )
+              ( decs :: [ SPIRV.Decoration Nat ] )
+            :: Constraint
+            where
+  HasDescriptorSet _    ( SPIRV.DescriptorSet _ ': _ ) = ( () :: Constraint )
+  HasDescriptorSet name ( _ ': decs ) = HasDescriptorSet name decs
+  HasDescriptorSet name '[]
     = TypeError
-        ( Text "Uniform buffer is missing a 'DescriptorSet' decoration." )
+        ( name :<>: Text " is missing a 'DescriptorSet' decoration." )
+
+-- TODO: I'm not sure what the valid decorations are here...
+type family ValidImageDecorations
+              ( name    :: Symbol                  )
+              ( imageTy :: SPIRV.ImageUsage        )
+              ( decs    :: [ SPIRV.Decoration Nat] )
+            :: Constraint
+            where
+  ValidImageDecorations _    _ '[]          = ( () :: Constraint )
+  ValidImageDecorations name ty ( SPIRV.DescriptorSet _ ': decs )
+    = ValidImageDecorations name ty decs
+  ValidImageDecorations name ty ( SPIRV.Binding _ ': decs )
+    = ValidImageDecorations name ty decs
+  ValidImageDecorations name _ ( dec ': _ )
+    = TypeError
+        (    Text "Unexpected decoration " :<>: ShowType dec
+        :<>: Text " applied to image named " :<>: ShowType name
+        :<>: Text "."
+        )

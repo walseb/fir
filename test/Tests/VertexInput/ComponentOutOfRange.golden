@@ -1,2 +1,54 @@
 
-Should error saying that 4 is not an allowed component.
+test\Tests\VertexInput\ComponentOutOfRange.hs:38:10: error:
+    * Input/output: cannot position scalar of type Float
+       at location 0 with component 4.
+    * In the expression:
+        shader
+          do ~(Vec4 x y z _) <- get @"in1"
+             w <- get @"in2"
+             put @"out" (Vec4 x y z w)
+      In an equation for `vertex':
+          vertex
+            = shader
+                do ~(Vec4 x y z _) <- get @"in1"
+                   w <- get @"in2"
+                   put @"out" (Vec4 x y z w)
+   |
+38 | vertex = shader do
+   |          ^^^^^^^^^^...
+
+test\Tests\VertexInput\ComponentOutOfRange.hs:61:5: error:
+    * Input/output: cannot position scalar of type Float
+       at location 0 with component 4.
+    * In the expression:
+        ShaderPipeline
+          $ StructInput @VertexInput @(Triangle List)
+              :>-> (vertex, "vertex.spv")
+              :>-> (fragment, "fragment.spv")
+      In an equation for `shaderPipeline':
+          shaderPipeline
+            = ShaderPipeline
+                $ StructInput @VertexInput @(Triangle List)
+                    :>-> (vertex, "vertex.spv")
+                    :>-> (fragment, "fragment.spv")
+   |
+61 |   = ShaderPipeline
+   |     ^^^^^^^^^^^^^^^...
+
+test\Tests\VertexInput\ComponentOutOfRange.hs:61:5: error:
+    * Input/output: cannot position scalar of type Float
+       at location 0 with component 4.
+    * In the expression:
+        ShaderPipeline
+          $ StructInput @VertexInput @(Triangle List)
+              :>-> (vertex, "vertex.spv")
+              :>-> (fragment, "fragment.spv")
+      In an equation for `shaderPipeline':
+          shaderPipeline
+            = ShaderPipeline
+                $ StructInput @VertexInput @(Triangle List)
+                    :>-> (vertex, "vertex.spv")
+                    :>-> (fragment, "fragment.spv")
+   |
+61 |   = ShaderPipeline
+   |     ^^^^^^^^^^^^^^^...

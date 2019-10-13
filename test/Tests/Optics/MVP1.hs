@@ -25,9 +25,9 @@ type Defs = '[ "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0, Block ]
              , "main"    ':-> EntryPoint '[] Vertex
              ]
 
-program :: Program Defs ()
+program :: Module Defs ()
 program =
-  Program $ entryPoint @"main" @Vertex do
+  Module $ entryPoint @"main" @Vertex do
     mvp    <- use @(Name "ubo" :.: Name "mvp")
     in_pos <- get @"in_pos"
     put @"out_pos" (mvp !*^ in_pos)

@@ -1,6 +1,7 @@
 
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -94,7 +95,7 @@ data Decoration a
   | NoContraction
   | InputAttachmentIndex a
   | Alignment a
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 isLayoutDecoration :: Decoration a -> Bool
 isLayoutDecoration dec = case dec of

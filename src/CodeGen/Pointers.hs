@@ -61,13 +61,13 @@ import CodeGen.State
   , _temporaryPointer
   , _knownConstants
   )
-import FIR.ASTState
-  ( FunctionContext(TopLevel, InEntryPoint) )
 import FIR.Prim.Singletons
   ( SPrimTy(..), SScalarTy(..)
   , PrimTy(primTySing), ScalarTy(scalarTySing)
   , AConstant(AConstant)
   )
+import FIR.ProgramState
+  ( FunctionContext(TopLevel, InEntryPoint) )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 import qualified SPIRV.Stage     as SPIRV

@@ -40,7 +40,7 @@ data StorageClass
   | AtomicCounter
   | Image
   | StorageBuffer
-  deriving (Show, Eq, Ord, Enum, Bounded)
+  deriving stock (Show, Eq, Ord, Enum, Bounded)
   deriving Put via (PutWord32Enum StorageClass)
 
 instance Demotable StorageClass where

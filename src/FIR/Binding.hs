@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -40,7 +41,7 @@ import qualified SPIRV.Storage as SPIRV
 -- bindings: variables, functions, images
 
 data Permission = Read | Write
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 type Permissions = [Permission]
 

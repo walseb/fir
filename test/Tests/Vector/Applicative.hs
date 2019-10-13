@@ -19,15 +19,15 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "in_col1" ':-> Input      '[] (V 3 Float)
-             , "in_col2" ':-> Input      '[] (V 3 Float)
-             , "in_col3" ':-> Input      '[] (V 3 Float)
-             , "out_col" ':-> Output     '[] (V 3 Float)
+type Defs = '[ "in_col1" ':-> Input      '[Location 0] (V 3 Float)
+             , "in_col2" ':-> Input      '[Location 1] (V 3 Float)
+             , "in_col3" ':-> Input      '[Location 2] (V 3 Float)
+             , "out_col" ':-> Output     '[Location 0] (V 3 Float)
              , "main"    ':-> EntryPoint '[OriginUpperLeft] Fragment
              ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   entryPoint @"main" @Fragment do
 

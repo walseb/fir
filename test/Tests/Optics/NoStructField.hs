@@ -24,7 +24,7 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "vertexData" ':-> Input '[]
+  = '[ "vertexData" ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
           ( Struct [ "position" ':-> V 3 Float
                    , "colour"   ':-> V 4 Float
                    , "size"     ':-> Float
@@ -34,8 +34,8 @@ type Defs
      , "main" ':-> EntryPoint '[] Vertex
      ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   entryPoint @"main" @Vertex do
 

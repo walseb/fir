@@ -36,7 +36,7 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
@@ -54,7 +54,7 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     col <- get @"in_colour"
     put @"out_colour" col
@@ -74,7 +74,7 @@ compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  , vertPath)
   :>-> (fragment, fragPath)

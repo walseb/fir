@@ -1,4 +1,5 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs              #-}
 
 {-|
 Module: SPIRV.PrimOp
@@ -59,18 +60,18 @@ data PrimOp where
   MatOp   :: MatPrimOp   -> Word32 -> Word32 -> ScalarTy -> PrimOp
   ConvOp  :: ConvPrimOp  -> ScalarTy         -> ScalarTy -> PrimOp
   GeomOp  :: GeomPrimOp                                  -> PrimOp
-  deriving Show
+  deriving stock Show
 
 data BoolPrimOp
   = BoolOr
   | BoolAnd
   | BoolNot
-  deriving Show
+  deriving stock Show
 
 data EqPrimOp
   = Equal
   | NotEqual
-  deriving Show
+  deriving stock Show
 
 data OrdPrimOp
   = GT
@@ -79,7 +80,7 @@ data OrdPrimOp
   | LTE
   | Min
   | Max
-  deriving Show
+  deriving stock Show
 
 data BitPrimOp
   = BitAnd
@@ -89,7 +90,7 @@ data BitPrimOp
   | BitShiftRightLogical
   | BitShiftRightArithmetic
   | BitShiftLeft
-  deriving Show
+  deriving stock Show
 
 data NumPrimOp
   -- additive monoid
@@ -108,7 +109,7 @@ data NumPrimOp
   | Mod
   | Rem
   | Quot
-  deriving Show
+  deriving stock Show
 
 data FloatPrimOp
   = FSin
@@ -129,7 +130,7 @@ data FloatPrimOp
   | FLog
   | FSqrt
   | FInvsqrt
-  deriving Show
+  deriving stock Show
 
 data VecPrimOp
   = Vectorise PrimOp
@@ -137,7 +138,7 @@ data VecPrimOp
   | VMulK
   | CrossV
   | NormaliseV
-  deriving Show
+  deriving stock Show
 
 data MatPrimOp
   = MMulK
@@ -148,7 +149,7 @@ data MatPrimOp
   | Det
   | Inv
   | Out
-  deriving Show
+  deriving stock Show
 
 data ConvPrimOp
   = Convert
@@ -156,12 +157,12 @@ data ConvPrimOp
   | CRound
   | CCeiling
   | CFloor
-  deriving Show
+  deriving stock Show
 
 data GeomPrimOp
   = EmitGeometryVertex
   | EndGeometryPrimitive
-  deriving Show
+  deriving stock Show
 
 opAndReturnType :: PrimOp -> (Operation, PrimTy)
 opAndReturnType (BoolOp boolOp )

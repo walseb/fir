@@ -65,7 +65,7 @@ maxV3 :: AST (V 3 Float) -> AST Float
 maxV3 (Vec3 x y z) = max x (max y z)
 
 intersectAABB
-  :: forall (s :: ASTState). ( _ )
+  :: forall (s :: ProgramState). ( _ )
   => Ray (AST (V 3 Float))
   -> AABB (AST (V 3 Float))
   -> Codensity AST ( ( AST Float, AST Float ) := s ) s
@@ -89,7 +89,7 @@ intersectAABB
 
 
 intersectTriangle
-  :: forall (s :: ASTState) . ( _ )
+  :: forall (s :: ProgramState). ( _ )
   => Ray (AST (V 3 Float))
   -> Triangle (AST (V 3 Float))
   -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := s) s
@@ -211,8 +211,8 @@ type ComputeDefs =
                     Compute
    ]
 
-computeShader :: Program ComputeDefs ()
-computeShader = Program $ entryPoint @"main" @Compute do
+computeShader :: Module ComputeDefs ()
+computeShader = Module $ entryPoint @"main" @Compute do
 
     ~(Vec3 i_x i_y _) <- get @"gl_GlobalInvocationID"
 

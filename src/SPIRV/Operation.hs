@@ -1,4 +1,5 @@
-{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE PatternSynonyms    #-}
 
 {-|
 Module: SPIRV.Operation
@@ -25,7 +26,7 @@ import SPIRV.Extension
 data Operation
   = Code Word16
   | ExtCode ExtInst Word32
-  deriving Eq
+  deriving stock Eq
 
 instance Show Operation where
   show op@(Code _) = showOperation op

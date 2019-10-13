@@ -19,8 +19,9 @@ import Math.Linear
 -- program
 
 type Defs =
-  '[ "nested" ':-> Input      '[] ( Array 4 ( Array 6 ( Struct '[ "r" ':-> Float, "ijk" ':-> V 3 Float ] ) ) )
-   , "out"    ':-> Output     '[] ( V 4 Float )
+  '[ "nested" ':-> Uniform '[Binding 0, DescriptorSet 0]
+        ( Array 4 ( Array 6 ( Struct '[ "r" ':-> Float, "ijk" ':-> V 3 Float ] ) ) )
+   , "out"    ':-> Output '[Location 0 ] ( V 4 Float )
    , "main"   ':-> EntryPoint '[] Vertex
    ]
 
@@ -30,8 +31,8 @@ type TwoVecs
    , "2" ':-> V 3 Float
    ]
 
-program :: Program Defs ()
-program = Program $ entryPoint @"main" @Vertex do
+program :: Module Defs ()
+program = Module $ entryPoint @"main" @Vertex do
 
   r <- use @(Name "nested" :.: AnIndex Word32 :.: AnIndex Word32 :.: Name "r") 1 4
 

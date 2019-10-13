@@ -1,1 +1,34 @@
-Needs to error.
+
+test\Tests\Interface\InvalidComponent.hs:35:10: error:
+    * Input/output: cannot position scalar of type Double
+       at location 1 with component 1.
+    * In the expression:
+        shader
+          do put @"out1" =<< get @"in1"
+             put @"out2" =<< get @"in2"
+      In an equation for `vertex':
+          vertex
+            = shader
+                do put @"out1" =<< get @"in1"
+                   put @"out2" =<< get @"in2"
+   |
+35 | vertex = shader do
+   |          ^^^^^^^^^^...
+
+test\Tests\Interface\InvalidComponent.hs:50:12: error:
+    * Input/output: cannot position scalar of type Double
+       at location 1 with component 1.
+    * In the expression:
+        shader
+          do ~(Vec4 x y z _) <- get @"in1"
+             w <- get @"in2"
+             put @"out" (Vec4 x y z (convert w))
+      In an equation for `fragment':
+          fragment
+            = shader
+                do ~(Vec4 x y z _) <- get @"in1"
+                   w <- get @"in2"
+                   put @"out" (Vec4 x y z (convert w))
+   |
+50 | fragment = shader do
+   |            ^^^^^^^^^^...

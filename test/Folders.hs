@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFoldable     #-}
 {-# LANGUAGE DeriveFunctor      #-}
 {-# LANGUAGE DeriveTraversable  #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections      #-}
@@ -23,7 +24,7 @@ import Test
   )
 
 data Folder a = Folder String [a]
-  deriving (Functor, Foldable, Traversable)
+  deriving stock (Functor, Foldable, Traversable)
 
 ------------------------------------------------------------------------------------------
 -- running tests on folders
@@ -56,7 +57,7 @@ runTestsFromFolder folderName = runTestsP ( \ x _ _ -> x == folderName )
 ------------------------------------------------------------------------------------------
 -- displaying test result folders
 
-deriving instance Show (Folder (String, Test))
+deriving stock instance Show (Folder (String, Test))
 
 instance Show (Folder (String, Test, TestOutput)) where
   show ( Folder folderName testResults )

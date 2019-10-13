@@ -23,22 +23,19 @@ See "FIR.Validation.Pipeline" for the validation of such pipelines.
 
 module FIR.Pipeline
   ( PipelineInfo(..)
-  , ShaderPipelineWithInfo(..), pipelineInfoShaders
-  , ShaderPipeline(WithVertexInput), pipelineShaders
-  , withVertexInput, withStructInput
-  , ShaderStage(..)
+  , PipelineStages(..), pipelineStages
+  , ShaderPipeline(..), pipelineShaders
   , PrimitiveConnectedness(..)
   , PrimitiveTopology(..)
   , BindingStrides
   , VertexLocationDescriptions
+  , GetVertexInputInfo, GetTopologyInfo -- (re-exports)
   )
   where
 
 -- base
 import Data.Kind
   ( Type )
-import Data.Proxy
-  ( Proxy(Proxy) )
 import Data.Word
   ( Word32 )
 import GHC.TypeLits
@@ -50,27 +47,20 @@ import GHC.TypeNats
 import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
 import Data.Type.Map
-  ( (:->)((:->)) )
-import FIR.ASTState
-  ( ASTState
-  , Definedness(Defined)
+  ( (:->) )
+import FIR.Definition
+  ( VariablesWithStorage )
+import FIR.Module
+  ( ShaderModule )
+import FIR.ProgramState
+  ( Definedness(Defined)
   , EntryPointInfo(EntryPointInfo)
   )
-import FIR.Definition
-  ( Definition, StartState )
-import FIR.Layout
-  ( Layout(Locations)
-  , Poke(SizeOf)
-  )
-import FIR.Prim.Struct
-  ( Struct, LocationSlot )
-import FIR.Program
-  ( CodensityProgram )
 import FIR.Validation.Pipeline
   ( ValidPipelineInfo
   , GetExecutionInfo
-  , VariablesWithStorage
-  , StructLocationDescriptions
+  , GetVertexInputInfo
+  , GetTopologyInfo
   )
 import qualified SPIRV.Image      as SPIRV
   ( ImageFormat )
@@ -78,7 +68,7 @@ import qualified SPIRV.Stage      as SPIRV
 import qualified SPIRV.Storage    as SPIRV
 
 --------------------------------------------------------------------------
--- * Graphics pipelines
+-- * Primitive topologies
 
 data PrimitiveConnectedness
   = List
@@ -123,48 +113,8 @@ instance Known PrimitiveConnectedness conn
 instance KnownNat n => Known (PrimitiveTopology Nat) ('PatchesOfSize n) where
   known = PatchesOfSize ( knownValue @n )
 
-data PipelineInfo where
-  TopOfPipe :: PipelineInfo
-  Into :: PipelineInfo
-       -> EntryPointInfo
-       -> PipelineInfo
-
-data ShaderStage
-        ( name     :: Symbol                  )
-        ( stage    :: SPIRV.Shader            )
-        ( defs     :: [Symbol :-> Definition] )
-        ( endState :: ASTState                )
-        where
-  ShaderStage :: forall name stage defs endState.
-                 CodensityProgram (StartState defs) endState ()
-              -> ShaderStage name stage defs endState
-
-data ShaderPipelineWithInfo (info :: PipelineInfo) where
-  StartPipeline :: ShaderPipelineWithInfo TopOfPipe
-  (:>->) :: ( Known SPIRV.Shader shader )
-         => ShaderPipelineWithInfo info
-         -> (ShaderStage name shader defs endState, String)
-         -> ShaderPipelineWithInfo
-              ( info `Into`
-                ( 'EntryPointInfo
-                      name
-                      ( GetExecutionInfo shader name endState )
-                      '( VariablesWithStorage SPIRV.Input  defs
-                       , VariablesWithStorage SPIRV.Output defs
-                       )
-                      'Defined
-                )
-              )
-
-pipelineInfoShaders :: ShaderPipelineWithInfo info -> [(SPIRV.Shader, String)]
-pipelineInfoShaders = reverse . go []
-  where
-    go :: [(SPIRV.Shader, String)] -> ShaderPipelineWithInfo info2 -> [(SPIRV.Shader, String)]
-    go paths StartPipeline = paths
-    go paths ( info :>-> ( (_ :: ShaderStage name shader defs endState) , path) )
-      = go ( (knownValue @shader, path) : paths) info
-
-type BindingStrides = [ Nat :-> Nat ]
+-------------------------------------------------------
+-- * Graphics pipelines
 
 -- | For each location:
 --   - a binding index,
@@ -172,60 +122,91 @@ type BindingStrides = [ Nat :-> Nat ]
 --   - the image format of the location.
 type VertexLocationDescriptions = [ Nat :-> ( Nat, Nat, SPIRV.ImageFormat Nat ) ]
 
-data ShaderPipeline where
-  WithVertexInput
+-- | For each binding, the corresponding stride to use.
+type BindingStrides = [ Nat :-> Nat ]
+
+-- | Pipeline information data kind.
+--
+-- Records information about a pipeline which should be kept track of at the type level,
+-- to be used for validation.
+--
+--   - Primitive topology used for the pipeline,
+--   - layout information (vertex location descriptions, binding strides),
+--   - type-level information associated to each shader in the pipeline,
+--     such as the type of shader (vertex shader, geometry shader, ...)
+--     and the input/output interfaces (for interface matching).
+--
+-- Represented as a snoc-list, beginning with vertex input information,
+-- and then the sequence of shaders in order.
+data PipelineInfo where
+  VertexInputInfo
+    :: PrimitiveTopology Nat
+    -> VertexLocationDescriptions
+    -> BindingStrides
+    -> PipelineInfo
+  Into
+    :: PipelineInfo
+    -> ( Symbol, EntryPointInfo )
+    -> PipelineInfo
+
+-- | Value-level sequence of pipeline stages.
+--
+-- Specified as a snoc-list:
+--
+-- > VertexInput @top @descs @strides :>-> (shader_1, filepath_1) :>-> ... (shader_n, filepath_n)
+--
+-- Keeps track of type-level information necessary for validation.
+data PipelineStages (info :: PipelineInfo) where
+  VertexInput
     :: forall
-         ( bds   :: BindingStrides )
-         ( descs :: VertexLocationDescriptions )
-         ( top   :: PrimitiveTopology Nat )
-         ( info  :: PipelineInfo )
-    . ( ValidPipelineInfo info top
-      --, ValidVertexInput (VertexInputs info) descs
-      , Known [Nat :-> Nat] bds
+          ( top     :: PrimitiveTopology Nat      )
+          ( descs   :: VertexLocationDescriptions )
+          ( strides :: BindingStrides             )
+    .  ( Known (PrimitiveTopology Nat)    top
+       , Known VertexLocationDescriptions descs
+       , Known BindingStrides             strides
+       )
+    => PipelineStages (VertexInputInfo top descs strides)
+  (:>->) :: ( Known SPIRV.Shader shader )
+         => PipelineStages info
+         -> ( ShaderModule name shader defs endState, FilePath )
+         -> PipelineStages
+              ( info `Into`
+                '( name
+                 , 'EntryPointInfo
+                      ( GetExecutionInfo shader name endState )
+                      '( VariablesWithStorage SPIRV.Input  defs
+                       , VariablesWithStorage SPIRV.Output defs
+                       )
+                      'Defined
+                 )
+              )
+
+-- | Smart wrapper for a shader pipeline,
+-- performing type-level validation on a sequence of pipeline stages.
+data ShaderPipeline where
+  ShaderPipeline
+    :: forall
+        ( info    :: PipelineInfo               )
+        ( top     :: PrimitiveTopology Nat      )
+        ( descs   :: VertexLocationDescriptions )
+        ( strides :: BindingStrides             )
+    . ( ValidPipelineInfo info
+      , '(top, descs, strides) ~ GetVertexInputInfo info
+      , Known (PrimitiveTopology Nat)    top
       , Known VertexLocationDescriptions descs
-      , Known (PrimitiveTopology Nat) top
+      , Known BindingStrides             strides
       )
-    => Proxy bds
-    -> Proxy descs
-    -> Proxy top
-    -> ShaderPipelineWithInfo info
+    => PipelineStages info
     -> ShaderPipeline
 
+pipelineStages :: PipelineStages info -> [(SPIRV.Shader, String)]
+pipelineStages = reverse . go []
+  where
+    go :: [(SPIRV.Shader, String)] -> PipelineStages info2 -> [(SPIRV.Shader, String)]
+    go paths VertexInput = paths
+    go paths ( info :>-> ( (_ :: ShaderModule name shader defs endState) , path) )
+      = go ( (knownValue @shader, path) : paths) info
+
 pipelineShaders :: ShaderPipeline -> [(SPIRV.Shader, String)]
-pipelineShaders (WithVertexInput _ _ _ info) = pipelineInfoShaders info
-
-withVertexInput
-  :: forall
-       ( bds   :: BindingStrides )
-       ( descs :: VertexLocationDescriptions )
-       ( top   :: PrimitiveTopology Nat )
-       ( info  :: PipelineInfo )
-  . ( ValidPipelineInfo info top
-    --, ValidVertexInput (VertexInputs info) descs
-    , Known [Nat :-> Nat] bds
-    , Known VertexLocationDescriptions descs
-    , Known (PrimitiveTopology Nat) top
-    )
-  => ShaderPipelineWithInfo info
-  -> ShaderPipeline
-withVertexInput = WithVertexInput @bds @descs @top @info Proxy Proxy Proxy
-
-withStructInput
-  :: forall
-       ( as     :: [LocationSlot Nat :-> Type] )
-       ( top    :: PrimitiveTopology Nat       )
-       ( info   :: PipelineInfo                )
-       ( descs  :: VertexLocationDescriptions  )
-       ( stride :: Nat                         )
-       ( bds    :: BindingStrides              )
-  . ( ValidPipelineInfo info top
-    , descs ~ StructLocationDescriptions 0 as
-    , KnownNat stride
-    , stride ~ ( SizeOf Locations (Struct as) )
-    , bds ~ '[ 0 ':-> stride ]
-    --, ValidVertexInput (VertexInputs info) descs
-    , Known VertexLocationDescriptions descs
-    , Known (PrimitiveTopology Nat) top
-    )
-  => ShaderPipelineWithInfo info -> ShaderPipeline
-withStructInput = WithVertexInput @bds @descs @top @info Proxy Proxy Proxy
+pipelineShaders (ShaderPipeline stages) = pipelineStages stages

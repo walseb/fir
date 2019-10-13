@@ -44,14 +44,14 @@ import Data.Type.Map
   ( Lookup )
 import FIR.Binding
   ( Binding, BindingsMap, Var )
-import FIR.ASTState
-  ( ASTState(..) )
 import FIR.Prim.Image
   ( ImageProperties(Properties), Image
   , OperandName(DepthComparison, BaseOperand)
   )
 import FIR.Prim.Singletons
   ( ScalarFromTy )
+import FIR.ProgramState
+  ( ProgramState(ProgramState) )
 import SPIRV.Image
   ( ImageUsage(Sampled, Storage)
   , ImageFormat(ImageFormat), RequiredFormatUsage
@@ -73,8 +73,8 @@ import qualified SPIRV.ScalarTy as SPIRV
 -- | Retrieve the properties of an image.
 --
 -- Throws a type error if there is no image with given name.
-type family LookupImageProperties (k :: Symbol) (i :: ASTState) :: ImageProperties where
-  LookupImageProperties k ('ASTState i _ _ _)
+type family LookupImageProperties (k :: Symbol) (i :: ProgramState) :: ImageProperties where
+  LookupImageProperties k ('ProgramState i _ _ _)
     = ImagePropertiesFromLookup k i (Lookup k i)
 
 type family ImagePropertiesFromLookup

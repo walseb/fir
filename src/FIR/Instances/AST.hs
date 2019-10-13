@@ -151,7 +151,7 @@ import Math.Algebra.Class
   , Convert(..), Rounding(..)
   )
 import Math.Linear
-  ( Semimodule(..), Module(..)
+  ( Semimodule(..), LinearModule(..)
   , Inner(..), Cross(..)
   , Matrix(..), VectorOf
   , V, M(..)
@@ -1052,7 +1052,7 @@ instance ( KnownNat m, KnownNat n
 -- $vectors
 -- Instances for:
 --
--- 'Semimodule', 'Module', 'Inner', 'Cross'.
+-- 'Semimodule', 'LinearModule', 'Inner', 'Cross'.
 instance (ScalarTy a, Semiring a) => Semimodule Nat (AST (V 0 a)) where
   type Scalar   (AST (V 0 a))       = AST      a
   type OfDim    (AST (V 0 a)) Nat n = AST (V n a)
@@ -1066,7 +1066,7 @@ instance (ScalarTy a, Semiring a) => Semimodule Nat (AST (V 0 a)) where
        => AST (V n a) -> AST a -> AST (V n a)
   (^*)  = primOp @(V n a) @SPIRV.VMulK
 
-instance (ScalarTy a, Ring a) => Module Nat (AST (V 0 a)) where
+instance (ScalarTy a, Ring a) => LinearModule Nat (AST (V 0 a)) where
   (^-^) :: forall n. KnownNat n
         => AST (V n a) -> AST (V n a) -> AST (V n a)
   (^-^) = primOp @(V n a) @('Vectorise SPIRV.Sub)

@@ -201,7 +201,7 @@ offscreen = runManaged do
   descriptorSetLayout <- createDescriptorSetLayout device
   descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
 
-  let pipelineInfo = PipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT
+  let pipelineInfo = VkPipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT
   ( graphicsPipeline, pipelineLayout )
     <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 

@@ -32,14 +32,14 @@ k a b = h ( g a (g b (not a && b)) ) (h (b `xor` a) b) || f (not b) (a && b || h
 ------------------------------------------------
 -- program
 
-type Defs = '[ "a"    ':-> Input  '[] Word32
-             , "b"    ':-> Input  '[] Word32
-             , "out"  ':-> Output '[] (V 4 Word32)
+type Defs = '[ "a"    ':-> Input  '[Location 0] Word32
+             , "b"    ':-> Input  '[Location 1] Word32
+             , "out"  ':-> Output '[Location 0] (V 4 Word32)
              , "main" ':-> EntryPoint '[] Vertex
              ]
 
-program :: Program Defs ()
-program = Program $ entryPoint @"main" @Vertex do
+program :: Module Defs ()
+program = Module $ entryPoint @"main" @Vertex do
 
     a <- get @"a"
     b <- get @"b"

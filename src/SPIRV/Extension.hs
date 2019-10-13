@@ -37,7 +37,7 @@ import Data.Binary.Class.Put
 data ExtInst
   = OpenCL
   | GLSL
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 extInstName :: ExtInst -> ShortText
 extInstName OpenCL = "OpenCL.std.100"
@@ -48,8 +48,7 @@ extInstName GLSL   = "GLSL.std.450"
 
 newtype Extension = Extension ShortText
   deriving newtype ( Eq, Ord, Put )
-  deriving stock   Show
-  deriving Lift
+  deriving stock   ( Show, Lift )
 
 pattern SPV_AMD_shader_explicit_vertex_parameter :: Extension
 pattern SPV_AMD_shader_explicit_vertex_parameter = Extension "SPV_AMD_shader_explicit_vertex_parameter"

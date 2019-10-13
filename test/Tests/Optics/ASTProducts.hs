@@ -19,13 +19,13 @@ import Math.Linear
 -- program
 
 type Defs =
-  '[ "ubo"  ':-> Uniform    '[] ( Struct '[ "mvp" ':-> M 4 4 Float ] )
-   , "out"  ':-> Output     '[] ( M 4 4 Float )
+  '[ "ubo"  ':-> Uniform    '[Binding 0, DescriptorSet 0] ( Struct '[ "mvp" ':-> M 4 4 Float ] )
+   , "out"  ':-> Output     '[Location 0] ( M 4 4 Float )
    , "main" ':-> EntryPoint '[] Vertex
    ]
 
-program :: Program Defs ()
-program = Program $ entryPoint @"main" @Vertex do
+program :: Module Defs ()
+program = Module $ entryPoint @"main" @Vertex do
 
   row <- use @(Name "ubo" :.: Name "mvp" :.: Row 0)
   col <- use @(Name "ubo" :.: Name "mvp" :.: Col 2)

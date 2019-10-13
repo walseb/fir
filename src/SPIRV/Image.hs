@@ -52,7 +52,7 @@ data Image
       , imageUsage     :: Maybe ImageUsage
       , imageFormat    :: Maybe (ImageFormat Word32)
       }
-  deriving ( Eq, Show, Ord )
+  deriving stock ( Eq, Show, Ord )
 
 data Dimensionality
   = OneD
@@ -62,8 +62,8 @@ data Dimensionality
   | Rect
   | Buffer
   | SubpassData
-  deriving ( Eq, Show, Ord, Enum, Bounded )
-  deriving Put via (PutWord32Enum Dimensionality)
+  deriving stock ( Eq, Show, Ord, Enum, Bounded )
+  deriving Put via ( PutWord32Enum Dimensionality )
 
 instance Demotable Dimensionality where
   type Demote Dimensionality = Dimensionality
@@ -85,7 +85,7 @@ instance Known Dimensionality 'SubpassData where
 data HasDepth
   = NotDepthImage
   | DepthImage
-  deriving ( Eq, Show, Ord, Enum, Bounded )
+  deriving stock ( Eq, Show, Ord, Enum, Bounded )
   deriving Put via (PutWord32Enum HasDepth)
 
 instance Demotable HasDepth where
@@ -103,7 +103,7 @@ instance Put (Maybe HasDepth) where
 data Arrayness
   = NonArrayed
   | Arrayed
-  deriving ( Eq, Show, Ord, Enum, Bounded )
+  deriving stock ( Eq, Show, Ord, Enum, Bounded )
   deriving Put via (PutWord32Enum Arrayness)
 
 instance Demotable Arrayness where
@@ -116,7 +116,7 @@ instance Known Arrayness 'Arrayed where
 data MultiSampling
   = SingleSampled
   | MultiSampled
-  deriving ( Eq, Show, Ord, Enum, Bounded )
+  deriving stock ( Eq, Show, Ord, Enum, Bounded )
   deriving Put via (PutWord32Enum MultiSampling)
 
 instance Demotable MultiSampling where
@@ -129,7 +129,7 @@ instance Known MultiSampling 'MultiSampled where
 data ImageUsage
   = Sampled
   | Storage
-  deriving ( Eq, Show, Ord, Enum, Bounded )
+  deriving stock ( Eq, Show, Ord, Enum, Bounded )
 
 instance Put (Maybe ImageUsage) where
   put Nothing        = put @Word32 0
@@ -147,7 +147,7 @@ instance Known ImageUsage 'Storage where
 data Normalisation
   = Unnormalised
   | Normalised
-  deriving ( Eq, Show, Ord, Enum, Bounded )
+  deriving stock ( Eq, Show, Ord, Enum, Bounded )
   deriving Put via (PutWord32Enum Normalisation)
 
 instance Demotable Normalisation where
@@ -160,7 +160,7 @@ instance Known Normalisation Normalised where
 data Component
   = Integer Normalisation Signedness
   | Floating
-  deriving ( Eq, Show, Ord )
+  deriving stock ( Eq, Show, Ord )
 
 instance Demotable Component where
   type Demote Component = Component
@@ -195,7 +195,7 @@ type UI = ( 'Integer 'Unnormalised 'Unsigned :: Component )
 
 data ImageFormat a
   = ImageFormat Component [a]
-  deriving ( Eq, Show, Ord )
+  deriving stock ( Eq, Show, Ord )
 
 pattern RGBA32 :: Component -> ImageFormat Word32
 pattern RGBA32 component = ImageFormat component [32,32,32,32]
@@ -347,7 +347,7 @@ data SamplerAddressing
   | Clamp
   | Repeat
   | RepeatMirrored
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 instance Put SamplerAddressing where
   put = put @Word32 . fromIntegral . succ . fromEnum
@@ -361,7 +361,7 @@ instance Put (Maybe SamplerAddressing) where
 data FilterMode
   = Nearest
   | Linear
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
   deriving Put via (PutWord32Enum FilterMode)
 
 instance Demotable SamplerAddressing where
@@ -385,7 +385,7 @@ instance Known FilterMode Linear where
 data DepthTesting
   = NoDepthTest
   | DepthTest
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 instance Demotable DepthTesting where
   type Demote DepthTesting = DepthTesting
@@ -397,7 +397,7 @@ instance Known DepthTesting DepthTest where
 data Projection
   = Affine
   | Projective
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 instance Demotable Projection where
   type Demote Projection = Projection
@@ -411,7 +411,7 @@ data LODOperand
   | LOD
   | Grad
   | MinLOD
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 data Operand
   = LODOperand LODOperand
@@ -419,7 +419,7 @@ data Operand
   | Offset
   | ConstOffsets
   | Sample
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 operandBit :: Operand -> Word32
 operandBit (LODOperand Bias )   = 0x01

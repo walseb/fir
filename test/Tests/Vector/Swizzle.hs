@@ -23,8 +23,8 @@ import Math.Linear
 
 ---------------------------------------------------------------------------------
 
-type Defs = '[ "in_col"  ':-> Input      '[] (V 4 Float)
-             , "out_col" ':-> Output     '[] (V 3 Float)
+type Defs = '[ "in_col"  ':-> Input      '[Location 0] (V 4 Float)
+             , "out_col" ':-> Output     '[Location 0] (V 3 Float)
              , "main"    ':-> EntryPoint '[OriginUpperLeft] Fragment
              ]
 
@@ -38,8 +38,8 @@ blue2 :: V 3 Float
 blue2 = view @(Swizzle "rgb") blue1
 
 
-program :: Program Defs ()
-program = Program $ entryPoint @"main" @Fragment do
+program :: Module Defs ()
+program = Module $ entryPoint @"main" @Fragment do
 
     col1 <- use @(Name "in_col" :.: Swizzle "rgb")
     col2 <- use @(Name "in_col")

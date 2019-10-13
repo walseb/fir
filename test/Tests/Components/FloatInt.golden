@@ -1,1 +1,32 @@
-Needs to error.
+
+test\Tests\Components\FloatInt.hs:31:12: error:
+    * Incompatible scalars within Location 0:
+        - V 2 Float with Location 0, Component 0 requires Float,
+        - V 2 Int32 with Location 0, Component 2 requires Int32.
+    * In the second argument of `($)', namely
+        `entryPoint
+           @"main"
+           @Vertex
+           do ~(Vec2 x y) <- get @"in_col1"
+              ~(Vec2 z w) <- get @"in_col2"
+              put @"out_col" (Vec4 x y (convert z) (convert w))'
+      In the expression:
+        Module
+          $ entryPoint
+              @"main"
+              @Vertex
+              do ~(Vec2 x y) <- get @"in_col1"
+                 ~(Vec2 z w) <- get @"in_col2"
+                 put @"out_col" (Vec4 x y (convert z) (convert w))
+      In an equation for `program':
+          program
+            = Module
+                $ entryPoint
+                    @"main"
+                    @Vertex
+                    do ~(Vec2 x y) <- get @"in_col1"
+                       ~(Vec2 z w) <- get @"in_col2"
+                       put @"out_col" (Vec4 x y (convert z) (convert w))
+   |
+31 |   Module $ entryPoint @"main" @Vertex do
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...

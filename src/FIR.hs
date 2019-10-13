@@ -3,7 +3,6 @@
 {-# LANGUAGE AllowAmbiguousTypes  #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DeriveLift           #-}
-{-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE DerivingVia          #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
@@ -46,9 +45,9 @@ type FragmentDefs
       , "main"    ':-> EntryPoint '[ OriginLowerLeft            ] Fragment      -- fragment shader stage (using standard Cartesian coordinates)
       ]
 
-fragment :: Program FragmentDefs ()
+fragment :: Module FragmentDefs ()
 fragment =
-  Program $ entryPoint \@"main" \@Fragment do
+  Module $ entryPoint \@"main" \@Fragment do
     pos <- get \@"in_pos"
     col <- use \@(ImageTexel "image") NilOps pos
     put \@"out_col" col
@@ -121,8 +120,6 @@ module FIR
       ( Function
       , EntryPoint
       )
-  , FIR.ASTState.ASTState(ASTState)
-  , FIR.ASTState.FunctionContext(TopLevel)
   , module FIR.Instances.AST
   , module FIR.Instances.Codensity
   , module FIR.Instances.Images
@@ -132,23 +129,15 @@ module FIR
   , FIR.Layout.pokeArray
   , FIR.Layout.roundUp
   , FIR.Layout.nextAligned
-  , FIR.Pipeline.ShaderPipeline(..)
-  , FIR.Pipeline.withVertexInput, FIR.Pipeline.withStructInput
-  , FIR.Pipeline.ShaderPipelineWithInfo(..)
-  , pipelineInfoShaders
-  , FIR.Pipeline.ShaderStage(ShaderStage)
-  , pipelineShaders
-  , FIR.Pipeline.PrimitiveConnectedness(..)
-  , FIR.Pipeline.PrimitiveTopology(..)
-  , FIR.Pipeline.BindingStrides
-  , FIR.Pipeline.VertexLocationDescriptions
+  , module FIR.Module
+  , module FIR.Pipeline
   , module FIR.Prim.Array
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
   , FIR.Prim.Image.GatherInfo(..)
   , module FIR.Prim.Struct
-  , FIR.Program.Procedure
-  , FIR.Program.Program(Program)
+  , FIR.ProgramState.ProgramState(ProgramState)
+  , FIR.ProgramState.FunctionContext(TopLevel)
   , FIR.Swizzle.Swizzle
   , module FIR.Synonyms
   , module Math.Algebra.Class
@@ -282,7 +271,6 @@ import Data.Type.Known
 import Data.Type.List
 import Data.Type.Map
 import FIR.AST
-import FIR.ASTState
 import FIR.Binding
 import FIR.Definition
 import FIR.Instances.AST
@@ -290,17 +278,14 @@ import FIR.Instances.Codensity
 import FIR.Instances.Images
 import FIR.Instances.Optics
 import FIR.Layout
+import FIR.Module
 import FIR.Pipeline
 import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct
-import FIR.Program
+import FIR.ProgramState
 import FIR.Swizzle
 import FIR.Synonyms
-  hiding
-    ( Col_, Col__, Ix_, Ix__
-    , RowRes, ColRes, DiagRes, EntryRes
-    ) -- internal helpers
 import Instances.TH.Lift
   ( ) -- Lift instances for ShortText, Set
 import Math.Algebra.Class
@@ -330,15 +315,15 @@ instance DrawableProgramAST (AST a) where
 instance DrawableProgramAST (Codensity AST (AST a := j) i) where
   ast = drawTree . toTree . toAST
 instance ( DrawableProgramAST
-             ( CodensityProgram (StartState defs) endState a )
+             ( Program (StartState defs) endState a )
          )
-      => DrawableProgramAST (Program defs a)
+      => DrawableProgramAST (Module defs a)
       where
-  ast (Program prog) = ast prog
-instance DrawableProgramAST (CodensityProgram (StartState defs) endState ())
-      => DrawableProgramAST (FIR.Pipeline.ShaderStage name stage defs endState)
+  ast (Module prog) = ast prog
+instance DrawableProgramAST (Program (StartState defs) endState ())
+      => DrawableProgramAST (ShaderModule name stage defs endState)
       where
-  ast (FIR.Pipeline.ShaderStage prog) = ast prog
+  ast (ShaderModule prog) = ast prog
 
 -- | Compiler flags.
 data CompilerFlag
@@ -364,8 +349,8 @@ data ModuleRequirements
 class CompilableProgram prog where
   compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText ModuleRequirements )
 
-instance KnownDefinitions defs => CompilableProgram (Program defs a) where
-  compile filePath flags (Program program)
+instance KnownDefinitions defs => CompilableProgram (Module defs a) where
+  compile filePath flags (Module program)
     = case runCodeGen cgContext (toAST program) of
         Left  err -> Prelude.pure ( Left err )
         Right (bin, CGState { neededCapabilities, neededExtensions } )
@@ -385,10 +370,10 @@ instance KnownDefinitions defs => CompilableProgram (Program defs a) where
               }
 
 instance ( KnownDefinitions defs )
-      => CompilableProgram (FIR.Pipeline.ShaderStage name stage defs endState)
+      => CompilableProgram (ShaderModule name stage defs endState)
       where
-  compile filePath flags (FIR.Pipeline.ShaderStage prog)
-    = compile filePath flags (Program @defs prog)
+  compile filePath flags (ShaderModule prog)
+    = compile filePath flags (Module @defs prog)
 
 -- | Utility function to run IO actions at compile-time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.

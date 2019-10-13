@@ -136,22 +136,14 @@ import FIR.AST
   , primOp
   , HasUndefined(undefined)
   )
-import FIR.ASTState
-  ( FunctionInfo, Definedness(..)
-  , FunctionContext(..), ASTState(ASTState)
-  , TLInterface
-  , ExecutionContext
-  , EntryPointInfo(EntryPointInfo)
-  )
 import FIR.Binding
   ( BindingsMap
   , FunctionType, Var
   , Permissions
   )
 import FIR.Definition
-  ( Definition
-  , KnownDefinitions
-  , DefinitionFunctions, DefinitionEntryPoints
+  ( Definition, KnownDefinitions
+  , StartState
   , StartBindings, EndBindings
   )
 import FIR.Instances.AST
@@ -162,14 +154,22 @@ import FIR.Instances.Optics
   ( User, Assigner, KnownOptic, opticSing
   , StatefulOptic
   )
-import FIR.Pipeline
-  ( ShaderStage(ShaderStage) )
+import FIR.Module
+  ( ShaderModule(ShaderModule) )
 import FIR.Prim.Image
   ( ImageProperties, ImageOperands
   , ImageData, ImageCoordinates
   )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, KnownVars )
+import FIR.ProgramState
+  ( FunctionInfo
+  , FunctionContext(..)
+  , ProgramState(ProgramState)
+  , TLInterface
+  , ExecutionContext
+  , EntryPointInfo
+  )
 import FIR.Validation.Bindings
   ( ValidDef, AddBinding, Has
   , ValidFunDef, AddFunBinding, FunctionTypes
@@ -179,6 +179,8 @@ import FIR.Validation.Bindings
   , SetInterface, GetExecutionInfo
   , Embeddable
   )
+import FIR.Validation.Definitions
+  ( ValidDefinitions )
 import FIR.Validation.Images
   ( LookupImageProperties
   , ValidImageRead, ValidImageWrite
@@ -192,7 +194,7 @@ import Math.Algebra.Class
   , Convert(..), Rounding(..)
   )
 import Math.Linear
-  ( Semimodule(..), Module(..)
+  ( Semimodule(..), LinearModule(..)
   , Inner(..), Cross(..)
   , Matrix(..), VectorOf
   , V, M
@@ -254,7 +256,7 @@ while :: ( GHC.Stack.HasCallStack
          , b ~ (AST Bool := i)
          , r ~ (AST () := i)
          )
-      => Codensity AST b (i :: ASTState)
+      => Codensity AST b (i :: ProgramState)
       -> Codensity AST l i'
       -> Codensity AST r i''
 while = fromAST While
@@ -305,10 +307,10 @@ instance {-# OVERLAPPABLE #-} ( j ~ i ) => HasUndefined (Codensity AST (a := j) 
 -- *@a@: type of definition,
 -- *@i@: state at start of definition (usually inferred).
 def :: forall
-         ( k  :: Symbol      )
-         ( ps :: Permissions )
-         ( a  :: Type        )
-         ( i  :: ASTState    )
+         ( k  :: Symbol       )
+         ( ps :: Permissions  )
+         ( a  :: Type         )
+         ( i  :: ProgramState )
     .  ( GHC.Stack.HasCallStack
        , KnownSymbol k
        , Known Permissions ps
@@ -330,12 +332,12 @@ def = fromAST ( Def @k @ps @a @i Proxy Proxy )
 -- * @i@: monadic state at start of function body (usually inferred),
 -- * @r@: function type itself, result of 'fundef' (usually inferred).
 fundef :: forall
-            ( name  :: Symbol      )
-            ( as    :: BindingsMap )
-            ( b     :: Type        )
-            ( j_bds :: BindingsMap )
-            ( i     :: ASTState    )
-            ( r     :: Type        )
+            ( name  :: Symbol       )
+            ( as    :: BindingsMap  )
+            ( b     :: Type         )
+            ( j_bds :: BindingsMap  )
+            ( i     :: ProgramState )
+            ( r     :: Type         )
        .   ( GHC.Stack.HasCallStack
            , Syntactic r
            , Internal r ~ FunctionType as b
@@ -370,9 +372,9 @@ entryPoint :: forall
                ( name      :: Symbol )
                ( stage     :: SPIRV.ExecutionModel          )
                ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
-               ( j_bds     :: BindingsMap )
-               ( j_iface   :: TLInterface )
-               ( i         :: ASTState    )
+               ( j_bds     :: BindingsMap  )
+               ( j_iface   :: TLInterface  )
+               ( i         :: ProgramState )
              .
              ( GHC.Stack.HasCallStack
              , KnownSymbol name
@@ -412,29 +414,29 @@ shader :: forall
             ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
             ( j_bds     :: BindingsMap                   )
             ( j_iface   :: TLInterface                   )
-            ( funs      :: [Symbol :-> FunctionInfo]     )
-            ( eps       :: [ EntryPointInfo ]            )
-            ( i         :: ASTState                      )
+            ( funs      :: [Symbol :-> FunctionInfo   ]  )
+            ( eps       :: [Symbol :-> EntryPointInfo ]  )
+            ( i         :: ProgramState                  )
        . ( GHC.Stack.HasCallStack
          , KnownDefinitions defs
-         , DefinitionFunctions   defs ~ funs
-         , DefinitionEntryPoints defs ~ eps
+         , ValidDefinitions defs
+         , GetExecutionInfo name stage i ~ stageInfo
          , funs ~ '[ ]
-         , eps ~ '[ 'EntryPointInfo name stageInfo '( '[], '[]) 'Declared ]
-         , i ~ 'ASTState (StartBindings defs) 'TopLevel funs eps
+         , i ~ 'ProgramState (StartBindings defs) 'TopLevel funs eps
+         , i ~ StartState defs
          , KnownSymbol name
          , stage ~ 'SPIRV.Stage ('SPIRV.ShaderStage shader)
          , Known SPIRV.Shader shader
          , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
          , EndBindings defs ~ StartBindings defs
-         , ValidEntryPoint name stageInfo ('ASTState (EndBindings defs) 'TopLevel funs eps) j_bds
+         , ValidEntryPoint name stageInfo ('ProgramState (EndBindings defs) 'TopLevel funs eps) j_bds
          )
        => Codensity AST
           ( AST () := EntryPointEndState name stageInfo j_bds j_iface i )
           ( EntryPointStartState name stageInfo i )
-       -> ShaderStage name shader defs (SetInterface name stageInfo j_iface i)
+       -> ShaderModule name shader defs (SetInterface name stageInfo j_iface i)
 shader
-  = ShaderStage
+  = ShaderModule
   . entryPoint @name @stage
 
 -- Optics.
@@ -471,7 +473,7 @@ assign = fromAST ( Assign @optic sLength opticSing )
 -- Like @get@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @use \@(Name k)@.
-get :: forall (k :: Symbol) (a :: Type) (i :: ASTState).
+get :: forall (k :: Symbol) (a :: Type) (i :: ProgramState).
        ( KnownSymbol k
        , Gettable (Name k :: Optic '[] i a)
        , a ~ Has k i
@@ -483,7 +485,7 @@ get = use @(Name k :: Optic '[] i a)
 -- Like @put@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @assign \@(Name k)@.
-put :: forall (k :: Symbol) (a :: Type) (i :: ASTState).
+put :: forall (k :: Symbol) (a :: Type) (i :: ProgramState).
        ( KnownSymbol k
        , Settable (Name k :: Optic '[] i a)
        , a ~ Has k i
@@ -495,7 +497,7 @@ put = assign @(Name k :: Optic '[] i a)
 -- | Like @modify@ for state monads, except a binding name needs to be specified with a type application.
 --
 -- Synonym for @modifying \@(Name k)@.
-modify :: forall (k :: Symbol) (a :: Type) (i :: ASTState).
+modify :: forall (k :: Symbol) (a :: Type) (i :: ProgramState).
           ( KnownSymbol k
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)
@@ -520,7 +522,7 @@ modify = modifying @(Name k :: Optic '[] i a)
 imageRead :: forall
               ( imgName :: Symbol          )
               ( props   :: ImageProperties )
-              ( i       :: ASTState        )
+              ( i       :: ProgramState    )
             .
             ( KnownSymbol imgName
             , Gettable
@@ -558,7 +560,7 @@ imageRead = use
 imageWrite :: forall
                 ( imgName :: Symbol          )
                 ( props   :: ImageProperties )
-                ( i       :: ASTState        )
+                ( i       :: ProgramState    )
              .
              ( KnownSymbol imgName
              , Gettable
@@ -588,13 +590,13 @@ imageWrite = assign
 -- geometry shader primitive instructions
 
 -- | Geometry shader: write the current output values at the current vertex index.
-emitVertex :: forall (i :: ASTState).
+emitVertex :: forall (i :: ProgramState).
               ( ExecutionContext i ~ Just SPIRV.Geometry )
            => Codensity AST ( AST () := i ) i
 emitVertex = primOp @i @SPIRV.EmitGeometryVertex
 
 -- | Geometry shader: end the current primitive and pass to the next one.
-endPrimitive :: forall (i :: ASTState).
+endPrimitive :: forall (i :: ProgramState).
                 ( ExecutionContext i ~ Just SPIRV.Geometry )
              =>  Codensity AST ( AST () := i ) i
 endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
@@ -603,10 +605,10 @@ endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
 -- type synonyms for use/assign
 
 type family ListVariadicCod
-              ( is :: [Type]   )
-              ( s  :: ASTState )
-              ( a  :: Type     )
-            = ( r  :: Type     )
+              ( is :: [Type] )
+              ( s  :: ProgramState )
+              ( a  :: Type  )
+            = ( r  :: Type  )
             | r -> is s a where
   ListVariadicCod '[]         s a = Codensity AST (AST a := s) s
   ListVariadicCod ( i ': is ) s a = AST i -> ListVariadicCod is s a
@@ -623,10 +625,10 @@ type CodAssigner (optic :: Optic is s a) = ListVariadicCod (is `Postpend` a) s (
 -- modifying
 
 type family VariadicCodModifier
-              ( is :: [Type]  )
-              ( s  :: ASTState )
-              ( a  :: Type    )
-            = ( r  :: Type    )
+              ( is :: [Type] )
+              ( s  :: ProgramState )
+              ( a  :: Type )
+            = ( r  :: Type )
             | r -> is s a
             where
   VariadicCodModifier '[]       s a = (AST a -> AST a) -> Codensity AST (AST () := s) s
@@ -844,7 +846,7 @@ instance ( ScalarTy a, ScalarTy b, Rounding '(AST a, AST b)
 -- $vectors
 -- Instances for:
 --
--- 'Semimodule', 'Module', 'Inner', 'Cross'.
+-- 'Semimodule', 'LinearModule', 'Inner', 'Cross'.
 instance (ScalarTy a, Semiring a, j ~ i) => Semimodule Nat (Codensity AST (AST (V 0 a) := j) i) where
   type Scalar   (Codensity AST (AST (V 0 a) := j) i)       = Codensity AST (AST      a  := j) i
   type OfDim    (Codensity AST (AST (V 0 a) := j) i) Nat n = Codensity AST (AST (V n a) := j) i
@@ -853,7 +855,7 @@ instance (ScalarTy a, Semiring a, j ~ i) => Semimodule Nat (Codensity AST (AST (
   (^+^) = ixLiftA2 (^+^)
   (^*)  = ixLiftA2 (^*)
 
-instance (ScalarTy a, Ring a, j ~ i) => Module Nat (Codensity AST (AST (V 0 a) := j) i) where
+instance (ScalarTy a, Ring a, j ~ i) => LinearModule Nat (Codensity AST (AST (V 0 a) := j) i) where
   (^-^) = ixLiftA2 (^-^)
 
 instance (ScalarTy a, Floating a, j ~ i) => Inner Nat (Codensity AST (AST (V 0 a) := j) i) where

@@ -19,15 +19,15 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "mvp1"    ':-> Input      '[] (M 3 3 Float)
-             , "mvp2"    ':-> Input      '[] (M 3 3 Float)
-             , "in_pos"  ':-> Input      '[] (V 3 Float)
-             , "out_pos" ':-> Output     '[] (V 3 Float)
+type Defs = '[ "mvp1"    ':-> Input      '[Location 1] (M 3 3 Float)
+             , "mvp2"    ':-> Input      '[Location 5] (M 3 3 Float)
+             , "in_pos"  ':-> Input      '[Location 0] (V 3 Float)
+             , "out_pos" ':-> Output     '[Location 0] (V 3 Float)
              , "main"    ':-> EntryPoint '[] Vertex
              ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   entryPoint @"main" @Vertex do
 

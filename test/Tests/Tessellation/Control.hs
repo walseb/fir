@@ -22,14 +22,14 @@ import Math.Linear
 type TessellationControlDefs =
   '[ "in_col"   ':-> Input  '[ Location 0 ] (Array 3 (V 4 Float))
    , "out_col"  ':-> Output '[ Location 0 ] (Array 3 (V 4 Float))
-   , "patchOut" ':-> Output '[ Location 1, Patch ]
+   , "patchOut" ':-> Output '[ Patch ]
                           ( Struct '[ "center" ':-> V 4 Float ] )
    , "main"    ':-> EntryPoint '[ SpacingEqual, VertexOrderCw, OutputVertices 3 ]
                       TessellationControl
    ]
 
-program :: Program TessellationControlDefs ()
-program = Program $ entryPoint @"main" @TessellationControl do
+program :: Module TessellationControlDefs ()
+program = Module $ entryPoint @"main" @TessellationControl do
   
   i <- get @"gl_InvocationID"
   in_pos <- use @(Name "gl_in" :.: AnIndex Word32 :.: Name "gl_Position") i

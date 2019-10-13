@@ -1,34 +1,46 @@
 
-test\Tests\VertexInput\InvalidDoubleComponent.hs:55:5: error:
-    * Vertex binding: cannot position scalar of type Double
+test\Tests\VertexInput\InvalidDoubleComponent.hs:37:10: error:
+    * Input/output: cannot position scalar of type Double
+       at location 1 with component 1.
+    * In the expression: shader do put @"out" =<< get @"in"
+      In an equation for `vertex':
+          vertex = shader do put @"out" =<< get @"in"
+   |
+37 | vertex = shader do
+   |          ^^^^^^^^^^...
+
+test\Tests\VertexInput\InvalidDoubleComponent.hs:58:5: error:
+    * Input/output: cannot position scalar of type Double
        at location 1 with component 1.
     * In the expression:
-        withStructInput @VertexInput @(Triangle List)
-          $ StartPipeline :>-> (vertex, "vertex.spv")
+        ShaderPipeline
+          $ StructInput @VertexInput @(Triangle List)
+              :>-> (vertex, "vertex.spv")
               :>-> (fragment, "fragment.spv")
       In an equation for `shaderPipeline':
           shaderPipeline
-            = withStructInput @VertexInput @(Triangle List)
-                $ StartPipeline :>-> (vertex, "vertex.spv")
+            = ShaderPipeline
+                $ StructInput @VertexInput @(Triangle List)
+                    :>-> (vertex, "vertex.spv")
                     :>-> (fragment, "fragment.spv")
    |
-55 |   = withStructInput @VertexInput @(Triangle List)
+58 |   = ShaderPipeline
+   |     ^^^^^^^^^^^^^^^...
 
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
-
-test\Tests\VertexInput\InvalidDoubleComponent.hs:55:5: error:
-    * Vertex binding: cannot position scalar of type Double
+test\Tests\VertexInput\InvalidDoubleComponent.hs:58:5: error:
+    * Input/output: cannot position scalar of type Double
        at location 1 with component 1.
     * In the expression:
-        withStructInput @VertexInput @(Triangle List)
-          $ StartPipeline :>-> (vertex, "vertex.spv")
+        ShaderPipeline
+          $ StructInput @VertexInput @(Triangle List)
+              :>-> (vertex, "vertex.spv")
               :>-> (fragment, "fragment.spv")
       In an equation for `shaderPipeline':
           shaderPipeline
-            = withStructInput @VertexInput @(Triangle List)
-                $ StartPipeline :>-> (vertex, "vertex.spv")
+            = ShaderPipeline
+                $ StructInput @VertexInput @(Triangle List)
+                    :>-> (vertex, "vertex.spv")
                     :>-> (fragment, "fragment.spv")
    |
-55 |   = withStructInput @VertexInput @(Triangle List)
-
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
+58 |   = ShaderPipeline
+   |     ^^^^^^^^^^^^^^^...

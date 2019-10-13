@@ -13,12 +13,12 @@
 {-# LANGUAGE UndecidableInstances  #-}
 
 {-|
-Module: FIR.ASTState
+Module: FIR.ProgramState
 
 State for the indexed monad used to construct programs.
 -}
 
-module FIR.ASTState where
+module FIR.ProgramState where
 
 -- base
 import Data.Kind
@@ -67,7 +67,7 @@ data FunctionContext lit nat bindings mbIface where
     -> FunctionContext lit nat bindings mbIface
 
 deriving stock instance ( Show lit, Show bindings, Show nat, Show mbIface )
-                      => Show ( FunctionContext lit nat bindings mbIface )
+                     => Show ( FunctionContext lit nat bindings mbIface )
 
 
 type InterfaceVariable nat ty = ( [SPIRV.Decoration nat], ty )
@@ -117,7 +117,6 @@ instance ( KnownVars args
             ( knownVars  @args   )
 instance ( Known (SPIRV.ExecutionInfo Nat stage) stageInfo
          , KnownSymbol stageName
-       --  , KnownInterface iface
          )
       => Known TLFunctionContext
             ( 'InEntryPoint
@@ -128,7 +127,7 @@ instance ( Known (SPIRV.ExecutionInfo Nat stage) stageInfo
   known = InEntryPoint
             ( knownValue     @stageName )
             ( knownValue     @stageInfo )
-            Nothing -- TODO:  ( knownInterface @iface     )
+            Nothing
 
 data Definedness
   = Declared
@@ -151,8 +150,7 @@ data FunctionInfo where
 --     (or Nothing if the interface has not yet been computed).
 data EntryPointInfo where
   EntryPointInfo
-    :: Symbol
-    -> SPIRV.ExecutionInfo Nat stage
+    :: SPIRV.ExecutionInfo Nat stage
     -> TLInterface
     -> Definedness
     -> EntryPointInfo
@@ -172,25 +170,25 @@ data EntryPointInfo where
 --    whether they have been declared yet, together with
 --    some additional info pertaining to their respective execution modes,
 --    and their interfaces (user defined inputs/outputs).
-data ASTState
-  = ASTState
+data ProgramState
+  = ProgramState
       { bindings    :: BindingsMap
       , context     :: TLFunctionContext
       , functions   :: Map Symbol FunctionInfo
-      , entryPoints :: [ EntryPointInfo ]
+      , entryPoints :: Map Symbol EntryPointInfo
       }
 
-type family Bindings ( s :: ASTState) :: BindingsMap where
-  Bindings ('ASTState bds _ _ _) = bds
+type family Bindings ( s :: ProgramState) :: BindingsMap where
+  Bindings ('ProgramState bds _ _ _) = bds
 
-type family FunctionInfos ( s :: ASTState ) :: Map Symbol FunctionInfo where
-  FunctionInfos ('ASTState _ _ fs _ ) = fs
+type family FunctionInfos ( s :: ProgramState ) :: Map Symbol FunctionInfo where
+  FunctionInfos ('ProgramState _ _ fs _ ) = fs
 
-type family EntryPointInfos ( s :: ASTState ) :: [ EntryPointInfo ] where
-  EntryPointInfos ('ASTState _ _ _ eps) = eps
+type family EntryPointInfos ( s :: ProgramState ) :: Map Symbol EntryPointInfo where
+  EntryPointInfos ('ProgramState _ _ _ eps) = eps
 
-type family ExecutionContext ( s :: ASTState ) :: Maybe SPIRV.ExecutionModel where
-  ExecutionContext ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
+type family ExecutionContext ( s :: ProgramState ) :: Maybe SPIRV.ExecutionModel where
+  ExecutionContext ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
     = Just stage
   ExecutionContext _
     = Nothing
@@ -199,17 +197,17 @@ executionContext :: VLFunctionContext -> Maybe (ShortText, SPIRV.ExecutionModel)
 executionContext (InEntryPoint stageName stageInfo _) = Just (stageName, SPIRV.modelOf stageInfo)
 executionContext _ = Nothing
 
-type family ExecutionContext' ( s :: ASTState ) :: SPIRV.ExecutionModel where
-  ExecutionContext' ('ASTState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
+type family ExecutionContext' ( s :: ProgramState ) :: SPIRV.ExecutionModel where
+  ExecutionContext' ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
     = stage
   ExecutionContext' _
     = TypeError
         ( Text "Cannot access stage context: not within a stage." )
 
 type family ExecutionInfoContext
-                ( s :: ASTState )
+                ( s :: ProgramState )
               :: Maybe (SPIRV.ExecutionInfo Nat (ExecutionContext' s))
                 where
-  ExecutionInfoContext ('ASTState _ ('InEntryPoint _ info _) _ _)
+  ExecutionInfoContext ('ProgramState _ ('InEntryPoint _ info _) _ _)
     = Just info
   ExecutionInfoContext _ = 'Nothing

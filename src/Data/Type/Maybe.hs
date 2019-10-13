@@ -3,7 +3,9 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module Data.Type.Maybe
-  ( FromMaybe, FromJust, IsJust, IsNothing )
+  ( FromMaybe, FromJust, IsJust, IsNothing
+  , SequenceMaybe
+  )
   where
 
 -- base
@@ -27,3 +29,7 @@ type family IsJust (x :: Maybe k) :: Bool where
 type family IsNothing (x :: Maybe k) :: Bool where
   IsNothing Nothing   = True
   IsNothing (Just _ ) = False
+
+type family SequenceMaybe (m :: Maybe [a]) :: [a] where
+  SequenceMaybe Nothing   = '[]
+  SequenceMaybe (Just as) = as

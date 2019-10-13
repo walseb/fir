@@ -24,7 +24,7 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "ubo" ':-> Uniform '[]
+  = '[ "ubo" ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
           ( Struct
             [ "modelMatrix"      ':-> M 4 4 Float
             , "viewMatrix"       ':-> M 4 4 Float
@@ -32,7 +32,7 @@ type Defs
             ]
           )
      , "vertexData" ':->
-          Input '[]
+          Uniform '[ Binding 1, DescriptorSet 0 ]
             ( Struct
               [ "position" ':-> V 3 Float
               , "colour"   ':-> V 4 Float
@@ -41,18 +41,16 @@ type Defs
               ]
             )
      , "arr1" ':->
-          Input '[]
+          Uniform '[ Binding 2, DescriptorSet 0 ]
             ( Array 12
-              ( Array 32
                   ( Struct
                       [ "label1" ':-> V 3 Float
                       , "label2" ':-> Array 3 Float
                       ]
                   )
-              )
             )
      , "arr2" ':->
-          Uniform '[]
+          Uniform '[ Binding 3, DescriptorSet 0 ]
             ( Struct
               [ "x1" ':-> V 4 Float
               , "x2" ':-> Float
@@ -60,11 +58,11 @@ type Defs
               ]
             )
      , "main" ':-> EntryPoint '[] Vertex
-     , "out_col" ':-> Output '[] ( V 4 Float )
+     , "out_col" ':-> Output '[Location 0] ( V 4 Float )
      ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   entryPoint @"main" @Vertex do
 
@@ -77,7 +75,7 @@ program = Program do
     let vertexDataColour = view @(Name "colour") vertexData
     row <- use @( Name "ubo" :.: Name "modelMatrix" :.: Row 2 )
     diagonal <- use @(Name "ubo" :.: Name "modelMatrix" :.: Diag )
-    lensTest <- use @(Name "arr1" :.: Index 3 :.: AnIndex Word32 :.: Index 0 :.: Index 2) 7
+    lensTest <- use @(Name "arr1" :.: AnIndex Word32 :.: Index 0 :.: Index 2) 7
     rtTest1 <- use @(Name "arr2" :.: Name "rt" :.: AnIndex Word32) 6
     rtTest2 <- use @(Name "arr2" :.: Name "rt" :.: Index 6)
 

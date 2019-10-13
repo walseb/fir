@@ -29,7 +29,7 @@ in the way of getter/setter instances for types of the form @AST a@.
 
 For instance:
 
-> geometry = Program $ entrypoint @"main" @Geometry do
+> geometry = Module $ entrypoint @"main" @Geometry do
 >   gl_in <- use @(Name "gl_in") -- geometry shader built-in input (structure array)
 >   let pos0 = view @(Index 0 :.: Name "gl_Position") gl_in
 >   ...
@@ -108,8 +108,6 @@ import qualified FIR.Validation.Bindings as Binding
   ( Has, CanGet, CanPut )
 import FIR.Validation.Images
   ( LookupImageProperties )
-import FIR.ASTState
-  ( ASTState )
 import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
 import FIR.Prim.Image
@@ -124,6 +122,8 @@ import FIR.Prim.Singletons
   , SPrimTy(SStruct)
   , HasField(fieldIndex)
   )
+import FIR.ProgramState
+  ( ProgramState )
 import FIR.Prim.Struct
   ( Struct((:&), End) )
 import Math.Linear
@@ -146,7 +146,7 @@ data SOptic (optic :: Optic i s a) :: Type where
   -- as we convert 'Name' optics to 'Index' optics behind the scenes
   SBinding  :: KnownSymbol k
             => Proxy k
-            -> SOptic (Name k :: Optic '[] (as :: ASTState) b)
+            -> SOptic (Name k :: Optic '[] (as :: ProgramState) b)
   SImageTexel :: ( KnownSymbol k
                  , Known ImageProperties props
                  )
@@ -260,7 +260,7 @@ instance ( KnownSymbol k
          , empty ~ '[]
          , a ~ Binding.Has k bds
          )
-      => KnownOptic (Field_ (k :: Symbol) :: Optic empty (bds :: ASTState) a)
+      => KnownOptic (Field_ (k :: Symbol) :: Optic empty (bds :: ProgramState) a)
       where
   opticSing = SBinding (Proxy @k)
 instance forall is js ks (s :: Type) a b (o1 :: Optic is s a) (o2 :: Optic js a b).
@@ -273,7 +273,7 @@ instance forall is js ks (s :: Type) a b (o1 :: Optic is s a) (o2 :: Optic js a 
          )
        => KnownOptic ((o1 `ComposeO` o2) :: Optic ks s b) where
   opticSing = (opticSing @o1) %:.: (opticSing @o2)
-instance forall k is js ks (s :: ASTState) x a b
+instance forall k is js ks (s :: ProgramState) x a b
                 (o1 :: Optic is s x) (o2 :: Optic js x b) (o :: Optic ks a b)
                 .
          ( KnownSymbol k
@@ -337,7 +337,7 @@ instance ( ValidAnIndexOptic is s a, is ~ '[ix], IntegralTy ix, PrimTy s, PrimTy
 instance {-# OVERLAPPING #-}
          forall
            ( k       :: Symbol          )
-           ( i       :: ASTState        )
+           ( i       :: ProgramState    )
            ( props   :: ImageProperties )
            ( ops     :: [OperandName]   )
            ( empty   :: [Type]          )
@@ -381,7 +381,7 @@ type family ValidAnIndexOptic (is :: [Type]) (s :: Type) (a :: Type) :: Constrai
 -- by requiring that the part focused onto by the outer optic
 -- is as dictated by the state.
 
-instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a b).
+instance forall (k :: Symbol) (i :: ProgramState) empty js ks a b (o2 :: Optic js a b).
          ( KnownSymbol k
          , Gettable o2
          , empty ~ '[]
@@ -390,7 +390,7 @@ instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a 
          , Binding.CanGet k i
          ) => Gettable ( ((Field_ (k :: Symbol) :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
-instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a b).
+instance forall (k :: Symbol) (i :: ProgramState) empty js ks a b (o2 :: Optic js a b).
          ( KnownSymbol k
          , Settable o2
          , empty ~ '[]
@@ -402,14 +402,14 @@ instance forall (k :: Symbol) (i :: ASTState) empty js ks a b (o2 :: Optic js a 
 
 ----------------------------------------------------------------------
 
-type StatefulOptic (optic :: Optic is (s :: ASTState) a) = ( () :: Constraint )
+type StatefulOptic (optic :: Optic is (s :: ProgramState) a) = ( () :: Constraint )
 -- to distinguish from (optic :: Optic is (s :: Type) a)
 
 type family ListVariadicIx
-              ( as :: [Type]   )
-              ( i  :: ASTState )
-              ( b  :: Type     )
-            = ( r  :: Type     )
+              ( as :: [Type] )
+              ( i  :: ProgramState )
+              ( b  :: Type  )
+            = ( r  :: Type  )
             | r -> as i b  where
   ListVariadicIx '[]       i b = (b := i) i
   ListVariadicIx (a ': as) i b = a -> ListVariadicIx as i b
@@ -426,7 +426,7 @@ instance ( KnownSymbol k
          , Binding.CanGet k i
          , empty ~ '[]
          )
-      => Gettable (Field_ (k :: Symbol) :: Optic empty (i :: ASTState) r) where
+      => Gettable (Field_ (k :: Symbol) :: Optic empty (i :: ProgramState) r) where
 
 
 instance
@@ -745,7 +745,7 @@ instance ( KnownSymbol k
          , Binding.CanPut k i
          , empty ~ '[]
          )
-      => Settable (Field_ (k :: Symbol) :: Optic empty (i :: ASTState) r ) where
+      => Settable (Field_ (k :: Symbol) :: Optic empty (i :: ProgramState) r ) where
 
   
 

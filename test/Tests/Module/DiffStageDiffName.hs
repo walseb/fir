@@ -22,8 +22,8 @@ type Defs =
    , "frag" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
   entryPoint @"vert" @Vertex   do
     put @"out" =<< get @"in"
   entryPoint @"frag" @Fragment do

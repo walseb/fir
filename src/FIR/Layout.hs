@@ -187,7 +187,7 @@ import FIR.Prim.Struct
   , StructFieldKind(fieldKind)
   )
 import FIR.Validation.Layout
-  ( NbLocationsUsed, NoOverlappingSlots )
+  ( NbLocationsUsed, ValidLayout )
 import Math.Linear
   ( V, M(unM) )
 import qualified SPIRV.Decoration as SPIRV
@@ -234,7 +234,7 @@ type family NextAlignedWithRemainder
             :: Nat
             where
   NextAlignedWithRemainder size _   0   = size
-  NextAlignedWithRemainder size ali rem = size + ali - rem
+  NextAlignedWithRemainder size ali rem = size + (ali - rem)
 
 type family SumRoundedUpSizes (lay :: Layout) (ali :: Nat) (as :: [fld :-> Type]) :: Nat where
   SumRoundedUpSizes _   _   '[]                    = 0
@@ -494,7 +494,7 @@ data PokeSlotsDict (as :: [LocationSlot Nat :-> Type]) :: Type where
   PokeSlotDict :: ( Poke a Locations
                   , Known (LocationSlot Nat) slot
                   , PokeSlots as
-                  , NoOverlappingSlots as
+                  , ValidLayout as
                   , KnownNat (SizeOf    Locations (Struct as))
                   , KnownNat (Alignment Locations (Struct as))
                   )
@@ -507,7 +507,7 @@ instance PokeSlots '[] where
 instance ( Poke a Locations
          , Known (LocationSlot Nat) loc
          , PokeSlots as
-         , NoOverlappingSlots as
+         , ValidLayout as
          , KnownNat (SizeOf    Locations (Struct as))
          , KnownNat (Alignment Locations (Struct as))
          )
@@ -518,7 +518,7 @@ instance ( Poke a Locations
 instance forall (as :: [LocationSlot Nat :-> Type])
        . ( PrimTyMap as
          , PokeSlots as
-         , NoOverlappingSlots as
+         , ValidLayout as
          , KnownNat (SizeOf Locations (Struct as))
          , KnownNat (Alignment Locations (Struct as))
          ) => Poke (Struct as) Locations where

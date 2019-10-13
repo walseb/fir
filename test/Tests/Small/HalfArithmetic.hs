@@ -25,9 +25,9 @@ type Defs
       , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment
       ]
 
-program :: Program Defs ()
+program :: Module Defs ()
 program =
-  Program $ entryPoint @"main" @Fragment do
+  Module $ entryPoint @"main" @Fragment do
     def @"h" @R @Half (5 * pi / 4)
     h <- get @"h"
     if abs (cos h) > sqrt 2

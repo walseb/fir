@@ -82,7 +82,7 @@ Type class overloading allows for simple construction of values of this type, e.
 ```haskell
 ( \ t -> exp ( - tan t ** 2 ) / ( cos t ** 4 ) ) :: AST Float -> AST Float
 ```
-* __`Program defs a`__: a program that can be compiled to SPIR-V. `defs` is a type-level map which specifies the program inputs/outputs, top-level functions and entry-points; this is the mechanism by which the user specifies shader interfaces and execution modes.
+* __`Module defs a`__: a program that can be compiled to a SPIR-V module. `defs` is a type-level map which specifies the program inputs/outputs, top-level functions and entry-points; this is the mechanism by which the user specifies shader interfaces and execution modes.
 * __`Codensity AST (AST a := j) i`__: an *indexed* monadic expression, starting in state `i` and ending in state `j`. Can be thought of as stateful GPU code producing a value of type `a`. The additional type-level information (the indices) allows the library to enforce program correctness.
 
 Shaders are written using __do__ notation, using this indexed monad (with *RebindableSyntax*).
@@ -107,8 +107,8 @@ type VertexShaderDefs =
    , "main"   ':-> EntryPoint '[] Vertex
    ]
 
-vertexShader :: Program VertexShaderDefs ()
-vertexShader = Program $ entryPoint @"main" @Vertex do
+vertexShader :: Module VertexShaderDefs ()
+vertexShader = Module $ entryPoint @"main" @Vertex do
   mvp <- use @(Name "ubo" :.: Name "mvp") -- (:.:) denotes composition of type-level lenses
   in_pos <- get @"in_pos"
   put @"gl_Position" (mvp !*^ in_pos) -- (!*^) means "matrix times vector"
@@ -121,7 +121,7 @@ The type-level map `VertexShaderDefs` provides the interface for the vertex shad
 
 To compile a shader, use the `compile` function:
 ```haskell
-compile :: FilePath -> [CompilerFlag] -> Program defs a -> IO ( Either ShortText ModuleRequirements )
+compile :: FilePath -> [CompilerFlag] -> Module defs a -> IO ( Either ShortText ModuleRequirements )
 ```
 To compile the above vertex shader, we can run the function
 ```haskell
@@ -321,7 +321,7 @@ type VertexDefs =
                           ( Struct '[ "mvp" ':-> M 4 4 Float ] )
    , "main"        ':-> EntryPoint '[] Vertex
    ]
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
   ~(Vec3 x y z) <- get @"in_position"
   mvp <- use @(Name "ubo" :.: Name "mvp")
@@ -333,15 +333,15 @@ type FragmentDefs =
    , "out_colour" ':-> Output     '[ Location 0 ] (V 4 Float)
    , "main"       ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
   put @"out_colour" =<< get @"in_colour"
 
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  , "shaders/vert.spv")
   :>-> (fragment, "shaders/frag.spv")
 ```

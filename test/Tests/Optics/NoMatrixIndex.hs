@@ -24,12 +24,12 @@ import Math.Linear
 -- program
 
 type Defs
-  = '[ "vertexData" ':-> Input '[] ( M 3 4 Float )
+  = '[ "vertexData" ':-> Input '[ Location 0 ] ( M 3 4 Float )
      , "main"       ':-> EntryPoint '[] Vertex
      ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   entryPoint @"main" @Vertex do
 

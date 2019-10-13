@@ -30,8 +30,8 @@ type TessellationEvaluationDefs =
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
-program :: Program TessellationEvaluationDefs ()
-program = Program $ entryPoint @"main" @TessellationEvaluation do
+program :: Module TessellationEvaluationDefs ()
+program = Module $ entryPoint @"main" @TessellationEvaluation do
   ~(Vec3 u v w) <- get @"gl_TessCoord"
   
   in_cols <- get @"in_cols"

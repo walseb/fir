@@ -49,7 +49,7 @@ data AggregateUsage
   = ForInputBuiltins
   | ForOutputBuiltins
   | NotForBuiltins
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 data PrimTy where
   Unit    :: PrimTy -- known as Void in the SPIR-V specification
@@ -89,14 +89,14 @@ data PrimTy where
   Image        :: Image -> PrimTy
   Sampler      ::          PrimTy -- opaque
   SampledImage :: Image -> PrimTy
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 -- newtype to deal with types that are known to be pointers,
 -- to avoid spurious error handling in code that deals with pointers
 --
 -- (newtype constructor not exported; pattern synonym instead)
 newtype PointerTy = PtrTy { pointerTy :: PrimTy }
-  deriving newtype ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 {-# COMPLETE PointerTy #-}
 pattern PointerTy :: StorageClass -> PrimTy -> PointerTy
 pattern PointerTy storage ty = PtrTy (Pointer storage ty)

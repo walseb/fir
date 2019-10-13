@@ -71,7 +71,7 @@ import Data.Containers.Traversals
   ( traverseWithKey_ )
 import FIR.Binding
   ( Permissions )
-import FIR.ASTState
+import FIR.ProgramState
   ( FunctionContext(..)
   , VLFunctionContext
   , VLInterface

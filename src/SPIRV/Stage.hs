@@ -56,13 +56,13 @@ import Data.Type.Ord
 data ExecutionModel
   = Stage Stage
   | Kernel -- OpenCL compute kernel
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 data Stage
   = ShaderStage Shader
   | MeshStage   MeshShader
   | RayStage    RayShader
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 data Shader
   = VertexShader
@@ -71,13 +71,13 @@ data Shader
   | GeometryShader
   | FragmentShader
   | ComputeShader -- GLCompute in SPIR-V
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
   deriving Put via (PutWord32Enum Shader)
 
 data MeshShader
   = TaskShader
   | MeshShader
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 instance Put MeshShader where
   put = put @Word32 . (+5267) . fromIntegral . fromEnum
@@ -90,7 +90,7 @@ data RayShader
   | ClosestHitShader
   | MissShader
   | CallableShader
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 instance Put RayShader where
   put = put @Word32 . (+5313) . fromIntegral . fromEnum
@@ -266,7 +266,7 @@ data TessellationMode
   | ModeQuads
   | ModeIsolines
   | ModePoints
-  deriving (Show, Eq, Ord, Enum, Bounded)
+  deriving stock (Show, Eq, Ord, Enum, Bounded)
 
 type family ShowTessellationMode (mode :: TessellationMode) :: Symbol where
   ShowTessellationMode ModeTriangles = "Triangles"
@@ -280,7 +280,7 @@ data GeometryInputMode
   | InputModeLinesAdjacency
   | InputModeTriangles
   | InputModeTrianglesAdjacency
-  deriving (Show, Eq, Ord, Enum, Bounded)
+  deriving stock (Show, Eq, Ord, Enum, Bounded)
 
 type family ShowGeometryInputMode (mode :: GeometryInputMode) :: Symbol where
   ShowGeometryInputMode InputModePoints
@@ -342,9 +342,9 @@ data ShaderInfo (n :: Type) (s :: Shader) where
     :: (n,n,n) -- shader local size
     -> ShaderInfo n ComputeShader
 
-deriving instance Show n => Show (ShaderInfo n s)
-deriving instance Eq   n => Eq   (ShaderInfo n s)
-deriving instance Ord  n => Ord  (ShaderInfo n s)
+deriving stock instance Show n => Show (ShaderInfo n s)
+deriving stock instance Eq   n => Eq   (ShaderInfo n s)
+deriving stock instance Ord  n => Ord  (ShaderInfo n s)
 
 data ExecutionInfo (n :: Type) (em :: ExecutionModel) where
   ShaderExecutionInfo :: ShaderInfo n s -> ExecutionInfo n ('Stage ('ShaderStage s))
@@ -357,9 +357,9 @@ type GeometryInfo i m = 'ShaderExecutionInfo ('GeometryShaderInfo i m)
 type FragmentInfo = 'ShaderExecutionInfo 'FragmentShaderInfo
 type ComputeInfo ijk = 'ShaderExecutionInfo ('ComputeShaderInfo ijk)
 
-deriving instance Show n => Show (ExecutionInfo n s)
-deriving instance Eq   n => Eq   (ExecutionInfo n s)
-deriving instance Ord  n => Ord  (ExecutionInfo n s)
+deriving stock instance Show n => Show (ExecutionInfo n s)
+deriving stock instance Eq   n => Eq   (ExecutionInfo n s)
+deriving stock instance Ord  n => Ord  (ExecutionInfo n s)
 
 modelOf :: ExecutionInfo n em -> ExecutionModel
 modelOf (ShaderExecutionInfo VertexShaderInfo)

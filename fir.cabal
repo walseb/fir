@@ -64,15 +64,15 @@ description:
 
       Uses McBride-style indexed monads, see "Control.Monad.Indexed".
 
-  [@Program defs a@]
+  [@Module defs a@]
 
-      A shader program that can be compiled to @SPIR-V@,
+      Code for a program that can be compiled to a @SPIR-V@ module,
       and which returns a value of type @a@; most often @a ~ ()@.
 
       @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc),
       top-level functions, and entry points.
 
-      See "FIR.Program" for the definition, and the example shaders for common usage patterns.
+      See "FIR.Module" for the definition, and the example shaders for common usage patterns.
 
 
   All three of these types can be displayed graphically as a tree, using the 'FIR.ast' function.
@@ -138,7 +138,6 @@ library
       , Data.Type.String
       , Deriving.Base
       , FIR.AST
-      , FIR.ASTState
       , FIR.Binding
       , FIR.Builtin
       , FIR.Definition
@@ -147,19 +146,24 @@ library
       , FIR.Instances.Images
       , FIR.Instances.Optics
       , FIR.Layout
+      , FIR.Module
       , FIR.Pipeline
       , FIR.Prim.Array
       , FIR.Prim.Image
       , FIR.Prim.Singletons
       , FIR.Prim.Struct
       , FIR.Prim.Op
-      , FIR.Program
+      , FIR.ProgramState
       , FIR.Swizzle
       , FIR.Synonyms
       , FIR.Validation.Ambiguity
+      , FIR.Validation.Arrayness
       , FIR.Validation.Bindings
       , FIR.Validation.Definitions
+      , FIR.Validation.ExecutionModes
+      , FIR.Validation.Formats
       , FIR.Validation.Images
+      , FIR.Validation.Interface
       , FIR.Validation.Layout
       , FIR.Validation.Pipeline
       , FIR.Temp

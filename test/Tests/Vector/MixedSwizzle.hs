@@ -23,14 +23,14 @@ import Math.Linear
 
 ---------------------------------------------------------------------------------
 
-type Defs = '[ "in_col"  ':-> Input      '[] (V 4 Float)
-             , "out_col" ':-> Output     '[] (V 4 Float)
+type Defs = '[ "in_col"  ':-> Input      '[Location 0] (V 4 Float)
+             , "out_col" ':-> Output     '[Location 0] (V 4 Float)
              , "main"    ':-> EntryPoint '[OriginUpperLeft] Fragment
              ]
 
 
-program :: Program Defs ()
-program = Program $ entryPoint @"main" @Fragment do
+program :: Module Defs ()
+program = Module $ entryPoint @"main" @Fragment do
 
     col <- use @(Name "in_col" :.: Swizzle "rgxb") -- cannot mix "rgba" and "xyzw"
 

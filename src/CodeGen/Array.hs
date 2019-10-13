@@ -38,8 +38,6 @@ import Math.Logic.Class
   ( Ord((<)) )
 import FIR.AST
   ( AST(Lit), Syntactic(toAST) )
-import FIR.ASTState
-  ( ASTState(..) )
 import FIR.Binding
   ( Var, RW )
 import FIR.Instances.AST
@@ -52,6 +50,8 @@ import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
   ( PrimTy )
+import FIR.ProgramState
+  ( ProgramState(ProgramState) )
 import FIR.Validation.Bindings
   ( Has, CanGet, CanPut
   , ValidDef, AddBinding
@@ -70,7 +70,7 @@ createArray :: forall n arrName ixName a i j ctx funs eps.
              , KnownSymbol ixName
              , KnownSymbol arrName
              , PrimTy a
-             , i ~ ( 'ASTState '[ arrName ':-> Var RW (Array n a) ] ctx funs eps )
+             , i ~ ( 'ProgramState '[ arrName ':-> Var RW (Array n a) ] ctx funs eps )
              , j ~ AddBinding ixName (Var RW Word32) i
              , Has ixName  j ~ Word32
              , Has arrName j ~ Array n a

@@ -132,14 +132,14 @@ import FIR.Instances.AST
   ( )
 import FIR.Instances.Optics
   ( SOptic(..), showSOptic )
-import FIR.ASTState
-  ( FunctionContext(TopLevel) )
 import FIR.Prim.Op
   ( PrimOp(opName) )
 import FIR.Prim.Singletons
   ( primTy
   , KnownVars(knownVars)
   )
+import FIR.ProgramState
+  ( FunctionContext(TopLevel) )
 import qualified SPIRV.Control   as SPIRV
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV

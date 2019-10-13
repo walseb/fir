@@ -18,13 +18,13 @@ import FIR
 ------------------------------------------------
 -- program
 
-type Defs = '[ "arr"  ':-> Input      '[] (Array 256 Float)
-             , "out"  ':-> Output     '[] Float
+type Defs = '[ "arr"  ':-> Input      '[ Location 0 ] (Array 17 Float)
+             , "out"  ':-> Output     '[ Location 0 ] Float
              , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
              ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
 
   entryPoint @"main" @Fragment do
 
@@ -32,8 +32,8 @@ program = Program do
 
     let f :: AST Float -> AST Float -> AST Float
         f x y = x - abs y
-        arr' :: AST (Array 256 Float)
+        arr' :: AST (Array 17 Float)
         arr' = f <$$> arr <**> arr
-        out = view @(Index 0) arr' + view @(Index 127) arr
+        out = view @(Index 0) arr' + view @(Index 6) arr
 
     put @"out" out

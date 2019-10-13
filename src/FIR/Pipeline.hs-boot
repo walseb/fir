@@ -16,19 +16,22 @@ module FIR.Pipeline
   , PrimitiveConnectedness(..)
   , PrimitiveTopology(..)
   , VertexLocationDescriptions
+  , BindingStrides
   )
   where
 
 -- base
 import Data.Kind
   ( Type )
+import GHC.TypeLits
+  ( Symbol )
 import GHC.TypeNats
   ( Nat )
 
 -- fir
 import Data.Type.Map
   ( (:->) )
-import FIR.ASTState
+import FIR.ProgramState
   ( EntryPointInfo )
 import qualified SPIRV.Image as SPIRV
 
@@ -47,10 +50,17 @@ data PrimitiveTopology (n :: Type)
   | Triangle      PrimitiveConnectedness
   | PatchesOfSize n
 
-data PipelineInfo where
-  TopOfPipe :: PipelineInfo
-  Into :: PipelineInfo
-       -> EntryPointInfo
-       -> PipelineInfo
-
 type VertexLocationDescriptions = [ Nat :-> ( Nat, Nat, SPIRV.ImageFormat Nat ) ]
+
+type BindingStrides = [ Nat :-> Nat ]
+
+data PipelineInfo where
+  VertexInputInfo
+    :: PrimitiveTopology Nat
+    -> VertexLocationDescriptions
+    -> BindingStrides
+    -> PipelineInfo
+  Into
+    :: PipelineInfo
+    -> ( Symbol, EntryPointInfo )
+    -> PipelineInfo

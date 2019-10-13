@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
@@ -41,7 +42,7 @@ data Width
   | W16
   | W32
   | W64
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 width :: Width -> Word32
 width W8  = 8
@@ -58,7 +59,7 @@ type family WidthToNat (width :: Width) :: Nat where
 data Signedness
   = Unsigned
   | Signed
-  deriving ( Show, Eq, Ord, Enum, Bounded )
+  deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 instance Demotable Signedness where
   type Demote Signedness = Signedness
@@ -74,7 +75,7 @@ signedness Signed   = 1
 data ScalarTy where
   Integer  :: Signedness -> Width -> ScalarTy
   Floating ::               Width -> ScalarTy
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 scalarWidth :: ScalarTy -> Width
 scalarWidth (Integer _ w) = w

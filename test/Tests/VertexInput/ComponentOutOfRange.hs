@@ -13,6 +13,10 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
+-- test vertex input specifying disallowed component
+-- ( greater than 3 )
+
+------------------------------------------------
 -- pipeline input
 
 type VertexInput
@@ -30,7 +34,7 @@ type VertexDefs =
    , "main" ':-> EntryPoint '[                         ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
   ~(Vec4 x y z _) <- get @"in1"
   w <- get @"in2"
@@ -45,7 +49,7 @@ type FragmentDefs =
    , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     put @"out" =<< get @"in"
 
@@ -54,7 +58,7 @@ fragment = shader do
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  ,   "vertex.spv")
   :>-> (fragment, "fragment.spv")

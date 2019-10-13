@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PolyKinds             #-}
@@ -84,7 +85,7 @@ data Builtin
   | SubgroupLocalInvocationId
   | VertexIndex
   | InstanceIndex
-  deriving ( Show, Eq, Ord )
+  deriving stock ( Show, Eq, Ord )
 
 readBuiltin :: ShortText -> Maybe Builtin
 readBuiltin "gl_Position"                  = Just Position

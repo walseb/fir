@@ -39,7 +39,7 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[ ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader @"main" @VertexShader @VertexDefs do
     ~(Vec3 r g b) <- get @"in_colour"
     ~(Vec3 x y z) <- get @"in_position"
@@ -60,7 +60,7 @@ type TessellationControlDefs =
                         TessellationControl
    ]
 
-tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs _
+tessellationControl :: ShaderModule "main" TessellationControlShader TessellationControlDefs _
 tessellationControl = shader do
   
   i <- get @"gl_InvocationID"
@@ -91,7 +91,7 @@ type TessellationEvaluationDefs =
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
-tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs _
+tessellationEvaluation :: ShaderModule "main" TessellationEvaluationShader TessellationEvaluationDefs _
 tessellationEvaluation = shader do
   ~(Vec3 u v w) <- get @"gl_TessCoord"
   
@@ -126,7 +126,7 @@ type GeometryDefs =
                           Geometry
    ]
 
-geometry :: ShaderStage "main" GeometryShader GeometryDefs _
+geometry :: ShaderModule "main" GeometryShader GeometryDefs _
 geometry = shader do
   v0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
   v1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")
@@ -163,7 +163,7 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     col    <- get @"in_colour"
     normal <- get @"normal"
@@ -199,8 +199,8 @@ compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(PatchesOfSize 3)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(PatchesOfSize 3)
   :>-> (vertex                , vertPath)
   :>-> (tessellationControl   , tescPath)
   :>-> (tessellationEvaluation, tesePath)

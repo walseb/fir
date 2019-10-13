@@ -13,7 +13,7 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
--- combined vertex and fragment shaders
+-- combined vertex shaders (with different names)
 
 type Defs =
   '[ "in"    ':-> Input      '[ Location 0 ] ( V 4 Float )
@@ -22,8 +22,8 @@ type Defs =
    , "vert2" ':-> EntryPoint '[            ] Vertex
    ]
 
-program :: Program Defs ()
-program = Program do
+program :: Module Defs ()
+program = Module do
   entryPoint @"vert1" @Vertex do
     put @"out" =<< get @"in"
   entryPoint @"vert2" @Vertex do

@@ -1,17 +1,18 @@
 
 test\Tests\Interface\MissingInput.hs:54:5: error:
-    * Input of type V 4 Float of Fragment shader named "main",
-      with decorations '[ 'Location 1],
+    * Input "in2" of type V 4 Float of Fragment shader named "main",
       does not match any output of Vertex shader named "main".
     * In the expression:
-        withStructInput @VertexInput @(Triangle List)
-          $ StartPipeline :>-> (vertex, "vertex.spv")
+        ShaderPipeline
+          $ StructInput @VertexInput @(Triangle List)
+              :>-> (vertex, "vertex.spv")
               :>-> (fragment, "fragment.spv")
       In an equation for `shaderPipeline':
           shaderPipeline
-            = withStructInput @VertexInput @(Triangle List)
-                $ StartPipeline :>-> (vertex, "vertex.spv")
+            = ShaderPipeline
+                $ StructInput @VertexInput @(Triangle List)
+                    :>-> (vertex, "vertex.spv")
                     :>-> (fragment, "fragment.spv")
    |
-54 |   = withStructInput @VertexInput @(Triangle List)
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...
+54 |   = ShaderPipeline
+   |     ^^^^^^^^^^^^^^^...

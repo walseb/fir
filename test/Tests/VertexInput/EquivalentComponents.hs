@@ -13,6 +13,10 @@ import FIR
 import Math.Linear
 
 ------------------------------------------------
+-- test splitting up / merging data
+-- between vertex input and vertex shader input
+
+------------------------------------------------
 -- pipeline input
 
 type VertexInput
@@ -43,7 +47,7 @@ type VertexDefs =
    , "main"           ':-> EntryPoint '[ ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
 
   put @"out_split1a"    =<< get @"in_split1a"
@@ -67,7 +71,7 @@ type FragmentDefs =
    , "main"          ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     put @"out_colour" =<< get @"in_split2"
 
@@ -76,7 +80,7 @@ fragment = shader do
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(Triangle List)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(Triangle List)
   :>-> (vertex  ,   "vertex.spv")
   :>-> (fragment, "fragment.spv")

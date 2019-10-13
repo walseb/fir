@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedStrings  #-}
 
 module Test where
 
@@ -62,7 +63,7 @@ data Test
   = Typecheck
   | CodeGen
   | Validate
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 data TestFailure
   = MissingSource
@@ -74,13 +75,13 @@ data TestFailure
   | CGOutputParseError
   | ModuleError
   | OtherError
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 data TestOutput
   = Failure TestFailure
   | Success
   | NewTest
-  deriving ( Eq, Show )
+  deriving stock ( Eq, Show )
 
 runTest :: Test -> FilePath -> IO TestOutput
 runTest Typecheck = typeCheck

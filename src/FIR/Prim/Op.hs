@@ -49,12 +49,12 @@ import GHC.TypeNats
 -- fir
 import Control.Monad.Indexed
   ( (:=)(AtKey) )
-import FIR.ASTState
-  ( ASTState )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy
   , primTy, scalarTy
   )
+import FIR.ProgramState
+  ( ProgramState )
 import Math.Linear
   ( V, M
   , Semimodule((^*)), Inner(dot, normalise), Cross(cross)
@@ -397,11 +397,11 @@ instance ( ScalarTy a, ScalarTy b, Rounding '(a,b) ) => PrimOp SPIRV.CCeiling '(
   vectorisation = Just $ VecPrimOpType (Proxy @'(V n a, V n b))
 
 -- geometry primitive instructions
-instance PrimOp SPIRV.EmitGeometryVertex (i :: ASTState) where
+instance PrimOp SPIRV.EmitGeometryVertex (i :: ProgramState) where
   type PrimOpType SPIRV.EmitGeometryVertex i = (() := i) i
   op = AtKey ()
   opName = SPIRV.GeomOp SPIRV.EmitGeometryVertex
-instance PrimOp SPIRV.EndGeometryPrimitive (i :: ASTState) where
+instance PrimOp SPIRV.EndGeometryPrimitive (i :: ProgramState) where
   type PrimOpType SPIRV.EndGeometryPrimitive i = (() := i) i
   op = AtKey ()
   opName = SPIRV.GeomOp SPIRV.EndGeometryPrimitive

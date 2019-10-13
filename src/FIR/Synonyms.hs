@@ -22,7 +22,40 @@ to mitigate verbosity in user-written programs.
 
 -}
 
-module FIR.Synonyms where
+module FIR.Synonyms
+  (
+  -- * Synonyms for floating point types of a given width
+    Float16, Float32, Float64
+
+  -- * Synonyms for entry point globals with a given storage class
+  , UniformConstant, Input, Output
+  , Uniform, PushConstant
+  , StorageBuffer, Private
+
+  -- * Synonyms for function with given function control information
+  , Function, Function'
+
+  -- * Synonyms for images
+  -- ** Sampled images
+  , Texture1D, Texture2D, Texture3D, Texture
+  -- ** Storage images
+  , Image1D, Image2D, Image3D, StorageImage
+  -- ** Image operand shorthands
+  , pattern DepthTestOffsets
+  , pattern GatherComponentWithOffsets
+  -- ** Helper type family for choosing image texel type
+  , FormatDefault
+
+  -- * Synonyms involved in pipeline creation
+  , Slot
+  , pattern StructInput
+
+  -- * Synonyms for optics
+  -- ** Synonyms for matrix optics
+  , Col, Row
+  , Entry, Diag, Center
+  )
+  where
 
 -- base
 import Prelude
@@ -34,7 +67,9 @@ import Data.Kind
 import Data.Word
   ( Word8, Word16, Word32 )
 import GHC.TypeNats
-  ( Nat )
+  ( Nat, KnownNat
+  , type (*)
+  )
 
 -- half
 import Numeric.Half
@@ -47,6 +82,10 @@ import Control.Type.Optic
   , Joint
   , EndProd
   )
+import Data.Type.Known
+  ( Known )
+import Data.Type.Map
+  ( (:->)((:->)) )
 import FIR.AST
   ( AST(Gather) )
 import FIR.Definition
@@ -56,12 +95,29 @@ import FIR.Instances.AST
   ( )
 import FIR.Instances.Optics
   ( )
+import FIR.Layout
+  ( Layout(Locations)
+  , Poke(SizeOf)
+  )
+import FIR.Pipeline
+  ( PrimitiveTopology
+  , BindingStrides
+  , VertexLocationDescriptions
+  , PipelineInfo(VertexInputInfo)
+  , PipelineStages(VertexInput)
+  )
 import FIR.Prim.Image
   ( ImageProperties(Properties)
   , Image, GatherInfo(..)
   )
 import FIR.Prim.Struct
-  ( LocationSlot(LocationSlot) )
+  ( Struct
+  , LocationSlot(LocationSlot)
+  )
+import FIR.Validation.Formats
+  ( ComputeFormats )
+import FIR.Validation.Layout
+  ( Slots )
 import Math.Linear
   ( V, M )
 import SPIRV.ScalarTy
@@ -78,6 +134,8 @@ import SPIRV.Image
 import SPIRV.Control
   ( NoFunctionControl )
 import qualified SPIRV.Image   as Image
+import qualified SPIRV.Image   as SPIRV
+  ( ImageFormat )
 import qualified SPIRV.Storage as Storage
 
 --------------------------------------------------------------------------
@@ -98,9 +156,6 @@ type Private         decs ty = Global Storage.Private         decs ty
 -- synonym for function with no function control information
 type Function     as b = Def.Function NoFunctionControl as b
 type Function' fc as b = Def.Function fc as b
-
--- synonym for interface location slots
-type Slot (l :: Nat) (c :: Nat) = 'LocationSlot l c
 
 -- synonyms for images
 type Texture1D decs fmt
@@ -170,6 +225,58 @@ type family FormatDefault ( fmt :: ImageFormat Nat ) :: Type where
   FormatDefault ('ImageFormat (Image.Integer Unnormalised Unsigned) ( 8  ': _ )) = Word8
   FormatDefault ('ImageFormat (Image.Integer Unnormalised Unsigned) ( 16 ': _ )) = Word16
   FormatDefault ('ImageFormat (Image.Integer Unnormalised Unsigned) ( _  ': _ )) = Word32
+
+-----------------------------------------------------
+-- pipeline synonyms
+
+-- | Synonym for interface location slots.
+type Slot (l :: Nat) (c :: Nat) = 'LocationSlot l c
+
+-- | Utility pattern synonym for specifying a simple kind of vertex input:
+-- use a single array of structs to keep track of vertex data.
+pattern StructInput
+  :: forall
+        ( as      :: [LocationSlot Nat :-> Type] )
+        ( top     :: PrimitiveTopology Nat       )
+        ( descs   :: VertexLocationDescriptions  )
+        ( stride  :: Nat                         )
+        ( strides :: BindingStrides              )
+  .  ( descs   ~ StructLocationDescriptions 0 as
+     , stride  ~ SizeOf Locations (Struct as)
+     , strides ~ '[ 0 ':-> stride ]
+     , Known (PrimitiveTopology Nat) top
+     , Known VertexLocationDescriptions descs
+     , KnownNat stride
+     , Known BindingStrides strides
+     )
+  => ()
+  => PipelineStages (VertexInputInfo top descs strides)
+pattern StructInput = VertexInput
+
+
+-- internal helper type synonyms / type families used for the above pattern synonym
+
+type StructLocationDescriptions ( bdNo :: Nat ) ( as :: [LocationSlot Nat :-> Type] )
+  = ( AnnotateLocationsWithBindingAndOffset
+        bdNo
+        ( LocationDescriptionsOfStruct as )
+    :: VertexLocationDescriptions
+    )
+
+type family AnnotateLocationsWithBindingAndOffset
+              ( bdNo :: Nat )
+              ( locationFormats :: [ Nat :-> SPIRV.ImageFormat Nat ] )
+           :: [ Nat :-> ( Nat, Nat, SPIRV.ImageFormat Nat ) ]
+           where
+  AnnotateLocationsWithBindingAndOffset _ '[] = '[]
+  AnnotateLocationsWithBindingAndOffset bdNo
+    ( ( loc ':-> fmt ) ': locs )
+      = ( loc ':-> '( bdNo, 16 * loc, fmt ) )
+      ': AnnotateLocationsWithBindingAndOffset bdNo locs
+
+type LocationDescriptionsOfStruct
+      ( as :: [ LocationSlot Nat :-> Type ] )
+    = ( ComputeFormats (Slots as) :: [ Nat :-> SPIRV.ImageFormat Nat ] )
 
 ----------------------------------------------------------------------
 -- synonyms for optics

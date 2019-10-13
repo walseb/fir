@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveLift                 #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
@@ -29,7 +30,8 @@ import Data.Binary.Class.Put
 --------------------------------------------------
 
 newtype Capability = Capability Word32
-  deriving ( Eq, Ord, Put, Lift )
+  deriving newtype ( Eq, Ord, Put )
+  deriving stock   Lift
 
 instance Show Capability where
   show capability = "Capability " ++ showCapability capability

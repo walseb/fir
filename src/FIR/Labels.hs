@@ -83,14 +83,14 @@ import Control.Type.Optic
   ( Optic, Name )
 import FIR.AST
   ( AST )
-import FIR.ASTState
-  ( ASTState )
 import FIR.Binding
   ( Var, R, RW )
 import FIR.Instances.Codensity
   ( def, use, assign, modifying )
 import FIR.Prim.Singletons
   ( PrimTy )
+import FIR.ProgramState
+  ( ProgramState )
 import FIR.Validation.Bindings
   ( ValidDef, AddBinding, Has, CanGet, CanPut )
 
@@ -101,7 +101,7 @@ data Label (k :: Symbol) (a :: Type) = Label
 
 data LabelUsage
   = Symbolic
-  | Use Symbol ASTState
+  | Use Symbol ProgramState
 
 class IsLabel k a (usage :: LabelUsage) v
     | v -> a, usage v -> k, v k -> usage

@@ -66,10 +66,10 @@ import Data.Containers.Traversals
   ( traverseSet_ )
 import FIR.Builtin
   ( modelBuiltins, builtinDecorations )
-import FIR.ASTState
-  ( FunctionContext(TopLevel), VLFunctionContext ) -- value-level function context
 import FIR.Prim.Singletons
   ( AConstant )
+import FIR.ProgramState
+  ( FunctionContext(TopLevel), VLFunctionContext ) -- value-level function context
 import qualified SPIRV.Capability    as SPIRV
 import qualified SPIRV.Control       as SPIRV
 import qualified SPIRV.Decoration    as SPIRV

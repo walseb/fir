@@ -23,8 +23,6 @@ import Data.Functor
   ( (<&>) )
 import Data.Maybe
   ( fromMaybe )
-import Data.Proxy
-  ( Proxy )
 import Data.Word
   ( Word32 )
 import qualified Foreign
@@ -47,12 +45,15 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
-  ( Shader(..), ShaderPipeline(..)
-  , pipelineInfoShaders
+  ( Shader(..)
+  , PipelineInfo
+  , PipelineStages, ShaderPipeline(..)
+  , pipelineStages
   , PrimitiveConnectedness(..)
   , PrimitiveTopology(..)
   , (:->)((:->))
   , Known, knownValue
+  , GetVertexInputInfo
   , BindingStrides, VertexLocationDescriptions
   , ImageFormat
   )
@@ -99,16 +100,25 @@ tessellationInfo (PatchesOfSize pts) =
      )
 tessellationInfo _ = Nothing
 
-vertexInputStateInfo
-  :: forall (bds :: [Nat :-> Nat]) (descs :: VertexLocationDescriptions)
-  . ( Known BindingStrides bds
+topologyAndVertexInputStateInfo
+  :: forall
+      ( info    :: PipelineInfo               )
+      ( top     :: PrimitiveTopology Nat      )
+      ( descs   :: VertexLocationDescriptions )
+      ( strides :: BindingStrides             )
+  . ( '(top, descs, strides) ~ GetVertexInputInfo info
+    , Known (PrimitiveTopology Nat)    top
     , Known VertexLocationDescriptions descs
+    , Known BindingStrides             strides
     )
-  => Vulkan.VkPipelineVertexInputStateCreateInfo
-vertexInputStateInfo =
+  => ( PrimitiveTopology Word32, Vulkan.VkPipelineVertexInputStateCreateInfo )
+topologyAndVertexInputStateInfo =
   let
-    bindings :: [ Word32 :-> Word32 ]
-    bindings = knownValue @bds
+    primTop :: PrimitiveTopology Word32
+    primTop = knownValue @top
+
+    bindingStrides :: [ Word32 :-> Word32 ]
+    bindingStrides = knownValue @strides
 
     attributes :: [ Word32 :-> (Word32, Word32, ImageFormat Word32) ]
     attributes = knownValue @descs
@@ -121,7 +131,7 @@ vertexInputStateInfo =
 
     vertexBindingDescriptions :: [ Vulkan.VkVertexInputBindingDescription ]
     vertexBindingDescriptions =
-      bindings <&> \ ( binding :-> stride ) ->
+      bindingStrides <&> \ ( binding :-> stride ) ->
           Vulkan.createVk
             (  Vulkan.set @"binding"   binding
             &* Vulkan.set @"stride"    stride
@@ -138,19 +148,22 @@ vertexInputStateInfo =
           &* Vulkan.set @"offset"   offset
           )
 
-  in
-    Vulkan.createVk
-      (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
-      &* Vulkan.set @"pNext" Vulkan.VK_NULL
-      &* Vulkan.setListCountAndRef
-              @"vertexBindingDescriptionCount"
-              @"pVertexBindingDescriptions"
-              vertexBindingDescriptions
-      &* Vulkan.setListCountAndRef
-              @"vertexAttributeDescriptionCount"
-              @"pVertexAttributeDescriptions"
-              vertexAttributeDescriptions
-      )
+    vertexInputStateInfo :: Vulkan.VkPipelineVertexInputStateCreateInfo
+    vertexInputStateInfo =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+        &* Vulkan.set @"pNext" Vulkan.VK_NULL
+        &* Vulkan.setListCountAndRef
+                @"vertexBindingDescriptionCount"
+                @"pVertexBindingDescriptions"
+                vertexBindingDescriptions
+        &* Vulkan.setListCountAndRef
+                @"vertexAttributeDescriptionCount"
+                @"pVertexAttributeDescriptions"
+                vertexAttributeDescriptions
+        )
+
+  in ( primTop, vertexInputStateInfo )
 
 
 stageFlag :: Shader -> Vulkan.VkShaderStageFlagBits
@@ -240,8 +253,8 @@ createPipelineLayout device layout0 =
                 [ ]
           )
 
-data PipelineInfo
-  = PipelineInfo
+data VkPipelineInfo
+  = VkPipelineInfo
   { pipelineExtent2D    :: Vulkan.VkExtent2D
   , pipelineSampleCount :: Vulkan.VkSampleCountFlagBits
   }
@@ -250,32 +263,28 @@ createGraphicsPipeline
   :: MonadManaged m
   => Vulkan.VkDevice
   -> Vulkan.VkRenderPass
-  -> PipelineInfo
+  -> VkPipelineInfo
   -> Vulkan.VkDescriptorSetLayout
   -> ShaderPipeline
   -> m ( Vulkan.VkPipeline, Vulkan.VkPipelineLayout )
 createGraphicsPipeline device renderPass
-  ( PipelineInfo extent sampleCount )
+  ( VkPipelineInfo extent sampleCount )
   layout0
-  ( WithVertexInput
-      (_ :: Proxy bds)
-      (_ :: Proxy descs)
-      (_ :: Proxy top)
-      pipelineWithInfo
+  ( ShaderPipeline
+      ( stages :: PipelineStages info )
   ) = do
+
     pipelineLayout <-
       createPipelineLayout device layout0
 
     let
       shaderPaths :: [(Shader, String)]
-      shaderPaths = pipelineInfoShaders pipelineWithInfo
+      shaderPaths = pipelineStages stages
 
     shaders :: [ Vulkan.VkPipelineShaderStageCreateInfo ]
        <- traverse ( uncurry (createShaderInfo device) ) shaderPaths
 
     let
-      vertexInputState :: Vulkan.VkPipelineVertexInputStateCreateInfo
-      vertexInputState = vertexInputStateInfo @bds @descs
 
       rasterizationCreateInfo :: Vulkan.VkPipelineRasterizationStateCreateInfo
       rasterizationCreateInfo =
@@ -295,7 +304,8 @@ createGraphicsPipeline device renderPass
           )
 
       primTop :: PrimitiveTopology Word32
-      primTop = knownValue @top
+      vertexInputState :: Vulkan.VkPipelineVertexInputStateCreateInfo
+      (primTop, vertexInputState) = topologyAndVertexInputStateInfo @info
 
       assemblyState       = assemblyInfo     primTop
       mbTessellationState = tessellationInfo primTop

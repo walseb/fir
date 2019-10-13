@@ -15,16 +15,16 @@ import FIR
 ------------------------------------------------
 -- program
 
-type Defs = '[ "x"    ':-> Input  '[] Word32
-             , "y"    ':-> Input  '[] Word32
-             , "z"    ':-> Input  '[] Word32
-             , "w"    ':-> Input  '[] Word32
-             , "out"  ':-> Output '[] Word32
+type Defs = '[ "x"    ':-> Input  '[Location 0] Word32
+             , "y"    ':-> Input  '[Location 1] Word32
+             , "z"    ':-> Input  '[Location 2] Word32
+             , "w"    ':-> Input  '[Location 3] Word32
+             , "out"  ':-> Output '[Location 0] Word32
              , "main" ':-> EntryPoint '[] Vertex
              ]
 
-program :: Program Defs ()
-program = Program $ entryPoint @"main" @Vertex do
+program :: Module Defs ()
+program = Module $ entryPoint @"main" @Vertex do
 
     a <- get @"x" .&. get @"y"
     

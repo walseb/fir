@@ -44,7 +44,7 @@ import Math.Linear
   ( V(..), M(M)
   , pattern V3
   , pattern V4
-  , Semimodule(..), Module(..), Inner(..)
+  , Semimodule(..), LinearModule(..), Inner(..)
   , norm, normalise
   )
 
@@ -61,7 +61,7 @@ instance Semiring a => Semimodule () (Quaternion a) where
   (^+^) = coerce ( (^+^) :: V 4 a -> V 4 a -> V 4 a )
   (*^)  = coerce ( (*^) :: a -> V 4 a -> V 4 a )
 
-instance Ring a => Module () (Quaternion a) where
+instance Ring a => LinearModule () (Quaternion a) where
   (^-^) = coerce ( (^-^) :: V 4 a -> V 4 a -> V 4 a )
   (-^)  = coerce ( ( -^) :: V 4 a -> V 4 a )
 

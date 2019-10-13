@@ -31,9 +31,9 @@ type Defs
       , "main"  ':-> EntryPoint '[ ]            Vertex
       ]
 
-program :: Program Defs ()
+program :: Module Defs ()
 program =
-  Program $ entryPoint @"main" @Vertex do
+  Module $ entryPoint @"main" @Vertex do
     put @"out_a" =<< get @"in_a"
     put @"out_b" =<< get @"in_b"
     put @"out_c" =<< get @"in_c"

@@ -25,9 +25,9 @@ type Defs
       , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment
       ]
 
-program :: Program Defs ()
+program :: Module Defs ()
 program =
-  Program $ entryPoint @"main" @Fragment do
+  Module $ entryPoint @"main" @Fragment do
     _ <- def @"i" @R @Int16 ( - 5 * 4  )
     _ <- def @"j" @R @Word8 (   7 + 11 )
     i <- get @"i"

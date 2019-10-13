@@ -33,7 +33,7 @@ data Args where
   EndArgs :: Args
   Arg     :: ( Show a, Put a ) => a -> Args -> Args
 
-deriving instance Show Args
+deriving stock instance Show Args
 
 -- mono-foldable business
 foldrArgs :: (forall a. (Show a, Put a) => a -> b -> b) -> b -> Args -> b
@@ -51,13 +51,13 @@ toArgs :: ( Show a, Put a, Foldable t ) => t a -> Args
 toArgs = foldr Arg EndArgs
 
 newtype Pairs a = Pairs [(a,a)]
- deriving ( Functor, Foldable, Traversable )
+ deriving stock ( Functor, Foldable, Traversable )
 
 ----------------------------------------------------------------------------
 -- instructions
 
 newtype ID = ID { idNumber :: Word32 }
-  deriving ( Eq, Ord, Enum, Put )
+  deriving newtype ( Eq, Ord, Enum, Put )
 
 instance Show ID where
   show (ID n) = "%" ++ show n
@@ -75,7 +75,7 @@ data Instruction
     , resID     :: Maybe ID
     , args      :: Args
     }
-  deriving Show
+  deriving stock Show
 
 prependArg :: ( Show a, Put a ) => a -> Instruction -> Instruction
 prependArg arg instr@Instruction { args = oldArgs }

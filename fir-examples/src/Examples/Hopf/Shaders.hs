@@ -43,7 +43,7 @@ type VertexDefs =
    , "main"         ':-> EntryPoint '[ ] Vertex
    ]
 
-vertex :: ShaderStage "main" VertexShader VertexDefs _
+vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
 
     put @"out_colour" =<< get @"in_colour"
@@ -73,7 +73,7 @@ type TessellationControlDefs =
                         TessellationControl
    ]
 
-tessellationControl :: ShaderStage "main" TessellationControlShader TessellationControlDefs _
+tessellationControl :: ShaderModule "main" TessellationControlShader TessellationControlDefs _
 tessellationControl = shader do
     
   assign @(Name "gl_TessLevelInner" :.: Index 0) 64
@@ -113,7 +113,7 @@ type TessellationEvaluationDefs =
    , "main" ':-> EntryPoint '[ Quads ] TessellationEvaluation
    ]
 
-tessellationEvaluation :: ShaderStage "main" TessellationEvaluationShader TessellationEvaluationDefs _
+tessellationEvaluation :: ShaderModule "main" TessellationEvaluationShader TessellationEvaluationDefs _
 tessellationEvaluation = shader do
   
   ~(Vec3 u0 v0 _) <- get @"gl_TessCoord"
@@ -154,7 +154,7 @@ type FragmentDefs =
    , "main"       ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-fragment :: ShaderStage "main" FragmentShader FragmentDefs _
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
     put @"out_colour" =<< get @"in_colour"
 
@@ -181,8 +181,8 @@ compileFragmentShader = compile fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
-  = withStructInput @VertexInput @(PatchesOfSize 1)
-  $    StartPipeline
+  = ShaderPipeline
+  $    StructInput @VertexInput @(PatchesOfSize 1)
   :>-> (vertex                , vertPath)
   :>-> (tessellationControl   , tescPath)
   :>-> (tessellationEvaluation, tesePath)

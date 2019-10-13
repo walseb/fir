@@ -80,10 +80,6 @@ import Data.Type.Known
   ( Known, knownValue )
 import Data.Type.List
   ( SLength )
-import FIR.ASTState
-  ( TLInterface
-  , ASTState(..)
-  )
 import FIR.Binding
   ( BindingsMap
   , FunctionType, Var, Permissions
@@ -102,6 +98,8 @@ import FIR.Prim.Singletons
   , PrimFunc, primFuncName
   , KnownArity
   )
+import FIR.ProgramState
+  ( ProgramState, TLInterface )
 import FIR.Validation.Bindings
   ( ValidDef, ValidFunDef, FunctionTypes
   , AddBinding, AddFunBinding
@@ -152,10 +150,10 @@ data AST :: Type -> Type where
 
   -- | Defining a new constant/variable.
   Def :: forall
-          ( k  :: Symbol      )
-          ( ps :: Permissions )
-          ( a  :: Type        )
-          ( i  :: ASTState    )
+          ( k  :: Symbol       )
+          ( ps :: Permissions  )
+          ( a  :: Type         )
+          ( i  :: ProgramState )
       . ( GHC.Stack.HasCallStack
         , KnownSymbol k
         , Known Permissions ps
@@ -175,11 +173,11 @@ data AST :: Type -> Type where
   -- * j_bds: bindings state at end of function definition (usually inferred),
   -- * i: monadic state at function definition site (usually inferred).
   FunDef :: forall
-              ( name  :: Symbol      )
-              ( as    :: BindingsMap )
-              ( b     :: Type        )
-              ( j_bds :: BindingsMap )
-              ( i     :: ASTState    )
+              ( name  :: Symbol       )
+              ( as    :: BindingsMap  )
+              ( b     :: Type         )
+              ( j_bds :: BindingsMap  )
+              ( i     :: ProgramState )
          .  ( GHC.Stack.HasCallStack
             , KnownSymbol name
             , KnownVars as
@@ -211,9 +209,9 @@ data AST :: Type -> Type where
              ( name      :: Symbol )
              ( stage     :: SPIRV.ExecutionModel          )
              ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
-             ( j_bds     :: BindingsMap )
-             ( j_iface   :: TLInterface )
-             ( i         :: ASTState    )
+             ( j_bds     :: BindingsMap  )
+             ( j_iface   :: TLInterface  )
+             ( i         :: ProgramState )
            .
            ( GHC.Stack.HasCallStack
            , KnownSymbol name
@@ -332,7 +330,7 @@ data AST :: Type -> Type where
           , Image.NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.Bias)) ops
           , Image.NoLODOps "Bias" '[SPIRV.LOD, SPIRV.Grad] ops
           )
-       => AST (  ImageComponent props ) -- ^ Bias.
+       => AST ( ImageComponent props ) -- ^ Bias.
        -> AST ( ImageOperands props ops )
        -> AST ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.Bias) ': ops) )
   -- | Provide an explicit level of detail.
@@ -381,8 +379,8 @@ data AST :: Type -> Type where
        , Image.NotCubeDim "OffsetBy" props
        )
     => AST vec -- Offset.
-    -> AST (ImageOperands props ops)
-    -> AST (ImageOperands props (BaseOperand SPIRV.Offset ': ops))
+    -> AST ( ImageOperands props ops )
+    -> AST ( ImageOperands props (BaseOperand SPIRV.Offset ': ops) )
   Gather
     :: ( Image.NotCubeDim "Gather" props
        , Image.NoDuplicate (BaseOperand SPIRV.ConstOffsets) ops
@@ -390,16 +388,16 @@ data AST :: Type -> Type where
        , Image.UsesAffineCoords ops
        )
     => Image.GatherInfo (Image.WhichGather ops)
-    -> AST (ImageOperands props ops)
-    -> AST (ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops))
+    -> AST ( ImageOperands props ops)
+    -> AST ( ImageOperands props (BaseOperand SPIRV.ConstOffsets ': ops) )
   -- | Specify which sample number to use in a multi-sampled image.
   SampleNo
     :: ( Image.CanMultiSample props
        , Image.NoDuplicate (BaseOperand SPIRV.Sample) ops
        )
     => AST Word32  -- ^ Sample number.
-    -> AST (ImageOperands props ops)
-    -> AST (ImageOperands props (BaseOperand SPIRV.Sample ': ops))
+    -> AST ( ImageOperands props ops )
+    -> AST ( ImageOperands props (BaseOperand SPIRV.Sample ': ops) )
 
   -- MkStruct
   -- MkArray
@@ -442,7 +440,7 @@ primOp :: forall a op r
 primOp = fromAST $ PrimOp @op @a Proxy Proxy
 
 -- | Types at which we can define "undefined."
-class HasUndefined a where
+class HasUndefined (a :: Type) where
   undefined :: a
 
 instance PrimTy a => HasUndefined (AST a) where

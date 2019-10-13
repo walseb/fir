@@ -25,7 +25,7 @@ type Defs
       , "main"    ':-> EntryPoint '[ ]            Vertex
       ]
 
-program :: Program Defs ()
+program :: Module Defs ()
 program =
-  Program $ entryPoint @"main" @Vertex do
+  Module $ entryPoint @"main" @Vertex do
     put @"out_col" =<< get @"in_col"
