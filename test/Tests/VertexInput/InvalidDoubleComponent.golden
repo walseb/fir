@@ -1,46 +1,10 @@
 
 test\Tests\VertexInput\InvalidDoubleComponent.hs:37:10: error:
-    * Input/output: cannot position scalar of type Double
-       at location 1 with component 1.
+    * Cannot position scalar of type Double
+       at Location 1, Component 1.
     * In the expression: shader do put @"out" =<< get @"in"
       In an equation for `vertex':
           vertex = shader do put @"out" =<< get @"in"
    |
 37 | vertex = shader do
    |          ^^^^^^^^^^...
-
-test\Tests\VertexInput\InvalidDoubleComponent.hs:58:5: error:
-    * Input/output: cannot position scalar of type Double
-       at location 1 with component 1.
-    * In the expression:
-        ShaderPipeline
-          $ StructInput @VertexInput @(Triangle List)
-              :>-> (vertex, "vertex.spv")
-              :>-> (fragment, "fragment.spv")
-      In an equation for `shaderPipeline':
-          shaderPipeline
-            = ShaderPipeline
-                $ StructInput @VertexInput @(Triangle List)
-                    :>-> (vertex, "vertex.spv")
-                    :>-> (fragment, "fragment.spv")
-   |
-58 |   = ShaderPipeline
-   |     ^^^^^^^^^^^^^^^...
-
-test\Tests\VertexInput\InvalidDoubleComponent.hs:58:5: error:
-    * Input/output: cannot position scalar of type Double
-       at location 1 with component 1.
-    * In the expression:
-        ShaderPipeline
-          $ StructInput @VertexInput @(Triangle List)
-              :>-> (vertex, "vertex.spv")
-              :>-> (fragment, "fragment.spv")
-      In an equation for `shaderPipeline':
-          shaderPipeline
-            = ShaderPipeline
-                $ StructInput @VertexInput @(Triangle List)
-                    :>-> (vertex, "vertex.spv")
-                    :>-> (fragment, "fragment.spv")
-   |
-58 |   = ShaderPipeline
-   |     ^^^^^^^^^^^^^^^...

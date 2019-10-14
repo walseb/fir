@@ -106,7 +106,7 @@ For further reference, see:
 -}
 
 module FIR.Layout
-  ( Layout(..)
+  ( Layout(..), Components
   , Poke(..), pokeArray
   , inferPointerLayout
   , roundUp, nextAligned
@@ -133,7 +133,7 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( Nat, KnownNat
   , type (<=), type (+), type (-), type (*)
-  , Mod
+  , Div, Mod
   )
 
 -- containers
@@ -186,8 +186,6 @@ import FIR.Prim.Struct
   , FieldKind(LocationField)
   , StructFieldKind(fieldKind)
   )
-import FIR.Validation.Layout
-  ( NbLocationsUsed, ValidLayout )
 import Math.Linear
   ( V, M(unM) )
 import qualified SPIRV.Decoration as SPIRV
@@ -223,6 +221,8 @@ class ( KnownNat (SizeOf    lay a)
   alignment = knownValue @(Alignment lay a)
 
   poke :: Ptr a -> a -> IO ()
+
+type Components a = ( SizeOf Locations a `Div` 4 :: Nat )
 
 type family NextAligned (size :: Nat) (ali :: Nat) :: Nat where
   NextAligned size ali = NextAlignedWithRemainder size ali (size `Mod` ali)
@@ -483,9 +483,9 @@ instance
   => Poke (Struct (as :: [Symbol :-> Type])) Locations
   where
     type SizeOf Locations (Struct (as :: [Symbol :-> Type]))
-      = 0
+      = 16
     type Alignment Locations (Struct (as :: [Symbol :-> Type]))
-      = 1
+      = 16
     poke = error "unreachable"
 
 -- TODO: refactor this using 'Data.Constraint.All'
@@ -494,7 +494,6 @@ data PokeSlotsDict (as :: [LocationSlot Nat :-> Type]) :: Type where
   PokeSlotDict :: ( Poke a Locations
                   , Known (LocationSlot Nat) slot
                   , PokeSlots as
-                  , ValidLayout as
                   , KnownNat (SizeOf    Locations (Struct as))
                   , KnownNat (Alignment Locations (Struct as))
                   )
@@ -507,23 +506,21 @@ instance PokeSlots '[] where
 instance ( Poke a Locations
          , Known (LocationSlot Nat) loc
          , PokeSlots as
-         , ValidLayout as
          , KnownNat (SizeOf    Locations (Struct as))
          , KnownNat (Alignment Locations (Struct as))
          )
-       => PokeSlots( (loc ':-> a) ': as )
+       => PokeSlots ( (loc ':-> a) ': as )
        where
   pokeSlotsDict = PokeSlotDict
 
 instance forall (as :: [LocationSlot Nat :-> Type])
        . ( PrimTyMap as
          , PokeSlots as
-         , ValidLayout as
          , KnownNat (SizeOf Locations (Struct as))
          , KnownNat (Alignment Locations (Struct as))
          ) => Poke (Struct as) Locations where
   type SizeOf Locations (Struct as)
-    = 16 * NbLocationsUsed as
+    = SumSizeOfLocations as
   type Alignment Locations (Struct as)
     = 16
   poke ptr struct = case primTyMapSing @_ @as of
@@ -544,6 +541,11 @@ instance forall (as :: [LocationSlot Nat :-> Type])
                   -> poke @b @Locations (castPtr ptr              ) b
                 _ -> poke @b @Locations (castPtr ptr `plusPtr` off) b
               poke @(Struct bs) @Locations (castPtr ptr) bs
+
+type family SumSizeOfLocations (as :: [LocationSlot Nat :-> Type]) :: Nat where
+  SumSizeOfLocations '[] = 0
+  SumSizeOfLocations ( ( _ ':-> a ) ': as )
+    = ( SizeOf Locations a `RoundUp` 16 ) + SumSizeOfLocations as
 
 --------------------------------------------------------------------------------------------
 

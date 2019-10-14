@@ -14,15 +14,7 @@ See "FIR.Layout" for an overview of memory layout concerns.
 
 -}
 
-module FIR.Validation.Layout
-  ( -- * Slot provenance
-    SlotProvenance(Provenance)
-  , Availability(Used, Available)
-    -- * Validation of memory layouts
-  , Slots, ValidLayout
-  , NbLocationsUsed
-  )
-  where
+module FIR.Validation.Layout where
 
 -- base
 import Data.Kind
@@ -36,37 +28,36 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( Nat
   , type (+), type (-)
-  , Div, Mod
+  , type (*), Div, Mod
   )
 
 -- fir
 import Data.Type.Error
-  ( Assert, MapSeq )
+  ( IsRight )
 import Data.Type.List
-  ( type (:++:) )
+  ( Elem )
 import Data.Type.Map
-  ( Map, (:->)((:->))
-  , ZipValue
-  )
+  ( (:->)((:->)) )
+import Data.Type.Maybe
+  ( IfNothingThen )
 import Data.Type.Ord
-  ( POrd(Max, (:<), (:<=))
-  , PEnum(EnumFromTo, EnumFromOfCount)
+  ( POrd(..)
+  , PEnum(EnumFromOfCount)
   )
-import {-# SOURCE #-} FIR.Layout
-  ( Poke(SizeOf)
-  , Layout(Locations)
-  )
+import Data.Type.String
+  ( ShowNat )
+import FIR.Layout
+  ( Components )
 import FIR.Prim.Array
-  ( Array(..), RuntimeArray )
+  ( Array(..) )
 import FIR.Prim.Singletons
   ( SScalarTy, ScalarWidth
   , ScalarFromSScalar
   , SKPrimTy(..), PrimTySing
   )
 import FIR.Prim.Struct
-  ( Struct(..)
-  , LocationSlot(LocationSlot)
-  , ShowLocation, ShowLocationSlot
+  ( LocationSlot(LocationSlot)
+  , ShowLocationSlot
   )
 import Math.Linear
   ( V, M )
@@ -74,82 +65,346 @@ import qualified SPIRV.ScalarTy as SPIRV
   ( ScalarTy(Integer, Floating) )
 
 -----------------------------------------------------------------------------------------------------
--- | Annotating a given slot with extra information.
---
--- Note: this data-type does not refer to the slot being annotated,
--- as we use it in a map "[ LocationSlot Nat :-> SlotProvenance ]",
--- which annotates each slot with extra information.
-data SlotProvenance where
-  Provenance
-    :: LocationSlot Nat -- ^ Provenance (original location slot this slot is based off).
-    -> SKPrimTy  ty     -- ^ Type this slot is being used for.
-    -> SScalarTy scalar -- ^ Underlying scalar type.
-    -> Availability
-    -> SlotProvenance
+-- Layout validation.
 
-data Availability
-  = Available
-  | Used
+-- | Validate the layout of a collection of located types.
+type family ValidLayout (as :: [LocationSlot Nat :-> Type]) :: Constraint where
+  ValidLayout '[] = ( () :: Constraint )
+  ValidLayout ( ( loc ':-> ty ) ': slots )
+    = ( IsRight ( ValidateSlot loc ( PrimTySing ty ) ) -- validate individual slot
+      , CheckOverlaps ( loc ':-> ty ) slots -- pairwise overlap checks
+      , ValidLayout slots
+      )
 
 -----------------------------------------------------------------------------------------------------
+-- Individual validation of slots.
 
--- Force evaluation of computation of all used slots, throwing a type error if any slots overlapped.
--- The overlap checking is performed in the type family 'AddSlotsCheckingOverlap',
--- which is recursively called by the type family 'Slots'.
-type family ValidLayout (as :: [LocationSlot Nat :-> Type]) :: Constraint where
-  ValidLayout as = Assert (MapSeq (Slots as)) ( () :: Constraint )
-
-type family Slots
-              ( as :: [LocationSlot Nat :-> Type] )
-            :: Map (LocationSlot Nat) SlotProvenance
-            where
-  Slots '[] = '[]
-  Slots ( (slot ':-> ty) ': slots)
-    = AddSlotsCheckingOverlap (EnumSlots slot ty (PrimTySing ty)) (Slots slots)
-
-type family AddSlotsCheckingOverlap
-              ( locs       :: [ LocationSlot Nat :-> SlotProvenance ] )
-              ( slots      :: Map (LocationSlot Nat) SlotProvenance   )
-            :: Map (LocationSlot Nat) SlotProvenance
-            where
-  AddSlotsCheckingOverlap '[] slots = slots
-  AddSlotsCheckingOverlap ( loc ': locs ) '[]
-    = AddSlotsCheckingOverlap locs '[ loc ]
-  AddSlotsCheckingOverlap
-    ( ( slot ':-> Provenance base1 (_ :: SKPrimTy ty1) _ Used ) ': locs )
-    ( ( slot ':-> Provenance base2 (_ :: SKPrimTy ty2) _ Used ) ': _    )
-    = TypeError
-      (    Text "Overlap at " :<>: Text (ShowLocationSlot slot ) :<>: Text ":"
-      :$$: Text "  - " :<>: ShowType ty1 :<>: Text " with " :<>: Text (ShowLocationSlot base1) :<>: Text ","
-      :$$: Text "  - " :<>: ShowType ty2 :<>: Text " with " :<>: Text (ShowLocationSlot base2) :<>: Text "."
-      )
-  AddSlotsCheckingOverlap
-    ( ( slot ':-> Provenance base1 (sk1 :: SKPrimTy ty1) (sscalar1 :: SScalarTy scalar1) addAvail1 ) ': locs  )
-    ( ( slot ':-> Provenance base2 (sk2 :: SKPrimTy ty2) (sscalar2 :: SScalarTy scalar2) addAvail2 ) ': slots )
-    = If ( CompatibleSScalars sscalar1 sscalar2 )
-        ( AddSlotsCheckingOverlap locs
-          ( If ( addAvail1 == Used )
-            ( slot ':-> Provenance base1 sk1 sscalar1 addAvail1 )
-            ( slot ':-> Provenance base2 sk2 sscalar2 addAvail2 )
-          ': slots
+-- | Validate an individual location slot.
+type family ValidateSlot
+               ( loc  :: LocationSlot Nat )
+               ( sing :: SKPrimTy ty      )
+             :: Either ErrorMessage ()
+             where
+  ValidateSlot _ SKUnit
+    = Left
+        ( Text "Unit type not supported here." )
+  ValidateSlot _ SKBool
+    = Left
+        ( Text "Booleans not supported here. Suggestion: use 'Word32' instead." )
+  ValidateSlot ('LocationSlot l c) (SKScalar s :: SKPrimTy ty)
+    = If ( c :<= 3 && ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 ) )
+        ( Right '() )
+        ( Left
+            (    Text "Cannot position scalar of type " :<>: ShowType ty
+            :$$: Text " at " :<>: Text (ShowLocationSlot ('LocationSlot l c)) :<>: Text "."
+            )
+        )
+  ValidateSlot ('LocationSlot l c) (SKVector s :: SKPrimTy (V n a))
+    = If ( n :> 4 || n :< 2 )
+        ( Left
+          (    Text "Unexpected vector dimensions "
+          :<>: ShowType (V n a)
+          :$$: Text " at " :<>: Text (ShowLocationSlot ('LocationSlot l c)) :<>: Text "."
           )
         )
-        ( TypeError
-          (    Text "Incompatible scalars within " :<>: Text (ShowLocation slot) :<>: Text ":"
-          :$$: Text "  - " :<>: ShowType ty1 :<>: Text " with " :<>: Text (ShowLocationSlot base1)
+        ( If ( c == 0 || ( c `Mod` 2 == 0 && c :<= 3 && n :<= 2 && ScalarWidth s :<= 32 ) )
+          ( Right '() )
+          ( Left
+              (    Text "Cannot position vector of type "
+              :<>: ShowType (V n a)
+              :$$: Text " at " :<>: Text (ShowLocationSlot ('LocationSlot l c)) :<>: Text "."
+              )
+          )
+        )
+  ValidateSlot ('LocationSlot l 0) (SKMatrix s :: SKPrimTy (M m n a))
+    = If ( n :<= 4 && m :<= 4 && n :> 1 && m :> 1 )
+        ( Right '() )
+        ( Left
+            (    Text "Unexpected matrix dimensions "
+            :<>: ShowType (M m n a)
+            :$$: Text " at " :<>: Text (ShowLocationSlot ('LocationSlot l 0)) :<>: Text "."
+            )
+        )
+  ValidateSlot ('LocationSlot l c) (SKMatrix s :: SKPrimTy (M m n a))
+    = Left
+        (    Text "Cannot position matrix at location " :<>: ShowType l
+        :<>: Text " with non-zero component " :<>: ShowType c :<>: Text "."
+        )
+  ValidateSlot loc (SKArray _ :: SKPrimTy (Array 0 a))
+    = Left ( Text "Unexpected size 0 array at " :<>: Text (ShowLocationSlot loc) :<>: Text "." )
+  ValidateSlot loc (SKArray elt :: SKPrimTy (Array l a))
+    = ValidateArraySlot loc (Array l a) (ValidateSlot loc elt)
+  ValidateSlot loc (SKRuntimeArray _)
+    = Left ( Text "Unexpected runtime array at " :<>: Text (ShowLocationSlot loc) :<>: Text "." )
+  ValidateSlot loc (SKStruct _)
+    = Left
+        (    Text "Unexpected struct at " :<>: Text (ShowLocationSlot loc) :<>: Text "."
+        :$$: Text "Structs not (yet?) supported in inputs/outputs."
+        )
+
+type family ValidateArraySlot
+              ( loc :: LocationSlot Nat )
+              ( arr :: Type             )
+              ( ok  :: Either ErrorMessage () )
+            :: Either ErrorMessage ()
+            where
+  ValidateArraySlot loc arr (Left err)
+    = Left
+        (    Text "Attempting to position " :<>: ShowType arr
+        :<>: Text " at " :<>: Text (ShowLocationSlot loc)
+        :<>: Text " has caused the following error:"
+        :$$: err
+        )
+  ValidateArraySlot _ _ _ = Right '()
+
+-----------------------------------------------------------------------------------------------------
+-- Check overlap within a collection of located types.
+
+-- | Data (kind) recording problematic overlap between located types.
+data Overlap
+  = OverlappingSlot (LocationSlot Nat) -- ^ Location + component overlap.
+  | OverlappingLocation Nat Type Type  -- ^ Location overlap with incompatible underlying scalar types.
+
+type family CheckOverlaps
+              ( slot  :: ( LocationSlot Nat :-> Type ) )
+              ( slots :: [ LocationSlot Nat :-> Type ] )
+            :: Constraint
+            where
+  CheckOverlaps _ '[] = ( () :: Constraint )
+  CheckOverlaps slot ( s ': ss ) = ( CheckOverlap slot s, CheckOverlaps slot ss )
+
+type family CheckOverlap
+              ( slot1 :: ( LocationSlot Nat :-> Type ) )
+              ( slot2 :: ( LocationSlot Nat :-> Type ) )
+            :: Constraint
+            where
+  CheckOverlap ( loc1 ':-> ty1 ) ( loc2 ':-> ty2 )
+    = ValidateOverlap
+        loc1 ty1
+        loc2 ty2
+        ( ComputeFirstOverlap
+            loc1 ( PrimTySing ty1 )
+            loc2 ( PrimTySing ty2 )
+        )
+
+type family ValidateOverlap
+              ( loc1    :: LocationSlot Nat )
+              ( ty1     :: Type             )
+              ( loc2    :: LocationSlot Nat )
+              ( ty2     :: Type             )
+              ( overlap :: Maybe Overlap    )
+          :: Constraint
+          where
+  ValidateOverlap
+    _ _
+    _ _
+    'Nothing
+      = ( () :: Constraint )
+  ValidateOverlap
+    slot1 ty1
+    slot2 ty2
+    ( Just (OverlappingSlot overlapSlot) )
+      = TypeError
+        (    Text "Overlap at " :<>: Text (ShowLocationSlot overlapSlot) :<>: Text ":"
+        :$$: Text "  - " :<>: ShowType ty1 :<>: Text " with "
+        :<>: Text (ShowLocationSlot slot1) :<>: Text ","
+        :$$: Text "  - " :<>: ShowType ty2 :<>: Text " with "
+        :<>: Text (ShowLocationSlot slot2) :<>: Text "."
+        )
+  ValidateOverlap
+    slot1 ty1
+    slot2 ty2
+    ( Just (OverlappingLocation loc scalar1 scalar2 ) )
+      = TypeError
+          (    Text "Incompatible scalars within Location " :<>: Text (ShowNat loc) :<>: Text ":"
+          :$$: Text "  - " :<>: ShowType ty1 :<>: Text " with " :<>: Text (ShowLocationSlot slot1)
           :<>: Text " requires " :<>: ShowType scalar1 :<>: Text ","
-          :$$: Text "  - " :<>: ShowType ty2 :<>: Text " with " :<>: Text (ShowLocationSlot base2)
+          :$$: Text "  - " :<>: ShowType ty2 :<>: Text " with " :<>: Text (ShowLocationSlot slot2)
           :<>: Text " requires " :<>: ShowType scalar2 :<>: Text "."
           )
-        )
-  AddSlotsCheckingOverlap
-    ( (loc1 ':-> prov1) ': locs  )
-    ( (loc2 ':-> prov2) ': slots )
-    = AddSlotsCheckingOverlap locs
-       ( If ( loc1 :< loc2 )
-          ( (loc1 ':-> prov1) ': (loc2 ':-> prov2) ': slots )
-          ( (loc2 ':-> prov2) ': AddSlotsCheckingOverlap '[ loc1 ':-> prov1 ] slots )
-       )
+
+-- | Compute the first problematic overlap between any two pairs of located types.
+--
+-- This computation is done explicitly, to avoid building up any large
+-- intermediate structures.
+--
+-- Only needs to cover pairs of the following types:
+--
+--  * scalars,
+--  * vectors,
+--  * matrices,
+--  * arrays of any of the above (but not arrays of arrays).
+--
+-- Other types are not (currently) allowed in inputs/outputs.
+type family ComputeFirstOverlap
+              ( loc1  :: LocationSlot Nat )
+              ( skty1 :: SKPrimTy ty1     )
+              ( loc2  :: LocationSlot Nat )
+              ( skty2 :: SKPrimTy ty2     )
+            :: Maybe Overlap
+            where
+  -- scalar - scalar
+  ComputeFirstOverlap
+    ( 'LocationSlot l c1 ) ( SKScalar s1 :: SKPrimTy ty1 )
+    ( 'LocationSlot l c2 ) ( SKScalar s2 :: SKPrimTy ty2 )
+      = FirstOverlapFromEnum l
+          ( 'LocationSlot l c1) ty1 s1
+          ( 'LocationSlot l c2) ty2 s2
+    -- (scalars are always contained within a single location)
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 _ ) ( SKScalar _ )
+    ( 'LocationSlot l2 _ ) ( SKScalar _ )
+      = Nothing
+  -- scalar - vector
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 c1 ) ( SKScalar s1 :: SKPrimTy ty1        )
+    ( 'LocationSlot l2 c2 ) ( SKVector s2 :: SKPrimTy (V m2 ty2) )
+      = If ( l1 :< l2 || l1 :>= ( l2 + VectorLocations m2 s2 ) )
+          Nothing -- no overlap possible
+          ( FirstOverlapFromEnum l1
+              ( 'LocationSlot l1 c1 ) ty1        s1
+              ( 'LocationSlot l2 c2 ) (V m2 ty2) s2
+          )
+  -- vector - scalar: reduce to scalar - vector
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1 ty1) )
+    ( 'LocationSlot l2 c2 ) ( SKScalar s2 :: SKPrimTy       ty2  )
+      = ComputeFirstOverlap
+          ( 'LocationSlot l2 c2 ) ( SKScalar s2 :: SKPrimTy       ty2  )
+          ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1 ty1) )
+  -- vector - vector
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1 ty1) )
+    ( 'LocationSlot l2 c2 ) ( SKVector s2 :: SKPrimTy (V m2 ty2) )
+      = If (  l1 :>= ( l2 + VectorLocations m2 s2 )
+           || l2 :>= ( l1 + VectorLocations m1 s1 )
+           )
+          Nothing -- no overlap possible
+          ( -- in this case, a unique location is used by both vectors: Max l1 l2
+            FirstOverlapFromEnum (Max l1 l2)
+              ( 'LocationSlot l1 c1 ) (V m1 ty1) s1
+              ( 'LocationSlot l2 c2 ) (V m2 ty2) s2
+          )
+  -- scalar - matrix
+  --   only need to check location overlap;
+  --   no need to worry about components, as matrices consume locations entirely
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 c1 ) ( SKScalar s1 :: SKPrimTy          ty1  )
+    ( 'LocationSlot l2 _  ) ( SKMatrix s2 :: SKPrimTy (M m2 n2 ty2) )
+      = If ( l1 :< l2 || l1 :>= ( l2 + MatrixLocations n2 s2 ) )
+          Nothing
+          ( Just ( 'OverlappingSlot ( 'LocationSlot l1 c1 ) ) )
+  -- matrix - scalar: reduce to scalar - matrix
+  ComputeFirstOverlap
+    loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+    loc2 ( SKScalar s2 :: SKPrimTy          ty2  )
+      = ComputeFirstOverlap
+          loc2 ( SKScalar s2 :: SKPrimTy          ty2  )
+          loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+  -- vector - matrix
+  --    essentially the same as scalar - matrix,
+  --    except that the vector might take up two locations
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1    ty1) )
+    ( 'LocationSlot l2 _  ) ( SKMatrix s2 :: SKPrimTy (M m2 n2 ty2) )
+      = If (  ( l2 :>= ( l1 + VectorLocations m1 s1 ) )
+           || ( l1 :>= ( l2 + MatrixLocations n2 s2 ) )
+           )
+          Nothing
+          ( If ( l1 :< l2 )
+              ( Just ( 'OverlappingSlot ( 'LocationSlot (l1 + 1) 0  ) ) )
+              ( Just ( 'OverlappingSlot ( 'LocationSlot l1       c1 ) ) )
+          )
+  -- matrix - vector: reduce to vector - matrix
+  ComputeFirstOverlap
+    loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+    loc2 ( SKVector s2 :: SKPrimTy (V m2    ty2) )
+      = ComputeFirstOverlap
+        loc2 ( SKVector s2 :: SKPrimTy (V m2    ty2) )
+        loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+  -- matrix - matrix
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 _ ) ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+    ( 'LocationSlot l2 _ ) ( SKMatrix s2 :: SKPrimTy (M m2 n2 ty2) )
+      = If (  ( l2 :>= ( l1 + MatrixLocations n1 s1 ) )
+           || ( l1 :>= ( l2 + MatrixLocations n2 s2 ) )
+           )
+          Nothing
+          ( Just ( OverlappingSlot ( 'LocationSlot ( Max l1 l2 ) 0 ) ) )
+  -- arrays
+  ComputeFirstOverlap
+    _ ( SKArray _ :: SKPrimTy (Array 0 ty1) )
+    _ _
+      = Nothing
+  ComputeFirstOverlap
+    loc1 ( SKArray elt :: SKPrimTy (Array 1 ty1) )
+    loc2 sing2
+      = ComputeFirstOverlap loc1 elt loc2 sing2
+  ComputeFirstOverlap
+    ( 'LocationSlot l1 c1 ) ( SKArray elt1 :: SKPrimTy (Array n1 ty1) )
+    ( 'LocationSlot l2 c2 ) ( sing2        :: SKPrimTy           ty2  )
+      = If ( ( l1 + n1 * ( Components ty1 `Div` 4 ) ) :< l2 )
+          Nothing
+          ( ( ComputeFirstOverlap
+                ( 'LocationSlot l1 c1 ) elt1
+                ( 'LocationSlot l2 c2 ) sing2
+            )
+            `IfNothingThen`
+            ( ComputeFirstOverlap
+                ( 'LocationSlot
+                    ( l1 + 1 + ( Components ty1 `Div` 4 ) )
+                    c1
+                )
+                ( SKArray elt1 :: SKPrimTy ( Array (n1-1) ty1) )
+                ( 'LocationSlot l2 c2 ) sing2
+            )
+          )
+  ComputeFirstOverlap
+    loc1 sing1
+    loc2 ( SKArray elt2 :: SKPrimTy (Array n2 ty2) )
+      = ComputeFirstOverlap
+          loc2 ( SKArray elt2 :: SKPrimTy (Array n2 ty2) )
+          loc1 sing1
+
+type family VectorLocations (m :: Nat) (s :: SScalarTy ty) :: Nat where
+  VectorLocations m s = If ( ScalarWidth s :<= 32 || m :<= 2 ) 1 2
+
+type family MatrixLocations (n :: Nat) (s :: SScalarTy ty) :: Nat where
+  MatrixLocations n s = n * VectorLocations 4 s
+
+type family FirstOverlapFromEnum
+              ( loc  :: Nat              ) -- location used for 'OverlappingLocation'
+              ( loc1 :: LocationSlot Nat )
+              ( ty1  :: Type             )
+              ( s1   :: SScalarTy scal1  )
+              ( loc2 :: LocationSlot Nat )
+              ( ty2  :: Type             )
+              ( s2   :: SScalarTy scal2  )
+           :: Maybe Overlap
+           where
+  FirstOverlapFromEnum loc
+    loc1 ty1 (s1 :: SScalarTy scal1)
+    loc2 ty2 (s2 :: SScalarTy scal2)
+    = ( FirstOverlappingSlot
+        ( EnumConsecutiveSlots loc1 ty1 )
+        ( EnumConsecutiveSlots loc2 ty2 )
+      )
+      `IfNothingThen`
+      ( If ( CompatibleSScalars s1 s2 )
+          Nothing
+          ( Just ('OverlappingLocation loc scal1 scal2 ) )
+      )
+
+type family FirstOverlappingSlot
+              ( slots1 :: [ LocationSlot Nat ] ) -- ordered
+              ( slots2 :: [ LocationSlot Nat ] ) -- ordered
+           :: Maybe Overlap
+           where
+  FirstOverlappingSlot '[]               _      = Nothing
+  FirstOverlappingSlot (slot1 ': slots1) slots2
+    = If ( slot1 `Elem` slots2 )
+        ( Just (OverlappingSlot slot1) )
+        ( FirstOverlappingSlot slots1 slots2 )
 
 type CompatibleSScalars
               ( s1 :: SScalarTy ty1 )
@@ -165,31 +420,6 @@ type family CompatibleScalars
   CompatibleScalars ( SPIRV.Floating  w ) ( SPIRV.Floating  w ) = True
   CompatibleScalars _                     _                     = False
 
-type NbLocationsUsed ( as :: [LocationSlot Nat :-> Type] )
-  = ( NbLocationsOfSlots (Slots as) :: Nat )
-
-type family NbLocationsOfSlots
-              ( slots :: Map (LocationSlot Nat) SlotProvenance )
-            :: Nat
-            where
-  NbLocationsOfSlots '[] = 0
-  NbLocationsOfSlots ( ( slot ':-> Provenance startLoc ty scalar avail ) ': slots )
-    = NbLocationsOfSlotsAcc
-        startLoc
-        startLoc
-        ( ( slot ':-> Provenance startLoc ty scalar avail ) ': slots )
-
-type family NbLocationsOfSlotsAcc
-              ( minLoc :: LocationSlot Nat )
-              ( maxLoc :: LocationSlot Nat )
-              ( slots :: [ LocationSlot Nat :-> SlotProvenance ] )
-            :: Nat
-            where
-  NbLocationsOfSlotsAcc ('LocationSlot minLoc _) ('LocationSlot maxLoc _) '[]
-    = 1 + maxLoc - minLoc
-  NbLocationsOfSlotsAcc minLoc maxLoc ( (loc ':-> _) ': locs )
-    = NbLocationsOfSlotsAcc minLoc (Max maxLoc loc) locs
-
 -- | Simple enumeration of consecutive slots,
 -- as many as the size of the type.
 --
@@ -201,115 +431,4 @@ type family EnumConsecutiveSlots
             :: [ LocationSlot Nat ]
               where
   EnumConsecutiveSlots loc ty
-    = EnumFromOfCount loc ( SizeOf Locations ty `Div` 4 )
-
--- | Given a key-value map of locations and their provenances,
--- pads the initial and terminal components with a given provenance.
---
--- Should not be used for compound types for which
--- the locations used are not consecutive.
-type family PadLocations
-            ( slots   :: Map (LocationSlot Nat) SlotProvenance )
-            ( padProv :: SlotProvenance )
-          :: Map (LocationSlot Nat) SlotProvenance
-          where
-  PadLocations ( ( 'LocationSlot l c ':-> prov ) ': slots ) padProv
-    = ( ( EnumFromOfCount ('LocationSlot l 0) c ) `ZipValue` padProv )
-    :++:
-    ( RightPadLocations ( ( 'LocationSlot l c ':-> prov ) ': slots ) padProv )
-
-type family RightPadLocations
-            ( slots   :: Map (LocationSlot Nat) SlotProvenance )
-            ( padProv :: SlotProvenance )
-          :: Map (LocationSlot Nat) SlotProvenance
-          where
-  RightPadLocations '[] _ = '[]
-  RightPadLocations '[ 'LocationSlot l 3 ':-> prov ] _
-    = '[ 'LocationSlot l 3 ':-> prov ]
-  RightPadLocations '[ 'LocationSlot l c ':-> prov ] padProv
-    = ( 'LocationSlot l c ':-> prov )
-   ': ( EnumFromTo ( 'LocationSlot l (c+1) ) ( 'LocationSlot l 3 ) `ZipValue` padProv )
-  RightPadLocations (slot ': slots) padProv
-    = slot ': RightPadLocations slots padProv
-
--- | Enumerate all slots used by a type beginning in a given location.
-type family EnumSlots
-              ( slot :: LocationSlot Nat )
-              ( ty   :: Type             )
-              ( sing :: SKPrimTy ty      )
-            :: Map (LocationSlot Nat) SlotProvenance
-            where
-  EnumSlots _ () SKUnit
-    = TypeError
-        ( Text "Unit type not supported in input/output." )
-  EnumSlots _ Bool SKBool
-    = TypeError
-        ( Text "Input/output: booleans not supported. Convert to 'Word32' instead." )
-  EnumSlots ('LocationSlot l c) ty (SKScalar s)
-    = If ( c :<= 3 && ( c `Mod` 2 == 0 || ScalarWidth s :<= 32 ) )
-        ( PadLocations
-            ( ( EnumConsecutiveSlots ('LocationSlot l c) ty )
-                `ZipValue`
-                  ( Provenance ('LocationSlot l c) (SKScalar s :: SKPrimTy ty) s Used )
-            )
-            ( Provenance ('LocationSlot l c) (SKScalar s :: SKPrimTy ty) s Available )
-        )
-        ( TypeError
-          (    Text "Input/output: cannot position scalar of type " :<>: ShowType ty
-          :$$: Text " at location " :<>: ShowType l
-          :<>: Text " with component " :<>: ShowType c :<>: Text "."
-          )
-        )
-  EnumSlots ('LocationSlot l c) (V n a) (SKVector s)
-    = If ( c == 0 || ( c `Mod` 2 == 0 && c :<= 3 && n :<= 2 && ScalarWidth s :<= 32 ) )
-        ( PadLocations
-            ( ( EnumConsecutiveSlots ('LocationSlot l c) (V n a) )
-                `ZipValue`
-                  ( Provenance ('LocationSlot l c) (SKVector s :: SKPrimTy (V n a)) s Used )
-            )
-            ( Provenance ('LocationSlot l c) (SKVector s :: SKPrimTy (V n a)) s Available )
-        )
-        ( TypeError
-          (    Text "Input/output: cannot position vector of type "
-          :<>: ShowType (V n a)
-          :$$: Text "at location " :<>: ShowType l
-          :<>: Text " with component " :<>: ShowType c :<>: Text "."
-          )
-        )
-  EnumSlots ('LocationSlot l 0) (M m n a) (SKMatrix s)
-    = ( EnumConsecutiveSlots ('LocationSlot l 0) (M m n a) )
-      `ZipValue`
-      ( Provenance ('LocationSlot l 0) (SKMatrix s :: SKPrimTy (M m n a)) s Used )
-    -- no need to pad, as matrices automatically consume all components of each used location
-  EnumSlots ('LocationSlot l c) (M m n a) (SKMatrix _)
-    = TypeError
-        (    Text "Input/output: cannot position matrix at location " :<>: ShowType l
-        :<>: Text " with non-zero component " :<>: ShowType c :<>: Text "."
-        )
-  EnumSlots loc (Array 0 a) (SKArray _) = '[]
-  EnumSlots loc (Array 1 a) (SKArray elt) = EnumSlots loc a elt
-  EnumSlots ('LocationSlot l c) (Array n a) (SKArray elt)
-    =  If ( c :<= 3 )
-    -- (slight optimisation to have these in reverse lexicographic order)
-        ( EnumSlots
-                ( 'LocationSlot
-                    ( l + 1 + (SizeOf Locations a `Div` 16) )
-                    c
-                )
-                ( Array (n-1) a )
-                ( SKArray elt :: SKPrimTy (Array (n-1) a) )
-        :++: EnumSlots ('LocationSlot l c) a elt
-        )
-        ( TypeError
-           (    Text "Input/output: cannot position array of type" :<>: ShowType (Array n a)
-           :$$: Text "at location " :<>: ShowType l
-           :<>: Text " with component " :<>: ShowType c :<>: Text "."
-           :$$: Text "Component cannot be greater than 3."
-           )
-        )
-  EnumSlots _ (RuntimeArray _) (SKRuntimeArray _)
-    = TypeError
-        ( Text "Input/output: runtime arrays not supported." )
-  EnumSlots _ (Struct _) (SKStruct _)
-    = TypeError
-        ( Text "Input/output: structs not (yet?) supported." )
+    = EnumFromOfCount loc (Components ty)

@@ -1,7 +1,7 @@
 
 test\Tests\Interface\InvalidComponent.hs:35:10: error:
-    * Input/output: cannot position scalar of type Double
-       at location 1 with component 1.
+    * Cannot position scalar of type Double
+       at Location 1, Component 1.
     * In the expression:
         shader
           do put @"out1" =<< get @"in1"
@@ -16,8 +16,8 @@ test\Tests\Interface\InvalidComponent.hs:35:10: error:
    |          ^^^^^^^^^^...
 
 test\Tests\Interface\InvalidComponent.hs:50:12: error:
-    * Input/output: cannot position scalar of type Double
-       at location 1 with component 1.
+    * Cannot position scalar of type Double
+       at Location 1, Component 1.
     * In the expression:
         shader
           do ~(Vec4 x y z _) <- get @"in1"

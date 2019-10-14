@@ -85,7 +85,7 @@ import Control.Type.Optic
 import Data.Type.Known
   ( Known )
 import Data.Type.Map
-  ( (:->)((:->)) )
+  ( (:->)((:->)), InsertionSort )
 import FIR.AST
   ( AST(Gather) )
 import FIR.Definition
@@ -116,8 +116,6 @@ import FIR.Prim.Struct
   )
 import FIR.Validation.Formats
   ( ComputeFormats )
-import FIR.Validation.Layout
-  ( Slots )
 import Math.Linear
   ( V, M )
 import SPIRV.ScalarTy
@@ -276,7 +274,7 @@ type family AnnotateLocationsWithBindingAndOffset
 
 type LocationDescriptionsOfStruct
       ( as :: [ LocationSlot Nat :-> Type ] )
-    = ( ComputeFormats (Slots as) :: [ Nat :-> SPIRV.ImageFormat Nat ] )
+    = ( ComputeFormats (InsertionSort as) :: [ Nat :-> SPIRV.ImageFormat Nat ] )
 
 ----------------------------------------------------------------------
 -- synonyms for optics

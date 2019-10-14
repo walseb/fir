@@ -38,9 +38,13 @@ import Data.Type.Snoc -- for re-export
 ------------------------------------------------
 -- functionality to deal with type-level lists
 
+infixr 6 :++:
+
 type family (:++:) (as :: [k]) (bs :: [k]) where
   '[]       :++: bs = bs
   (a ': as) :++: bs = a ': ( as :++: bs )
+
+infix 4 `Elem`
 
 type family Elem (x :: k) (as :: [k]) where
   Elem _ '[]       = 'False

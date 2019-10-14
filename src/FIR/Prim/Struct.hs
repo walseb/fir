@@ -43,7 +43,7 @@ one instead specifies location slots (see "FIR.Layout"):
 module FIR.Prim.Struct
   ( Struct(End, (:&))
   , LocationSlot(..)
-  , ShowLocation, ShowLocationSlot
+  , ShowLocationSlot
   , FieldKind(..)
   , StructFieldKind(fieldKind)
   , headS, tailS
@@ -114,10 +114,6 @@ tailS (_ :& as) = as
 
 data LocationSlot n where
   LocationSlot :: n -> n -> LocationSlot n
-
-type family ShowLocation ( slot :: LocationSlot Nat ) :: Symbol where
-  ShowLocation ('LocationSlot l _)
-    = "Location " `AppendSymbol` ShowNat l
 
 type family ShowLocationSlot ( slot :: LocationSlot Nat ) :: Symbol where
   ShowLocationSlot ('LocationSlot l c)

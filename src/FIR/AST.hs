@@ -135,7 +135,7 @@ data AST :: Type -> Type where
 
   -- | Haskell-level constants can be embedded into the AST.
   Lit :: ( PrimTy a, KnownArity a ) => a -> AST a
-  -- | @SPIR-V@ primitive operations
+  -- | @SPIR-V@ primitive operations.
   PrimOp :: PrimOp op a => Proxy a -> Proxy op -> AST (PrimOpType op a)
 
   -- | Create an object of the given type from its ID.

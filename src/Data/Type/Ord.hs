@@ -18,6 +18,12 @@ import GHC.TypeNats
 
 -------------------------------------------------------------------------------
 
+infix 4 :<
+infix 4 :>
+infix 4 :<=
+infix 4 :>=
+infix 4 `Compare`
+
 class POrd a where
   type Compare (x :: a) (y :: a) :: Ordering
   type (x :: a) :<  (y :: a) :: Bool
