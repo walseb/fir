@@ -10,7 +10,7 @@
 Module: FIR.Validation.Bindings
 
 Validation module providing checks for stateful operations
-such as 'FIR.Instances.Codensity.get', 'FIR.Instances.Codensity.put',
+such as 'FIR.Instances.Codensity.get' and 'FIR.Instances.Codensity.put',
 using type families with custom type errors.
 
 These are used, for instance, to prevent any name from being bound twice,

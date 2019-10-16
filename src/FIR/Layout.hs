@@ -40,61 +40,7 @@ must provide explicit Offset and Stride decorations. These offsets
 are computed by this module to avoid the user needing to manually specify them.
 
 In the last situation, per-vertex/per-instance data is laid out in locations,
-for use by the vertex shader. Each location holds four components of 4 bytes each.
-The type-system checks the compliance of any user-supplied layout with the SPIR-V and Vulkan specifications,
-in particular checking that the assignment of slots is non-overlapping.
-
-For instance, suppose we want to lay out objects of the following types:
-
-  [@A@] @Array 3 (V 2 Float)@
-
-  [@B@] @Array 2 Float@
-
-  [@C@] @Float@
-
-  [@D@] @V 3 Double@
-
-  [@E@] @Array 2 Double@
-
-  [@F@] @M 2 3 Float@
-
-We can lay out this data by specifying which location slots each type uses.
-Consider for instance the following specification:
-
->  Struct
->    '[ Slot 0 0 ':-> Array 3 (V 2 Float)
->     , Slot 0 2 ':-> Array 2 Float
->     , Slot 1 3 ':-> Float
->     , Slot 3 0 ':-> V 3 Double
->     , Slot 4 2 ':-> Array 2 Double
->     , Slot 6 0 ':-> M 2 3 Float
->     ]
-
-We can visualise this layout as follows,
-each row representing a location (each consisting of 4 components):
-
-\[
-\begin{matrix}
-  & 0                & 1                & 2                     & 3                     \\
-0 & \color{brown}{A} & \color{brown}{A} & \color{RoyalBlue}{B}  & \circ                 \\
-1 & \color{brown}{A} & \color{brown}{A} & \color{RoyalBlue}{B}  & \color{purple}{C}     \\
-2 & \color{brown}{A} & \color{brown}{A} & \circ                 & \circ                 \\
-3 & \color{Plum}{D}  & \color{Plum}{D}  & \color{Plum}{D}       & \color{Plum}{D}       \\
-4 & \color{Plum}{D}  & \color{Plum}{D}  & \color{orange}{E}     & \color{orange}{E}     \\
-5 & \circ            & \circ            & \color{orange}{E}     & \color{orange}{E}     \\
-6 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times} \\
-7 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times} \\
-8 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times}
-\end{matrix}
-\]
-
-Here \( \circ \) denotes unused components that are still available for other data,
-whereas \( \times \) denotes unused components that /cannot/ be filled with other data.
-
-Note in particular that matrices use as many locations as they have columns, consuming each location in its entirety.
-
-The specification guarantees that locations 0 to 15 will be available. The availability of further locations
-will depend on the GPU and its implementation of Vulkan.
+for use by the vertex shader. See "FIR.Validation.Layout".
 
 For further reference, see:
 
@@ -600,11 +546,9 @@ inferLayout :: MonadError ShortText m
             -> SPIRV.PrimTy
             -> m SPIRV.PrimTy
 inferLayout _ _ storageClass ty
-  | storageClass `elem`
-      [ Storage.Image    , Storage.UniformConstant
-      , Storage.Workgroup, Storage.CrossWorkgroup
-      , Storage.Private  , Storage.Function
-      , Storage.Generic  , Storage.AtomicCounter
+  | storageClass `notElem`
+      [ Storage.Uniform, Storage.StorageBuffer, Storage.PushConstant
+      , Storage.Input, Storage.Output
       ]
   = pure ty
 inferLayout usage decs storageClass (SPIRV.Array lg (SPIRV.Struct as sdecs _) adecs _)

@@ -56,7 +56,7 @@ import SPIRV.Stage
 import qualified SPIRV.Storage    as SPIRV
   ( StorageClass(Input, Output) )
 
--------------------------------------------------------------
+-----------------------------------------------------------------------------------------
 
 -- | Check that a pipeline is valid:
 --
@@ -118,6 +118,9 @@ type family ValidTopology (top :: PrimitiveTopology n) :: Constraint where
   ValidTopology _
     = ()
 
+-----------------------------------------------------------------------------------------
+-- Validation of shader sequence / matching of interfaces.
+
 -- | Check that consecutive shaders in the pipeline match up correctly:
 --
 --  - the sequence makes sense (e.g. can't have a tessellation shader following a geometry shader),
@@ -137,6 +140,9 @@ type family MatchingInterfaces
       = ( ValidPipelineInterface top pipelineStage1 pipelineStage2
         , MatchingInterfaces top ( pipelineStages `Into` pipelineStage1 )
         )
+
+---------------------------
+-- Sequencing of shaders.
 
 -- | Check that a given pair of shaders sequences correctly.
 type family ValidPipelineInterface
@@ -470,6 +476,9 @@ type family GetInterfaceOf
       = iface
   GetInterfaceOf shader name ( _ ': eps )
     = GetInterfaceOf shader name eps
+
+---------------------------
+-- Interface matching.
 
 type family MatchingInterface
               ( stageName1 :: Symbol                           )

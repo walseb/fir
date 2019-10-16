@@ -19,7 +19,7 @@ import Math.Linear
 -- program
 
 type Defs =
-  '[ "nested" ':-> Uniform '[Binding 0, DescriptorSet 0]
+  '[ "nested" ':-> Uniform'[ Binding 0, DescriptorSet 0 ]
         ( Array 4 ( Array 6 ( Struct '[ "r" ':-> Float, "ijk" ':-> V 3 Float ] ) ) )
    , "out"    ':-> Output '[Location 0 ] ( V 4 Float )
    , "main"   ':-> EntryPoint '[] Vertex

@@ -43,6 +43,8 @@ import FIR.Definition
   )
 import FIR.ProgramState
   ( ProgramState )
+import FIR.Validation.Definitions
+  ( ValidDefinitions )
 import qualified SPIRV.Stage  as SPIRV
   ( Shader )
 
@@ -69,7 +71,7 @@ data Module
       ( a    :: Type                      )
     :: Type where
   Module  :: forall defs a endState
-          .  KnownDefinitions defs
+          .  ( KnownDefinitions defs, ValidDefinitions defs )
           => Program (StartState defs) endState a
           -> Module defs a
 
@@ -92,6 +94,6 @@ data ShaderModule
         where
   ShaderModule
     :: forall name stage defs endState
-    .  KnownDefinitions defs
+    .  ( KnownDefinitions defs, ValidDefinitions defs )
     => Program (StartState defs) endState ()
     -> ShaderModule name stage defs endState

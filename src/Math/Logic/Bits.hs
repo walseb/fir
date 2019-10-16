@@ -16,7 +16,20 @@ Module: Math.Logic.Bits
 
 Alternative "Data.Bits" type class tailored for this library.
 
-Refer to "Math.Algebra.Class" for an explaination of why such alternatives are necessary for this library.
+Justification: some of the methods of "Data.Bits" are unsuited for this library.
+Consider for instance the class method
+
+> shiftL :: a -> Int -> a
+
+This function bakes in the type `Int`.
+For this library, this would mean that only shifts
+by Haskell-level constants are possible.
+Instead, we want something which can instantiate to, e.g.:
+
+> shiftL :: AST Word64 -> AST Word8 -> AST Word64
+
+See also "Math.Algebra.Class" for further explanations
+regarding the limitations of the standard type classes.
 
 -}
 
@@ -111,7 +124,6 @@ class BitShift (bs :: (Type,Type)) where
   --
   -- This is an arithmetic shift: most-significant bits are filled
   -- with the sign of the first argument.
-
   shiftR :: Shift bs -- b -> s -> b
 
 instance (Base.Bits a, Prelude.Integral i)

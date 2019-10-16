@@ -10,7 +10,72 @@ Module: FIR.Validation.Layout
 
 Validation module for GPU memory layout, e.g. shader location/component assignments.
 
-See "FIR.Layout" for an overview of memory layout concerns.
+To specify the layout of vertex input data, the user specifies the type of inhabitants
+in the available memory locations. Each location holds four components,
+with each component of size 32 bits (4 bytes), i.e. the size of a 'Float'.
+The type-system checks the compliance of any user-supplied layout with the SPIR-V and Vulkan specifications,
+in particular checking that the assignment of slots is non-overlapping.
+
+For instance, suppose we want to lay out objects of the following types:
+
+  [@A@] @Array 3 (V 2 Float)@
+
+  [@B@] @Array 2 Float@
+
+  [@C@] @Float@
+
+  [@D@] @V 3 Double@
+
+  [@E@] @Array 2 Double@
+
+  [@F@] @M 2 3 Float@
+
+We can lay out this data by specifying which location slots each type uses.
+Consider for instance the following specification:
+
+>  Struct
+>    '[ Slot 0 0 ':-> Array 3 (V 2 Float)
+>     , Slot 0 2 ':-> Array 2 Float
+>     , Slot 1 3 ':-> Float
+>     , Slot 3 0 ':-> V 3 Double
+>     , Slot 4 2 ':-> Array 2 Double
+>     , Slot 6 0 ':-> M 2 3 Float
+>     ]
+
+We can visualise this layout as follows,
+each row representing a location (each consisting of 4 components):
+
+\[
+\begin{matrix}
+  & 0                & 1                & 2                     & 3                     \\
+0 & \color{brown}{A} & \color{brown}{A} & \color{RoyalBlue}{B}  & \circ                 \\
+1 & \color{brown}{A} & \color{brown}{A} & \color{RoyalBlue}{B}  & \color{purple}{C}     \\
+2 & \color{brown}{A} & \color{brown}{A} & \circ                 & \circ                 \\
+3 & \color{Plum}{D}  & \color{Plum}{D}  & \color{Plum}{D}       & \color{Plum}{D}       \\
+4 & \color{Plum}{D}  & \color{Plum}{D}  & \color{orange}{E}     & \color{orange}{E}     \\
+5 & \circ            & \circ            & \color{orange}{E}     & \color{orange}{E}     \\
+6 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times} \\
+7 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times} \\
+8 & \color{green}{F} & \color{green}{F} & \color{green}{\times} & \color{green}{\times}
+\end{matrix}
+\]
+
+Here \( \circ \) denotes unused components that are still available for other data,
+whereas \( \times \) denotes unused components that /cannot/ be filled with other data.
+
+Note in particular that matrices use as many locations as they have columns, consuming each location in its entirety.
+
+The specification guarantees that locations 0 to 15 will be available. The availability of further locations
+will depend on the GPU and its implementation of Vulkan.
+
+For further reference, see:
+
+  - SPIR-V specification, 2.16.2 "Validation Rules for Shader Capabilities", bullet point 3,
+  - SPIR-V specification, 2.18.1 "Memory Layout",
+  - Vulkan specification, 14.1.4 "Location Assignment", and 14.1.5 "Component Assignment",
+  - Vulkan specification, 14.5.2 "Descriptor Set Interface", and 14.5.4 "Offset and Stride Assignment".
+
+See also "FIR.Layout" for further information concerning memory layout.
 
 -}
 
@@ -248,8 +313,8 @@ type family ComputeFirstOverlap
     ( 'LocationSlot l c1 ) ( SKScalar s1 :: SKPrimTy ty1 )
     ( 'LocationSlot l c2 ) ( SKScalar s2 :: SKPrimTy ty2 )
       = FirstOverlapFromEnum l
-          ( 'LocationSlot l c1) ty1 s1
-          ( 'LocationSlot l c2) ty2 s2
+          ( 'LocationSlot l c1 ) ty1 s1
+          ( 'LocationSlot l c2 ) ty2 s2
     -- (scalars are always contained within a single location)
   ComputeFirstOverlap
     ( 'LocationSlot l1 _ ) ( SKScalar _ )

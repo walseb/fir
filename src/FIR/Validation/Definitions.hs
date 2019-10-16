@@ -15,8 +15,13 @@ For instance, this checks that uniform buffer objects are
 decorated with the required binding and descriptor set indices.
 
 Does __not__ perform validation of entry point interfaces,
-i.e. input/output variables.
-See "FIR.Validation.Interface".
+i.e. input/output variables. See "FIR.Validation.Interface".
+This is because it is not possible to validate layout using only the definitions,
+as the layout validity of an entry point interface depends on
+the specific entry-point it is used by.
+For instance, an arrayed input means something different in
+a tessellation evaluation shader than in a vertex shader,
+because of implicit arrayness levels. See "FIR.Validation.Arrayness".
 
 -}
 
