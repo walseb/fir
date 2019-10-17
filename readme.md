@@ -31,7 +31,7 @@ The haddock documentation is also worth perusing for specialised in-depth explan
 # Examples
 
 <div align="center">
-![FullPipeline](img/full_pipeline_small.png) ![Logo](img/logo_small.png) ![Hopf](img/hopf_small.png) ![Texture](img/texture_small.png) ![JuliaSet](img/julia_small.png) ![Offscreen](img/offscreen_small.png) ![Bezier](img/bezier_small.png)
+<a href="fir-examples/readme.md#fullpipeline"><img src="img/full_pipeline_small.png" alt="Full graphics pipeline"></a> <a href="fir-examples/readme.md#logo"><img src="img/logo_small.png" alt="FIR logo (compute shader)"></a> <a href="fir-examples/readme.md#hopf"><img src="img/hopf_small.png" alt="Hopf fibration"></a> <a href="fir-examples/readme.md#texture"><img src="img/texture_small.png" alt="Texture sampling"></a> <a href="fir-examples/readme.md#julia"><img src="img/julia_small.png" alt="Julia set"></a> <a href="fir-examples/readme.md#offscreen"><img src="img/offscreen_small.png" alt="Offscreen rendering"></a> <a href="fir-examples/readme.md#bezier"><img src="img/bezier_small.png" alt="Bézier curves"></a> 
 </div>
 
 Some simple examples are included in the **fir-examples** subdirectory.
