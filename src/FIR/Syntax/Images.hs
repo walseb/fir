@@ -13,10 +13,10 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
-Module: FIR.Instances.Images 
+Module: FIR.Syntax.Images 
 
-This module allows for the operations 'FIR.Instances.Codensity.use'
-and 'FIR.Instances.Codensity.assign' to work with images, by providing the 'ImageTexel' lens.
+This module allows for the operations 'FIR.Syntax.Codensity.use'
+and 'FIR.Syntax.Codensity.assign' to work with images, by providing the 'ImageTexel' lens.
 
 This allows accessing image data in a shader like so:
 
@@ -64,7 +64,7 @@ results in an error:
 
 -}
 
-module FIR.Instances.Images
+module FIR.Syntax.Images
   ( -- * Lens focusing on an image texel    
     ImageTexel
   )

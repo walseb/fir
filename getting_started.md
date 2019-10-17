@@ -119,26 +119,14 @@ The type-level map `VertexShaderDefs` provides the interface for the vertex shad
 <a name="compiling"></a>
 ## Compiling shaders
 
-To compile a shader, use the `compile` function:
+To compile a shader to a file, use the `compileTo` function:
 ```haskell
-compile :: FilePath -> [CompilerFlag] -> Module defs a -> IO ( Either ShortText ModuleRequirements )
+compileTo :: FilePath -> [CompilerFlag] -> Module defs a -> IO ( Either ShortText ModuleRequirements )
 ```
 To compile the above vertex shader, we can run the function
 ```haskell
 compileVertexShader :: IO ( Either ShortText ModuleRequirements )
-compileVertexShader = compile "vert.spv" [] vertexShader
-```
-Sometimes it is more convenient to have the shaders be compiled when we compile our graphics application, as opposed to when we run it. To that end, a simple Template Haskell function is also provided:
-```haskell
-runCompilationsTH :: [ ( ShortText, IO (Either ShortText ModuleRequirements) ) ] -> Q Exp
-```
-To compile the above vertexShader at compile-time it suffices to perform a TH splice:
-```haskell
-shaderCompilationResult :: Either ShortText ModuleRequirements
-shaderCompilationResult
-  = $( runCompilationsTH
-        [ ("Simple vertex shader", compileVertexShader) ]
-     )
+compileVertexShader = compileTo "vert.spv" [] vertexShader
 ```
 
 This produces the following SPIR-V (see the [section on SPIR-V tools](#spirv)):
@@ -190,13 +178,33 @@ This produces the following SPIR-V (see the [section on SPIR-V tools](#spirv)):
                OpFunctionEnd
 ```
 
+Sometimes it is more convenient to have the shaders be compiled when we compile our graphics application, as opposed to when we run it. To that end, a simple Template Haskell function is also provided:
+```haskell
+runCompilationsTH :: [ ( ShortText, IO (Either ShortText ModuleRequirements) ) ] -> Q Exp
+```
+To compile the above Vertex shader to disk at compile-time, it suffices to perform a TH splice:
+```haskell
+shaderCompilationResult :: Either ShortText ModuleRequirements
+shaderCompilationResult
+  = $( runCompilationsTH
+        [ ("Simple vertex shader", compileVertexShader) ]
+     )
+```
+
+Note that it is also possible to directly obtain a SPIR-V binary by using the `compile` function:
+```haskell
+compile :: [CompilerFlag] -> Module defs a -> IO ( Either ShortText ( ModuleBinary, ModuleRequirements ) )
+```
+Such binaries can be passed directly to Vulkan without needing any disk read/write operations.
+
 <a name="ast"></a>
 ## Inspecting the AST
 
-It is possible to view the AST that this library generates, using the `ast` command. For instance:
+It is possible to view the AST that this library generates,
+using the `showAST` and `drawAST` commands. For instance:
 
 ```
-> ast vertexShader
+> drawAST vertexShader
 
 Bind
  ├╴Entry @Vertex

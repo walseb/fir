@@ -15,9 +15,9 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 
 {-|
-Module: FIR.Instances.Codensity
+Module: FIR.Syntax.Codensity
 
-This module, together with "FIR.Instances.AST",
+This module, together with "FIR.Syntax.AST",
 provides most of the user-facing syntax for constructing
 and manipulating values in the EDSL.
 
@@ -34,7 +34,7 @@ See also the validation modules:
 
 -}
 
-module FIR.Instances.Codensity
+module FIR.Syntax.Codensity
   ( -- * Monadic control operations
     when, unless, while
   , locally, embed, locallyPair, embedPair
@@ -146,14 +146,6 @@ import FIR.Definition
   , StartState
   , StartBindings, EndBindings
   )
-import FIR.Instances.AST
-  ( )
-import FIR.Instances.Images
-  ( ImageTexel )
-import FIR.Instances.Optics
-  ( User, Assigner, KnownOptic, opticSing
-  , StatefulOptic
-  )
 import FIR.Module
   ( ShaderModule(ShaderModule) )
 import FIR.Prim.Image
@@ -169,6 +161,14 @@ import FIR.ProgramState
   , TLInterface
   , ExecutionContext
   , EntryPointInfo
+  )
+import FIR.Syntax.AST
+  ( )
+import FIR.Syntax.Images
+  ( ImageTexel )
+import FIR.Syntax.Optics
+  ( User, Assigner, KnownOptic, opticSing
+  , StatefulOptic
   )
 import FIR.Validation.Bindings
   ( ValidDef, AddBinding, Has
@@ -614,7 +614,7 @@ type family ListVariadicCod
   ListVariadicCod ( i ': is ) s a = AST i -> ListVariadicCod is s a
 
 
--- recall (defined in FIR.Instances.Optics):
+-- recall (defined in FIR.Syntax.Optics):
 -- type User     (g :: Optic is s a) = ListVariadicIx is                s a
 -- type Assigner (g :: Optic is s a) = ListVariadicIx (is `Postpend` s) s ()
 

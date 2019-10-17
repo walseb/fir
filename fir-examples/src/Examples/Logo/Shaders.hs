@@ -318,4 +318,4 @@ compPath :: FilePath
 compPath = "shaders/logo_comp.spv"
 
 compileComputeShader :: IO ( Either ShortText ModuleRequirements )
-compileComputeShader = compile compPath [] computeShader
+compileComputeShader = compileTo compPath [] computeShader

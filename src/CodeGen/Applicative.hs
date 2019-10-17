@@ -90,8 +90,6 @@ import FIR.AST
   , Syntactic(fromAST)
   , primOp
   )
-import FIR.Instances.AST
-  ( ) -- 'PrimFunc' instances, optic instances
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Op
@@ -105,6 +103,8 @@ import FIR.Prim.Singletons
   , SPrimFunc(..)
   , Arity(ZeroArity,SuccArity), KnownArity(arity)
   )
+import FIR.Syntax.AST
+  ( ) -- 'PrimFunc' instances, optic instances
 import Math.Algebra.Class
   ( Semiring((*)), Integral )
 import Math.Linear

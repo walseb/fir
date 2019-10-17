@@ -17,7 +17,7 @@ import qualified Data.Vector as Array
 
 -- fir
 import FIR
-import FIR.Labels
+import FIR.Syntax.Labels
 import Math.Linear
 
 ------------------------------------------------

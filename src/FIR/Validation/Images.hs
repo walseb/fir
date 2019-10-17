@@ -9,7 +9,7 @@
 Module: FIR.Validation.Images
 
 Validation module for stateful operations involving images,
-such as 'FIR.Instances.Codensity.imageRead', 'FIR.Instances.Codensity.imageWrite',
+such as 'FIR.Syntax.Codensity.imageRead', 'FIR.Syntax.Codensity.imageWrite',
 using type families with custom type errors.
 
 This checks, for instance, that one doesn't access a non-sampled storage image

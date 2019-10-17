@@ -20,7 +20,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
-Module: FIR.Instances.Optics
+Module: FIR.Syntax.Optics
 
 This module overloads 'Control.Type.Optic.view',
 'Control.Type.Optic.set', and 'Control.Type.Optic.over'
@@ -38,7 +38,7 @@ Singletons for optics are also provided, to assist in displaying
 the names of optics, and internally for code generation.
 -}
 
-module FIR.Instances.Optics where
+module FIR.Syntax.Optics where
 
 -- base
 import Data.Kind
@@ -104,10 +104,6 @@ import Data.Type.Map
   , Key, Value
   , Lookup
   )
-import qualified FIR.Validation.Bindings as Binding
-  ( Has, CanGet, CanPut )
-import FIR.Validation.Images
-  ( LookupImageProperties )
 import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
 import FIR.Prim.Image
@@ -126,6 +122,10 @@ import FIR.ProgramState
   ( ProgramState )
 import FIR.Prim.Struct
   ( Struct((:&), End) )
+import qualified FIR.Validation.Bindings as Binding
+  ( Has, CanGet, CanPut )
+import FIR.Validation.Images
+  ( LookupImageProperties )
 import Math.Linear
   ( V((:.)), M(M), (^!), at )
 

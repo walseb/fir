@@ -1,12 +1,14 @@
 {-# OPTIONS_HADDOCK ignore-exports #-}
 
 {-# LANGUAGE AllowAmbiguousTypes  #-}
+{-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DeriveLift           #-}
 {-# LANGUAGE DerivingVia          #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE NamedFieldPuns       #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PatternSynonyms      #-}
@@ -55,22 +57,22 @@ fragment =
 
 Note the lens-like operations:
 
-  - @'FIR.Instances.Codensity.get' \@"in_pos"@ – equivalent to
-    @'FIR.Instances.Codensity.use' \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
+  - @'FIR.Syntax.Codensity.get' \@"in_pos"@ – equivalent to
+    @'FIR.Syntax.Codensity.use' \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
     This operation is similar to @get@ in a state monad, except that an additional binding name
     is provided via a type application.
-  - @'FIR.Instances.Codensity.use' \@(ImageTexel "image") NilOps pos@ samples the provided image
+  - @'FIR.Syntax.Codensity.use' \@(ImageTexel "image") NilOps pos@ samples the provided image
     at coordinates @pos@. Additional image operands can be provided for this sampling operation,
     such as an explicit level of detail or whether to use projective coordinates
     (refer to the SPIR-V specification for further information concerning image operands).
-  - @'FIR.Instances.Codensity.put' \@"out_col" col@ – equivalent to
-    @'FIR.Instances.Codensity.assign' \@(Name "out_col") col@ –
+  - @'FIR.Syntax.Codensity.put' \@"out_col" col@ – equivalent to
+    @'FIR.Syntax.Codensity.assign' \@(Name "out_col") col@ –
     sets the output value of the shader.
 
 
 This fragment shader can then be compiled using:
 
-> compile filePath flags fragment
+> compileTo filePath flags fragment
 
 where @filePath@ is the desired output filepath, and @flags@ is a list of 'CompilerFlag's.
 
@@ -81,10 +83,13 @@ of the project's repository.
 -}
 
 module FIR 
-  ( compile, runCompilationsTH
-  , DrawableProgramAST(ast)
+  ( DrawableProgramAST(showAST, drawAST)
+  , CompilableProgram(compile, compileTo)
   , CompilerFlag(..)
-  , ModuleRequirements(..)
+  , ModuleBinary(..), ModuleRequirements(..)
+  , runCompilationsTH
+
+  -- re-exports
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
   , (Control.Type.Optic.:*:), Control.Type.Optic.Prod, Control.Type.Optic.EndProd
@@ -120,10 +125,12 @@ module FIR
       ( Function
       , EntryPoint
       )
-  , module FIR.Instances.AST
-  , module FIR.Instances.Codensity
-  , module FIR.Instances.Images
-  , module FIR.Instances.Optics
+  , module FIR.Syntax.AST
+  , module FIR.Syntax.Codensity
+  , module FIR.Syntax.Images
+  , module FIR.Syntax.Optics
+  , module FIR.Syntax.Swizzle
+  , module FIR.Syntax.Synonyms
   , FIR.Layout.Layout(..)
   , FIR.Layout.Poke(..)
   , FIR.Layout.pokeArray
@@ -138,8 +145,6 @@ module FIR
   , module FIR.Prim.Struct
   , FIR.ProgramState.ProgramState(ProgramState)
   , FIR.ProgramState.FunctionContext(TopLevel)
-  , FIR.Swizzle.Swizzle
-  , module FIR.Synonyms
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Bits
@@ -239,6 +244,8 @@ import qualified Language.Haskell.TH.Syntax as TH
 
 -- bytestring
 import qualified Data.ByteString.Lazy as ByteString
+import Data.ByteString.Lazy
+  ( ByteString )
 
 -- containers
 import Data.Set
@@ -254,7 +261,7 @@ import Numeric.Half
 
 -- tree-view
 import Data.Tree.View
-  ( drawTree )
+  ( showTree )
 
 -- text-short
 import Data.Text.Short
@@ -273,10 +280,6 @@ import Data.Type.Map
 import FIR.AST
 import FIR.Binding
 import FIR.Definition
-import FIR.Instances.AST
-import FIR.Instances.Codensity
-import FIR.Instances.Images
-import FIR.Instances.Optics
 import FIR.Layout
 import FIR.Module
 import FIR.Pipeline
@@ -284,10 +287,14 @@ import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.Struct
 import FIR.ProgramState
-import FIR.Swizzle
-import FIR.Synonyms
+import FIR.Syntax.AST
+import FIR.Syntax.Codensity
+import FIR.Syntax.Images
+import FIR.Syntax.Optics
+import FIR.Syntax.Swizzle
+import FIR.Syntax.Synonyms
 import Instances.TH.Lift
-  ( ) -- Lift instances for ShortText, Set
+  ( ) -- Lift instances for ByteString, ShortText, Set
 import Math.Algebra.Class
 import Math.Algebra.GradedSemigroup
 import Math.Logic.Bits
@@ -308,22 +315,18 @@ import SPIRV.Stage
 --
 -- Can be used on whole programs, or on snippets of code in the AST indexed monad.
 class DrawableProgramAST prog where
-  ast :: prog -> IO ()
+  showAST :: prog -> String
+  drawAST :: prog -> IO ()
+  drawAST = putStrLn . showAST
 
 instance DrawableProgramAST (AST a) where
-  ast = drawTree . toTree
+  showAST = showTree . toTree
 instance DrawableProgramAST (Codensity AST (AST a := j) i) where
-  ast = drawTree . toTree . toAST
-instance ( DrawableProgramAST
-             ( Program (StartState defs) endState a )
-         )
-      => DrawableProgramAST (Module defs a)
-      where
-  ast (Module prog) = ast prog
-instance DrawableProgramAST (Program (StartState defs) endState ())
-      => DrawableProgramAST (ShaderModule name stage defs endState)
-      where
-  ast (ShaderModule prog) = ast prog
+  showAST = showTree . toTree . toAST
+instance DrawableProgramAST (Module defs a) where
+  showAST (Module prog) = showAST prog
+instance DrawableProgramAST (ShaderModule name stage defs endState) where
+  showAST (ShaderModule prog) = showAST prog
 
 -- | Compiler flags.
 data CompilerFlag
@@ -345,24 +348,42 @@ data ModuleRequirements
   deriving Semigroup via GenericSemigroup ModuleRequirements
   deriving Monoid    via GenericMonoid    ModuleRequirements
 
--- | Functionality for compiling a program, saving the SPIR-V assembly at the given filepath.
+-- | Newtype wrapper for the binary source of a SPIR-V module.
+--
+-- This newtype emphasises the fact that module binaries are monolithic,
+-- e.g. one can't combine binaries using '(<>)'.
+newtype ModuleBinary = ModuleBinary { moduleBinary :: ByteString }
+
+-- | Functionality for compiling a program into a SPIR-V module.
 class CompilableProgram prog where
-  compile :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText ModuleRequirements )
+  compile :: [CompilerFlag] -> prog -> IO ( Either ShortText ( ModuleBinary, ModuleRequirements ) )
+  compileTo :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText ModuleRequirements )
+  compileTo filePath flags prog =
+    compile flags prog Prelude.>>= \case
+      Left err
+        -> Prelude.pure (Left err)
+      Right (ModuleBinary bytes, reqs)
+        -> Monad.unless ( NoCode `elem` flags )
+              ( ByteString.writeFile filePath bytes )
+           *> Prelude.pure ( Right reqs )
 
 instance KnownDefinitions defs => CompilableProgram (Module defs a) where
-  compile filePath flags (Module program)
+  compile flags (Module program)
     = case runCodeGen cgContext (toAST program) of
         Left  err -> Prelude.pure ( Left err )
-        Right (bin, CGState { neededCapabilities, neededExtensions } )
-          ->  do  Monad.unless ( NoCode `elem` flags )
-                    ( ByteString.writeFile filePath bin )
-                  let
-                    reqs :: ModuleRequirements
-                    reqs = ModuleRequirements
-                      { requiredCapabilities = neededCapabilities
-                      , requiredExtensions   = neededExtensions
-                      }
-                  Prelude.pure (Right reqs)
+        Right ( bytes, CGState { neededCapabilities, neededExtensions } )
+          ->  let
+                reqs :: ModuleRequirements
+                reqs = ModuleRequirements
+                  { requiredCapabilities = neededCapabilities
+                  , requiredExtensions   = neededExtensions
+                  }
+                bin :: ModuleBinary
+                bin =
+                  if NoCode `elem` flags
+                  then ModuleBinary mempty
+                  else ModuleBinary bytes
+              in Prelude.pure  (Right (bin, reqs) )
       where cgContext :: CGContext
             cgContext = (initialCGContext @defs)
               { debugging = Debug  `elem` flags
@@ -372,8 +393,8 @@ instance KnownDefinitions defs => CompilableProgram (Module defs a) where
 instance ( KnownDefinitions defs )
       => CompilableProgram (ShaderModule name stage defs endState)
       where
-  compile filePath flags (ShaderModule prog)
-    = compile filePath flags (Module @defs prog)
+  compile flags (ShaderModule prog)
+    = compile flags (Module @defs prog)
 
 -- | Utility function to run IO actions at compile-time using Template Haskell.
 -- Useful for compiling shaders at compile-time, before launching a graphics application.
@@ -381,10 +402,11 @@ instance ( KnownDefinitions defs )
 -- __Usage example__: in a module which imports this module and shaders
 -- @vertexShader@, @fragmentShader@ (bearing in mind the TH staging restriction), write:
 --
+-- > shaderCompilationResult :: Either ShortText [(ShortText, ModuleRequirements)]
 -- > shaderCompilationResult =
 -- >   $( runCompilationsTH
--- >        [ ("Vertex shader"  , compile vertPath [] vertexShader  )
--- >        , ("Fragment shader", compile fragPath [] fragmentShader)
+-- >        [ ("Vertex shader"  , compileTo vertPath [] vertexShader  )
+-- >        , ("Fragment shader", compileTo fragPath [] fragmentShader)
 -- >        ]
 -- >   )
 --

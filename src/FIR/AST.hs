@@ -15,7 +15,7 @@ Module: FIR.AST
 Representation of programs using abstract syntax trees.
 
 The user interface to the AST is through type class overloading,
-see "FIR.Instances.AST" and "FIR.Instances.Codensity".
+see "FIR.Syntax.AST" and "FIR.Syntax.Codensity".
 
 This AST uses a higher-order abstract syntax representation (HOAS),
 as seen in the paper /Combining Deep and Shallow Embeddings of Domain-Specific Languages/
@@ -84,8 +84,6 @@ import FIR.Binding
   ( BindingsMap
   , FunctionType, Var, Permissions
   )
-import FIR.Instances.Optics
-  ( User, Assigner, Viewer, Setter, KnownOptic, SOptic, showSOptic )
 import FIR.Prim.Image
   ( ImageOperands, OperandName(..)
   , ImageComponent
@@ -100,6 +98,10 @@ import FIR.Prim.Singletons
   )
 import FIR.ProgramState
   ( ProgramState, TLInterface )
+import FIR.Syntax.Optics
+  ( User, Assigner, Viewer, Setter
+  , KnownOptic, SOptic, showSOptic
+  )
 import FIR.Validation.Bindings
   ( ValidDef, ValidFunDef, FunctionTypes
   , AddBinding, AddFunBinding

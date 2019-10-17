@@ -128,10 +128,6 @@ import FIR.AST
   ( AST(..), Syntactic(fromAST) )
 import FIR.Binding
   ( Permission(Write) )
-import FIR.Instances.AST
-  ( )
-import FIR.Instances.Optics
-  ( SOptic(..), showSOptic )
 import FIR.Prim.Op
   ( PrimOp(opName) )
 import FIR.Prim.Singletons
@@ -140,6 +136,10 @@ import FIR.Prim.Singletons
   )
 import FIR.ProgramState
   ( FunctionContext(TopLevel) )
+import FIR.Syntax.AST
+  ( )
+import FIR.Syntax.Optics
+  ( SOptic(..), showSOptic )
 import qualified SPIRV.Control   as SPIRV
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV

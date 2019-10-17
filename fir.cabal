@@ -30,7 +30,7 @@ description:
       Re-exports the main functionality of the library: writing and compiling programs.
 
 
-  ["FIR.Labels"]
+  ["FIR.Syntax.Labels"]
       Optional imperative-like syntax using /OverloadedLabels/.
 
 
@@ -96,7 +96,7 @@ library
   
     exposed-modules:
         FIR
-      , FIR.Labels
+      , FIR.Syntax.Labels
       , Math.Linear
       , Math.Quaternion
 
@@ -141,10 +141,6 @@ library
       , FIR.Binding
       , FIR.Builtin
       , FIR.Definition
-      , FIR.Instances.AST
-      , FIR.Instances.Codensity
-      , FIR.Instances.Images
-      , FIR.Instances.Optics
       , FIR.Layout
       , FIR.Module
       , FIR.Pipeline
@@ -154,8 +150,12 @@ library
       , FIR.Prim.Struct
       , FIR.Prim.Op
       , FIR.ProgramState
-      , FIR.Swizzle
-      , FIR.Synonyms
+      , FIR.Syntax.AST
+      , FIR.Syntax.Codensity
+      , FIR.Syntax.Images
+      , FIR.Syntax.Optics
+      , FIR.Syntax.Swizzle
+      , FIR.Syntax.Synonyms
       , FIR.Validation.Ambiguity
       , FIR.Validation.Arrayness
       , FIR.Validation.Bindings

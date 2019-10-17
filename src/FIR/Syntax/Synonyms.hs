@@ -15,14 +15,14 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
-Module: FIR.Swizzle
+Module: FIR.Syntax.Synonyms
 
 This module provides various convenience synonyms
 to mitigate verbosity in user-written programs.
 
 -}
 
-module FIR.Synonyms
+module FIR.Syntax.Synonyms
   (
   -- * Synonyms for floating point types of a given width
     Float16, Float32, Float64
@@ -91,9 +91,9 @@ import FIR.AST
 import FIR.Definition
   ( Definition(Global) )
 import qualified FIR.Definition as Def
-import FIR.Instances.AST
+import FIR.Syntax.AST
   ( )
-import FIR.Instances.Optics
+import FIR.Syntax.Optics
   ( )
 import FIR.Layout
   ( Layout(Locations)

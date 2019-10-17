@@ -13,7 +13,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
-Module: FIR.Swizzle
+Module: FIR.Syntax.Swizzle
 
 A swizzle is a way of remapping components of a vector, e.g.:
 
@@ -29,7 +29,9 @@ around product optics, as @Swizzle "xyxz"@ desugars to the product optic
 The purpose of this module is simply to implement this desugaring.
 -}
 
-module FIR.Swizzle where
+module FIR.Syntax.Swizzle
+  ( Swizzle )
+  where
 
 -- base
 import Data.Kind

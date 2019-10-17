@@ -22,9 +22,9 @@
 {-# LANGUAGE ViewPatterns               #-}
 
 {-|
-Module: FIR.Instances.AST
+Module: FIR.Syntax.AST
 
-This module, together with "FIR.Instances.Codensity",
+This module, together with "FIR.Syntax.Codensity",
 provides most of the user-facing syntax for constructing
 and manipulating values in the EDSL.
 
@@ -34,7 +34,7 @@ orphan instances for types of the form @AST a@
 
 -}
 
-module FIR.Instances.AST
+module FIR.Syntax.AST
   ( -- functor/applicative for AST values
     ASTFunctor(fmapAST)
   , ASTApplicative(pureAST, (<**>)), (<$$>)
@@ -121,7 +121,7 @@ import FIR.AST
   , Syntactic(Internal, toAST, fromAST)
   , primOp
   )
-import FIR.Instances.Optics
+import FIR.Syntax.Optics
   ( KnownOptic(opticSing)
   , KnownComponents
   , (%:.:)

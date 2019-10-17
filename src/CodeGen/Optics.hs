@@ -126,10 +126,10 @@ import FIR.AST
     , NilHList, ConsHList
     )
   )
-import FIR.Instances.Optics
-  ( SOptic(..), SProductComponents(..) )
 import FIR.Prim.Singletons
   ( PrimTy, primTy, SPrimTy(..) )
+import FIR.Syntax.Optics
+  ( SOptic(..), SProductComponents(..) )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.Storage as Storage
 

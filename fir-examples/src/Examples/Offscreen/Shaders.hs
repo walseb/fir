@@ -67,10 +67,10 @@ vertPath = "shaders/offscreen_vert.spv"
 fragPath = "shaders/offscreen_frag.spv"
 
 compileVertexShader :: IO ( Either ShortText ModuleRequirements )
-compileVertexShader = compile vertPath [] vertex
+compileVertexShader = compileTo vertPath [] vertex
 
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
-compileFragmentShader = compile fragPath [] fragment
+compileFragmentShader = compileTo fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline

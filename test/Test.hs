@@ -197,7 +197,7 @@ compileTest flags testName = do
         src  = dir </> testName <.> "hs"        
         test = dir </> testName <.> "fail"
         spv  = dir </> testName <.> "spv"
-        compile =  "compile "
+        compile =  "compileTo "
                 <> Text.pack (show spv)
                 <> " "
                 <> Text.pack (show flags)

@@ -11,7 +11,7 @@ module Tests.Control.Loop where
 
 -- fir
 import FIR
-import FIR.Labels
+import FIR.Syntax.Labels
 import Math.Linear
 
 ------------------------------------------------

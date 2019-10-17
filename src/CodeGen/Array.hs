@@ -40,18 +40,18 @@ import FIR.AST
   ( AST(Lit), Syntactic(toAST) )
 import FIR.Binding
   ( Var, RW )
-import FIR.Instances.AST
-  ( )
-import FIR.Instances.Codensity
-  ( def, get, put, assign
-  , locally, while
-  )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
   ( PrimTy )
 import FIR.ProgramState
   ( ProgramState(ProgramState) )
+import FIR.Syntax.AST
+  ( )
+import FIR.Syntax.Codensity
+  ( def, get, put, assign
+  , locally, while
+  )
 import FIR.Validation.Bindings
   ( Has, CanGet, CanPut
   , ValidDef, AddBinding

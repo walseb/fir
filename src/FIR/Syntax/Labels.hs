@@ -11,7 +11,7 @@
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
-Module: FIR.Labels
+Module: FIR.Syntax.Labels
 Description: @---@ __Optional__ /imperative-style/ syntax using overloaded labels.
 
 Imperative-like syntax for variable assignment using overloaded labels. /Completely optional./
@@ -61,7 +61,7 @@ as one wants to avoid having a constant conditional in the header.
 
 -}
 
-module FIR.Labels
+module FIR.Syntax.Labels
  ( -- * Overloaded labels
    IsLabel(fromLabel)
    -- * Infix operators
@@ -85,7 +85,7 @@ import FIR.AST
   ( AST )
 import FIR.Binding
   ( Var, R, RW )
-import FIR.Instances.Codensity
+import FIR.Syntax.Codensity
   ( def, use, assign, modifying )
 import FIR.Prim.Singletons
   ( PrimTy )

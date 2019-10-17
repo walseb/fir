@@ -183,19 +183,19 @@ geomPath = "shaders/fullpipeline_geom.spv"
 fragPath = "shaders/fullpipeline_frag.spv"
 
 compileVertexShader :: IO ( Either ShortText ModuleRequirements )
-compileVertexShader = compile vertPath [] vertex
+compileVertexShader = compileTo vertPath [] vertex
 
 compileTessellationControlShader :: IO ( Either ShortText ModuleRequirements )
-compileTessellationControlShader = compile tescPath [] tessellationControl
+compileTessellationControlShader = compileTo tescPath [] tessellationControl
 
 compileTessellationEvaluationShader :: IO ( Either ShortText ModuleRequirements )
-compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
+compileTessellationEvaluationShader = compileTo tesePath [] tessellationEvaluation
 
 compileGeometryShader :: IO ( Either ShortText ModuleRequirements )
-compileGeometryShader = compile geomPath [] geometry
+compileGeometryShader = compileTo geomPath [] geometry
 
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
-compileFragmentShader = compile fragPath [] fragment
+compileFragmentShader = compileTo fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline

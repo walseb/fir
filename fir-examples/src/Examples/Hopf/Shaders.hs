@@ -168,16 +168,16 @@ tesePath = "shaders/hopf_tese.spv"
 fragPath = "shaders/hopf_frag.spv"
 
 compileVertexShader :: IO ( Either ShortText ModuleRequirements )
-compileVertexShader = compile vertPath [] vertex
+compileVertexShader = compileTo vertPath [] vertex
 
 compileTessellationControlShader :: IO ( Either ShortText ModuleRequirements )
-compileTessellationControlShader = compile tescPath [] tessellationControl
+compileTessellationControlShader = compileTo tescPath [] tessellationControl
 
 compileTessellationEvaluationShader :: IO ( Either ShortText ModuleRequirements )
-compileTessellationEvaluationShader = compile tesePath [] tessellationEvaluation
+compileTessellationEvaluationShader = compileTo tesePath [] tessellationEvaluation
 
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
-compileFragmentShader = compile fragPath [] fragment
+compileFragmentShader = compileTo fragPath [] fragment
 
 shaderPipeline :: ShaderPipeline
 shaderPipeline
