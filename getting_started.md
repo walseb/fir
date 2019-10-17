@@ -74,7 +74,7 @@ Refer to the examples page for further information about the examples, including
 ## Writing a simple shader
 To write a shader using FIR, create a new module which imports `FIR`.
 Additional functionality is provided by the modules `Math.Linear` (vectors and matrices),
-`Math.Quaternion` (quaternions) and `FIR.Labels` (optional imperative-like syntax using *OverloadedLabels*).
+`Math.Quaternion` (quaternions) and `FIR.Syntax.Labels` (optional imperative-like syntax using *OverloadedLabels*).
 
 The important types are:
 * __`AST a`__: code for a pure value of type `a`, represented internally as an abstract syntax tree.
@@ -102,7 +102,7 @@ import Math.Linear
 
 type VertexShaderDefs =
   '[ "ubo"    ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
-                      ( Struct '[ "mvp" ':->  M 4 4 Float ] )
+                      ( Struct '[ "mvp" ':-> M 4 4 Float ] )
    , "in_pos" ':-> Input '[ Location 0 ] (V 4 Float)
    , "main"   ':-> EntryPoint '[] Vertex
    ]
@@ -115,6 +115,12 @@ vertexShader = Module $ entryPoint @"main" @Vertex do
 ```
 
 The type-level map `VertexShaderDefs` provides the interface for the vertex shader, in this case specifying that it has access to a uniform buffer object `ubo` (consting of a model-view-projection matrix) and position data (given to the GPU as part of a vertex buffer). The shader writes to `gl_Position`, which is a variable that is built into vertex shaders with Vulkan.
+
+The application is then responsible for binding the appropriate resources,
+in this case a uniform buffer object given binding number 0 and descriptor set index 0.
+Memory layout can be automatically computed by the library depending on the usage of the structure, e.g. whether it backs a uniform buffer (extended alignment rules),
+a storage buffer or push constants (base alignment rules).
+See [FIR.Layout](src/FIR/Layout.hs).
 
 <a name="compiling"></a>
 ## Compiling shaders
@@ -316,7 +322,7 @@ Instead, they must be combined into a graphics pipeline, where the output of one
 Consider for example the following simple pipeline, consisting of a vertex shader fed into a fragment shader:
 
 ```haskell
-type VertexInput =
+type VertexData =
   '[ Slot 0 0 ':-> V 3 Float -- a 3-vector specifying position, located in slot 0, component 0
    , Slot 1 0 ':-> V 4 Float -- a 4-vector specifying colour  , located in slot 1, component 0
    ]
@@ -349,25 +355,26 @@ fragment = shader do
 shaderPipeline :: ShaderPipeline
 shaderPipeline
   = ShaderPipeline
-  $    StructInput @VertexInput @(Triangle List)
+  $    StructInput @VertexData @(Triangle List)
   :>-> (vertex  , "shaders/vert.spv")
   :>-> (fragment, "shaders/frag.spv")
 ```
 
-Here, we specify:
+Here, we specify a snoc-list `vertexInput :>-> shader_1 :>-> ... :>-> shader_n`,
+which contains the following information:
 
-  * The type of the input to the pipeline. This consists of the following information:
+  * The type of the input to the pipeline. This consists of:
 
-    - The primitive topology used for vertex input assembly. In this case, the topology is `Triangle List`, meaning that we are specifying a list of vertices, with consecutive groups of three vertices forming a triangle.
+    - The primitive topology used for vertex input assembly. In this case, the topology is `Triangle List`, meaning that we are specifying a list of vertices, with consecutive chunks of three vertices forming a triangle.
     The primitive topology is supplied with type-level data of kind [FIR.Pipeline.PrimitiveTopology Nat](src/FIR/Pipeline.hs), such as `Points`, `Triangle Fan` or `PatchesOfSize 9`.
 
-    - The type of the data attached to each vertex. In this case we are attaching a structure to each vertex, of type `Struct VertexInput`. When it comes to performing a draw call using this pipeline, the Vulkan application will use a vertex buffer, which will need to have been appropriately populated with position and colour data for each vertex in the buffer.
+    - The type of the data attached to each vertex. In this case we are attaching a structure to each vertex, of type `Struct VertexData`. When it comes to performing a draw call using this pipeline, the Vulkan application will use a vertex buffer, which will need to have been appropriately populated with position and colour data for each vertex in the buffer.
     
-    Note that we have to specify layout information using location and component slots, as explained in [FIR.Layout](src/FIR/Layout.hs).
+    Note that we have to specify layout information using location and component slots, as explained in [FIR.Validation.Layout](src/FIR/Validation/Layout.hs).
     
     See also the [shaders from the Hopf fibration example](fir-examples/src/Examples/Hopf/Shaders.hs), which illustrate the usage of this layout information.
 
-  * The shaders which make up the pipeline, in the form of a snoc-list `StartPipeline :>-> shader_1 :>-> ... :>-> shader_n`.
+  * The shaders which make up the pipeline, with their associated filepaths.
 
 
 This library will then validate the pipeline at the type-level (i.e. at compile-time) to ensure that:

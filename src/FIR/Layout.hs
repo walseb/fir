@@ -29,8 +29,7 @@ There are three different situations one needs to account for:
   laid out according to the Extended alignment rules,
   - push constants and storage buffers must form a struct or array of structs,
   laid out according to the Base alignment rules,
-  - vertex input data is specified with Location
-  and Component information (see below).
+  - vertex input data is specified with Location and Component information.
 
 This module automatically performs layout of types according to the above rules.
 See also "FIR.Validation.Layout", which performs validation of user-supplied layouts.
