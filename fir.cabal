@@ -5,6 +5,7 @@ synopsis:       An EDSL that compiles to SPIR-V for graphics programming on the 
 category:       Graphics
 author:         Sam Derbyshire
 maintainer:     sam.derbyshire@gmail.com
+license:        BSD-3-Clause
 homepage:       https://gitlab.com/sheaf/fir
 build-type:     Simple
 description:
