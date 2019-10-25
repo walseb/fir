@@ -30,10 +30,14 @@ import Data.Int
   ( Int8, Int16, Int32, Int64 )
 import Data.Kind
   ( Type )
+import Data.List
+  ( intercalate )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Type.Equality
   ( (:~:)(Refl) )
+import Data.Type.List
+  ( type (:++:) )
 import Data.Typeable
   ( Typeable, eqT )
 import Data.Word
@@ -43,7 +47,9 @@ import GHC.TypeLits
   , TypeError, ErrorMessage(Text, ShowType, (:$$:), (:<>:))
   )
 import GHC.TypeNats
-  ( Nat, KnownNat, natVal )
+  ( Nat, KnownNat, natVal
+  , type (+)
+  )
 
 -- containers
 import qualified Data.Set as Set
@@ -57,8 +63,12 @@ import Data.Text.Short
   ( ShortText )
 
 -- fir
+import {-# SOURCE #-} Control.Type.Optic
+  ( IndexChain, IndexInfo(ThisIndex, AnyIndex) )
 import Data.Binary.Class.Put
   ( Put )
+import Data.Constraint.All
+  ( All(allDict), AllDict(NilDict, ConsDict) )
 import Data.Function.Variadic
   ( ListVariadic )
 import Data.Type.Known
@@ -106,6 +116,19 @@ data SScalarTy :: Type -> Type where
   SHalf   :: SScalarTy Half
   SFloat  :: SScalarTy Float
   SDouble :: SScalarTy Double
+
+showSScalarTy :: SScalarTy ty -> String
+showSScalarTy SWord8  = "Word8"
+showSScalarTy SWord16 = "Word16"
+showSScalarTy SWord32 = "Word32"
+showSScalarTy SWord64 = "Word64"
+showSScalarTy SInt8   = "Int8"
+showSScalarTy SInt16  = "Int16"
+showSScalarTy SInt32  = "Int32"
+showSScalarTy SInt64  = "Int64"
+showSScalarTy SHalf   = "Half"
+showSScalarTy SFloat  = "Float"
+showSScalarTy SDouble = "Double"
 
 type ScalarFromTy (ty :: Type)
   = ( ScalarFromSScalar ( ScalarTySing ty ) :: SPIRV.ScalarTy )
@@ -159,6 +182,49 @@ data SPrimTy :: Type -> Type where
           .  ( StructFieldKind fld, PrimTyMap as )
           => SPrimTy (Struct as)
 
+data SPrimTyMap :: [fld :-> Type] -> Type where
+  SNil  :: SPrimTyMap '[]
+  SCons :: (StructFieldKind fld, Known fld k, PrimTy a, PrimTyMap as)
+        => SPrimTyMap ((k ':-> a) ': as)
+
+showSPrimTy :: SPrimTy ty -> String
+showSPrimTy SUnit = "()"
+showSPrimTy SBool = "Bool"
+showSPrimTy (SScalar :: SPrimTy a) = showSScalarTy (scalarTySing @a)
+showSPrimTy sVector@SVector
+  = case sVector of
+      ( _ :: SPrimTy (V n a) ) ->
+        "V " ++ show (natVal (Proxy @n)) ++ " " ++ showSPrimTy (primTySing @a)
+showSPrimTy sMatrix@SMatrix
+  = case sMatrix of
+      ( _ :: SPrimTy (M m n a) ) ->
+        "M " ++ show (natVal (Proxy @m)) ++ " "
+        ++ show (natVal (Proxy @n))
+        ++ " " ++ showSScalarTy (scalarTySing @a)
+showSPrimTy sArray@SArray
+  = case sArray of
+      ( _ :: SPrimTy (Array n a) ) ->
+        "Array " ++ show (natVal (Proxy @n))
+        ++ " " ++ showSPrimTy (primTySing @a)
+showSPrimTy sRuntimeArray@SRuntimeArray
+  = case sRuntimeArray of
+      ( _ :: SPrimTy (RuntimeArray a) ) ->
+        "RuntimeArray " ++ showSPrimTy (primTySing @a)
+showSPrimTy sStruct@SStruct
+  = case sStruct of
+      ( _ :: SPrimTy (Struct as) ) ->
+        "Struct '["
+        ++ intercalate ", " ( showSPrimTyMap ( primTyMapSing @_ @as ) )
+        ++ "]"
+
+showSPrimTyMap :: SPrimTyMap as -> [String]
+showSPrimTyMap SNil = []
+showSPrimTyMap sCons@SCons
+  = case sCons of
+      ( _ :: SPrimTyMap ((k ':-> a) ': as) ) ->
+        ( show (knownValue @k) ++ " :-> " ++ showSPrimTy ( primTySing @a ) )
+        : showSPrimTyMap ( primTyMapSing @_ @as )
+
 -- singleton data kind, without unpromotable contexts
 data SKPrimTy :: Type -> Type where
   SKUnit   :: SKPrimTy ()
@@ -170,11 +236,6 @@ data SKPrimTy :: Type -> Type where
   SKRuntimeArray
            :: SKPrimTy a -> SKPrimTy (RuntimeArray a)
   SKStruct :: SKPrimTyMap as -> SKPrimTy (Struct as)
-
-data SPrimTyMap :: [fld :-> Type] -> Type where
-  SNil  :: SPrimTyMap '[]
-  SCons :: (StructFieldKind fld, Known fld k, PrimTy a, PrimTyMap as)
-        => SPrimTyMap ((k ':-> a) ': as)
 
 data SKPrimTyMap :: [fld :-> Type] -> Type where
   SKNil :: SKPrimTyMap '[]
@@ -260,6 +321,8 @@ class ( Show ty                    -- for convenience
       , ty ~ ListVariadic '[] ty   -- ty is not a function type... useful for optics
       )
     => PrimTy ty where
+  -- associated type used for computing overlap with "OfType" optic
+  type FieldsOfType ty fldTy :: [ IndexChain ]
   primTySing :: SPrimTy ty
 
 class ( PrimTy ty
@@ -267,9 +330,15 @@ class ( PrimTy ty
       ) => ScalarTy ty where
   scalarTySing :: SScalarTy ty
 
+type family MonolithicFields (a :: Type) (ty :: Type) :: [ IndexChain ] where
+  MonolithicFields a a = '[ '[] ]
+  MonolithicFields _ _ = '[]
+
 instance PrimTy ()   where
+  type FieldsOfType () _ = '[]
   primTySing = SUnit
 instance PrimTy Bool where
+  type FieldsOfType Bool a = MonolithicFields Bool a
   primTySing = SBool
 
 instance ScalarTy Word8  where
@@ -306,26 +375,37 @@ instance IntegralTy Int32  where
 instance IntegralTy Int64  where
 
 instance PrimTy Word8  where
+  type FieldsOfType Word8  a = MonolithicFields Word8  a
   primTySing = SScalar
 instance PrimTy Word16 where
+  type FieldsOfType Word16 a = MonolithicFields Word16 a
   primTySing = SScalar
 instance PrimTy Word32 where
+  type FieldsOfType Word32 a = MonolithicFields Word32 a
   primTySing = SScalar
 instance PrimTy Word64 where
+  type FieldsOfType Word64 a = MonolithicFields Word64 a
   primTySing = SScalar
 instance PrimTy Int8   where
+  type FieldsOfType Int8   a = MonolithicFields Int8   a
   primTySing = SScalar
 instance PrimTy Int16  where
+  type FieldsOfType Int16  a = MonolithicFields Int16  a
   primTySing = SScalar
 instance PrimTy Int32  where
+  type FieldsOfType Int32  a = MonolithicFields Int32  a
   primTySing = SScalar
 instance PrimTy Int64  where
+  type FieldsOfType Int64  a = MonolithicFields Int64  a
   primTySing = SScalar
 instance PrimTy Half   where
+  type FieldsOfType Half   a = MonolithicFields Half   a
   primTySing = SScalar
 instance PrimTy Float  where
+  type FieldsOfType Float  a = MonolithicFields Float  a
   primTySing = SScalar
 instance PrimTy Double where
+  type FieldsOfType Double a = MonolithicFields Double a
   primTySing = SScalar
 
 
@@ -336,6 +416,7 @@ instance ( TypeError
          , Put Word
          )
     => PrimTy Word where
+  type FieldsOfType Word a = MonolithicFields Word a
   primTySing = error "unreachable" 
 instance ( TypeError
              ( Text "Use a specific width signed integer type \
@@ -344,6 +425,7 @@ instance ( TypeError
          , Put Int
          )
     => PrimTy Int where
+  type FieldsOfType Int a = MonolithicFields Int a
   primTySing = error "unreachable"
 instance ( TypeError
              ( Text "Use a specific width unsigned integer type \
@@ -363,22 +445,39 @@ instance ( TypeError
   scalarTySing = error "unreachable"
 
 
+type family HomogeneousFields (c :: Type -> Type) (a :: Type) (b :: Type) :: [ IndexChain ] where
+  HomogeneousFields c a (c a) = '[ '[] ]
+  HomogeneousFields _ a b     = MapCons AnyIndex ( FieldsOfType a b )
+
+type family MapCons (x :: k) (xss :: [[k]]) :: [[k]] where
+  MapCons _ '[]         = '[]
+  MapCons x (ys ': yss) = ( x ': ys ) ': MapCons x yss
+
 instance ( PrimTy a
          , KnownNat n
          ) => PrimTy (V n a) where
+  type FieldsOfType (V n a) ty = HomogeneousFields (V n) a ty
   primTySing = SVector
+
+type family MatrixFields (m :: Nat) (a :: Type) (b :: Type) :: [ IndexChain ] where
+  MatrixFields m a (V m a) = '[ '[ AnyIndex ] ]
+  MatrixFields _ a a       = '[ '[ AnyIndex, AnyIndex ] ]
+  MatrixFields _ _ _       = '[] -- no need to recurse as matrices can only contain scalars
 
 instance ( PrimTy a, ScalarTy a
          , Ring a
          , KnownNat m--, 2 <= m, m <= 4
          , KnownNat n--, 2 <= n, n <= 4
          ) => PrimTy (M m n a) where
+  type FieldsOfType (M m n a) ty = MatrixFields m a ty
   primTySing = SMatrix
 
 instance (PrimTy a, KnownNat l) => PrimTy (Array l a) where
+  type FieldsOfType (Array l a) ty = HomogeneousFields (Array l) a ty
   primTySing = SArray
 
 instance PrimTy a => PrimTy (RuntimeArray a) where
+  type FieldsOfType (RuntimeArray a) ty = HomogeneousFields RuntimeArray a ty
   primTySing = SRuntimeArray
 
 class StructFieldKind fld => PrimTyMap (as :: [fld :-> Type]) where
@@ -401,11 +500,32 @@ instance forall ( fld :: Type           )
 
 instance ( Typeable fld, Typeable as, PrimTyMap as )
        => PrimTy (Struct (as :: [fld :-> Type])) where
+  type FieldsOfType (Struct as) ty = StructFieldsStartingAt 0 as ty
   primTySing = SStruct
 
+type family StructFieldsStartingAt
+              ( i  :: Nat              )
+              ( as :: [ fld :-> Type ] )
+              ( ty :: Type             )
+            :: [ IndexChain ]
+            where
+  StructFieldsStartingAt _ '[]                    _
+    = '[]
+  StructFieldsStartingAt i ( ( _ ':-> a ) ': as ) ty
+    = ( MapCons ( ThisIndex i ) (FieldsOfType a ty) )
+    :++:
+    StructFieldsStartingAt (i+1) as ty
 
 primTy :: forall ty. PrimTy ty => SPIRV.PrimTy
 primTy = sPrimTy ( primTySing @ty )
+
+primTys :: forall as. All PrimTy as => [SPIRV.PrimTy]
+primTys = case allDict @PrimTy @as of
+  NilDict -> []
+  consDict@ConsDict ->
+    case consDict of
+      ( _ :: AllDict PrimTy (b ': bs) ) ->
+        primTy @b : primTys @bs
 
 sPrimTy :: SPrimTy ty -> SPIRV.PrimTy
 sPrimTy SUnit = SPIRV.Unit

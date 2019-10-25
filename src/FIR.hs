@@ -94,7 +94,7 @@ module FIR
   , Control.Type.Optic.Optic
   , (Control.Type.Optic.:*:), Control.Type.Optic.Prod, Control.Type.Optic.EndProd
   , (Control.Type.Optic.:.:)
-  , Control.Type.Optic.Joint
+  , Control.Type.Optic.OfType
   , Control.Type.Optic.AnIndex
   , Control.Type.Optic.Index
   , Control.Type.Optic.Name

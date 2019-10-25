@@ -21,7 +21,7 @@ import Math.Linear
 
 type VertexInput
   = '[ Slot 0 0 ':-> V 4 Double
-     , Slot 1 0 ':-> V 4 Float
+     , Slot 1 0 ':-> V 4 Float -- unused by the vertex shader but overlapping with the previous location
      ]
 
 ------------------------------------------------

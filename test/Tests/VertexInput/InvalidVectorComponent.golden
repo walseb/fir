@@ -1,46 +1,10 @@
 
 test\Tests\VertexInput\InvalidVectorComponent.hs:39:10: error:
-    * Input/output: cannot position vector of type V 4 Float
-      at location 0 with component 2.
+    * Cannot position vector of type V 4 Float
+       at Location 0, Component 2.
     * In the expression: shader do put @"out" =<< get @"in_yz"
       In an equation for `vertex':
           vertex = shader do put @"out" =<< get @"in_yz"
    |
 39 | vertex = shader do
    |          ^^^^^^^^^^...
-
-test\Tests\VertexInput\InvalidVectorComponent.hs:60:5: error:
-    * Input/output: cannot position vector of type V 4 Float
-      at location 0 with component 2.
-    * In the expression:
-        ShaderPipeline
-          $ StructInput @VertexInput @(Triangle List)
-              :>-> (vertex, "vertex.spv")
-              :>-> (fragment, "fragment.spv")
-      In an equation for `shaderPipeline':
-          shaderPipeline
-            = ShaderPipeline
-                $ StructInput @VertexInput @(Triangle List)
-                    :>-> (vertex, "vertex.spv")
-                    :>-> (fragment, "fragment.spv")
-   |
-60 |   = ShaderPipeline
-   |     ^^^^^^^^^^^^^^^...
-
-test\Tests\VertexInput\InvalidVectorComponent.hs:60:5: error:
-    * Input/output: cannot position vector of type V 4 Float
-      at location 0 with component 2.
-    * In the expression:
-        ShaderPipeline
-          $ StructInput @VertexInput @(Triangle List)
-              :>-> (vertex, "vertex.spv")
-              :>-> (fragment, "fragment.spv")
-      In an equation for `shaderPipeline':
-          shaderPipeline
-            = ShaderPipeline
-                $ StructInput @VertexInput @(Triangle List)
-                    :>-> (vertex, "vertex.spv")
-                    :>-> (fragment, "fragment.spv")
-   |
-60 |   = ShaderPipeline
-   |     ^^^^^^^^^^^^^^^...

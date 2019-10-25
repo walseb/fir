@@ -18,6 +18,7 @@ module SPIRV.PrimTy
   , PointerTy(PointerTy, pointerTy) -- constructor (PtrTy) not exported
   , tyOp
   , scalars
+  , almostEqual
   ) where
 
 -- base
@@ -132,3 +133,24 @@ scalars (Function as b)          = scalars b ++ ( scalars =<< as )
 scalars (Image img)              = [ texelComponent img ]
 scalars Sampler                  = [ ]
 scalars (SampledImage img)       = [ texelComponent img ]
+
+almostEqual :: PrimTy -> PrimTy -> Bool
+almostEqual (Vector n a) (Vector n' a')
+  = n == n' && almostEqual a a'
+almostEqual (Array l a _ _) (Array l' a' _ _)
+  = l == l' && almostEqual a a'
+almostEqual (RuntimeArray a _ _) (RuntimeArray a' _ _)
+  = almostEqual a a'
+almostEqual (Struct tys _ _) (Struct tys' _ _)
+  = and
+  $ zipWith
+    ( \(k1,ty1,_) (k2,ty2,_) ->
+        k1 == k2 && ty1 `almostEqual` ty2
+    )
+    tys tys'
+almostEqual (Pointer _ ty) (Pointer _ ty')
+  = almostEqual ty ty'
+almostEqual (Function as b) (Function as' b')
+  = almostEqual b b'
+  && and ( zipWith almostEqual as as' )
+almostEqual p q = p == q

@@ -146,7 +146,7 @@ m6 = M ( V3
        )
 
 m7 :: M 3 3 Float
-m7 = set @( Prod @_ @_ @_ @(V 3 Float) ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 2 :*: EndProd ) :.: Joint ) 9 m6
+m7 = set @( Prod @_ @_ @_ @(V 3 Float) ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 2 :*: EndProd ) :.: OfType Float ) 9 m6
 
 m8 :: M 3 3 Float
 m8 = set @Center 9 m6

@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module FIR.Prim.Struct where
 
@@ -22,6 +23,8 @@ import GHC.TypeNats
   ( Nat )
 
 -- fir
+import Data.Type.Known
+  ( Demote )
 import Data.Type.Map
   ( (:->) )
 
@@ -34,14 +37,16 @@ type role Struct nominal
 data LocationSlot n where
   LocationSlot :: n -> n -> LocationSlot n
 
+instance Show n => Show (LocationSlot n) where
+
 data FieldKind (fld :: Type) where
   NamedField    :: FieldKind Symbol
   LocationField :: FieldKind (LocationSlot Nat)
   OtherField    :: FieldKind fld
 
-class StructFieldKind fld where
+class Show (Demote fld) => StructFieldKind fld where
   fieldKind :: FieldKind fld
 
 instance StructFieldKind Symbol where
 instance StructFieldKind (LocationSlot Nat) where
-instance {-# OVERLAPPABLE #-} StructFieldKind fld where
+instance {-# OVERLAPPABLE #-} Show (Demote fld) => StructFieldKind fld where

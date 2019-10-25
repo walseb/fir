@@ -53,10 +53,8 @@ These optics can be combined in the following ways:
   \downarrow & & \\
   b & &
   \end{array} \]
-  * @Joint :: Optic '[] a (MonoType a)@ is an equaliser optic,
-  which allows setting to a given value multiple components of the same type
-  by post-composing with 'Joint' (see example below).
-  \[ s \to a \rightrightarrows \textrm{MonoType}(a) \]
+  * @OfType ty :: Optic '[] a ty@ focuses on all components of 'a' of type 'ty'.
+  This allows setting multiple components of the same type to a given value.
 
 Again, these are type-checked for validity. For instance, one cannot create a product setter
 unless the two argument setters are disjoint.
@@ -67,7 +65,7 @@ as the required disjointness property can't be checked at compile-time.)
 Getters\/setters are optics which support accessing\/setting components.
 Type-level optics which can be reified to provide value-level getters and setters are defined
 through the 'ReifiedGetter' and 'ReifiedSetter' type classes, instances of which are provided
-for types used in this library in the "FIR.Instances.Optics" module, or in this module
+for types used in this library in the "FIR.Syntax.Optics" module, or in this module
 as far as combinators are concerned (e.g. the getter instance for the composite of two getters).
 
 The usage of these optics mimics the [Lens](http://hackage.haskell.org/package/lens/docs/Control-Lens.html)
@@ -130,24 +128,24 @@ This explains why the value-level argument to @set@ is a 2-vector.
           3 4 5
           6 7 8
 
-> set @( ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 0 :*: Entry 2 2 ) :.: Joint ) 9 mat
+> set @( ( Entry 0 0 :*: Entry 0 2 :*: Entry 2 0 :*: Entry 2 2 ) :.: OfType Double ) 9 mat
 M33
   9 1 9
   3 4 5
   9 7 9
 @
 
-'Joint' allows us to simultaneously set several entries (of the same type) to the same value.
-__Warning:__ 'Joint' is only a /setter/, not a /getter/.
+'OfType' allows us to simultaneously set several entries (of the same type) to the same value.
+__Warning:__ 'OfType' only creates a /setter/, not a /getter/.
 
-Note that the 'FIR.Instances.Optics.Diag' synonym exists for focusing on the diagonal of a matrix:
+Note that the 'FIR.Syntax.Optics.Diag' synonym exists for focusing on the diagonal of a matrix:
 
 @
 > view @Diag mat
 V3 0 4 8
 @
 
-There is also the 'FIR.Instances.Optics.Center' synonym for the center of a matrix,
+There is also the 'FIR.Syntax.Optics.Center' synonym for the center of a matrix,
 which allows setting all diagonal entries of a square matrix to a single value:
 
 @
@@ -158,7 +156,7 @@ M33
   6 7 9
 @
 
-In fact 'FIR.Instances.Optics.Center' can be simply defined as @Diag :.: Joint@.
+In fact 'FIR.Syntax.Optics.Center' can be simply defined as @Diag :.: OfType eltTy@.
 -}
 
 module Control.Type.Optic
@@ -166,28 +164,25 @@ module Control.Type.Optic
     Optic(..)
     -- $kind_coercion
   , AnIndex, Index, Name
-
     -- ** Getters and setters
   , Gettable, Getter, ReifiedGetter(view)
   , Settable, Setter, ReifiedSetter(set)
   , ReifiedLens(over)
     -- $kind_synonyms
   , Whole, Part, Indices
+    -- ** Indexing information (used for overlap checking)
+  , IndexInfo(..), IndexChain
 
     -- ** Containers
     -- $containers
-  , Container(..), MonoContainer(..)
+  , Container(..)
 
     -- * Getter & setter instances
     -- $instances
 
-    -- ** Identity
-  , Id
-    -- $identity_instances
-
-    -- ** Equaliser optics
-  , Joint
-    -- $equaliser_instances
+    -- ** OfType optic
+  , OfType
+    -- $oftype_instances
 
     -- ** Composition of optics
   , (:.:)
@@ -208,12 +203,10 @@ import Data.Kind
   ( Type, Constraint )
 import Data.Proxy
   ( Proxy(Proxy) )
-import Data.Type.Bool
-  ( If )
 import Data.Type.Equality
   ( (:~:)(Refl) )
 import GHC.TypeLits
-  ( Symbol
+  ( Symbol, AppendSymbol
   , TypeError, ErrorMessage(..)
   )
 import GHC.TypeNats
@@ -229,7 +222,7 @@ import Data.Product
   , MapHList
   )
 import Data.Type.Error
-  ( IsRight, IfLeft, And )
+  ( IsRight, And )
 import Data.Type.List
   ( type (:++:), Postpend
   , Tail, MapTail
@@ -239,10 +232,16 @@ import Data.Type.List
   , SameLength(sSameLength)
   , SSameLength(SSameSucc, SSameZero)
   )
+import Data.Type.Maybe
+  ( IfNothingThen )
+import Data.Type.String
+  ( ShowNat )
 import Data.Function.Variadic
   ( ListVariadic )
 import FIR.Prim.Image
   ( Image )
+import {-# SOURCE #-} FIR.Prim.Singletons
+  ( PrimTy(FieldsOfType) )
 
 ----------------------------------------------------------------------
 
@@ -253,10 +252,8 @@ infixr 3 :*:
 
 -- | Optic data (kind).
 data Optic (is :: [Type]) (s :: k) (a :: Type) where
-  -- | Identity.
-  Id_      :: Optic is a a
-  -- | Equaliser optic.
-  Joint_   :: Optic is s a
+  -- | Focus onto all the sub-parts which have a certain type.
+  OfType_  :: Type -> Optic is s a
   -- | Optic with indexing information provided at run-time.
   RTOptic_ :: Optic is s a
   -- | Compile-time field (e.g. numeric index or symbolic field name).
@@ -292,11 +289,11 @@ data ProductComponents (iss :: [[Type]]) (s :: k) (as :: [Type]) where
 -- As a result, the constructors for the 'Optic' data type have overly general types.
 -- Kind-correct type-level smart constructors are instead provided (and their use recommended):
 --
---   * 'AnIndex', 'Index', 'Name', 'Id' and 'Joint' create specific optics,
+--   * 'AnIndex', 'Index', 'Name', 'OfType' create specific optics,
 --   * ':.:' composes two optics (left-most argument = outer-most optic),
 --   * 'Prod', ':*:' and 'EndProd' allow the formation of (unbiased) product optics.
 --
--- See also "FIR.Instances.Images" for an overview of how to use optics with images.
+-- See also "FIR.Syntax.Images" for an overview of how to use optics with images.
 
 
 -- | Run-time index (kind-correct).
@@ -306,10 +303,8 @@ type Index   (i  :: Nat   ) = (Field_ i :: Optic '[]   s a)
 -- | Compile-time field name (kind-correct).
 type Name    (k  :: Symbol) = (Field_ k :: Optic '[]   s a)
 
--- | Identity (kind-correct).
-type Id = (Id_ :: Optic '[] a a)
--- | Equaliser optic (kind-correct).
-type Joint = (Joint_ :: Optic '[] a (MonoType a))
+-- | Optic for components of a particular type (kind-correct).
+type OfType (ty :: Type) = (OfType_ ty :: Optic '[] s ty)
 -- | Composition of optics (kind-correct).
 type (:.:) (o1 :: Optic is s a) (o2 :: Optic js a b)
   = ( (o1 `ComposeO` o2) :: Optic (is :++: js) s b )
@@ -333,8 +328,7 @@ type Prod (os :: ProductComponents iss s as)
 -- (this might require standalone kind signatures?)
 
 type family ShowOptic (o :: Optic is s a) :: ErrorMessage where
-  ShowOptic Id_ = Text "Id"
-  ShowOptic Joint_ = Text "Joint"
+  ShowOptic (OfType_ ty) = Text "OfType " :<>: ShowType ty
   -- special case for image optics
   ShowOptic
     ( ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
@@ -411,22 +405,18 @@ type Indices (optic :: Optic is s a) = is
 -- when applicable.
 
 class Container (s :: Type) where
-  -- | Utility type family, chiefly needed for overlap checking for 'FIR.Prim.Struct.Struct's.
-  -- This associated type family has a trivial definition in cases where it is not possible
-  -- to access components using /both/ type-level literals and type-level natural numbers.
-  type Overlapping s (k :: Symbol) (n :: Nat) :: Bool
 
-class Container s => MonoContainer s where
-  type MonoType s
-  setAll :: MonoType s -> s -> s
+  -- | Compute a numeric indexing from a symbolic index.
+  -- Can return a type-error if symbolic indexing is not supported.
+  --
+  -- Chiefly needed for overlap checking for 'FIR.Prim.Struct.Struct's.
+  type FieldIndexFromName s (k :: Symbol) :: Nat
 
 ----------------------------------------------------------------------
 -- $instances
 --
 -- This module defines getter and setter instances that are applicable in general situations:
 --
---   * identity optic,
---   * equaliser optic,
 --   * composition of optics,
 --   * product of optics,
 --
@@ -435,26 +425,9 @@ class Container s => MonoContainer s where
 -- corresponding specific instances are required.
 --
 -- The specific instances, as they pertain to datatypes used by this library,
--- are found in the "FIR.Instances.Optics" module.
+-- are found in the "FIR.Syntax.Optics" module.
 -- This includes instances for vectors, matrices and structs.
--- See also "FIR.Instances.Images" for the peculiar 'FIR.Instances.Images.ImageTexel' lens.
-
---------------------------
--- $identity_instances
---
--- The identity optic is a lens.
-
-instance (empty ~ '[])
-       => Gettable (Id_ :: Optic empty a a) where
-instance (empty ~ '[])
-       => Settable (Id_ :: Optic empty a a) where
-
-instance (empty ~ '[], a ~ ListVariadic '[] a)
-       => ReifiedGetter (Id_ :: Optic empty a a) where
-  view = id
-instance (empty ~ '[], a ~ ListVariadic '[] a)
-       => ReifiedSetter (Id_ :: Optic empty a a) where
-  set = const
+-- See also "FIR.Syntax.Images" for the peculiar 'FIR.Syntax.Images.ImageTexel' lens.
 
 --------------------------
 -- $lens_instances
@@ -482,34 +455,40 @@ instance forall is s a (optic :: Optic is s a).
   over = getAndSet @is @s @a (view @optic) (set @optic)
 
 --------------------------
--- $equaliser_instances
+-- $oftype_instances
 --
--- The equaliser optic is a setter.
+-- The 'OfType' optic constructor creates setters, not getters.
+-- So we prevent setter instances.
 --
--- The instances for equalisers depend on instances for 'MonoContainer',
--- which are provided separately for individual types
--- (see "FIR.Instances.Optics").
+-- Getter instances are defined individually for specific types,
+-- see "FIR.Syntax.Optics".
 
 instance
-  ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
-  => Gettable (Joint_ :: Optic i s a) where
+  ( TypeError ( Text "get: cannot use 'OfType' optic as a getter." ) )
+  => Gettable (OfType_ ty :: Optic i s a) where
 instance
-  ( TypeError ( Text "get: cannot use equaliser as a getter." ) )
-  => ReifiedGetter (Joint_ :: Optic i s a) where
+  ( TypeError ( Text "get: cannot use 'OfType' optic as a getter." ) )
+  => ReifiedGetter (OfType_ ty :: Optic i s a) where
   view = error "unreachable"
 
-instance ( empty ~ '[]
-         , MonoContainer a
-         , mono ~ MonoType a
-         )
-      => Settable (Joint_ :: Optic empty a mono) where
-instance ( empty ~ '[]
-         , MonoContainer a
-         , mono ~ MonoType a
-         , a ~ ListVariadic '[] a
-         )
-      => ReifiedSetter (Joint_ :: Optic empty a mono) where
-  set = setAll
+instance {-# OVERLAPPING #-}
+         ( r ~ a, empty ~ '[] )
+      => Settable      (OfType_ a :: Optic empty a r) where
+instance {-# OVERLAPPING #-}
+         ( r ~ a, empty ~ '[], ListVariadic '[] a ~ a )
+      => ReifiedSetter (OfType_ a :: Optic empty a r) where
+  set = const
+
+-- Default instance to use: "a" does not contain components of type "ty".
+-- Should be overridden by specific instances that
+-- provide evidence that "a" does in fact contain components of type "ty".
+instance {-# OVERLAPPABLE #-}
+         ( r ~ ty, empty ~ '[] )
+      => Settable      (OfType_ ty :: Optic empty a r) where
+instance {-# OVERLAPPABLE #-}
+         ( r ~ ty, empty ~ '[], ListVariadic '[] a ~ a )
+      => ReifiedSetter (OfType_ ty :: Optic empty a r) where
+  set _ = id
 
 --------------------------
 -- $composition_instances
@@ -521,7 +500,7 @@ instance ( empty ~ '[]
 --
 -- Note that compositions where the first optic accesses from a monadic state
 -- is not included here.
--- This is to provide improved type inference, see "FIR.Instances.Optics".
+-- This is to provide improved type inference, see "FIR.Syntax.Optics".
 
 instance forall (s :: Type) is js ks a b (o1 :: Optic is s a) (o2 :: Optic js a b).
          ( Gettable o1
@@ -589,6 +568,26 @@ instance ComposeSetters '[] js s a b => ComposeSetters '[] (j ': js) s a b where
 --   * the product of disjoint setters is a setter,
 --   * the product of getters is a getter.
 
+-------------
+-- disjointness checking
+
+data IndexInfo
+  = ThisIndex Nat
+  | AnyIndex -- any index (e.g. runtime index, or a situation such as "TypeOf a :: Optic '[] (Array n a) a")
+
+type IndexChain = [IndexInfo]
+
+data IndexChoice
+  = OneIndex IndexInfo
+  | Choice   [IndexChoices]
+
+type IndexChoices = [IndexChoice]
+
+type family Disjoint ( o1 :: Optic is s a ) ( o2 :: Optic js s b ) :: Either ErrorMessage () where
+  Disjoint o1 o2
+    = ErrorIfOverlap o1 o2
+        ( FirstOverlap (IndexChoicesOf o1) (IndexChoicesOf o2) )
+
 type ArePairwiseDisjoint (os :: ProductComponents iss s as)
   = ( IsRight (PairwiseDisjoint os) :: Constraint )
 
@@ -602,63 +601,140 @@ type family DisjointFrom (o :: Optic is s a) (os :: ProductComponents iss s as) 
   DisjointFrom o (o' `ProductO` os) =
     Disjoint o o' `And` (o `DisjointFrom` os)
 
-type family CrosswiseDisjoint
-              ( os1 :: ProductComponents iss s as )
-              ( os2 :: ProductComponents jss s bs )
+type family ErrorIfOverlap
+              ( o1      :: Optic is s a )
+              ( o2      :: Optic js s b )
+              ( overlap :: Maybe [Nat]  )
             :: Either ErrorMessage ()
             where
-  CrosswiseDisjoint EndProd_ _ = Right '()
-  CrosswiseDisjoint (o1 `ProductO` os1) os2 =
-    ( o1 `DisjointFrom` os2 ) `And` CrosswiseDisjoint os1 os2
+  ErrorIfOverlap _  _ 'Nothing = Right '()
+  ErrorIfOverlap (o1 :: Optic is s a) o2 ('Just nfo)
+    = TypeError
+        (    Text "Cannot create product setter at type:"
+        :$$: Text "  " :<>: ShowType s
+        :$$: Text "Overlap between optics"
+        :$$: Text "  - " :<>: ShowOptic o1 :<>: Text ","
+        :$$: Text "  - " :<>: ShowOptic o2
+        :<>: IndexChainErrorMessage nfo
+        )
 
--- TODO: we could add more information in these error messages,
--- by keeping track of the original optics supplied to this function.
-type family Disjoint ( o1 :: Optic is s a ) ( o2 :: Optic js s b ) :: Either ErrorMessage () where
-  Disjoint RTOptic_ _ =
-    Left
-      (    Text "Cannot create a product setter involving run-time indices."
-      :$$: Text "Impossible to verify the required disjointness property."
-      )
-  Disjoint o (RTOptic_ :: Optic js s b) = Disjoint (RTOptic_ :: Optic js s b) o
-  Disjoint ( Field_ (i :: Nat   ) ) ( Field_ (i :: Nat   ) ) =
-    Left
-      (    Text "Cannot create product setter."
-      :$$: Text "Overlapping optics at index "
-      :<>: ShowType i :<>: Text "."
-      )
-  Disjoint ( Field_ (i :: Nat   ) ) ( Field_ (j :: Nat   ) ) = Right '()
-  Disjoint ( Field_ (k :: Symbol) ) ( Field_ (k :: Symbol) ) =
-    Left
-      (    Text "Cannot create product setter."
-      :$$: Text "Overlapping optics at name "
-      :<>: ShowType k :<>: Text "."
-      )
-  Disjoint ( Field_ (k :: Symbol) ) ( Field_ (l :: Symbol) ) = Right '()
-  Disjoint ( Field_ (k :: Symbol) :: Optic is s a ) ( Field_ (n :: Nat) :: Optic js s b ) =
-    If ( Overlapping s k n )
-      ( Left
-          (    Text "Cannot create product setter."
-          :$$: Text "Name " :<>: ShowType k
-          :<>: Text " and index " :<>: ShowType n
-          :<>: Text " refer to the same field."
-          )
-      )
-      ( Right '() )
-  Disjoint (Field_ (n :: Nat) :: Optic is s a) (Field_ (k :: Symbol) :: Optic js s b) =
-    Disjoint (Field_ k :: Optic js s b) (Field_ n :: Optic is s a)
-  Disjoint (Field_ (f1 :: fld1)) (Field_ (f2 :: fld2)) =
-    Left
-      (    Text "Disjointness check: unsupported optics field kinds "
-      :<>: ShowType fld1 :<>: Text ", " :<>: ShowType fld2 :<>: Text "."
-      )
-  Disjoint (o1 `ComposeO` o2) (o3 `ComposeO` o4) = IfLeft (Disjoint o1 o3) (Disjoint o2 o4)
-  Disjoint (o1 `ComposeO` o2) o3 = Disjoint o1 o3
-  Disjoint (o1 :: Optic is s a) ( ( (o3 :: Optic ks s c) `ComposeO` o4) :: Optic js s b )
-    = Disjoint ( o1 :: Optic is s a ) ( o3 :: Optic ks s c )
-  Disjoint (Prod_ os1) (Prod_ os2) = CrosswiseDisjoint os1 os2
-  Disjoint (Prod_ os1) o2 = DisjointFrom o2 os1
-  Disjoint o1 (Prod_ os2) = DisjointFrom o1 os2
+type family IndexChainErrorMessage (chain :: [Nat]) :: ErrorMessage where
+  IndexChainErrorMessage '[]
+    = Text "."
+  IndexChainErrorMessage '[i]
+    = Text "," :$$: Text "at index " :<>: Text (ShowNat i) :<>: Text "."
+  IndexChainErrorMessage is
+    = Text "," :$$: Text "at index chain ( " :<>: Text (ShowIndexChain is) :<>: Text " )."
 
+type family ShowIndexChain (chain :: [Nat]) :: Symbol where
+  ShowIndexChain '[ ] = ""
+  ShowIndexChain '[i] = ShowNat i
+  ShowIndexChain (i ': j ': is)
+    = ShowNat i `AppendSymbol` " -- " `AppendSymbol` ( ShowIndexChain (j ': is) )
+
+type family FirstOverlap
+              ( nfo1 :: IndexChoices )
+              ( nfo2 :: IndexChoices )
+            :: Maybe [Nat]
+            where
+  FirstOverlap '[] _  = Just '[]
+  FirstOverlap _  '[] = Just '[]
+  FirstOverlap ( OneIndex  i1 ': nfo1 ) ( OneIndex  i2 ': nfo2 )
+    = FirstOverlapOneIndex i1 nfo1 i2 nfo2
+  FirstOverlap ( Choice nfos1 ': nfo1 ) ( Choice nfos2 ': nfo2 )
+    = FirstCrosswiseOverlap  nfos1 (Just nfo1)  nfos2 (Just nfo2)
+  FirstOverlap ( Choice nfos1 ': nfo1 ) nfo2
+    = FirstCrosswiseOverlap  nfos1 (Just nfo1) '[nfo2] Nothing
+  FirstOverlap nfo1                     ( Choice nfos2 ': nfo2 )
+    = FirstCrosswiseOverlap '[nfo1] Nothing     nfos2 (Just nfo2)
+
+type family FirstOverlapOneIndex
+              ( i1   :: IndexInfo    )
+              ( nfo1 :: IndexChoices )
+              ( i2   :: IndexInfo    )
+              ( nfo2 :: IndexChoices )
+            :: Maybe [Nat] where
+  FirstOverlapOneIndex (ThisIndex i ) nfo1 (ThisIndex i ) nfo2
+    = FmapConsMaybe i ( FirstOverlap nfo1 nfo2 )
+  FirstOverlapOneIndex (ThisIndex i1) _    (ThisIndex i2) _
+    = Nothing
+  FirstOverlapOneIndex (ThisIndex i1) nfo1 AnyIndex       nfo2
+    = FmapConsMaybe i1 ( FirstOverlap nfo1 nfo2 )
+  FirstOverlapOneIndex  AnyIndex      nfo1 (ThisIndex i2) nfo2
+    = FmapConsMaybe i2 ( FirstOverlap nfo1 nfo2 )
+  FirstOverlapOneIndex  AnyIndex      nfo1 AnyIndex       nfo2
+    = FmapConsMaybe 0  ( FirstOverlap nfo1 nfo2 )
+
+type family FirstCrosswiseOverlap
+              ( nfos1 :: [IndexChoices]     )
+              ( nxt1  :: Maybe IndexChoices )
+              ( nfos2 :: [IndexChoices]     )
+              ( nxt2  :: Maybe IndexChoices )
+           :: Maybe [Nat]
+           where
+  FirstCrosswiseOverlap '[]               _      _     _
+    = Nothing
+  FirstCrosswiseOverlap ( nfo1 ': nfos1 ) mbNxt1 nfos2 mbNxt2
+    = ( FirstOverlapIn nfo1 mbNxt1 nfos2 mbNxt2 )
+      `IfNothingThen`
+      ( FirstCrosswiseOverlap nfos1 mbNxt1 nfos2 mbNxt2 )
+
+type family FirstOverlapIn
+              ( nfo1  :: IndexChoices       )
+              ( nxt1  :: Maybe IndexChoices )
+              ( nfos2 :: [IndexChoices]     )
+              ( nxt2  :: Maybe IndexChoices )
+           :: Maybe [Nat]
+           where
+  FirstOverlapIn _    _      '[]               _
+    = Nothing
+  FirstOverlapIn nfo1 mbNxt1 ( nfo2 ': nfos2 ) mbNxt2
+    = ( FirstOverlap ( nfo1 `MaybeAppend` mbNxt1 ) ( nfo2 `MaybeAppend` mbNxt2 ) )
+      `IfNothingThen`
+      ( FirstOverlapIn nfo1 mbNxt1 nfos2 mbNxt2 )
+
+type family FmapConsMaybe ( i :: k ) ( js :: Maybe [k] ) :: Maybe [k] where
+  FmapConsMaybe _ Nothing   = Nothing
+  FmapConsMaybe i (Just js) = Just (i ': js)
+
+type family MaybeAppend ( xs :: [k] ) ( mb_ys :: Maybe [k] ) :: [k] where
+  MaybeAppend xs Nothing   = xs
+  MaybeAppend xs (Just ys) = xs :++: ys
+
+type family IndexChoicesOf ( o :: Optic is s a ) :: IndexChoices where
+  IndexChoicesOf ( Field_ ( i :: Nat    ) ) = '[ OneIndex (ThisIndex i) ]
+  IndexChoicesOf ( Field_ ( k :: Symbol ) :: Optic is s a )
+    = '[ OneIndex (ThisIndex ( FieldIndexFromName s k )) ]
+  IndexChoicesOf ( Field_ ( i :: fld    ) )
+    = TypeError
+        (    Text "Cannot create product setter."
+        :$$: Text "Index " :<>: ShowType i
+        :<>: Text " has unsupported kind " :<>: ShowType fld :<>: Text "."
+        )
+  IndexChoicesOf RTOptic_ = '[ OneIndex AnyIndex ]
+  IndexChoicesOf ( o1 `ComposeO` o2 )
+    = IndexChoicesOf o1 :++: IndexChoicesOf o2
+  IndexChoicesOf ( Prod_ comps )
+    = '[ Choice ( ComponentIndexChoices comps ) ]
+  IndexChoicesOf ( OfType_ ty :: Optic is s a )
+    = '[ Choice ( MapMapOneIndex (FieldsOfType s ty) ) ]
+
+
+type family ComponentIndexChoices ( comps :: ProductComponents iss s as ) :: [IndexChoices] where
+  ComponentIndexChoices EndProd_ = '[]
+  ComponentIndexChoices (o `ProductO` os)
+    = IndexChoicesOf o ': ComponentIndexChoices os
+
+type family MapMapOneIndex ( flds :: [IndexChain] ) :: [IndexChoices] where
+  MapMapOneIndex '[] = '[]
+  MapMapOneIndex ( nfo ': nfos ) = MapOneIndex nfo ': MapMapOneIndex nfos
+
+type family MapOneIndex ( flds :: IndexChain ) :: IndexChoices where
+  MapOneIndex '[] = '[]
+  MapOneIndex ( nfo ': nfos ) = OneIndex nfo ': MapOneIndex nfos
+
+-------------
+-- instances
 
 class ComponentsGettable (os :: ProductComponents iss s as) where
 instance ComponentsGettable EndProd_ where

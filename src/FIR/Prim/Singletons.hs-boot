@@ -5,6 +5,7 @@
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RoleAnnotations     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
 module FIR.Prim.Singletons where
@@ -16,6 +17,8 @@ import Data.Typeable
   ( Typeable )
 
 -- fir
+import {-# SOURCE #-} Control.Type.Optic
+  ( IndexChain )
 import Data.Binary.Class.Put
   ( Put )
 import Data.Function.Variadic
@@ -43,6 +46,7 @@ class ( Show ty
       , ty ~ ListVariadic '[] ty
       )
     => PrimTy ty where
+  type FieldsOfType ty fldTy :: [ IndexChain ]
   primTySing :: SPrimTy ty
 
 class ( PrimTy ty

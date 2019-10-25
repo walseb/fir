@@ -59,7 +59,7 @@ import GHC.TypeLits
 import GHC.TypeNats
   ( Nat, KnownNat, natVal
   , CmpNat, type (<=)
-  , type (-)
+  , type (+), type (-)
   )
 
 -- distributive
@@ -78,8 +78,7 @@ import Control.Type.Optic
   , Gettable, ReifiedGetter(view)
   , Settable, ReifiedSetter(set )
   , Container(..)
-  , MonoContainer(..)
-  , (:.:), Id, AnIndex, Name, Joint
+  , (:.:), AnIndex, Name, OfType
   , ProductComponents(..)
   )
 import Data.Constraint.All
@@ -101,18 +100,18 @@ import Data.Type.List
   )
 import Data.Type.Map
   ( (:->)((:->))
-  , Key, Value
-  , Lookup
+  , Value, Lookup
   )
 import FIR.Prim.Array
-  ( Array(MkArray), RuntimeArray(MkRuntimeArray) )
+  ( Array(MkArray), RuntimeArray )
 import FIR.Prim.Image
   ( Image, ImageProperties, ImageData
   , ImageOperands, OperandName
   , ImageCoordinates
   )
 import FIR.Prim.Singletons
-  ( PrimTy(primTySing), IntegralTy
+  ( PrimTy(primTySing), showSPrimTy
+  , IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
   , PrimTyMap
   , SPrimTy(SStruct)
@@ -121,7 +120,7 @@ import FIR.Prim.Singletons
 import FIR.ProgramState
   ( ProgramState )
 import FIR.Prim.Struct
-  ( Struct((:&), End) )
+  ( Struct((:&)) )
 import qualified FIR.Validation.Bindings as Binding
   ( Has, CanGet, CanPut )
 import FIR.Validation.Images
@@ -134,8 +133,7 @@ import Math.Linear
 
 -- | Singletons associated to the type-level optics used by this library.
 data SOptic (optic :: Optic i s a) :: Type where
-  SId    :: SOptic Id
-  SJoint :: SOptic Joint
+  SOfType :: SPrimTy s -> SPrimTy a -> SOptic (OfType a :: Optic '[] s a)
   -- for indices, we additional specify the accessee, to distinguish
   -- the different methods SPIR-V supports for access:
   --  - vectors with VectorExtractDynamic / VectorInsertDynamic
@@ -212,8 +210,7 @@ infixr 9 %:.:
 o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
 
 showSOptic :: SOptic (o :: Optic is s a) -> String
-showSOptic SId    = "Id"
-showSOptic SJoint = "Joint"
+showSOptic (SOfType _ sTy ) = "OfType " ++ showSPrimTy sTy
 showSOptic (SAnIndex _ _ _) = "AnIndex"
 showSOptic (SIndex   _ _ n) = "Index "   ++ show n
 showSOptic (SBinding    k  ) = "Binding "    ++ show (symbolVal k)
@@ -230,14 +227,14 @@ showSProductComponents (o `SProductO` os)
 class KnownLength (Indices optic) => KnownOptic optic where
   opticSing :: SOptic optic
 
-instance ( empty ~ '[] ) => KnownOptic (Id_ :: Optic empty a a) where
-  opticSing = SId
 instance ( empty ~ '[]
-         , MonoContainer a
-         , mono ~ MonoType a
+         , ty ~ a
+         , Container s
+         , PrimTy s
+         , PrimTy a
          )
-       => KnownOptic (Joint_ :: Optic empty a mono) where
-  opticSing = SJoint
+       => KnownOptic (OfType_ ty :: Optic empty s a) where
+  opticSing = SOfType (primTySing @s) (primTySing @a)
 instance ( KnownNat n
          , empty ~ '[]
          , PrimTy s
@@ -467,14 +464,14 @@ instance ( KnownNat i
          , r ~ a
          )
       => Gettable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
-instance ( KnownNat i         
-         , r ~ a
+instance ( KnownNat i
          , empty ~ '[]
-         , PrimTy a
-         , Gettable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r)
+         , r ~ a
+         , TypeError ( Text "Cannot use 'view' on runtime array." )
          )
        => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
-  view (MkRuntimeArray arr) = arr Array.! (fromIntegral (natVal (Proxy @i)))
+  view = error "unreachable"
+  --view (MkRuntimeArray arr) = arr Array.! (fromIntegral (natVal (Proxy @i)))
 
 
 instance ( IntegralTy ty
@@ -496,14 +493,12 @@ instance ( IntegralTy ty
          , r ~ a
          )
       => Gettable (RTOptic_ :: Optic ix (RuntimeArray a) r) where
-instance ( IntegralTy ty
-         , ix ~ '[ty]
-         , r ~ a
-         , Gettable (RTOptic_ :: Optic ix (RuntimeArray a) r)
-         , PrimTy a
+instance ( IntegralTy ty, ix ~ '[ty], r ~ a
+         , TypeError ( Text "Cannot use 'view' on runtime array." )
          )
       => ReifiedGetter (RTOptic_ :: Optic ix (RuntimeArray a) r) where
-  view i (MkRuntimeArray arr) = arr Array.! fromIntegral i
+  view = error "unreachable"
+  --view i (MkRuntimeArray arr) = arr Array.! fromIntegral i
 
 instance
     TypeError (    Text "get: attempt to access array element \
@@ -538,7 +533,7 @@ instance ( KnownSymbol k
                  ((k ':-> a) ': as)
                  (Lookup k ((k ':-> a) ': as))
          , empty ~ '[]
-         , a ~ ListVariadic '[] a
+         , PrimTy a
          , Gettable (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
          )
       => ReifiedGetter
@@ -570,7 +565,7 @@ instance ( KnownNat n
          ) => Gettable (Field_ (n :: Nat) :: Optic empty (Struct as) r) where
 instance ( r ~ Value (StructElemFromIndex (Text "get: ") 0 (a ': as) 0 (a ': as))
          , empty ~ '[]
-         , r ~ ListVariadic '[] r
+         , PrimTy r
          )
       => ReifiedGetter
            (Field_ 0 :: Optic empty (Struct (a ': as)) r)
@@ -782,21 +777,15 @@ instance ( KnownNat i
       where
   set a (MkArray arr) = MkArray ( arr Array.// [( fromIntegral (natVal (Proxy @i)), a)] )
 
-instance ( KnownNat i
-         , empty ~ '[]
-         , r ~ a
-         )
+instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       => Settable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
-instance ( KnownNat i         
-         , r ~ a
-         , empty ~ '[]
-         , Settable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r)
-         )
+instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       => ReifiedSetter
            (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r)
       where
-  set a (MkRuntimeArray arr)
-    = MkRuntimeArray ( arr Array.// [( fromIntegral (natVal (Proxy @i)), a)] )
+  set = error "unreachable"
+  --set a (MkRuntimeArray arr)
+  --  = MkRuntimeArray ( arr Array.// [( fromIntegral (natVal (Proxy @i)), a)] )
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -813,21 +802,15 @@ instance ( IntegralTy ty
       where
   set i a (MkArray arr) = MkArray ( arr Array.// [(fromIntegral i, a)] )
 
-instance ( IntegralTy ty
-         , ix ~ '[ty]
-         , r ~ a
-         )
+instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       => Settable (RTOptic_ :: Optic ix (RuntimeArray a) r) where
-instance ( IntegralTy ty
-         , r ~ a
-         , ix ~ '[ty]
-         , Settable (RTOptic_ :: Optic ix (RuntimeArray a) r)
-         )
+instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       => ReifiedSetter
            (RTOptic_ :: Optic ix (RuntimeArray a) r)
       where
-  set i a (MkRuntimeArray arr)
-    = MkRuntimeArray ( arr Array.// [(fromIntegral i, a)] )
+  set = error "unreachable"
+  --set i a (MkRuntimeArray arr)
+  --  = MkRuntimeArray ( arr Array.// [(fromIntegral i, a)] )
   
 instance 
     TypeError (    Text "set: attempt to update array element \
@@ -1085,77 +1068,168 @@ type family StructElemFromIndex
   StructElemFromIndex msg n as n_rec (_ ': as_rec)
     = StructElemFromIndex msg n as (n_rec - 1) as_rec
 
-----------------------------------------------------------------------
--- type class instances for products
+type StructIndexFromName k as = ( StructIndexFromNameRec 0 k as as :: Nat )
 
+type family StructIndexFromNameRec
+              ( i      :: Nat              )
+              ( k      :: Symbol           )
+              ( as     :: [ Symbol :-> v ] )
+              ( as_rec :: [ Symbol :-> v ] )
+            :: Nat
+            where
+  StructIndexFromNameRec _ k as '[]
+    = TypeError
+    (    Text "optic: structure of type "
+    :$$: ShowType (Struct as)
+    :$$: Text "does not contain any field named " :<>: ShowType k
+    :<>: Text "."
+    )
+  StructIndexFromNameRec i k _  ( ( k ':-> _ ) ': _   ) = i
+  StructIndexFromNameRec i k as ( _            ': nxt )
+    = StructIndexFromNameRec (i+1) k as nxt
+
+----------------------------------------------------------------------
+-- type class instances for containers
 
 instance Container (V n a) where
-  type Overlapping (V n a) k _
+  type FieldIndexFromName (V n a) k
     = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
                 :$$: Text "Maybe you intended to use a swizzle?"
                 )
 
 instance KnownNat n => Container (M m n a) where
-  type Overlapping (M m n a) k _
+  type FieldIndexFromName (M m n a) k
     = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
 
 instance Container (Struct (as :: [Symbol :-> Type])) where
-  type Overlapping (Struct (as :: [Symbol :-> Type])) k i
-    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
+  type FieldIndexFromName (Struct (as :: [Symbol :-> Type])) k
+    = StructIndexFromName k as
 
 instance Container (Array n a) where
-  type Overlapping (Array n a) k _
-        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+  type FieldIndexFromName (Array n a) k
+    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
 
 instance Container (RuntimeArray a) where
-  type Overlapping (RuntimeArray a) k _
-        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+  type FieldIndexFromName (RuntimeArray a) k
+    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
 
 ----------------------------------------------------------------------
--- type class instances for equalisers
+-- type class instances for "OfType" optic
 
-instance KnownNat n => MonoContainer (Array n a) where
-  type MonoType (Array n a) = a
-  setAll a _ = MkArray @n $ Array.replicate (fromIntegral . natVal $ Proxy @n) a
+-- vectors
+class SetVector n a b (a_eq_b :: Bool) where
+  setVector :: b -> V n a -> V n a
+instance (a ~ b, KnownNat n) => SetVector n a b 'True where
+  setVector a _ = pure a
+instance SetVector n a b 'False where
+  setVector _ = id
 
-instance MonoContainer (RuntimeArray a) where
-  type MonoType (RuntimeArray a) = a
-  setAll a (MkRuntimeArray arr)
-    = MkRuntimeArray $ Array.replicate n a
-        where n = Array.length arr
-
-instance (KnownNat n, 1 <= n)
-      => MonoContainer (V n a) where
-  type MonoType (V n a) = a
-  setAll = const . pure
-
-instance (KnownNat m, KnownNat n, 1 <= m)
-      => MonoContainer (M m n a) where
-  type MonoType (M m n a) = V m a
-  setAll = const . M . distribute . pure
-
-instance MonoContainer (Struct (((k :: Symbol) ':-> v) ': '[]))
-      where
-  type MonoType (Struct ((k ':-> v) ': '[])) = v
-  setAll = const . (:& End)
-
-instance {-# OVERLAPPABLE #-}
-         ( AllValuesEqual k v as
-         , MonoContainer (Struct as)
-         , MonoType (Struct as) ~ v
+instance ( empty ~ '[]
+         , KnownNat n
+         , SetVector n a b (a == b)
          )
-       => MonoContainer (Struct ((k ':-> v) ': as)) where
-  type MonoType (Struct ((k ':-> v) ': as)) = v
-  setAll a (_ :& as) = a :& setAll a as
+      => Settable (OfType_ ty :: Optic empty (V n a) b)
+      where
+instance ( empty ~ '[]
+         , b ~ a
+         , KnownNat n
+         , SetVector n a b (a == b)
+         )
+      => ReifiedSetter (OfType_ ty :: Optic empty (V n a) b)
+      where
+  set = setVector @n @a @b @(a == b)
 
-type family AllValuesEqual (k0 :: Symbol) (a :: v) (as :: [k :-> v]) :: Constraint where
-  AllValuesEqual _ _ '[]                 = ()
-  AllValuesEqual k0 v ( (_ ':-> v) ': as) = AllValuesEqual k0 v as
-  AllValuesEqual k0 v ( (k ':-> w) ': _ )
-    = TypeError (      Text "Cannot create 'Joint' setter for struct type."
-                  :$$: Text "Struct contains members of different types."
-                  :$$: Text "Type at key " :<>: ShowType k0 :<>: Text " is:"
-                  :$$: Text "    " :<>: ShowType v
-                  :$$: Text "Type at key " :<>: ShowType k :<>: Text " is:"
-                  :$$: Text "    " :<>: ShowType w
-                )
+-- matrices
+data MatrixComponent
+  = Column
+  | Entry
+
+type family WhichMatrixComponent
+              (m :: Nat) (a :: Type) (b :: Type)
+            :: Maybe MatrixComponent
+            where
+  WhichMatrixComponent _ a a       = Just Entry
+  WhichMatrixComponent m a (V m a) = Just Column
+  WhichMatrixComponent _ _ _       = Nothing
+
+class SetMatrix m n a b (w :: Maybe MatrixComponent) where
+  setMatrix :: b -> M m n a -> M m n a
+instance ( b ~ a
+         , KnownNat m
+         , KnownNat n
+         )
+      => SetMatrix m n a b (Just Entry) where
+  setMatrix a _ = pure a
+instance ( b ~ V m a
+         , KnownNat m
+         , KnownNat n
+         )
+      => SetMatrix m n a b (Just Column) where
+  setMatrix col _ = M . distribute $ ( pure col :: V n (V m a) )
+instance SetMatrix m n a b Nothing where
+  setMatrix _ = id
+
+instance ( empty ~ '[]
+         , KnownNat m
+         , KnownNat n
+         , b ~ ty
+         , SetMatrix m n a b (WhichMatrixComponent m a b)
+         )
+      => Settable (OfType_ ty :: Optic empty (M m n a) b)
+      where
+instance ( empty ~ '[]
+         , KnownNat m
+         , KnownNat n
+         , b ~ ty
+         , SetMatrix m n a b (WhichMatrixComponent m a b)
+         )
+      => ReifiedSetter (OfType_ ty :: Optic empty (M m n a) b)
+      where
+  set = setMatrix @m @n @a @b @(WhichMatrixComponent m a b)
+
+-- arrays
+instance ( empty ~ '[]
+         , KnownNat n
+         , b ~ ty
+         , Settable (OfType ty :: Optic '[] a ty)
+         )
+      => Settable (OfType_ ty :: Optic empty (Array n a) b)
+      where
+instance ( empty ~ '[]
+         , KnownNat n
+         , b ~ ty
+         , ReifiedSetter (OfType ty :: Optic '[] a ty)
+         , ListVariadic '[] a ~ a
+         )
+      => ReifiedSetter (OfType_ ty :: Optic empty (Array n a) b)
+      where
+  set a = fmap ( set @(OfType ty :: Optic '[] a ty) a )
+
+instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+      => Settable (OfType_ ty :: Optic empty (RuntimeArray a) r)
+      where
+instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+      => ReifiedSetter (OfType_ ty :: Optic empty (RuntimeArray a) r)
+      where
+  set = error "unreachable"
+
+-- structs
+instance ( empty ~ '[] ) => Settable      (OfType_ ty :: Optic empty (Struct '[]) b) where
+instance ( empty ~ '[] ) => ReifiedSetter (OfType_ ty :: Optic empty (Struct '[]) b) where
+  set _ = id
+instance ( empty ~ '[]
+         , Settable (OfType ty :: Optic '[] a           ty)
+         , Settable (OfType ty :: Optic '[] (Struct as) ty)
+         , b ~ ty
+         )
+      => Settable ( OfType_ ty :: Optic empty (Struct ( (fld ':-> a) ': as ) ) b ) where
+instance ( empty ~ '[]
+         , ReifiedSetter (OfType ty :: Optic '[] a           ty)
+         , ReifiedSetter (OfType ty :: Optic '[] (Struct as) ty)
+         , b ~ ty
+         , ListVariadic '[] a ~ a
+         )
+      => ReifiedSetter ( OfType_ ty :: Optic empty (Struct ( (fld ':-> a) ': as ) ) b ) where
+  set x ( a :& as )
+    =  set @(OfType ty :: Optic '[] a           b) x a
+    :& set @(OfType ty :: Optic '[] (Struct as) b) x as

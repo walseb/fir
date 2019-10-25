@@ -334,9 +334,11 @@ type family ComputeFirstOverlap
   ComputeFirstOverlap
     ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1 ty1) )
     ( 'LocationSlot l2 c2 ) ( SKScalar s2 :: SKPrimTy       ty2  )
-      = ComputeFirstOverlap
-          ( 'LocationSlot l2 c2 ) ( SKScalar s2 :: SKPrimTy       ty2  )
-          ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1 ty1) )
+      = FmapSwapOverlap
+          ( ComputeFirstOverlap
+            ( 'LocationSlot l2 c2 ) ( SKScalar s2 :: SKPrimTy       ty2  )
+            ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1 ty1) )
+          )
   -- vector - vector
   ComputeFirstOverlap
     ( 'LocationSlot l1 c1 ) ( SKVector s1 :: SKPrimTy (V m1 ty1) )
@@ -363,9 +365,11 @@ type family ComputeFirstOverlap
   ComputeFirstOverlap
     loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
     loc2 ( SKScalar s2 :: SKPrimTy          ty2  )
-      = ComputeFirstOverlap
-          loc2 ( SKScalar s2 :: SKPrimTy          ty2  )
-          loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+      = FmapSwapOverlap
+        ( ComputeFirstOverlap
+            loc2 ( SKScalar s2 :: SKPrimTy          ty2  )
+            loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+        )
   -- vector - matrix
   --    essentially the same as scalar - matrix,
   --    except that the vector might take up two locations
@@ -384,9 +388,11 @@ type family ComputeFirstOverlap
   ComputeFirstOverlap
     loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
     loc2 ( SKVector s2 :: SKPrimTy (V m2    ty2) )
-      = ComputeFirstOverlap
-        loc2 ( SKVector s2 :: SKPrimTy (V m2    ty2) )
-        loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+      = FmapSwapOverlap
+        ( ComputeFirstOverlap
+            loc2 ( SKVector s2 :: SKPrimTy (V m2    ty2) )
+            loc1 ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
+        )
   -- matrix - matrix
   ComputeFirstOverlap
     ( 'LocationSlot l1 _ ) ( SKMatrix s1 :: SKPrimTy (M m1 n1 ty1) )
@@ -427,9 +433,18 @@ type family ComputeFirstOverlap
   ComputeFirstOverlap
     loc1 sing1
     loc2 ( SKArray elt2 :: SKPrimTy (Array n2 ty2) )
-      = ComputeFirstOverlap
-          loc2 ( SKArray elt2 :: SKPrimTy (Array n2 ty2) )
-          loc1 sing1
+      = FmapSwapOverlap
+        ( ComputeFirstOverlap
+            loc2 ( SKArray elt2 :: SKPrimTy (Array n2 ty2) )
+            loc1 sing1
+        )
+
+-- | Helper function to accomodate for switching arguments.
+type family FmapSwapOverlap ( overlap :: Maybe Overlap ) :: Maybe Overlap where
+  FmapSwapOverlap Nothing = Nothing
+  FmapSwapOverlap (Just (OverlappingSlot slot)) = Just (OverlappingSlot slot)
+  FmapSwapOverlap (Just (OverlappingLocation i ty1 ty2))
+    = Just (OverlappingLocation i ty2 ty1)
 
 type family VectorLocations (m :: Nat) (s :: SScalarTy ty) :: Nat where
   VectorLocations m s = If ( ScalarWidth s :<= 32 || m :<= 2 ) 1 2

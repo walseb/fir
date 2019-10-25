@@ -19,7 +19,6 @@
 {-# LANGUAGE TypeFamilyDependencies     #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE ViewPatterns               #-}
 
 {-|
 Module: FIR.Syntax.AST
@@ -38,15 +37,6 @@ module FIR.Syntax.AST
   ( -- functor/applicative for AST values
     ASTFunctor(fmapAST)
   , ASTApplicative(pureAST, (<**>)), (<$$>)
-
-    -- patterns for vectors
-  , pattern Vec2, pattern Vec3, pattern Vec4
-
-    -- patterns for matrices
-  , pattern Mat22, pattern Mat23, pattern Mat24
-  , pattern Mat32, pattern Mat33, pattern Mat34
-  , pattern Mat42, pattern Mat43, pattern Mat44
-
     -- + orphan instances
   )
   where
@@ -70,8 +60,6 @@ import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
-import Data.Type.Equality
-  ( type (==) )
 import Data.Word
   ( Word8, Word16, Word32, Word64 )
 import GHC.TypeLits
@@ -98,8 +86,7 @@ import Control.Type.Optic
   , ComponentsGettable
   , ComponentsSettable
   , ArePairwiseDisjoint
-  , Container(Overlapping)
-  , MonoContainer(MonoType, setAll)
+  , Container(FieldIndexFromName)
   )
 import Data.Function.Variadic
   ( NatVariadic, ListVariadic )
@@ -115,7 +102,7 @@ import Data.Type.List
   , type (:++:), Postpend
   )
 import Data.Type.Map
-  ( (:->), Key )
+  ( (:->) )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal, toAST, fromAST)
@@ -126,7 +113,7 @@ import FIR.Syntax.Optics
   , KnownComponents
   , (%:.:)
   , ValidAnIndexOptic
-  , StructElemFromIndex
+  , StructIndexFromName
   )
 import FIR.Prim.Array
   ( Array, RuntimeArray )
@@ -156,7 +143,6 @@ import Math.Linear
   , Matrix(..), VectorOf
   , V, M(..)
   , dfoldrV, buildV
-  , pattern V2, pattern V3, pattern V4
   )
 import Math.Logic.Bits
   ( Bits(..), BitShift(..) )
@@ -437,9 +423,9 @@ class KnownOptic optic => KnownASTOptic astoptic optic | astoptic -> optic where
 instance ( empty ~ '[]
          , KnownSymbol k
          , r ~ AST a
-         , KnownOptic (Field_ k :: Optic empty s a)
+         , KnownOptic (Field_ k :: Optic '[] s a)
          )
-       => KnownASTOptic (Field_ k :: Optic empty (AST s) r) (Field_ k :: Optic '[] s a)
+       => KnownASTOptic (Field_ k :: Optic empty1 (AST s) r) (Field_ k :: Optic '[] s a)
        where
 instance ( KnownSymbol k
          , empty ~ '[]
@@ -452,7 +438,7 @@ instance ( KnownSymbol k
          , empty ~ '[]
          , Gettable (Field_ k :: Optic '[] s a)
          , ReifiedGetter (Field_ k :: Optic '[] s a)
-         , ListVariadic '[] a ~ a
+         , PrimTy a
          , KnownOptic (Field_ k :: Optic '[] s a)
          , r ~ AST a
          )
@@ -473,7 +459,7 @@ instance ( KnownSymbol k
          , empty ~ '[]
          , Settable (Field_ k :: Optic '[] s a)
          , ReifiedSetter (Field_ k :: Optic '[] s a)
-         , ListVariadic '[] s ~ s
+         , PrimTy s
          , KnownOptic (Field_ k :: Optic '[] s a)
          , r ~ AST a
          )
@@ -505,7 +491,7 @@ instance ( Integral ty
          , ix ~ '[AST ty]
          , Gettable (RTOptic_ :: Optic '[ty] s a)
          , ReifiedGetter (RTOptic_ :: Optic '[ty] s a)
-         , ListVariadic '[] a ~ a
+         , PrimTy a
          , KnownOptic (RTOptic_ :: Optic '[ty] s a)
          , r ~ AST a
          )
@@ -526,7 +512,7 @@ instance ( Integral ty
          , ix ~ '[AST ty]
          , Settable (RTOptic_ :: Optic '[ty] s a)
          , ReifiedSetter (RTOptic_ :: Optic '[ty] s a)
-         , ListVariadic '[] s ~ s
+         , PrimTy s
          , KnownOptic (RTOptic_ :: Optic '[ty] s a)
          , r ~ AST a
          )
@@ -557,7 +543,7 @@ instance ( KnownNat i
          , empty ~ '[]
          , Gettable (Field_ i :: Optic '[] s a)
          , ReifiedGetter (Field_ i :: Optic '[] s a)
-         , ListVariadic '[] a ~ a
+         , PrimTy a
          , KnownOptic (Field_ i :: Optic '[] s a)
          , r ~ AST a
          )
@@ -578,7 +564,7 @@ instance ( KnownNat i
          , empty ~ '[]
          , Settable (Field_ i :: Optic '[] s a)
          , ReifiedSetter (Field_ i :: Optic '[] s a)
-         , ListVariadic '[] s ~ s
+         , PrimTy s
          , KnownOptic (Field_ i :: Optic '[] s a)
          , r ~ AST a
          )
@@ -595,45 +581,64 @@ instance ( KnownNat i
 -- *** Containers
 --
 -- $containers
--- Container instances, for product optics
+-- Container instances, for product optics.
 
 instance Container (AST (V n a)) where
-  type Overlapping  (AST (V n a)) k _
+  type FieldIndexFromName (AST (V n a)) k
     = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
                 :$$: Text "Maybe you intended to use a swizzle?"
                 )
 
 instance KnownNat m => Container (AST (M m n a)) where
-  type Overlapping (AST (M m n a)) k _
+  type FieldIndexFromName (AST (M m n a)) k
     = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
 
 instance Container (AST (Struct (as :: [Symbol :-> Type]))) where
-  type Overlapping (AST (Struct (as :: [Symbol :-> Type]))) k i
-    = k == Key (StructElemFromIndex (Text "key: ") i as i as)
+  type FieldIndexFromName (AST (Struct (as :: [Symbol :-> Type]))) k
+    = StructIndexFromName k as
 
 instance Container (AST (Array n a)) where
-  type Overlapping (AST (Array n a)) k _
-        = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+  type FieldIndexFromName (AST (Array n a)) k
+    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
 
-instance
-  ( TypeError ( Text "Cannot recombine runtime arrays.") )
-  => Container (AST (RuntimeArray a)) where
-    type Overlapping (AST (RuntimeArray a)) _ _ = TypeError ( Text "Cannot recombine runtime arrays.")
+instance Container (AST (RuntimeArray a)) where
+  type FieldIndexFromName (AST (RuntimeArray a)) k
+    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
 
--- *** Equalisers
+-- *** Optic focusing on parts with a given type
 --
--- $equalisers
--- Monomorphic containers, for equalisers.
+-- $oftype
+-- Setter instances for 'OfType' optic.
 
-instance (PrimTy a, KnownNat n) => MonoContainer (AST (V n a)) where
-  type MonoType (AST (V n a)) = AST a
-  setAll a _ = pureAST a
-instance (PrimTy a, KnownNat n, KnownNat m) => MonoContainer (AST (M m n a)) where
-  type MonoType (AST (M m n a)) = AST a
-  setAll a _ = pureAST a
-instance MonoContainer (Struct as) => MonoContainer (AST (Struct (as :: [Symbol :-> Type]))) where
-  type MonoType (AST (Struct (as :: [Symbol :-> Type]))) = AST (MonoType (Struct as))
-  setAll = error "TODO: structure 'setAll'"
+instance ( empty ~ '[]
+         , r ~ AST ty
+         , KnownOptic (OfType_ ty :: Optic '[] s ty)
+         )
+       => KnownASTOptic
+            (OfType_ (AST ty) :: Optic empty (AST s) r )
+            (OfType_      ty  :: Optic '[]        s  ty)
+       where
+instance {-# OVERLAPPING #-}
+         ( empty ~ '[]
+         , r ~ AST ty
+         , Settable (OfType_ ty :: Optic '[] s ty)
+         )
+      => Settable (OfType_ (AST ty) :: Optic empty (AST s) r)
+      where
+instance {-# OVERLAPPING #-}
+         ( empty ~ '[]
+         , r ~ AST ty
+         , Settable   (OfType_ ty :: Optic '[] s ty)
+         , KnownOptic (OfType_ ty :: Optic '[] s ty)
+         , PrimTy s
+         , PrimTy ty
+         )
+      => ReifiedSetter (OfType_ (AST ty) :: Optic empty (AST s) r)
+      where
+  set = fromAST
+       $ Set
+            sLength
+            ( opticSing @(OfType_ ty :: Optic '[] s ty) )
 
 -- *** Compound instance resolution
 
@@ -1088,27 +1093,6 @@ instance (ScalarTy a, Floating a) => Cross Nat (AST (V 0 a)) where
   cross :: AST (V 3 a) -> AST (V 3 a) -> AST (V 3 a)
   cross = primOp @(V 3 a) @SPIRV.CrossV
 
--- *** Bidirectional pattern synonyms
-
--- these patterns could be generalised to have types such as:
--- Vec2 :: forall a. (Syntactic a, PrimTy (Internal a))
---      => a -> a -> AST ( V 2 (Internal a) )
--- but this leads to poor type-inference
-
-{-# COMPLETE Vec2 #-}
-pattern Vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
-pattern Vec2 x y <- (fromAST -> V2 x y)
-  where Vec2 = fromAST $ MkVector @2 @a Proxy Proxy
-
-{-# COMPLETE Vec3 #-}
-pattern Vec3 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
-pattern Vec3 x y z <- (fromAST -> V3 x y z)
-  where Vec3 = fromAST $ MkVector @3 @a Proxy Proxy
-
-{-# COMPLETE Vec4 #-}
-pattern Vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
-pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
-  where Vec4 = fromAST $ MkVector @4 @a Proxy Proxy
 
 -- ** Matrices
 --
@@ -1172,222 +1156,3 @@ instance (ScalarTy a, Floating a) => Matrix Nat (AST (M 0 0 a)) where
        => AST (M i j a) -> AST a -> AST (M i j a)
   (!*) = primOp @'(a,i,j) @SPIRV.MMulK
 
-
--- *** Bidirectional pattern synonyms
-
-{-# COMPLETE Mat22 #-}
-pattern Mat22
-  :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 2 2 a )
-pattern Mat22 a11 a12
-              a21 a22
-  <- ( fromAST . ( UnMat :$ )
-       -> V2 ( V2 a11 a12 )
-             ( V2 a21 a22 )
-     )
-  where Mat22
-            a11 a12
-            a21 a22
-          = Mat :$ Vec2
-            ( Vec2 a11 a12 )
-            ( Vec2 a21 a22 )
-
-{-# COMPLETE Mat23 #-}
-pattern Mat23
-  :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 2 3 a )
-pattern Mat23 a11 a12 a13
-              a21 a22 a23
-   <- ( fromAST . ( UnMat :$ )
-        -> V2 ( V3 a11 a12 a13 )
-              ( V3 a21 a22 a23 )
-      )
-  where Mat23
-            a11 a12 a13
-            a21 a22 a23
-          = Mat :$ Vec2
-            ( Vec3 a11 a12 a13 )
-            ( Vec3 a21 a22 a23 )
-
-{-# COMPLETE Mat24 #-}
-pattern Mat24
-  :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 2 4 a )
-pattern Mat24 a11 a12 a13 a14
-              a21 a22 a23 a24
-   <- ( fromAST . ( UnMat :$ )
-        -> V2 ( V4 a11 a12 a13 a14 )
-              ( V4 a21 a22 a23 a24 )
-      )
-  where Mat24
-            a11 a12 a13 a14
-            a21 a22 a23 a24
-          = Mat :$ Vec2
-              ( Vec4 a11 a12 a13 a14 )
-              ( Vec4 a21 a22 a23 a24 )
-
-{-# COMPLETE Mat32 #-}
-pattern Mat32
-  :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 3 2 a )
-pattern Mat32 a11 a12
-              a21 a22
-              a31 a32
-   <- ( fromAST . ( UnMat :$ )
-        -> V3 ( V2 a11 a12 )
-              ( V2 a21 a22 )
-              ( V2 a31 a32 )
-      )
-  where Mat32
-            a11 a12
-            a21 a22
-            a31 a32
-          = Mat :$ Vec3
-            ( Vec2 a11 a12 )
-            ( Vec2 a21 a22 )
-            ( Vec2 a31 a32 )
-
-
-{-# COMPLETE Mat33 #-}
-pattern Mat33
-  :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 3 3 a )
-pattern Mat33 a11 a12 a13
-              a21 a22 a23
-              a31 a32 a33
-   <- ( fromAST . ( UnMat :$ )
-        -> V3 ( V3 a11 a12 a13 )
-              ( V3 a21 a22 a23 )
-              ( V3 a31 a32 a33 )
-      )
-  where Mat33
-            a11 a12 a13
-            a21 a22 a23
-            a31 a32 a33
-          = Mat :$ Vec3
-              ( Vec3 a11 a12 a13 )
-              ( Vec3 a21 a22 a23 )
-              ( Vec3 a31 a32 a33 )
-
-{-# COMPLETE Mat34 #-}
-pattern Mat34
-  :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 3 4 a )
-pattern Mat34 a11 a12 a13 a14
-              a21 a22 a23 a24
-              a31 a32 a33 a34
-   <- ( fromAST . ( UnMat :$ )
-        -> V3 ( V4 a11 a12 a13 a14 )
-              ( V4 a21 a22 a23 a24 )
-              ( V4 a31 a32 a33 a34 )
-      )
-  where Mat34
-            a11 a12 a13 a14
-            a21 a22 a23 a24
-            a31 a32 a33 a34
-          = Mat :$ Vec3
-              ( Vec4 a11 a12 a13 a14 )
-              ( Vec4 a21 a22 a23 a24 )
-              ( Vec4 a31 a32 a33 a34 )
-
-{-# COMPLETE Mat42 #-}
-pattern Mat42
-  :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 4 2 a )
-pattern Mat42 a11 a12
-              a21 a22
-              a31 a32
-              a41 a42
-   <- ( fromAST . ( UnMat :$ )
-        -> V4 ( V2 a11 a12 )
-              ( V2 a21 a22 )
-              ( V2 a31 a32 )
-              ( V2 a41 a42 )
-      )
-  where Mat42
-            a11 a12
-            a21 a22
-            a31 a32
-            a41 a42
-          = Mat :$ Vec4
-              ( Vec2 a11 a12 )
-              ( Vec2 a21 a22 )
-              ( Vec2 a31 a32 )
-              ( Vec2 a41 a42 )
-
-{-# COMPLETE Mat43 #-}
-pattern Mat43
-  :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 4 3 a )
-pattern Mat43 a11 a12 a13
-              a21 a22 a23
-              a31 a32 a33
-              a41 a42 a43
-   <- ( fromAST . ( UnMat :$ )
-        -> V4 ( V3 a11 a12 a13 )
-              ( V3 a21 a22 a23 )
-              ( V3 a31 a32 a33 )
-              ( V3 a41 a42 a43 )
-      )
-  where Mat43
-            a11 a12 a13
-            a21 a22 a23
-            a31 a32 a33
-            a41 a42 a43
-          = Mat :$ Vec4
-              ( Vec3 a11 a12 a13 )
-              ( Vec3 a21 a22 a23 )
-              ( Vec3 a31 a32 a33 )
-              ( Vec3 a41 a42 a43 )
-
-{-# COMPLETE Mat44 #-}
-pattern Mat44
-  :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 4 4 a )
-pattern Mat44 a11 a12 a13 a14
-              a21 a22 a23 a24
-              a31 a32 a33 a34
-              a41 a42 a43 a44
-   <- ( fromAST . ( UnMat :$ )
-        -> V4 ( V4 a11 a12 a13 a14 )
-              ( V4 a21 a22 a23 a24 )
-              ( V4 a31 a32 a33 a34 )
-              ( V4 a41 a42 a43 a44 )
-      )
-  where Mat44
-            a11 a12 a13 a14
-            a21 a22 a23 a24
-            a31 a32 a33 a34
-            a41 a42 a43 a44
-          = Mat :$ Vec4
-              ( Vec4 a11 a12 a13 a14 )
-              ( Vec4 a21 a22 a23 a24 )
-              ( Vec4 a31 a32 a33 a34 )
-              ( Vec4 a41 a42 a43 a44 )

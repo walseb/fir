@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
@@ -57,6 +58,8 @@ import Control.Applicative
   ( liftA2 )
 import Data.Kind
   ( Type )
+import Data.List
+  ( intercalate )
 import Data.Word
   ( Word32 )
 import GHC.TypeLits
@@ -115,6 +118,8 @@ tailS (_ :& as) = as
 data LocationSlot n where
   LocationSlot :: n -> n -> LocationSlot n
 
+deriving stock instance Show n => Show (LocationSlot n)
+
 type family ShowLocationSlot ( slot :: LocationSlot Nat ) :: Symbol where
   ShowLocationSlot ('LocationSlot l c)
     = "Location " `AppendSymbol` ShowNat l `AppendSymbol` ", Component " `AppendSymbol` ShowNat c
@@ -124,13 +129,13 @@ data FieldKind (fld :: Type) where
   LocationField :: FieldKind (LocationSlot Nat)
   OtherField    :: FieldKind fld
 
-class StructFieldKind fld where
+class Show (Demote fld) => StructFieldKind fld where
   fieldKind :: FieldKind fld
 instance StructFieldKind Symbol where
   fieldKind = NamedField
 instance StructFieldKind (LocationSlot Nat) where
   fieldKind = LocationField
-instance {-# OVERLAPPABLE #-} StructFieldKind fld where
+instance {-# OVERLAPPABLE #-} Show (Demote fld) => StructFieldKind fld where
   fieldKind = OtherField
 
 instance PrimTyMap as => Eq (Struct as) where
@@ -153,19 +158,17 @@ instance PrimTyMap as => Ord (Struct as) where
                     EQ -> compare as bs
                     un -> un
 
-display :: forall as. PrimTyMap as => Struct as -> String
+display :: forall as. PrimTyMap as => Struct as -> [String]
 display s = case primTyMapSing @_ @as of
   SNil
-    -> ""
+    -> []
   SCons {}
     -> case s of
           (a :& as)
-            -> case display as of
-                  "" -> show a
-                  d  -> show a ++ ", " ++ d
+            -> show a : display as
 
 instance PrimTyMap as => Show (Struct as) where
-  show s = "{ " ++ display s ++ " }" 
+  show s = "{ " ++ intercalate ", " (display s) ++ " }"
 
 instance IsProduct (Struct '[]) '[] where
   fromHList _ = End

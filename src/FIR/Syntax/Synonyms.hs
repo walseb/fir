@@ -10,9 +10,11 @@
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE ViewPatterns           #-}
 
 {-|
 Module: FIR.Syntax.Synonyms
@@ -53,7 +55,17 @@ module FIR.Syntax.Synonyms
   -- * Synonyms for optics
   -- ** Synonyms for matrix optics
   , Col, Row
+  , Elts, Cols
   , Entry, Diag, Center
+
+  -- * Pattern synonyms for vectors/matrices
+  -- ** Patterns for vectors
+  , pattern Vec2, pattern Vec3, pattern Vec4
+
+  -- ** Patterns for matrices
+  , pattern Mat22, pattern Mat23, pattern Mat24
+  , pattern Mat32, pattern Mat33, pattern Mat34
+  , pattern Mat42, pattern Mat43, pattern Mat44
   )
   where
 
@@ -64,6 +76,8 @@ import Data.Int
   ( Int8, Int16, Int32 )
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy(Proxy) )
 import Data.Word
   ( Word8, Word16, Word32 )
 import GHC.TypeNats
@@ -79,7 +93,7 @@ import Numeric.Half
 import Control.Type.Optic
   ( Optic(..), Index
   , (:.:), (:*:)
-  , Joint
+  , OfType
   , EndProd
   )
 import Data.Type.Known
@@ -87,7 +101,9 @@ import Data.Type.Known
 import Data.Type.Map
   ( (:->)((:->)), InsertionSort )
 import FIR.AST
-  ( AST(Gather) )
+  ( AST((:$), MkVector, Mat, UnMat, Gather)
+  , Syntactic(fromAST)
+  )
 import FIR.Definition
   ( Definition(Global) )
 import qualified FIR.Definition as Def
@@ -106,10 +122,14 @@ import FIR.Pipeline
   , PipelineInfo(VertexInputInfo)
   , PipelineStages(VertexInput)
   )
+import FIR.Prim.Array
+  ( Array )
 import FIR.Prim.Image
   ( ImageProperties(Properties)
   , Image, GatherInfo(..)
   )
+import FIR.Prim.Singletons
+  ( PrimTy, ScalarTy )
 import FIR.Prim.Struct
   ( Struct
   , LocationSlot(LocationSlot)
@@ -117,7 +137,9 @@ import FIR.Prim.Struct
 import FIR.Validation.Formats
   ( ComputeFormats )
 import Math.Linear
-  ( V, M )
+  ( V, M
+  , pattern V2, pattern V3, pattern V4
+  )
 import SPIRV.ScalarTy
   ( Signedness(..) )
 import SPIRV.Image
@@ -285,19 +307,33 @@ type Col__ (i :: Nat) = ( Index i :: Optic '[] (AST (M m n a)) (AST (V m a)) )
 type Ix_   (i :: Nat) = ( Index i :: Optic '[] (V n a) a )
 type Ix__  (i :: Nat) = ( Index i :: Optic '[] (AST (V n a)) (AST a) )
 
-type family ColRes (i :: Nat) (mat :: Type) :: Type where
-  ColRes i (AST (M m n a)) = AST (V m a)
-  ColRes i (M m n a) = V m a
+type family EltRes (t :: Type) :: Type where
+  EltRes (V m a) = a
+  EltRes (M m n a) = a
+  EltRes (Array n a ) = a
+  EltRes (AST (V m a)) = AST a
+  EltRes (AST (M m n a)) = AST a
+  EltRes (AST (Array n a)) = AST a
 
-type family Col (i :: Nat) = ( optic :: Optic '[] mat (ColRes i mat) ) | optic -> i where
+type family Elts = ( optic :: Optic '[] t (EltRes t) ) where
+  Elts = ( OfType (EltRes t) :: Optic '[] t (EltRes t) )
+
+type family ColRes (mat :: Type) :: Type where
+  ColRes (AST (M m n a)) = AST (V m a)
+  ColRes (M m n a) = V m a
+
+type family Col (i :: Nat) = ( optic :: Optic '[] mat (ColRes mat) ) | optic -> i where
   Col i = ( Col__ i :: Optic '[] (AST (M m n a)) (AST (V m a)) )
   Col i = ( Col_ i :: Optic '[] (M m n a) (V m a) )
 
-type family RowRes (i :: Nat) (mat :: Type) :: Type where
-  RowRes i (M m n a) = V n a
-  RowRes i (AST (M m n a)) = AST (V n a)
+type family Cols = ( optic :: Optic '[] mat (ColRes mat) ) where
+  Cols = ( OfType (ColRes mat) :: Optic '[] mat (ColRes mat) )
 
-type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes i mat) ) where
+type family RowRes (mat :: Type) :: Type where
+  RowRes (M m n a) = V n a
+  RowRes (AST (M m n a)) = AST (V n a)
+
+type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
   Row i = ( Prod_
               (   (Col__ 0 :.: Ix__ i)
               :*: (Col__ 1 :.: Ix__ i)
@@ -352,7 +388,7 @@ type family EntryRes (mat :: Type) :: Type where
   EntryRes (AST (M m n a)) = AST a
 
 type family Entry (i :: Nat) (j :: Nat) = ( optic :: Optic '[] mat (EntryRes mat)) where
-  Entry i j = ( ( Col_  i :.: Ix_  j ) :: Optic '[] (M m n a) a )
+  Entry i j = ( ( Col_  j :.: Ix_  i ) :: Optic '[] (M m n a) a )
   Entry i j = ( ( Col__ j :.: Ix__ i ) :: Optic '[] (AST (M m n a)) (AST a) )
 
 type family DiagRes (mat :: Type) :: Type where
@@ -410,11 +446,248 @@ type family Diag :: Optic '[] mat (DiagRes mat) where
          )
 
 type family Center :: Optic '[] mat (EntryRes mat) where
-  Center = ( (     ( Diag :: Optic '[] (M n n a) (V n a) )
-               :.: Joint
-             ) :: Optic '[] (M n n a) a
-            )
-  Center = ( (     ( Diag :: Optic '[] (AST (M n n a)) (AST (V n a)) )
-               :.: Joint
-             ) :: Optic '[] (AST (M n n a)) (AST a)
-            )
+  Center = ( ( ( Diag :: Optic '[] mat (DiagRes mat) )
+               :.:
+               ( OfType (EntryRes mat) :: Optic '[] (DiagRes mat) (EntryRes mat) )
+             ) :: Optic '[] mat (EntryRes mat)
+           )
+
+----------------------------------------------------------------------
+-- pattern synonyms for vectors/matrices
+
+-- these patterns could be generalised to have types such as:
+-- Vec2 :: forall a. (Syntactic a, PrimTy (Internal a))
+--      => a -> a -> AST ( V 2 (Internal a) )
+-- but this leads to poor type-inference
+
+{-# COMPLETE Vec2 #-}
+pattern Vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
+pattern Vec2 x y <- (fromAST -> V2 x y)
+  where Vec2 = fromAST $ MkVector @2 @a Proxy Proxy
+
+{-# COMPLETE Vec3 #-}
+pattern Vec3 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
+pattern Vec3 x y z <- (fromAST -> V3 x y z)
+  where Vec3 = fromAST $ MkVector @3 @a Proxy Proxy
+
+{-# COMPLETE Vec4 #-}
+pattern Vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
+pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
+  where Vec4 = fromAST $ MkVector @4 @a Proxy Proxy
+
+{-# COMPLETE Mat22 #-}
+pattern Mat22
+  :: ScalarTy a
+  => AST a -> AST a
+  -> AST a -> AST a
+  -> AST ( M 2 2 a )
+pattern Mat22 a11 a12
+              a21 a22
+  <- ( fromAST . ( UnMat :$ )
+       -> V2 ( V2 a11 a12 )
+             ( V2 a21 a22 )
+     )
+  where Mat22
+            a11 a12
+            a21 a22
+          = Mat :$ Vec2
+            ( Vec2 a11 a12 )
+            ( Vec2 a21 a22 )
+
+{-# COMPLETE Mat23 #-}
+pattern Mat23
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a
+  -> AST ( M 2 3 a )
+pattern Mat23 a11 a12 a13
+              a21 a22 a23
+   <- ( fromAST . ( UnMat :$ )
+        -> V2 ( V3 a11 a12 a13 )
+              ( V3 a21 a22 a23 )
+      )
+  where Mat23
+            a11 a12 a13
+            a21 a22 a23
+          = Mat :$ Vec2
+            ( Vec3 a11 a12 a13 )
+            ( Vec3 a21 a22 a23 )
+
+{-# COMPLETE Mat24 #-}
+pattern Mat24
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a -> AST a
+  -> AST ( M 2 4 a )
+pattern Mat24 a11 a12 a13 a14
+              a21 a22 a23 a24
+   <- ( fromAST . ( UnMat :$ )
+        -> V2 ( V4 a11 a12 a13 a14 )
+              ( V4 a21 a22 a23 a24 )
+      )
+  where Mat24
+            a11 a12 a13 a14
+            a21 a22 a23 a24
+          = Mat :$ Vec2
+              ( Vec4 a11 a12 a13 a14 )
+              ( Vec4 a21 a22 a23 a24 )
+
+{-# COMPLETE Mat32 #-}
+pattern Mat32
+  :: ScalarTy a
+  => AST a -> AST a
+  -> AST a -> AST a
+  -> AST a -> AST a
+  -> AST ( M 3 2 a )
+pattern Mat32 a11 a12
+              a21 a22
+              a31 a32
+   <- ( fromAST . ( UnMat :$ )
+        -> V3 ( V2 a11 a12 )
+              ( V2 a21 a22 )
+              ( V2 a31 a32 )
+      )
+  where Mat32
+            a11 a12
+            a21 a22
+            a31 a32
+          = Mat :$ Vec3
+            ( Vec2 a11 a12 )
+            ( Vec2 a21 a22 )
+            ( Vec2 a31 a32 )
+
+
+{-# COMPLETE Mat33 #-}
+pattern Mat33
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a
+  -> AST ( M 3 3 a )
+pattern Mat33 a11 a12 a13
+              a21 a22 a23
+              a31 a32 a33
+   <- ( fromAST . ( UnMat :$ )
+        -> V3 ( V3 a11 a12 a13 )
+              ( V3 a21 a22 a23 )
+              ( V3 a31 a32 a33 )
+      )
+  where Mat33
+            a11 a12 a13
+            a21 a22 a23
+            a31 a32 a33
+          = Mat :$ Vec3
+              ( Vec3 a11 a12 a13 )
+              ( Vec3 a21 a22 a23 )
+              ( Vec3 a31 a32 a33 )
+
+{-# COMPLETE Mat34 #-}
+pattern Mat34
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a -> AST a
+  -> AST ( M 3 4 a )
+pattern Mat34 a11 a12 a13 a14
+              a21 a22 a23 a24
+              a31 a32 a33 a34
+   <- ( fromAST . ( UnMat :$ )
+        -> V3 ( V4 a11 a12 a13 a14 )
+              ( V4 a21 a22 a23 a24 )
+              ( V4 a31 a32 a33 a34 )
+      )
+  where Mat34
+            a11 a12 a13 a14
+            a21 a22 a23 a24
+            a31 a32 a33 a34
+          = Mat :$ Vec3
+              ( Vec4 a11 a12 a13 a14 )
+              ( Vec4 a21 a22 a23 a24 )
+              ( Vec4 a31 a32 a33 a34 )
+
+{-# COMPLETE Mat42 #-}
+pattern Mat42
+  :: ScalarTy a
+  => AST a -> AST a
+  -> AST a -> AST a
+  -> AST a -> AST a
+  -> AST a -> AST a
+  -> AST ( M 4 2 a )
+pattern Mat42 a11 a12
+              a21 a22
+              a31 a32
+              a41 a42
+   <- ( fromAST . ( UnMat :$ )
+        -> V4 ( V2 a11 a12 )
+              ( V2 a21 a22 )
+              ( V2 a31 a32 )
+              ( V2 a41 a42 )
+      )
+  where Mat42
+            a11 a12
+            a21 a22
+            a31 a32
+            a41 a42
+          = Mat :$ Vec4
+              ( Vec2 a11 a12 )
+              ( Vec2 a21 a22 )
+              ( Vec2 a31 a32 )
+              ( Vec2 a41 a42 )
+
+{-# COMPLETE Mat43 #-}
+pattern Mat43
+  :: ScalarTy a
+  => AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a
+  -> AST ( M 4 3 a )
+pattern Mat43 a11 a12 a13
+              a21 a22 a23
+              a31 a32 a33
+              a41 a42 a43
+   <- ( fromAST . ( UnMat :$ )
+        -> V4 ( V3 a11 a12 a13 )
+              ( V3 a21 a22 a23 )
+              ( V3 a31 a32 a33 )
+              ( V3 a41 a42 a43 )
+      )
+  where Mat43
+            a11 a12 a13
+            a21 a22 a23
+            a31 a32 a33
+            a41 a42 a43
+          = Mat :$ Vec4
+              ( Vec3 a11 a12 a13 )
+              ( Vec3 a21 a22 a23 )
+              ( Vec3 a31 a32 a33 )
+              ( Vec3 a41 a42 a43 )
+
+{-# COMPLETE Mat44 #-}
+pattern Mat44
+  :: ScalarTy a
+  => AST a -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a -> AST a
+  -> AST a -> AST a -> AST a -> AST a
+  -> AST ( M 4 4 a )
+pattern Mat44 a11 a12 a13 a14
+              a21 a22 a23 a24
+              a31 a32 a33 a34
+              a41 a42 a43 a44
+   <- ( fromAST . ( UnMat :$ )
+        -> V4 ( V4 a11 a12 a13 a14 )
+              ( V4 a21 a22 a23 a24 )
+              ( V4 a31 a32 a33 a34 )
+              ( V4 a41 a42 a43 a44 )
+      )
+  where Mat44
+            a11 a12 a13 a14
+            a21 a22 a23 a24
+            a31 a32 a33 a34
+            a41 a42 a43 a44
+          = Mat :$ Vec4
+              ( Vec4 a11 a12 a13 a14 )
+              ( Vec4 a21 a22 a23 a24 )
+              ( Vec4 a31 a32 a33 a34 )
+              ( Vec4 a41 a42 a43 a44 )

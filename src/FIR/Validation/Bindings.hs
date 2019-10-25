@@ -172,10 +172,10 @@ type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constra
 --
 -- Adds the required function variables to the map of in-scope bindings.
 type family FunctionDefinitionStartState
-              ( k  :: Symbol      )
-              ( as :: BindingsMap )
-              ( s  :: ProgramState    )
-            = ( j  :: ProgramState    )
+              ( k  :: Symbol       )
+              ( as :: BindingsMap  )
+              ( s  :: ProgramState )
+            = ( j  :: ProgramState )
             | j -> k as
             where
   FunctionDefinitionStartState k as ('ProgramState i ctx funs eps)

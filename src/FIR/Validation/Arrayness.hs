@@ -4,8 +4,6 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module FIR.Validation.Arrayness where
-
 {-|
 Module: FIR.Validation.Arrayness
 
@@ -18,6 +16,8 @@ have an added layer of arrayness.
 This module checks for the presence of these layers of arrayness,
 and provides type families to peel off such implicit arrayness layers.
 -}
+
+module FIR.Validation.Arrayness where
 
 -- base
 import Data.Kind

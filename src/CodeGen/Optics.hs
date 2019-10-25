@@ -3,6 +3,7 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE MultiWayIf             #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -26,8 +27,8 @@ module CodeGen.Optics
   , loadThroughAccessChain
   , storeThroughAccessChain
   , extractUsingGetter
-  , insertUsingSetter
   , setUsingSetter
+  , insertUsingSetter
   , ASTs(NilAST, ConsAST)
   ) where
 
@@ -35,7 +36,7 @@ module CodeGen.Optics
 import Control.Arrow
   ( first )
 import Control.Monad
-  ( unless )
+  ( unless, forM_ )
 import Data.Kind
   ( Type )
 import Data.Proxy
@@ -73,7 +74,9 @@ import CodeGen.Application
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.Composite
-  ( compositeExtract, compositeInsert
+  ( compositeConstruct
+  , compositeExtract
+  , compositeInsert
   , vectorSwizzle
   , productConstruct
   )
@@ -127,10 +130,14 @@ import FIR.AST
     )
   )
 import FIR.Prim.Singletons
-  ( PrimTy, primTy, SPrimTy(..) )
+  ( PrimTy, primTy, primTys
+  , SPrimTy(..), sPrimTy
+  )
 import FIR.Syntax.Optics
   ( SOptic(..), SProductComponents(..) )
 import qualified SPIRV.PrimTy  as SPIRV
+import qualified SPIRV.PrimTy
+  ( almostEqual )
 import qualified SPIRV.Storage as Storage
 
 ----------------------------------------------------------------------------
@@ -202,31 +209,30 @@ setted _ = Nothing
 ----------------------------------------------------------------------------
 -- exported optic code generation functions
 
+-- | Load through a pointer with the supplied getter.
 loadThroughAccessChain
   :: forall is s a (optic :: Optic is s a)
   .  (ID, SPIRV.PointerTy) -> SOptic optic -> ASTs is -> CGMonad (ID, SPIRV.PrimTy)
 loadThroughAccessChain basePtr sOptic is
   = loadThroughAccessChain' basePtr =<< operationTree is sOptic
 
+-- | Use a getter to @view@ a part of the provided object.
 extractUsingGetter
   :: forall is s a (optic :: Optic is s a)
   .  (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad (ID, SPIRV.PrimTy)
 extractUsingGetter base sOptic is
   = extractUsingGetter' base =<< operationTree is sOptic
 
+-- | Store into a pointer with the supplied setter.
 storeThroughAccessChain
   :: forall is s a (optic :: Optic is s a)
   .  (ID, SPIRV.PointerTy) -> AST a -> SOptic optic -> ASTs is -> CGMonad ()
 storeThroughAccessChain basePtr val sOptic is
   = storeThroughAccessChain' basePtr val =<< operationTree is sOptic
 
-insertUsingSetter
-  :: forall is s a (optic :: Optic is s a)
-  .  ShortText -> (ID, SPIRV.PrimTy) -> AST a -> SOptic optic -> ASTs is -> CGMonad ()
-insertUsingSetter varName base val sOptic is = do
-  tree   <- operationTree is sOptic
-  insertUsingSetter' varName base val tree
-
+-- | Set a component of an object, with focus given by the supplied setter.
+--
+-- Returns the updated object.
 setUsingSetter
   :: forall is s a (optic :: Optic is s a)
   .  AST s
@@ -239,70 +245,49 @@ setUsingSetter base val sOptic is = do
   tree   <- operationTree is sOptic
   setUsingSetter' baseID val tree
 
+-- | Set a component of a binding, with focus given by the supplied setter.
+--
+-- Doesn't return anything: updates the state of the provided binding.
+insertUsingSetter
+  :: forall is s a (optic :: Optic is s a)
+  .  ShortText -> (ID, SPIRV.PrimTy) -> AST a -> SOptic optic -> ASTs is -> CGMonad ()
+insertUsingSetter varName base val sOptic is = do
+  tree   <- operationTree is sOptic
+  insertUsingSetter' varName base val tree
+
 ----------------------------------------------------------------------------
 -- optical trees
 
-data OpticalOperation where
-  Access :: Safeness -> Indices -> OpticalOperation
-  Join   :: OpticalOperation
+data OpticalNode where
+  Access   :: Safeness -> Indices -> OpticalNode
+  OfTypeOp :: SPrimTy s -> SPrimTy a -> OpticalNode
+  Combine  :: (PrimTy p, All PrimTy as, IsProduct p as)
+           => Proxy p -> Proxy as -> [ OpticalOperationTree ] -> OpticalNode
 
-infixr 5 `Then`
-
-data OpticalOperationTree where
-  Done    :: OpticalOperationTree
-  Then    :: OpticalOperation -> OpticalOperationTree -> OpticalOperationTree
-  Combine :: forall (p :: Type) (as :: [Type])
-          .  (PrimTy p, All PrimTy as, IsProduct p as)
-          => Proxy p -> Proxy as -> [OpticalOperationTree] -> OpticalOperationTree
-
+type OpticalOperationTree = [ OpticalNode ]
 
 operationTree :: forall k is (s :: k) a (optic :: Optic is s a)
               .  ASTs is -> SOptic optic -> CGMonad OpticalOperationTree
-operationTree _ SId    = pure Done
-operationTree _ SJoint = pure (Join `Then` Done)
+operationTree _ (SOfType s a) = pure [OfTypeOp s a]
 operationTree (i `ConsAST` _) SAnIndex {}
-  = (`Then` Done) . Access Unsafe . RTInds . (:[]) . fst <$> codeGen i
+  = (:[]) . Access Unsafe . RTInds . (:[]) . fst <$> codeGen i
 operationTree _ (SIndex s _ n)
   -- if accessing a runtime array, a compile-time index may be unsafe
   | SRuntimeArray <- s
-  = pure $ Access Unsafe ( CTInds [n] ) `Then` Done
+  = pure [ Access Unsafe (CTInds [n]) ]
   -- otherwise, a compile-time index is guaranteed to be in-bounds
   | otherwise
-  = pure $ Access Safe ( CTInds [n] ) `Then` Done
+  = pure [ Access Safe   (CTInds [n]) ]
 operationTree is (SComposeO lg1 opt1 opt2)
   = do  let (is1, is2) = composedIndices lg1 is
         ops1 <- operationTree is1 opt1
         ops2 <- operationTree is2 opt2
         ops1 `continue` ops2
-    where continue :: OpticalOperationTree -> OpticalOperationTree -> CGMonad OpticalOperationTree
-          continue ops1 Done = pure ops1
-          -- recurse on first argument
-          continue Done ops2 = pure ops2
-          continue (Combine p as trees) ops2
-            = Combine p as <$> traverse (`continue` ops2) trees
-          -- try to combine successive accesses into a single access chain as much as possible
-          -- (this helps bypass Vulkan implementation bugs in tessellation evaluation shaders)
-          continue (Access safe1 (CTInds is1) `Then` Done) (Access safe2 (CTInds is2) `Then` ops2)
-            = pure $ Access (safe1 <> safe2) (CTInds (is1 ++ is2)) `Then` ops2
-          continue (Access safe1 (RTInds is1) `Then` Done) (Access safe2 (RTInds is2) `Then` ops2)
-            = pure $ Access (safe1 <> safe2) (RTInds (is1 ++ is2)) `Then` ops2
-          continue (Access safe1 (CTInds is1) `Then` Done) (Access safe2 (RTInds is2) `Then` ops2)
-            = do
-                js1 <- traverse constID is1
-                pure $ Access (safe1 <> safe2) (RTInds (js1 ++ is2)) `Then` ops2
-          continue (Access safe1 (RTInds is1) `Then` Done) (Access safe2 (CTInds is2) `Then` ops2)
-            = do
-                js2 <- traverse constID is2
-                pure $ Access (safe1 <> safe2) (RTInds (is1 ++ js2)) `Then` ops2
-          continue (op1 `Then` ops1) ops2
-            = do
-                cont <- ops1 `continue` ops2
-                pure $ op1 `Then` cont
 operationTree is
   ( SProd same (comps :: SProductComponents (os :: ProductComponents iss s as))
     :: SOptic (optic :: Optic is s a)
   ) =
-    Combine ( Proxy @a ) ( Proxy @as ) <$>
+    (:[]) . Combine ( Proxy @a ) ( Proxy @as ) <$>
       ( componentsTrees same comps =<<
           combinedIndices @iss @is @as sSameLength sLength is
       )
@@ -311,13 +296,38 @@ operationTree _ (SBinding _)
 operationTree _ (SImageTexel _ _)
   = throwError "operationTree: unexpected image optic"
 
+continue :: OpticalOperationTree -> OpticalOperationTree -> CGMonad OpticalOperationTree
+continue ops1 []   = pure ops1
+continue []   ops2 = pure ops2
+-- try to combine successive accesses into a single access chain as much as possible
+-- (this helps bypass Vulkan implementation bugs in tessellation evaluation shaders)
+continue [Access safe1 (CTInds is1)] (Access safe2 (CTInds is2) : ops2)
+  = pure $ Access (safe1 <> safe2) (CTInds (is1 ++ is2)) : ops2
+continue [Access safe1 (RTInds is1)] (Access safe2 (RTInds is2) : ops2)
+  = pure $ Access (safe1 <> safe2) (RTInds (is1 ++ is2)) : ops2
+continue [Access safe1 (CTInds is1)] (Access safe2 (RTInds is2) : ops2)
+  = do
+      js1 <- traverse constID is1
+      pure $ ( Access (safe1 <> safe2) (RTInds (js1 ++ is2)) : ops2 )
+continue [Access safe1 (RTInds is1)] (Access safe2 (CTInds is2) : ops2)
+  = do
+      js2 <- traverse constID is2
+      pure $ Access (safe1 <> safe2) (RTInds (is1 ++ js2)) : ops2
+continue (op1 : ops1) ops2
+  = do
+      cont <- ops1 `continue` ops2
+      pure $ op1 : cont
+
 componentsTrees
-  :: forall (k :: Type) (iss :: [[Type]]) (s :: k) (as :: [Type]) (os :: ProductComponents iss s as)
+  :: forall
+      (k :: Type) (iss :: [[Type]]) (s :: k)
+      (as :: [Type]) (os :: ProductComponents iss s as)
   .  SSameLength (Distribute iss as) as
   -> SProductComponents os
   -> ASTs (MapHList (Distribute iss as))
   -> CGMonad [OpticalOperationTree]
-componentsTrees _                       SEndProd             _                  = pure []
+componentsTrees _ SEndProd  _
+  = pure []
 componentsTrees sameSucc@(SSameSucc lg) (so `SProductO` sos) (is `ConsAST` iss) =
   case sameSucc of
     ( _ :: SSameLength (ds ': dss) (b ': bs) ) ->
@@ -341,9 +351,11 @@ combinedIndices
   -> SLength as
   -> ASTs is
   -> CGMonad (ASTs (MapHList (Distribute jss as)))
-combinedIndices        SSameZero     SZero      NilAST          = pure $ NilAST
-combinedIndices        SSameZero     (SSucc lg) NilAST          = (NilHList `ConsAST`) <$> combinedIndices SSameZero lg NilAST
-combinedIndices sSame@(SSameSucc sm) lg        (i `ConsAST` is) =
+combinedIndices SSameZero SZero      NilAST
+  = pure $ NilAST
+combinedIndices SSameZero (SSucc lg) NilAST
+  = (NilHList `ConsAST`) <$> combinedIndices SSameZero lg NilAST
+combinedIndices sSame@(SSameSucc sm) lg (i `ConsAST` is) =
   case sSame of
     ( _ :: SSameLength (p ': ps) (es ': ess) ) ->
       case productsDict @is @jss @as of
@@ -352,7 +364,12 @@ combinedIndices sSame@(SSameSucc sm) lg        (i `ConsAST` is) =
             <$> deconstruct allDict i
             <*> combinedIndices sm lg is
 
-zipIndices :: AllDict PrimTy is -> SSameLength is jss -> ASTs is -> ASTs (MapHList jss) -> ASTs (MapHList (ZipCons is jss))
+zipIndices
+  :: AllDict PrimTy is
+  -> SSameLength is jss
+  -> ASTs is
+  -> ASTs (MapHList jss)
+  -> ASTs (MapHList (ZipCons is jss))
 zipIndices NilDict  SSameZero      NilAST           NilAST             = NilAST
 zipIndices ConsDict (SSameSucc lg) (i `ConsAST` is) (js `ConsAST` jss) =
   (ConsHList :$ i :$ js) `ConsAST` zipIndices allDict lg is jss
@@ -453,39 +470,43 @@ swizzleIndices :: SPIRV.PrimTy -> [OpticalOperationTree] -> Maybe [Word32]
 swizzleIndices (SPIRV.Vector _ _) = traverse simpleIndex
   where
     simpleIndex :: OpticalOperationTree -> Maybe Word32
-    simpleIndex (Access Safe (CTInds [i]) `Then` Done) = Just i
+    simpleIndex [Access Safe (CTInds [i])] = Just i
     simpleIndex _ = Nothing
 swizzleIndices _ = const Nothing
 
 loadThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
-loadThroughAccessChain' (basePtrID, SPIRV.PointerTy _ eltTy) Done
+loadThroughAccessChain' (basePtrID, SPIRV.PointerTy _ eltTy) []
   = loadInstruction eltTy basePtrID
-loadThroughAccessChain' basePtr ( Access safe is `Then` ops )
+loadThroughAccessChain' basePtr ( Access safe is : ops )
   = do
       newBasePtr <- accessChain basePtr safe is
       loadThroughAccessChain' newBasePtr ops
-loadThroughAccessChain' basePtr@(_, SPIRV.PointerTy _ eltTy) ( Combine (_ :: Proxy p) _ trees )
+loadThroughAccessChain' basePtr@(_, SPIRV.PointerTy _ eltTy) ( Combine (_ :: Proxy p) _ trees : ops )
   -- special case: can we use a vector swizzle operation?
   | Just is <- swizzleIndices eltTy trees
   = do
-      base <- loadThroughAccessChain' basePtr Done
-      vectorSwizzle base is
+      base <- loadThroughAccessChain' basePtr []
+      vec <- vectorSwizzle base is
+      extractUsingGetter' vec ops
   | otherwise
-  = productConstruct (primTy @p) =<< traverse (loadThroughAccessChain' basePtr) trees
-loadThroughAccessChain' _ ( Join `Then` _ )
-  = throwError "loadThroughAccessChain': unexpected 'Joint' optic used as a getter"
+  = do
+      subtrees <- traverse (loadThroughAccessChain' basePtr) trees
+      combined <- productConstruct (primTy @p) subtrees
+      extractUsingGetter' combined ops
+loadThroughAccessChain' _ ( OfTypeOp _ _ : _ )
+  = throwError "loadThroughAccessChain': unexpected 'OfType' optic used as a getter"
 
 
 extractUsingGetter'
   :: (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
-extractUsingGetter' base Done
+extractUsingGetter' base []
   = pure base
-extractUsingGetter' base ( Access _ (CTInds is) `Then` ops )
+extractUsingGetter' base ( Access _ (CTInds is) : ops )
   = do
       newBase <- compositeExtract base is
       extractUsingGetter' newBase ops
-extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _) `Then` _ )
+extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _) : _ )
   -- run-time indices: revert to loading through pointers
   = do
       let ptrTy = SPIRV.PointerTy Storage.Function baseTy
@@ -497,30 +518,159 @@ extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _) `Then` _ )
              assign ( _temporaryPointer baseID ) ( Just (basePtrID, Fresh) )
         )
       loadThroughAccessChain' (basePtrID, ptrTy) ops
-extractUsingGetter' base@(_, eltTy) ( Combine (_ :: Proxy p) _ trees )
+extractUsingGetter' base@(_, eltTy) ( Combine (_ :: Proxy p) _ trees : ops )
   -- special case: can we use a vector swizzle operation?
   | Just is <- swizzleIndices eltTy trees
-  = vectorSwizzle base is
+  = do
+      vec <- vectorSwizzle base is
+      extractUsingGetter' vec ops
   | otherwise
-  = productConstruct (primTy @p) =<< traverse (extractUsingGetter' base) trees
-extractUsingGetter' _ ( Join `Then` _ )
-  = throwError "extractUsingGetter': unexpected 'Joint' optic used as a getter"
+  = do
+      subtrees <- traverse (extractUsingGetter' base) trees
+      combined <- productConstruct (primTy @p) subtrees
+      extractUsingGetter' combined ops
+extractUsingGetter' _ ( OfTypeOp _ _ : _ )
+  = throwError "extractUsingGetter': unexpected 'OfType' optic used as a getter"
 
 
 storeThroughAccessChain'
   :: (ID, SPIRV.PointerTy) -> AST a -> OpticalOperationTree -> CGMonad ()
-storeThroughAccessChain' (basePtrID, _) val Done
+-- Base case: identity.
+storeThroughAccessChain' (basePtrID, _) val []
   = storeInstruction basePtrID =<< fst <$> codeGen val
-storeThroughAccessChain' basePtr        val ( Access safe is `Then` ops)
+-- Access.
+storeThroughAccessChain' basePtr val ( Access safe is : ops )
   = do
       newBasePtr <- accessChain basePtr safe is
       storeThroughAccessChain' newBasePtr val ops
-storeThroughAccessChain' basePtr        val ( Combine (_ :: Proxy p) (_ :: Proxy as) trees )
+-- OfType optic.
+storeThroughAccessChain' basePtr val ( OfTypeOp s a : ops )
+  = storeAtTypeThroughAccessChain basePtr val ops (sPrimTy s) (sPrimTy a)
+-- Product optic.
+-- This is a bit more tricky and requires a second level of recursion.
+--
+--   * Base case.
+storeThroughAccessChain' basePtr val ( Combine (_ :: Proxy p) (_ :: Proxy as) trees : [] )
   = successiveStores basePtr trees =<< deconstruct @p @as allDict (unsafeCoerce val)
---storeThroughAccessChain' basePtr val ( Join `Then` Combine _ trees )
---  = jointStores basePtr trees =<< deconstruct @p @as allDict (unsafeCoerce val)
-storeThroughAccessChain' _              _ ( Join `Then` _ )
-  = throwError "storeThroughAccessChain': joint setter TODO"
+--   * Access.
+storeThroughAccessChain' _ _ ( Combine {} : Access {} : _ )
+  = throwError "storeThroughAccessChain': currently unsupported composition ( product optic - indexing )"
+--   * OfType optic.
+--     If "OfType ty" pertains to the individual components, then we can
+--     perform a 'storeAtTypeThroughAccessChain' on all the components in turn.
+--     We must first catch the other cases: focus onto a part that arose from the creation of the product type.
+storeThroughAccessChain' basePtr val ( Combine (px_p :: Proxy p) (px_as :: Proxy as) trees : OfTypeOp _ a : ops )
+  -- Start off by catching situations where we focus on a part that arose from the product.
+  --   * 'Combine' followed by 'OfType combinedTy': can ignore 'OfType combinedTy' (identity lens).
+  | combinedTy `SPIRV.PrimTy.almostEqual` ofTypeTy
+  = storeThroughAccessChain' basePtr val ( Combine px_p px_as trees : ops )
+  --   * Finicky corner case: we are combining entries (not columns) to form a matrix, but followed by `OfType colTy`.
+  | SPIRV.Matrix m _ eltTy <- combinedTy
+  , ( SPIRV.Scalar eltTy' : _ ) <- compTys
+  , eltTy'  == eltTy
+  , ( SPIRV.Vector m' (SPIRV.Scalar eltTy'') ) <- ofTypeTy
+  , eltTy'' == eltTy && m' == m
+  = throwError "storeThroughAccessChain': currently unsupported corner case \
+      \(matrix product of entries followed by 'OfType' optic focused on column type)"
+  -- General case: call 'storeAtTypeThroughAccessChain' on all the components in turn.
+  | otherwise
+  = forM_ ( zip trees compTys ) \( tree, compTy ) -> do
+      tree_ops <- tree `continue` ops
+      storeAtTypeThroughAccessChain basePtr val tree_ops compTy ofTypeTy
+  where
+    combinedTy, ofTypeTy :: SPIRV.PrimTy
+    compTys :: [SPIRV.PrimTy]
+    combinedTy = primTy @p
+    ofTypeTy   = sPrimTy a
+    compTys    = primTys @as
+--  * Second product optic.
+storeThroughAccessChain' _ _ ( Combine {} : Combine {} : _ )
+  = throwError "storeThroughAccessChain': currently unsupported composition ( product optic - product optic )"
+
+
+storeAtTypeThroughAccessChain
+  :: (ID, SPIRV.PointerTy) -> AST a -> OpticalOperationTree -> SPIRV.PrimTy -> SPIRV.PrimTy -> CGMonad ()
+storeAtTypeThroughAccessChain _       _   _   SPIRV.Unit    _
+  = pure ()
+storeAtTypeThroughAccessChain basePtr val ops SPIRV.Boolean a
+  | a == SPIRV.Boolean
+  = storeThroughAccessChain' basePtr val ops
+  | otherwise
+  = pure ()
+storeAtTypeThroughAccessChain basePtr val ops s@(SPIRV.Scalar _) a
+  | a == s
+  = storeThroughAccessChain' basePtr val ops
+  | otherwise
+  = pure ()
+storeAtTypeThroughAccessChain basePtr val ops vecTy@(SPIRV.Vector n elt) a
+  | SPIRV.PrimTy.almostEqual vecTy a
+  = storeThroughAccessChain' basePtr val ops
+  | SPIRV.PrimTy.almostEqual elt a
+  , [] <- ops
+    = do
+        valID <- fst <$> codeGen val
+        vecID <- fst <$> compositeConstruct vecTy ( replicate (fromIntegral n) valID )
+        storeInstruction (fst basePtr) vecID
+  | otherwise
+    = forM_ [0..n-1] \i -> do
+        i_ops <- [Access Safe (CTInds [i])] `continue` ops
+        storeAtTypeThroughAccessChain basePtr val i_ops elt a
+storeAtTypeThroughAccessChain basePtr val ops matTy@(SPIRV.Matrix m n elt) a
+  | a == matTy
+  = storeThroughAccessChain' basePtr val ops
+  | a == SPIRV.Vector m (SPIRV.Scalar elt)
+  = if
+    | [] <- ops
+    ->
+      do
+        colID <- fst <$> codeGen val
+        matID <- fst <$> compositeConstruct matTy ( replicate (fromIntegral n) colID )
+        storeInstruction (fst basePtr) matID
+    | otherwise
+    ->
+      forM_ [0..n-1] \i -> do
+        i_ops <- [Access Safe (CTInds [i])] `continue` ops
+        storeThroughAccessChain' basePtr val i_ops
+  | a == SPIRV.Scalar elt
+  , [] <- ops
+  = do
+      valID <- fst <$> codeGen val
+      colID <- fst <$> compositeConstruct (SPIRV.Vector m a) ( replicate (fromIntegral m) valID )
+      matID <- fst <$> compositeConstruct matTy              ( replicate (fromIntegral n) colID )
+      storeInstruction (fst basePtr) matID
+  | otherwise
+  = forM_ [ (i,j) | i <- [0..n-1], j <- [0..m-1] ] \(i,j) -> do
+      ij_ops <- [Access Safe (CTInds [i,j])] `continue` ops
+      storeAtTypeThroughAccessChain basePtr val ij_ops (SPIRV.Scalar elt) a
+storeAtTypeThroughAccessChain basePtr val ops arrayTy@(SPIRV.Array l elt _ _) a
+  | SPIRV.PrimTy.almostEqual arrayTy a
+  = storeThroughAccessChain' basePtr val ops
+  | otherwise
+  -- TODO: should be a loop as opposed to being fully unrolled,
+  -- but creating loops is unfortunately quite cumbersome
+  = forM_ ( if l == 0 then [] else [0..l-1] ) \i -> do
+      i_ops <- [Access Safe (CTInds [i])] `continue` ops
+      storeAtTypeThroughAccessChain basePtr val i_ops elt a
+storeAtTypeThroughAccessChain basePtr val ops structTy@(SPIRV.Struct eltTys _ _) a
+  | SPIRV.PrimTy.almostEqual structTy a
+  = storeThroughAccessChain' basePtr val ops
+  | otherwise
+  = forM_ (zip eltTys [0..]) \((_, eltTy, _), i) -> do
+      field_ops <- [Access Safe (CTInds [i])] `continue` ops
+      storeAtTypeThroughAccessChain basePtr val field_ops eltTy a
+storeAtTypeThroughAccessChain _ _ _ (SPIRV.RuntimeArray {}) _
+  = throwError "storeAtTypeThroughAccessChain: cannot store into runtime array"
+storeAtTypeThroughAccessChain _ _ _ (SPIRV.Pointer {})      _
+  = throwError "storeAtTypeThroughAccessChain: unexpected pointer type"
+storeAtTypeThroughAccessChain _ _ _ (SPIRV.Function {})     _
+  = throwError "storeAtTypeThroughAccessChain: unexpected function type"
+storeAtTypeThroughAccessChain _ _ _ (SPIRV.Image {})        _
+  = throwError "storeAtTypeThroughAccessChain: unexpected image type"
+storeAtTypeThroughAccessChain _ _ _ SPIRV.Sampler           _
+  = throwError "storeAtTypeThroughAccessChain: unexpected sampler type"
+storeAtTypeThroughAccessChain _ _ _ (SPIRV.SampledImage {}) _
+  = throwError "storeAtTypeThroughAccessChain: unexpected sampled image type"
+
 
 successiveStores :: (ID, SPIRV.PointerTy) -> [OpticalOperationTree] -> ASTs as -> CGMonad ()
 successiveStores basePtr ( tree : trees ) (a `ConsAST` as)
@@ -530,51 +680,16 @@ successiveStores basePtr ( tree : trees ) (a `ConsAST` as)
 successiveStores _       _                _
   = pure ()
 
-{-
-jointStores :: (ID, SPIRV.PointerTy) -> AST a -> [OpticalOperationTree] -> CGMonad ()
-jointStores basePtr a ( tree : trees )
-  = do
-      storeThroughAccessChain' basePtr a tree
-      jointStores basePtr a trees
-jointStores _       _ []
-  = pure ()
--}
-
-insertUsingSetter'
-  :: ShortText -> (ID, SPIRV.PrimTy) -> AST a -> OpticalOperationTree -> CGMonad ()
--- deal with some simple cases first
-insertUsingSetter' varName _ val Done = do
-  valID <- codeGen val
-  assign ( _localBinding varName ) ( Just valID )
-insertUsingSetter' varName base val ( Access _ (CTInds is) `Then` Done ) = do
-  valID   <- codeGen val
-  updated <- compositeInsert valID base is
-  assign ( _localBinding varName ) ( Just updated )
--- in more complex situations, revert to storing through pointers
-insertUsingSetter' varName (baseID, baseTy) val ops
-  = do
-      let ptrTy = SPIRV.PointerTy Storage.Function baseTy
-      (basePtrID, basePtrState) <- temporaryVariable baseID ptrTy
-      unless
-        ( basePtrState == Fresh )
-        ( do storeInstruction basePtrID baseID
-             -- set the temporary pointer state to "modified"
-             -- as we are about to store something into it
-             assign ( _temporaryPointer baseID ) ( Just (basePtrID, Modified) )
-        )
-      storeThroughAccessChain' (basePtrID, ptrTy) val ops
-      assign ( _localBinding varName ) . Just
-        =<< loadInstruction baseTy basePtrID
-
 setUsingSetter'
   :: (ID, SPIRV.PrimTy)
   -> AST a
   -> OpticalOperationTree
   -> CGMonad (ID, SPIRV.PrimTy)
-setUsingSetter' _ val Done = codeGen val
-setUsingSetter' base val ( Access _ (CTInds is) `Then` Done ) = do
-  valID <- codeGen val
-  compositeInsert valID base is
+setUsingSetter' _ val [] = codeGen val
+setUsingSetter' base val [Access _ (CTInds is)]
+  = do
+      valID <- codeGen val
+      compositeInsert valID base is
 -- in more complex situations, revert to using load/store
 setUsingSetter' (baseID, baseTy) val ops
   = do
@@ -589,3 +704,8 @@ setUsingSetter' (baseID, baseTy) val ops
         )
       storeThroughAccessChain' (basePtrID, ptrTy) val ops
       loadInstruction baseTy basePtrID
+
+insertUsingSetter'
+  :: ShortText -> (ID, SPIRV.PrimTy) -> AST a -> OpticalOperationTree -> CGMonad ()
+insertUsingSetter' varName base val ops =
+  assign ( _localBinding varName ) . Just =<< setUsingSetter' base val ops

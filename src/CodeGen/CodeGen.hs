@@ -377,8 +377,8 @@ codeGen (OpticAssign (AnIndexedAssignment singOptic is a))
 
             case bdTy of
               SPIRV.Pointer storage eltTy
-                -> storeThroughAccessChain   (bdID, (SPIRV.PointerTy storage eltTy)) a setter is
-              _ -> insertUsingSetter varName bd                                      a setter is
+                -> storeThroughAccessChain   (bdID, SPIRV.PointerTy storage eltTy) a setter is
+              _ -> insertUsingSetter varName bd                                    a setter is
 
             pure (ID 0, SPIRV.Unit) -- ID should never be used
 
