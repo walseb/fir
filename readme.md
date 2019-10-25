@@ -4,8 +4,10 @@
 ---
 
 * [Introduction](#introduction)
-* [Getting started](#getting-started)
+* [Features and limitations](#features)
 * [Examples](#examples)
+* [Getting started](#getting-started)
+* [Development information](#dev)
 * [Acknowledgements](#acknowledgements)
 
 <a name="introduction"></a>
@@ -15,17 +17,37 @@
 FIR is intended as an alternative shading language to *GLSL*, providing amenities of modern functional programming such as a strong type-system, user-managed control-flow with monads and *do* notation, applicative/foldable/traversable functors, etc.
 The Haskell type system helps in verifying programs at compile-time, with the use of *indexed monads* to keep track of program state. Invalid behaviour is reported with custom type errors, preventing run-time errors and lost hours spent debugging a black screen.
 
+<a name="features"></a>
+# Features and limitations
 
-<a name="getting-started"></a>
-# Getting started
+This library provides an EDSL for writing shaders. A shader module is specified in two parts:
 
-See [getting started](getting_started.md) for help on getting started, including:
-  * installation instructions,
-  * a simple vertex shader example,
-  * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools,
-  * creating graphics pipelines, for use with the [vulkan-api](https://github.com/achirkin/vulkan) library.
+  * The shader interface, provided at the type-level.
+    This consists of inputs/outputs and uniforms, together with relevant annotations such as the binding number of a uniform, memory location of an input/output, and shader execution modes.
+  * The shader code itself, most conveniently written using do-notation with the library's indexed monad.
+    The indexing allows the library to keep track of the type-level information, such as the inputs/outputs and built-in variables of the shader, as well as user-defined variables and functions.
 
-The haddock documentation is also worth perusing for specialised in-depth explanations; see the [getting started guide](getting_started.md#docs) for an installation guide.
+Refer to the ["getting started" guide (simple shader example)](getting_started.md#simple-shader) for an illustration of the syntax.    
+
+Here are some of the library's __features__:
+
+  * Support for all native Vulkan execution models (all graphics shaders, as well as compute shaders). See the [examples](#examples) for illustration.
+  * Image sampling and load/store, with a convenient functional interface given by specifying image operands. This avoids having many different image sampling functions like in GLSL (e.g. `sampler2DArrayShadow`, `textureProjOffset`, ...).
+  * Control flow: if-then-else and loops, compiled to [SSA form using ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form).
+  * Functor/applicative operations, compiling to efficient code (vectorised operations, loops).
+  * Type-level optic combinator framework, including the ability to take side-by-side products of optics (disjointness checked at the type-level, ensuring lawfulness). Usage is similar to the [lens library](http://hackage.haskell.org/package/lens), e.g. `view @getter a s`, `assign @setter a`. Refer to the [section on optics](getting_started.md#optics) in the "getting started" guide.
+  * Extensive type-level validation: shader interface matching, decorations and execution modes, validation of image read/write/sample operations (including compatibility checking of operations in conjunction with specified image operands and image formats).
+  * Automatic memory layout for vertex, uniform, storage buffers and push constants, to conveniently pass data to the GPU.
+
+Current __limitations__ of the library include:
+
+  * No support for sum types, or for user-defined types such as newtypes. This is not a fundamental limitation, and will hopefully be addressed in the future.
+  * Lack of validation involving device limits. This should also be addressed in the future.
+  * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be circumvented as explained in the ["getting started" guide](getting_started.md#inlining).
+  * Meta-programming is difficult. This is due to the type-level information that is carried around, which can hardly cope being made polymorphic.
+  It is possible that a GHC type-checking plugin could address this limitation.  
+
+See also the library's [issue tracker](https://gitlab.com/sheaf/fir/issues) for other missing features and limitations.
 
 <a name="examples"></a>
 # Examples
@@ -36,6 +58,24 @@ The haddock documentation is also worth perusing for specialised in-depth explan
 
 Some simple examples are included in the **fir-examples** subdirectory.
 See the [examples readme](fir-examples/readme.md) for installation instructions and further information.
+
+
+<a name="getting-started"></a>
+# Getting started
+
+See [getting started](getting_started.md) for help on getting started, including:
+  * installation instructions,
+  * a simple vertex shader example,
+  * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools,
+  * a walkthrough of the type-level optics framework used by this library,
+  * how to specify graphics pipelines, which can then be used with the [vulkan-api](https://github.com/achirkin/vulkan) library.
+
+The haddock documentation is also worth perusing for specialised in-depth explanations; see the ["getting started" guide](getting_started.md#docs) for an installation guide.
+
+<a name="dev"></a>
+# Development information
+
+An overview of the library, from a developer's perspective, is available [here](dev_info.md).
 
 <a name="acknowledgements"></a>
 # Acknowledgements

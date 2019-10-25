@@ -9,6 +9,7 @@
 * [Inspecting the AST](#ast)
 * [Controlling inlining](#inlining)
 * [Using SPIR-V tools](#spirv)
+* [Type-level optics](#optics)
 * [Creating a shader pipeline](#pipeline)
 
 <a name="installation"></a>
@@ -245,7 +246,7 @@ On Windows, this can be achieved with the command `chcp.com 65001`.
 <a name="inlining"></a>
 ## Controlling inlining
 
-The SPIR-V created by this library tends to be of high quality, e.g. using [phi functions](https://en.wikipedia.org/wiki/Static_single_assignment_form) instead of load/store operations, and vectorised operations whenever possible. However, one needs to be careful about inlining. Consider the following example:
+The SPIR-V created by this library tends to be of high quality, e.g. using [ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form) instead of load/store operations, and vectorised operations whenever possible. However, one needs to be careful about inlining. Consider the following example:
 
 ```haskell
 inlined :: AST Float -> AST (V 3 Float)
@@ -311,6 +312,116 @@ Example usage of SPIR-V tools:
 <div align="center">
 ![Control flow graph of compute shader for FIR logo](img/logo_compute_cfg.png)
 </div>
+
+
+<a name="optics"></a>
+## Type-level optics
+
+### Defining optics
+
+This library provides optics and optic combinators at the type-level.    
+
+* Basic building blocks:
+  - `Index (i :: Nat)`, a lens focusing on a given index (e.g. first index of a vector). Numbering starts at 0. When indexing a matrix, indexes first by columns, not rows.
+  - `Name (f :: Symbol)`, a lens focusing on a field with given name (within a structure for example).
+  - `AnIndex (ty :: Type)`, a lens focusing on a given index, except that the index is provided at runtime, e.g. `AnIndex Word32` corresponds to an index of type `Word32` passed at runtime.
+  Numbering starts at 0.
+  Note that only arrays and vectors can use runtime indices, structures and matrices cannot.
+  - `OfType (ty :: Type)`, a setter focusing on all fields of the given type, at once.
+* Combinators:
+  - `optic_1 :.: optic_2`, the composite of `optic_1` and `optic_2`. Composition is done left-to-right, as usual in optics libraries (but opposite to function composition with `(.)`).
+  - `Prod (optic_1 :*: ... :*: optic_n :*: EndProd)`, a product optic, which combines optics "side-by-side".
+  Note that these products are necessarily lawful, as the library enforces disjointness with type-level checks.
+
+The kind of an optic contains three pieces of information:
+
+```haskell
+optic :: Optic is s a
+```
+
+* `is` is a list of types, consisting of the indexing information this type-level optic
+will need to be provided with at runtime (via extra arguments).
+* `s` is the type of the ambient object the optic relates to (the "whole"),
+* `a` is the type of the component being focused onto (the "part").
+
+Some examples of type-level optics, and their kinds:
+
+```haskell
+-- focus on the first component of a vector
+Index 0 :: Optic '[] (V 3 Float) Float
+
+-- composition: first access field named "y",
+-- then inside that the second component of the vector
+( Name "y" :.: Index 1 ) :: Optic '[] (Struct '[ "x" :-> Float, "y" :-> V 2 Double ]) Double
+
+-- runtime indexing into an array, with an index of type Word32
+AnIndex Word32 :: Optic '[Word32] (Array 16 Double) Double
+
+-- focus onto all floats within an object (can be used to set values simultaneously)
+OfType Float :: Optic '[] (Struct '[ "r" :-> Float, "q" :-> V 3 Float ]) Float
+
+-- focus onto the diagonal of a 2x2 matrix
+Prod ( ( Index 0 :.: Index 0 ) :*: ( Index 1 :.: Index 1 ) :*: EndProd )
+  :: Optic '[] (M 2 2 Float) (V 2 Float)
+```
+
+### Using optics
+
+Operations using these optics mirror the [lens library](http://hackage.haskell.org/package/lens), except that optics have to be specified at the type-level via type applications. This includes:
+
+  * pure operations such as `view @getter s`, `set @setter a s`, `over @lens f s`,
+  * stateful operations such as `use @getter`, `assign @setter a`, `modifying @lens f`.
+
+For instance:
+
+```haskell
+vec :: V 4 Float
+vec = V4 0 1 2 3
+
+> view @(Index 2) vec
+2
+
+mat :: M 2 2 Float
+mat = M22
+  0 1
+  2 3
+
+-- set all components of type "Float" within second column (index = 1) to the value '7'
+> set @( Index 1 :.: OfType Float ) 7 mat
+M22
+  0 7
+  2 7
+```
+
+When an optic uses runtime indices, these have to be specified first as extra arguments:
+
+```haskell
+nestedArray :: Array 16 (Array 16 Float)
+
+> view @(AnIndex Word32 :.: AnIndex Word32) i1 i2 nestedArray
+-- returns: ( nestedArray ! i1 ) ! i2
+```
+
+Recall that the number of arguments can be read off from the type. In this example, we had:
+
+```haskell
+( AnIndex Word32 :.: AnIndex Word32 ) :: Optic '[ Word32, Word32 ] ( Array 16 (Array 16 Float) ) Float
+```
+
+### Other useful optics
+
+Some other useful optics, which can be defined with the basic building blocks and combinators described above, are also supplied by this library:
+
+  * `Col (i :: Nat)` and `Row (i :: Nat)`: lenses focusing on a column/row of a matrix (useful to avoid having to remember that `Index i` accesses a column of a matrix, not a row).
+  * `Entry (i :: Nat) (j :: Nat)`: lens focusing on the entry in the i-th row, j-th column of a matrix.
+  * `Diag`: lens focusing on the diagonal of a matrix.
+  * `Center`: setter focusing on the center of a matrix (setting all diagonal elements to the same value).
+  * `Elts`: setter focusing on all the components of a vector/matrix/array at once.
+  * `ImageTexel (imgName :: Symbol)`. Lens focusing on an image texel, to be used with `use`/`assign`.
+  Expects two runtime arguments: the image operands to use, and the texel coordinate.    
+  That is, valid usage is of the following form:
+    - `assign @(ImageTexel "myImage") imageOperands texelCoord value`,
+    - `use @(ImageTexel "myImage") imageOperands texelCoord`.
 
 
 <a name="pipeline"></a>
