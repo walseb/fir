@@ -9,7 +9,8 @@ __Last updated__: October 2019.
 * [Quick summary](#summary)
 * [Project structure](#structure)
 * [Highlights](#highlights)
-* [Tests](#tests)
+* [Running tests](#tests)
+* [Building the documentation](#docs)
 
 <a name="summary"></a>
 ## Quick summary
@@ -226,7 +227,7 @@ Here are a few aspects of the backend that I find interesting and would like to 
   
 
 <a name="tests"></a>
-## Tests
+## Running tests
 
 Some tests are included in the [test subdirectory](test/).    
 
@@ -242,3 +243,19 @@ For the moment, the most convenient way of running the tests is as follows:
 It is important to ensure the library is re-built before running the tests,
 as the test-suite calls out to `ghc`/`ghci`, which will use the package environment.
 If the library has not been re-built, this might cause the tests to run with an old version of the library.
+
+<a name="docs"></a>
+## Building the documentation
+
+As described in the ["getting started" guide](getting_started.md#docs):
+
+  * To build documentation locally:
+  ```
+  > cabal haddock --haddock-options="--show-all --hyperlinked-source" --enable-documentation
+  ```
+  
+  * To build documentation, with external dependencies linking to Hackage:
+  ```
+  > cabal haddock --haddock-options="--show-all --hyperlinked-source" --haddock-html-location="https://hackage.haskell.org/package/$pkg-$version/docs"
+  ```
+  (Thanks to Alexis King for the tip.)

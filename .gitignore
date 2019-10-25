@@ -2,6 +2,7 @@
 dist/
 dist-newstyle/
 shaders/
+docs/
 .ghc.*
 *.html
 *.project.local

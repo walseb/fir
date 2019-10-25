@@ -70,7 +70,7 @@ See [getting started](getting_started.md) for help on getting started, including
   * a walkthrough of the type-level optics framework used by this library,
   * how to specify graphics pipelines, which can then be used with the [vulkan-api](https://github.com/achirkin/vulkan) library.
 
-The haddock documentation is also worth perusing for specialised in-depth explanations; see the ["getting started" guide](getting_started.md#docs) for an installation guide.
+The [haddock documentation](https://sheaf.gitlab.io/fir/) is also worth perusing for specialised in-depth explanations. See also the ["getting started" guide](getting_started.md#docs) for how to install the haddock documentation locally.
 
 <a name="dev"></a>
 # Development information

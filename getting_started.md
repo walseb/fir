@@ -51,7 +51,8 @@ A basic example of a shader written using this library is given [below](#simple-
 <a name="docs"></a>
 ### Installing the documentation
 
-To build the documentation, we use Haddock. The `haddock` executable should be in the PATH, as it is bundled with GHC. Start building the documentation by running
+The documentation for the project is available online [here](https://sheaf.gitlab.io/fir/).   
+It can, however, be more convenient to build the documentation locally. To do so, we use Haddock. The `haddock` executable should be in the PATH, as it is bundled with GHC. Start building the documentation by running
 
 ```
 > cabal haddock --haddock-options="--show-all --hyperlinked-source" --enable-documentation
