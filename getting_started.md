@@ -45,14 +45,17 @@ After running `cabal update` to fetch the latest Haskell package list, run `caba
 
 
 This completes the required setup; you should now be ready to write shaders and compile them to SPIR-V by importing the library.
-A basic example of a shader written using this library is given [below](#simple-shader). This example [will compile to a SPIR-V file](#compiling), which can then be used in any Vulkan program, in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
+A basic example of a shader written using this library is given [below](#simple-shader).
+This example [will compile to a SPIR-V file](#compiling), which can then be used in any Vulkan program,
+in the same way as if one was writing shaders using GLSL and compiling them with the official `glslangvalidator` front-end.
 
 
 <a name="docs"></a>
 ### Installing the documentation
 
 The documentation for the project is available online [here](https://sheaf.gitlab.io/fir/).   
-It can, however, be more convenient to build the documentation locally. To do so, we use Haddock. The `haddock` executable should be in the PATH, as it is bundled with GHC. Start building the documentation by running
+It can, however, be more convenient to build the documentation locally. To do so, we use Haddock.
+The `haddock` executable should be in the PATH, as it is bundled with GHC. Start building the documentation by running
 
 ```
 > cabal haddock --haddock-options="--show-all --hyperlinked-source" --enable-documentation
@@ -495,7 +498,8 @@ This library will then validate the pipeline at the type-level (i.e. at compile-
   * the primitive topology is compatible with the shaders (e.g. in the presence of tessellation shaders, the primitive topology __must__ be `PatchesOfSize (n :: Nat)`),
   * the shader interfaces match (including layout information and decorations).
 
-This is useful as it catches mistakes in shaders and shader interfaces (including some that the official Vulkan validator doesn't catch). Much better to get a compile-time type error that a black screen at runtime!
+This is useful as it catches mistakes in shaders and shader interfaces (including some that the official Vulkan validator doesn't catch).
+Much better to get a compile-time type error that a black screen at runtime!
 
 
 Convenience functionality to create Vulkan graphics pipelines from such information is also provided, using the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings (see [`Vulkan.Pipeline.createGraphicsPipeline`](fir-examples/src/Vulkan/Pipeline.hs)).

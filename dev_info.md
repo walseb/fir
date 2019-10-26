@@ -240,8 +240,17 @@ For the moment, the most convenient way of running the tests is as follows:
 > runAllTests
 ```
 
-It is important to ensure the library is re-built before running the tests,
-as the test-suite calls out to `ghc`/`ghci`, which will use the package environment.
+The tests manually invoke `ghc` as well as the SPIR-V validator `spirv-val`,
+which will both need to be available in the command line.
+Alternatively, these filepaths can be locally changed by editing the main testing module
+[Test](test/Test.hs).    
+
+Note that GHC is required to have the same version as that used to build the library.    
+See the ["getting started" guide](getting_started.md#spirv) for instructions
+regarding the installation of SPIR-V tools (including `spirv-val`).   
+
+It is also important to ensure the library is re-built before running the tests,
+as the `ghc` invocation will use the package environment.
 If the library has not been re-built, this might cause the tests to run with an old version of the library.
 
 <a name="docs"></a>

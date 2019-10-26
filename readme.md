@@ -12,7 +12,7 @@
 
 <a name="introduction"></a>
 # Introduction
-**FIR** is an embedded language for writing GPU shaders in Haskell, compiling to *SPIR-V* for use in *Vulkan* applications.
+<img src="img/FIR_logo_small.svg" alt="FIR (logo)"> is an embedded language for writing GPU shaders in Haskell, compiling to *SPIR-V* for use in *Vulkan* applications.
 
 FIR is intended as an alternative shading language to *GLSL*, providing amenities of modern functional programming such as a strong type-system, user-managed control-flow with monads and *do* notation, applicative/foldable/traversable functors, etc.
 The Haskell type system helps in verifying programs at compile-time, with the use of *indexed monads* to keep track of program state. Invalid behaviour is reported with custom type errors, preventing run-time errors and lost hours spent debugging a black screen.
@@ -20,7 +20,7 @@ The Haskell type system helps in verifying programs at compile-time, with the us
 <a name="features"></a>
 # Features and limitations
 
-This library provides an EDSL for writing shaders. A shader module is specified in two parts:
+FIR provides an EDSL for writing shaders. A shader module is specified in two parts:
 
   * The shader interface, provided at the type-level.
     This consists of inputs/outputs and uniforms, together with relevant annotations such as the binding number of a uniform, memory location of an input/output, and shader execution modes.
@@ -70,7 +70,8 @@ See [getting started](getting_started.md) for help on getting started, including
   * a walkthrough of the type-level optics framework used by this library,
   * how to specify graphics pipelines, which can then be used with the [vulkan-api](https://github.com/achirkin/vulkan) library.
 
-The [haddock documentation](https://sheaf.gitlab.io/fir/) is also worth perusing for specialised in-depth explanations. See also the ["getting started" guide](getting_started.md#docs) for how to install the haddock documentation locally.
+The [haddock documentation](https://sheaf.gitlab.io/fir/) is also worth perusing for specialised in-depth explanations.
+If you prefer to browse the haddocks locally, the ["getting started" guide](getting_started.md#docs) includes installation instructions.
 
 <a name="dev"></a>
 # Development information
@@ -89,3 +90,6 @@ I extend my thanks to:
 * **Conor McBride**, whose paper [*Kleisli arrows of outrageous fortune*](https://personal.cis.strath.ac.uk/conor.mcbride/Kleisli.pdf) forms the basis of the implementation of indexed monads which enabled the approach taken in FIR.
 * **The GHC developers**, for their tireless work on improving Haskell, tremendously helpful advice, and for continually keeping me excited in the future of programming.
 * **Epic Games**, for giving me a huge boost by supporting me through their [MegaGrants program](https://www.unrealengine.com/megagrants).
+
+<img src="img/FIR_icon.svg" align="right" align="top">
+<br>

@@ -8,9 +8,15 @@ maintainer:     sam.derbyshire@gmail.com
 license:        BSD-3-Clause
 homepage:       https://gitlab.com/sheaf/fir
 build-type:     Simple
+extra-doc-files:
+    img/*.png
+    img/*.svg
 description:
 
-  __FIR__ is an EDSL for writing GPU shader code in Haskell, compiled to __@SPIR-V@__.
+  <<img/FIR_logo.svg>>
+
+  [__FIR__](https://gitlab.com/sheaf/fir) is an EDSL
+  for writing GPU shader code in Haskell, compiled to __@SPIR-V@__.
   Requires GHC >= 8.8.
 
   With this library, shader programs can be written using @do@ notation.
@@ -22,7 +28,8 @@ description:
   in verifying programs at compile-time.
   Functional idioms, such as functor and applicative operations, are also supported.
 
-  See the @fir-examples@ project subdirectory for fleshed out examples,
+  See the [fir-examples](https://gitlab.com/sheaf/fir/tree/master/fir-examples)
+  project subdirectory for fleshed out examples,
   including using the @vulkan-api@ package for rendering.
 
   The exposed modules are:
@@ -49,6 +56,7 @@ description:
   [@AST a@]
 
       Code for a pure value of type @a@, represented internally as an abstract syntax tree.
+      See "AST".
 
       Overloaded functions are provided that automatically create and combine terms of this type.
       For instance, @3 + 5 :: AST Float@ gets desugared to @PrimOp FAdd ( Lit 3.0 ) ( Lit 5.0 )@.
@@ -73,19 +81,18 @@ description:
       @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc),
       top-level functions, and entry points.
 
-      See "FIR.Module" for the definition, and the example shaders for common usage patterns.
+      See "FIR.Module" for the definition, and the [example shaders](https://gitlab.com/sheaf/fir/tree/master/fir-examples/readme.md#overview)
+      for common usage patterns.
 
 
-  All three of these types can be displayed graphically as a tree, using the 'FIR.ast' function.
-  This can assist in understanding inlining behaviour.
+  Values of all three of these types can be displayed graphically as trees using @showAST@/@drawAST@,
+  which can be useful for debugging.
 
+  See the [project readme](https://gitlab.com/sheaf/fir/tree/master/readme.md) for further information,
+  as well as the ["getting started" guide](https://gitlab.com/sheaf/fir/tree/master/getting_started.md),
+  which includes instructions concerning installation and usage of the library, and of useful tools
+  such as the @SPIR-V@ tools provided by the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/).
 
-  It is recommended to install the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/),
-  as it provides useful executables to manipulate @SPIR-V@ assembly, such as
-  @spirv-dis@ for viewing (edit and then recompile with @spirv-as@),
-  @spirv-opt@ for optimising, and @spirv-cfg@ for generating control flow graphs.
-  It is also possible to use @spirv-cross@ to automatically generate @GLSL@ code
-  from @SPIR-V@.
 
 library
 
@@ -217,8 +224,6 @@ library
           >= 4.18
       , distributive
           >= 0.6
-      , constraints
-          >= 0.10
       , typelits-witnesses
           >= 0.2.3
       , ghc-typelits-knownnat 
@@ -253,7 +258,6 @@ library
         -fwarn-missing-local-signatures
         -fwarn-incomplete-uni-patterns
         -fwarn-missing-deriving-strategies
-        -- -fwarn-redundant-constraints
 
 
 test-suite fir-tests
