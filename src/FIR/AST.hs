@@ -299,9 +299,9 @@ data AST :: Type -> Type where
     => AST ( a -> b -> Grade k g (i :<!>: j) )
 
   -- | Newtype wrapping for matrices.
-  Mat   :: (KnownNat m, KnownNat n) => AST ( V m (V n a) -> M m n a )
+  Mat   :: (KnownNat m, KnownNat n) => AST ( V n (V m a) -> M m n a )
   -- | Newtype unwrapping for matrices.
-  UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V m (V n a) )
+  UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V n (V m a) )
   -- | Coercions (unsafe).
   Coerce :: forall a b. AST (a -> b)
 

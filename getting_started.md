@@ -107,7 +107,7 @@ import Math.Linear
 
 type VertexShaderDefs =
   '[ "ubo"    ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
-                      ( Struct '[ "mvp" ':-> M 4 4 Float ] )
+                      ( Struct '[ "mvp" ':-> M 4 4 Float ] ) -- column-major matrix (Vulkan convention)
    , "in_pos" ':-> Input '[ Location 0 ] (V 4 Float)
    , "main"   ':-> EntryPoint '[] Vertex
    ]
@@ -119,7 +119,8 @@ vertexShader = Module $ entryPoint @"main" @Vertex do
   put @"gl_Position" (mvp !*^ in_pos) -- (!*^) means "matrix times vector"
 ```
 
-The type-level map `VertexShaderDefs` provides the interface for the vertex shader, in this case specifying that it has access to a uniform buffer object `ubo` (consting of a model-view-projection matrix) and position data (given to the GPU as part of a vertex buffer). The shader writes to `gl_Position`, which is a variable that is built into vertex shaders with Vulkan.
+The type-level map `VertexShaderDefs` provides the interface for the vertex shader, in this case specifying that it has access to a uniform buffer object `ubo` (consisting of a model-view-projection matrix) and position data (given to the GPU as part of a vertex buffer).
+The shader writes to `gl_Position`, which is a variable that is built into vertex shaders with Vulkan.
 
 The application is then responsible for binding the appropriate resources,
 in this case a uniform buffer object given binding number 0 and descriptor set index 0.
@@ -326,7 +327,7 @@ Example usage of SPIR-V tools:
 This library provides optics and optic combinators at the type-level.    
 
 * Basic building blocks:
-  - `Index (i :: Nat)`, a lens focusing on a given index (e.g. first index of a vector). Numbering starts at 0. When indexing a matrix, indexes first by columns, not rows.
+  - `Index (i :: Nat)`, a lens focusing on a given index (e.g. first index of a vector). Numbering starts at 0. When indexing a matrix, indexes first by columns, not rows (column-major representation).
   - `Name (f :: Symbol)`, a lens focusing on a field with given name (within a structure for example).
   - `AnIndex (ty :: Type)`, a lens focusing on a given index, except that the index is provided at runtime, e.g. `AnIndex Word32` corresponds to an index of type `Word32` passed at runtime.
   Numbering starts at 0.
@@ -417,6 +418,7 @@ Recall that the number of arguments can be read off from the type. In this examp
 Some other useful optics, which can be defined with the basic building blocks and combinators described above, are also supplied by this library:
 
   * `Col (i :: Nat)` and `Row (i :: Nat)`: lenses focusing on a column/row of a matrix (useful to avoid having to remember that `Index i` accesses a column of a matrix, not a row).
+  * `Cols` and `Rows`: setters focusing on all columns/rows of a matrix at once.
   * `Entry (i :: Nat) (j :: Nat)`: lens focusing on the entry in the i-th row, j-th column of a matrix.
   * `Diag`: lens focusing on the diagonal of a matrix.
   * `Center`: setter focusing on the center of a matrix (setting all diagonal elements to the same value).

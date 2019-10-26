@@ -32,7 +32,8 @@ Description: @---@ Vectors & matrices, as used by this library. __Import require
 
 Vectors and matrices, indexed by dimension.
 
-Vectors are represented as linked lists, whereas matrices are represented as a vector of their rows.
+Vectors are represented as linked lists, whereas matrices are represented as a vector of their columns,
+following the conventions from Vulkan/OpenGL.
 -}
 
 module Math.Linear
@@ -65,8 +66,6 @@ module Math.Linear
   , pattern V0, pattern V1, pattern V2, pattern V3, pattern V4
 
   -- * Operations involving vectors of vectors
-  , addCol, addCols
-  , rowMatrix, columnMatrix, fromColumns
   , blockSum
 
   -- * Operations involving the matrix newtype
@@ -109,6 +108,7 @@ import GHC.TypeNats
   ( Nat, KnownNat, natVal
   , type (+), type (-), type (*)
   , CmpNat, type (<=), type (<=?)
+  , sameNat
   )
 import Numeric.Natural
   ( Natural )
@@ -135,10 +135,7 @@ import Data.Type.List
   , Length, KnownLength
   )
 import Math.Algebra.GradedSemigroup
-  ( GradedSemigroup(..)
-  , GeneratedGradedSemigroup(..)
-  , FreeGradedSemigroup(..)
-  )
+  ( GradedSemigroup(..) )
 import Math.Logic.Class
   ( Boolean(..), Eq(Logic,(==))
   , Choose(choose)
@@ -423,31 +420,6 @@ instance GradedSemigroup (V 0 a) Nat where
   (<!>) VNil     v = v
   (<!>) (a:.as)  v = a :. (as <!> v)
 
-instance GeneratedGradedSemigroup (V 0 a) Nat () where
-  type GenType    (V 0 a) ()  _  = a
-  type GenDeg Nat (V 0 a) () '() = 1
-  generator :: a -> V (GenDeg Nat (V 0 a) () unit) a
-  generator a = unsafeCoerce (a :. VNil)
-  --              ^^^
-  -- GHC cannot deduce unit ~ '()
-  -- see [GHC trac #7259](https://gitlab.haskell.org/ghc/ghc/issues/7259)
-
-instance FreeGradedSemigroup (V 0 a) Nat () where
-  type ValidDegree (V 0 a) n = KnownNat n
-  (>!<) :: forall i j. (KnownNat i, KnownNat j) => V (i+j) a -> ( V i a, V j a )
-  (>!<) VNil = unsafeCoerce ( VNil, VNil )
-  (>!<) (a :. as)
-    = case Proxy @1 %<=? Proxy @i of
-         LE Refl   ->
-            let u :: V (i-1) a
-                v :: V j a
-                (u, v) = (>!<) (as :: V ((i+j)-1) a)
-            in (a :. u, v)
-         NLE _ _ -> unsafeCoerce ( VNil, a :. as )
-  generated :: V (GenDeg Nat (V 0 a) () unit) a -> a
-  generated = unsafeCoerce (headV :: V 1 a -> a)
-  --           ^^^^^   ditto
-
 ------------------------------------------------------------------
 
 dim :: forall n. KnownNat n => Natural
@@ -630,40 +602,21 @@ rotateAroundAxis n theta v = cos theta *^ v ^+^ sin theta *^ (n ^×^ v)
 ------------------------------------------------------------------
 -- specific implementation of matrices using nested vectors
 
-identityMat :: forall n a. (KnownNat n, Ring a) => V n (V n a)
-identityMat =
-  case (Proxy :: Proxy 1) %<=? (Proxy :: Proxy n) of
-       LE Refl   -> (1 :. pure 0) :. fmap (0:.) (identityMat :: V (n-1) (V (n-1) a) )
-       NLE nle _ -> case lt1_is_Zero nle of
-                         Refl -> VNil
-
-newtype WrappedMatrix m n a k = WrappedMatrix { wrappedMatrix :: V m (V (n+k) a) }
-
-addCol' :: (KnownNat m, KnownNat n, KnownNat k) => WrappedMatrix m n a k -> V m a -> WrappedMatrix m n a (k+1)
-addCol' WrappedMatrix { wrappedMatrix = mat } col = WrappedMatrix { wrappedMatrix = liftA2 (:.) col mat }
-
-addCol :: forall a m n. (KnownNat m, KnownNat n) => V m (V n a) -> V m a -> V m (V (n+1) a)
-addCol mat v = wrappedMatrix $ addCol' (WrappedMatrix { wrappedMatrix = mat } :: WrappedMatrix m n a 0) v
-
-addCols :: (KnownNat m, KnownNat n, KnownNat l) => V m (V n a) -> V l (V m a) -> V m (V (n+l) a)
-addCols mat cols = wrappedMatrix $ dfoldrV (flip addCol') (WrappedMatrix mat) cols
-
-rowMatrix :: KnownNat n => V n a -> V 1 (V n a)
-rowMatrix = (:. VNil)
-
-columnMatrix :: KnownNat n => V n a -> V n (V 1 a)
-columnMatrix = fmap (:. VNil)
+identityMat :: forall n a. (KnownNat n, Semiring a) => V n (V n a)
+identityMat = buildV @n ( \ px1 -> buildV @n ( \ px2 -> indicator px1 px2 ) )
+  where
+    indicator :: (KnownNat i, KnownNat j) => Proxy i -> Proxy j -> a
+    indicator px1 px2 = case sameNat px1 px2 of
+      Just _ -> 1
+      _      -> 0
 
 blockSum :: forall m1 m2 n1 n2 a. (KnownNat m1, KnownNat m2, KnownNat n1, KnownNat n2, Semiring a) 
          => V m1 (V n1 a)-> V m2 (V n2 a) -> V (m1+m2) (V (n1+n2) a)
 blockSum mat1 mat2 = fmap (<!> pure zero) mat1 <!> fmap (pure zero <!>) mat2
 
-fromColumns :: forall l m a. (KnownNat m, KnownNat l) => V l (V m a) -> V m (V l a)
-fromColumns = addCols ( pure VNil :: V m (V 0 a))
-
 joinV :: V m (V n a) -> V (m * n) a
 joinV VNil          = VNil
-joinV (row :. rows) = row <!> joinV rows
+joinV (col :. cols) = col <!> joinV cols
 
 ------------------------------------------------------------------
 -- matrix newtype
@@ -672,25 +625,26 @@ joinV (row :. rows) = row <!> joinV rows
 --
 -- @M m n a@ denotes a matrix with @m@ rows and @n@ columns.
 --
--- This is represented as a vector of rows. That is, the representation is row major.
--- Note that this contrasts with the OpenGL/Vulkan default,
--- as both these frameworks represent matrices in column major order.
-newtype M m n a = M { unM :: V m (V n a) }
+-- This is represented as a vector of columns: column-major representation.
+-- This choice is made for compatibility with SPIR-V, Vulkan, and OpenGL,
+-- as all those frameworks represent matrices in column-major order.
+newtype M m n a = M { unM :: V n (V m a) }
 
 deriving newtype instance Prelude.Eq a => Prelude.Eq (M m n a)
 deriving newtype instance (KnownNat m, KnownNat n, Prelude.Ord a) => Prelude.Ord (M m n a)
 deriving newtype instance (KnownNat m, KnownNat n, Eq   a) => Eq   (M m n a)
 deriving newtype instance (KnownNat m, KnownNat n, Ord  a) => Ord  (M m n a)
 deriving newtype instance (KnownNat m, KnownNat n, Show a) => Show (M m n a)
-deriving stock   instance Functor (M m n)
-deriving via ( V m `Compose` V n )
+deriving via ( V n `Compose` V m )
+                 instance (KnownNat m, KnownNat n) => Functor     (M m n)
+deriving via ( V n `Compose` V m )
                  instance (KnownNat m, KnownNat n) => Applicative (M m n)
 deriving stock   instance (KnownNat m, KnownNat n) => Foldable    (M m n)
 deriving stock   instance (KnownNat m, KnownNat n) => Traversable (M m n)
 deriving newtype instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
 deriving newtype instance (KnownNat n, KnownNat m, Storable a) => Storable (M m n a)
 
-deriving via '(V m (V n x), V m (V n y), V m (V n z))
+deriving via '(V n (V m x), V n (V m y), V n (V m z))
                  instance (KnownNat m, KnownNat n, Choose b '(x,y,z))
                        => Choose b '(M m n x, M m n y, M m n z)
 
@@ -698,14 +652,14 @@ deriving via '(V m (V n x), V m (V n y), V m (V n z))
 -- products for matrices
 
 
-instance {-# OVERLAPPING #-}  IsProduct (M 0 0 a) '[] where
+instance {-# OVERLAPPING #-} IsProduct (M 0 0 a) '[] where
   fromHList _ = M VNil
   toHList   _ = HNil
-instance {-# OVERLAPPABLE #-} KnownNat m => IsProduct (M m 0 a) '[] where
+instance {-# OVERLAPPABLE #-} IsProduct (M m 0 a) '[] where
+  fromHList _ = M VNil
+  toHList   _ = HNil
+instance {-# OVERLAPPABLE #-} KnownNat n => IsProduct (M 0 n a) '[] where
   fromHList _ = M ( pure VNil )
-  toHList   _ = HNil
-instance {-# OVERLAPPABLE #-} IsProduct (M 0 n a) '[] where
-  fromHList _ = M VNil
   toHList   _ = HNil
 instance ( KnownNat m
          , KnownNat n, 1 <= n
@@ -715,9 +669,8 @@ instance ( KnownNat m
          )
       => IsProduct (M m n a) (V m a ': rs)
       where
-  fromHList (col :> cols) = M $ addCol ( distribute (fromHListVec (replication @(n-1) @(V m a)) cols )) col
-  toHList (M rows) = case distribute rows of
-    ( col :. cols ) -> col :> toHListVec (replication @(n-1) @(V m a)) cols
+  fromHList (col :> cols) = M $ col :. (fromHListVec (replication @(n-1) @(V m a)) cols )
+  toHList (M (col :. cols)) = col :> toHListVec (replication @(n-1) @(V m a)) cols
 
 instance ( KnownNat n, 1 <= n
          , KnownNat m, 1 <= m
@@ -728,50 +681,27 @@ instance ( KnownNat n, 1 <= n
          )
       => IsProduct (M m n a) (a ': rs)
       where
-  toHList   = toHList . joinV . distribute . unM
-  fromHList = M . distribute . splitRows . fromHList
+  toHList   = toHList . joinV . unM
+  fromHList = M . splitCols . fromHList
 
-splitRows
+splitCols
   :: forall (n :: Nat) (m :: Nat) (a :: Type)
   .  ( KnownNat n, KnownNat m )
   => V (m*n) a -> V n (V m a)
-splitRows v = case Proxy @1 %<=? Proxy @n of
+splitCols v = case Proxy @1 %<=? Proxy @n of
   NLE nle Refl ->
     case lt1_is_Zero nle of
       Refl -> VNil
   LE Refl ->
     case splitAtV @m v of
-      ( row, next ) ->
-        row :. splitRows @(n-1) next
+      ( col, next ) ->
+        col :. splitCols @(n-1) next
 
 instance KnownNat m => GradedSemigroup (M m 0 a) Nat where
   type Grade Nat (M m 0 a) i = M m i a
   type i :<!>: j = i + j
   (<!>) :: M m i a -> M m j a -> M m (i+j) a
-  (M cs) <!> (M ds) = M ( liftA2 (<!>) cs ds )
-
-instance KnownNat m => GeneratedGradedSemigroup (M m 0 a) Nat () where
-  type GenType    (M m 0 a) ()  _  = V m a
-  type GenDeg Nat (M m 0 a) () '() = 1
-  generator :: V m a -> M m (GenDeg Nat (M m 0 a) () unit) a
-  generator = unsafeCoerce ( M . columnMatrix :: V m a -> M m 1 a )
-  --          ^^^^
-  -- same comment as for the instance for vectors, GHC cannot deduce @unit ~ '()@
-
-instance KnownNat m => FreeGradedSemigroup (M m 0 a) Nat () where
-  type ValidDegree (M m 0 a) i = KnownNat i
-  (>!<) :: forall i j. (KnownNat i, KnownNat j)
-        => M m (i+j) a -> ( M m i a, M m j a )
-  (>!<) (M m) = case go m of { (m1, m2) -> ( M m1, M m2 ) }
-    where go :: V k (V (i+j) a) -> (V k (V i a), V k (V j a))
-          go VNil = ( VNil, VNil )
-          go (c :. cs) = case ( (>!<) c, go cs ) of
-              ( ( ci, cj ), (cis, cjs) ) -> (ci :. cis, cj :. cjs)
-  generated :: M m (GenDeg Nat (M m 0 a) () unit) a -> V m a
-  -- same comment again...
-  generated = unsafeCoerce go
-    where go :: M m 1 a -> V m a
-          go (M v) = headV (distribute v)
+  (M cs) <!> (M ds) = M ( cs <!> ds )
 
 ------------------------------------------------------------------
 -- type classes for matrix operations
@@ -845,11 +775,10 @@ instance Ring a => Matrix Nat (M 0 0 a) where
   konst = M . pure . pure
   (M m) !* a = M $ liftA2 ( liftA2 (*) ) ka m
     where M ka = konst a
-  (M m) !*^ v = fmap (\row -> sum $ liftA2 (*) row v) m
-  v ^*! m = fmap (\row -> sum $ liftA2 (*) row v) mt
-    where M mt = transpose m
-  (M m) !*! n = M $ fmap (\row -> fmap (sum . liftA2 (*) row) nt) m
-    where M nt = transpose n
+  v ^*! (M m) = fmap (\col -> sum $ liftA2 (*) v col) m
+  m !*^ v = v ^*! transpose m
+  (M m) !*! (M n) = M $ fmap (\col -> fmap (sum . liftA2 (*) col) mt) n
+    where mt = distribute m
   determinant = error "determinant: not implemented"
   inverse     = error "inverse matrix: not implemented"
 
@@ -868,8 +797,8 @@ perspective
 perspective fovy aspect near far
   = M $ V4 (V4 x 0 0 0)
            (V4 0 y 0 0)
-           (V4 0 0 z w)
-           (V4 0 0 1 0)
+           (V4 0 0 z 1)
+           (V4 0 0 w 0)
   where tanHalfFovy = tan $ fovy / 2
         x = 1 / (aspect * tanHalfFovy)
         y = 1 / tanHalfFovy
@@ -879,16 +808,15 @@ perspective fovy aspect near far
 -- | Affine 3D transformation matrix for looking at focus point from a given view point.
 -- (Adapted from Edward Kmett's __Linear__ library for the Vulkan coordinate system.)
 lookAt
-  :: Floating a
+  :: forall a. Floating a
   => V 3 a -- ^ Focus point.
   -> V 3 a -- ^ View point.
   -> V 3 a -- ^ Up vector.
   -> M 4 4 a
 lookAt focus viewPoint up
-  = M $ V4 ( xa <!> V1 (-xd) )
-           ( ya <!> V1 (-yd) )
-           ( za <!> V1 (-zd) )
-           ( V4 0 0 0 1 )
+  = M $ (<!>)
+        ( distribute ( V4 xa ya za (pure 0) ) )
+        ( V1 (V4 (-xd) (-yd) (-zd) 1) )
   where za = normalise (focus ^-^ viewPoint)
         xa = normalise (za `cross` up)
         ya = za `cross` xa

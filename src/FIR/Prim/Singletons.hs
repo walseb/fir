@@ -187,42 +187,44 @@ data SPrimTyMap :: [fld :-> Type] -> Type where
   SCons :: (StructFieldKind fld, Known fld k, PrimTy a, PrimTyMap as)
         => SPrimTyMap ((k ':-> a) ': as)
 
-showSPrimTy :: SPrimTy ty -> String
-showSPrimTy SUnit = "()"
-showSPrimTy SBool = "Bool"
-showSPrimTy (SScalar :: SPrimTy a) = showSScalarTy (scalarTySing @a)
-showSPrimTy sVector@SVector
-  = case sVector of
-      ( _ :: SPrimTy (V n a) ) ->
-        "V " ++ show (natVal (Proxy @n)) ++ " " ++ showSPrimTy (primTySing @a)
-showSPrimTy sMatrix@SMatrix
-  = case sMatrix of
-      ( _ :: SPrimTy (M m n a) ) ->
-        "M " ++ show (natVal (Proxy @m)) ++ " "
-        ++ show (natVal (Proxy @n))
-        ++ " " ++ showSScalarTy (scalarTySing @a)
-showSPrimTy sArray@SArray
-  = case sArray of
-      ( _ :: SPrimTy (Array n a) ) ->
-        "Array " ++ show (natVal (Proxy @n))
-        ++ " " ++ showSPrimTy (primTySing @a)
-showSPrimTy sRuntimeArray@SRuntimeArray
-  = case sRuntimeArray of
-      ( _ :: SPrimTy (RuntimeArray a) ) ->
-        "RuntimeArray " ++ showSPrimTy (primTySing @a)
-showSPrimTy sStruct@SStruct
-  = case sStruct of
-      ( _ :: SPrimTy (Struct as) ) ->
-        "Struct '["
-        ++ intercalate ", " ( showSPrimTyMap ( primTyMapSing @_ @as ) )
-        ++ "]"
+
+instance Show (SPrimTy ty) where
+  show :: SPrimTy ty -> String
+  show SUnit = "()"
+  show SBool = "Bool"
+  show (SScalar :: SPrimTy a) = showSScalarTy (scalarTySing @a)
+  show sVector@SVector
+    = case sVector of
+        ( _ :: SPrimTy (V n a) ) ->
+          "V " ++ show (natVal (Proxy @n)) ++ " " ++ show (primTySing @a)
+  show sMatrix@SMatrix
+    = case sMatrix of
+        ( _ :: SPrimTy (M m n a) ) ->
+          "M " ++ show (natVal (Proxy @m)) ++ " "
+          ++ show (natVal (Proxy @n))
+          ++ " " ++ showSScalarTy (scalarTySing @a)
+  show sArray@SArray
+    = case sArray of
+        ( _ :: SPrimTy (Array n a) ) ->
+          "Array " ++ show (natVal (Proxy @n))
+          ++ " " ++ show (primTySing @a)
+  show sRuntimeArray@SRuntimeArray
+    = case sRuntimeArray of
+        ( _ :: SPrimTy (RuntimeArray a) ) ->
+          "RuntimeArray " ++ show (primTySing @a)
+  show sStruct@SStruct
+    = case sStruct of
+        ( _ :: SPrimTy (Struct as) ) ->
+          "Struct '["
+          ++ intercalate ", " ( showSPrimTyMap ( primTyMapSing @_ @as ) )
+          ++ "]"
 
 showSPrimTyMap :: SPrimTyMap as -> [String]
 showSPrimTyMap SNil = []
 showSPrimTyMap sCons@SCons
   = case sCons of
       ( _ :: SPrimTyMap ((k ':-> a) ': as) ) ->
-        ( show (knownValue @k) ++ " :-> " ++ showSPrimTy ( primTySing @a ) )
+        ( show (knownValue @k) ++ " :-> " ++ show ( primTySing @a ) )
         : showSPrimTyMap ( primTyMapSing @_ @as )
 
 -- singleton data kind, without unpromotable contexts

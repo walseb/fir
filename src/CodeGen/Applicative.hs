@@ -228,7 +228,7 @@ idiom apIdiom@(ApIdiom idi (a :: AST (f a))) =
     sFuncMatrix@SFuncMatrix
       -> case sFuncMatrix of
           ( _ :: SPrimFunc (M m n) )
-            -> let idiom_cols :: V m (Idiom (V n) as b)
+            -> let idiom_cols :: V n (Idiom (V m) as b)
                    idiom_cols = distributeMatrixIdiom apIdiom
                in do
                     cols <- toList <$> traverse idiom idiom_cols
@@ -285,13 +285,13 @@ applyIdiom i a = case distDict @f @(AST a) of
 distributeMatrixIdiom
   :: forall m n as b.
      ( KnownNat m, KnownNat n, KnownArity b )
-  => Idiom (M m n) as b -> V m (Idiom (V n) as b)
+  => Idiom (M m n) as b -> V n (Idiom (V m) as b)
 distributeMatrixIdiom (Val v)
   = case arity @b of
       ZeroArity   -> fmap Val . fromAST $ ( UnMat :$ v )
       SuccArity _ -> error "distributeMatrixIdiom: unexpected value used as a function"
 distributeMatrixIdiom (PureIdiom f)
-  = fmap PureIdiom . pure @(V m) $ f
+  = fmap PureIdiom . pure @(V n) $ f
 distributeMatrixIdiom (ApIdiom f a)
   = ApIdiom <$> distributeMatrixIdiom f <*> fromAST ( UnMat :$ a )
 

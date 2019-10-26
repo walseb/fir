@@ -119,6 +119,8 @@ Math
  │ 
  ├╴Linear
  │    Vectors, matrices, and the usual operations involving them.
+ │    Matrices are given a column-major representation (vector of their columns),
+ │    for consistency with Vulkan and SPIR-V, which do the same.
  │ 
  └╴Logic
     └╴...

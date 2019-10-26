@@ -85,10 +85,6 @@ import GHC.TypeNats
 import qualified Data.Set as Set
   ( singleton, fromList, insert, union )
 
--- distributive
-import Data.Distributive
-  ( Distributive(distribute) )
-
 -- half
 import Numeric.Half
   ( Half, fromHalf )
@@ -292,7 +288,7 @@ instance (Poke (V m a) Base, ScalarTy a, KnownNat n, KnownNat m, 1 <= n, 1 <= m)
     = foldM_
         ( \accPtr col -> poke @(V m a) @Base accPtr col *> pure (accPtr `plusPtr` colSize) )
         ( castPtr ptr )
-        ( distribute . unM $ mat )
+        ( unM mat )
     where
       colSize = fromIntegral $ sizeOf @(V m a) @Base
 
@@ -305,7 +301,7 @@ instance (Poke (V m a) Extended, ScalarTy a, KnownNat n, KnownNat m, 1 <= n, 1 <
     = foldM_
         ( \accPtr col -> poke @(V m a) @Extended accPtr col *> pure (accPtr `plusPtr` colSize) )
         ( castPtr ptr )
-        ( distribute . unM $ mat )
+        ( unM mat )
     where
       colSize = fromIntegral $ sizeOf @(V m a) @Extended
 
@@ -322,7 +318,7 @@ instance ( Poke (V m a) Locations
    = foldM_
        ( \accPtr col -> poke @(V m a) @Locations accPtr col *> pure (accPtr `plusPtr` colSize) )
        ( castPtr ptr )
-       ( distribute . unM $ mat )
+       ( unM mat )
    where
     colSize :: Int
     colSize = fromIntegral ( sizeOf @(V m a) @Locations ) `roundUp` 16
@@ -519,7 +515,7 @@ baseAlignment (SPIRV.Vector   {size, eltTy})
 baseAlignment (SPIRV.Array          {eltTy}) = baseAlignment eltTy
 baseAlignment (SPIRV.RuntimeArray   {eltTy}) = baseAlignment eltTy
 baseAlignment (SPIRV.Struct        {eltTys}) = maxMemberAlignment baseAlignment eltTys
-baseAlignment (SPIRV.Matrix {rows, entryTy}) = baseAlignment (SPIRV.Vector rows (SPIRV.Scalar entryTy)) -- assumed column major
+baseAlignment (SPIRV.Matrix {rows, entryTy}) = baseAlignment (SPIRV.Vector rows (SPIRV.Scalar entryTy)) -- assumed column-major
 baseAlignment ty
   = throwError
       ( "Layout: cannot compute base alignment of type " <> ShortText.pack (show ty) <> "." )

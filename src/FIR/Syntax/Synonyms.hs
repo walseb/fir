@@ -54,9 +54,10 @@ module FIR.Syntax.Synonyms
 
   -- * Synonyms for optics
   -- ** Synonyms for matrix optics
-  , Col, Row
-  , Elts, Cols
-  , Entry, Diag, Center
+  , Col, Cols
+  , Row, Rows
+  , Entry, Elts
+  , Diag, Center
 
   -- * Pattern synonyms for vectors/matrices
   -- ** Patterns for vectors
@@ -310,7 +311,7 @@ type Ix__  (i :: Nat) = ( Index i :: Optic '[] (AST (V n a)) (AST a) )
 type family EltRes (t :: Type) :: Type where
   EltRes (V m a) = a
   EltRes (M m n a) = a
-  EltRes (Array n a ) = a
+  EltRes (Array n a) = a
   EltRes (AST (V m a)) = AST a
   EltRes (AST (M m n a)) = AST a
   EltRes (AST (Array n a)) = AST a
@@ -381,6 +382,38 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
               :*: EndProd
               )
            :: Optic '[] (M m 4 a) (V 4 a)
+         )
+
+type family Rows = ( optic :: Optic '[] mat (RowRes mat) ) where
+  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: EndProd )
+                :: Optic '[] (M 2 n a) (Struct '[ "row0" ':-> V n a, "row1" ':-> V n a]) )
+           :.: OfType (V n a)
+           ) :: Optic '[] (M 2 n a) (V n a)
+         )
+  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: EndProd )
+                :: Optic '[] (M 3 n a) (Struct '[ "row0" ':-> V n a, "row1" ':-> V n a, "row2" ':-> V n a]) )
+           :.: OfType (V n a)
+           ) :: Optic '[] (M 3 n a) (V n a)
+         )
+  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: Row 3 :*: EndProd )
+                :: Optic '[] (M 4 n a) (Struct '[ "row0" ':-> V n a, "row1" ':-> V n a, "row2" ':-> V n a, "row3" ':-> V n a ]) )
+           :.: OfType (V n a)
+           ) :: Optic '[] (M 4 n a) (V n a)
+         )
+  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: EndProd )
+                :: Optic '[] (AST (M 2 n a)) (Struct '[ "row0" ':-> AST (V n a), "row1" ':-> AST (V n a)]) )
+           :.: OfType (AST (V n a))
+           ) :: Optic '[] (AST (M 2 n a)) (AST (V n a))
+         )
+  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: EndProd )
+                :: Optic '[] (AST (M 3 n a)) (Struct '[ "row0" ':-> AST (V n a), "row1" ':-> AST (V n a), "row2" ':-> AST (V n a)]) )
+           :.: OfType (AST (V n a))
+           ) :: Optic '[] (AST (M 3 n a)) (AST (V n a))
+         )
+  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: Row 3 :*: EndProd )
+                :: Optic '[] (AST (M 4 n a)) (Struct '[ "row0" ':-> AST (V n a), "row1" ':-> AST (V n a), "row2" ':-> AST (V n a), "row3" ':-> AST (V n a)]) )
+           :.: OfType (AST (V n a))
+           ) :: Optic '[] (AST (M 4 n a)) (AST (V n a))
          )
 
 type family EntryRes (mat :: Type) :: Type where
@@ -484,15 +517,15 @@ pattern Mat22
 pattern Mat22 a11 a12
               a21 a22
   <- ( fromAST . ( UnMat :$ )
-       -> V2 ( V2 a11 a12 )
-             ( V2 a21 a22 )
+       -> V2 ( V2 a11 a21 )
+             ( V2 a12 a22 )
      )
   where Mat22
             a11 a12
             a21 a22
           = Mat :$ Vec2
-            ( Vec2 a11 a12 )
-            ( Vec2 a21 a22 )
+            ( Vec2 a11 a21 )
+            ( Vec2 a12 a22 )
 
 {-# COMPLETE Mat23 #-}
 pattern Mat23
@@ -503,15 +536,17 @@ pattern Mat23
 pattern Mat23 a11 a12 a13
               a21 a22 a23
    <- ( fromAST . ( UnMat :$ )
-        -> V2 ( V3 a11 a12 a13 )
-              ( V3 a21 a22 a23 )
+        -> V3 ( V2 a11 a21 )
+              ( V2 a12 a22 )
+              ( V2 a13 a23 )
       )
   where Mat23
             a11 a12 a13
             a21 a22 a23
-          = Mat :$ Vec2
-            ( Vec3 a11 a12 a13 )
-            ( Vec3 a21 a22 a23 )
+          = Mat :$ Vec3
+              ( Vec2 a11 a21 )
+              ( Vec2 a12 a22 )
+              ( Vec2 a13 a23 )
 
 {-# COMPLETE Mat24 #-}
 pattern Mat24
@@ -522,15 +557,19 @@ pattern Mat24
 pattern Mat24 a11 a12 a13 a14
               a21 a22 a23 a24
    <- ( fromAST . ( UnMat :$ )
-        -> V2 ( V4 a11 a12 a13 a14 )
-              ( V4 a21 a22 a23 a24 )
+        -> V4 ( V2 a11 a21 )
+              ( V2 a12 a22 )
+              ( V2 a13 a23 )
+              ( V2 a14 a24 )
       )
   where Mat24
             a11 a12 a13 a14
             a21 a22 a23 a24
-          = Mat :$ Vec2
-              ( Vec4 a11 a12 a13 a14 )
-              ( Vec4 a21 a22 a23 a24 )
+          = Mat :$ Vec4
+              ( Vec2 a11 a21 )
+              ( Vec2 a12 a22 )
+              ( Vec2 a13 a23 )
+              ( Vec2 a14 a24 )
 
 {-# COMPLETE Mat32 #-}
 pattern Mat32
@@ -543,19 +582,16 @@ pattern Mat32 a11 a12
               a21 a22
               a31 a32
    <- ( fromAST . ( UnMat :$ )
-        -> V3 ( V2 a11 a12 )
-              ( V2 a21 a22 )
-              ( V2 a31 a32 )
+        -> V2 ( V3 a11 a21 a31 )
+              ( V3 a12 a22 a32 )
       )
   where Mat32
             a11 a12
             a21 a22
             a31 a32
-          = Mat :$ Vec3
-            ( Vec2 a11 a12 )
-            ( Vec2 a21 a22 )
-            ( Vec2 a31 a32 )
-
+          = Mat :$ Vec2
+              ( Vec3 a11 a21 a31 )
+              ( Vec3 a12 a22 a32 )
 
 {-# COMPLETE Mat33 #-}
 pattern Mat33
@@ -568,18 +604,18 @@ pattern Mat33 a11 a12 a13
               a21 a22 a23
               a31 a32 a33
    <- ( fromAST . ( UnMat :$ )
-        -> V3 ( V3 a11 a12 a13 )
-              ( V3 a21 a22 a23 )
-              ( V3 a31 a32 a33 )
+        -> V3 ( V3 a11 a21 a31 )
+              ( V3 a12 a22 a32 )
+              ( V3 a13 a23 a33 )
       )
   where Mat33
             a11 a12 a13
             a21 a22 a23
             a31 a32 a33
           = Mat :$ Vec3
-              ( Vec3 a11 a12 a13 )
-              ( Vec3 a21 a22 a23 )
-              ( Vec3 a31 a32 a33 )
+              ( Vec3 a11 a21 a31 )
+              ( Vec3 a12 a22 a32 )
+              ( Vec3 a13 a23 a33 )
 
 {-# COMPLETE Mat34 #-}
 pattern Mat34
@@ -592,18 +628,20 @@ pattern Mat34 a11 a12 a13 a14
               a21 a22 a23 a24
               a31 a32 a33 a34
    <- ( fromAST . ( UnMat :$ )
-        -> V3 ( V4 a11 a12 a13 a14 )
-              ( V4 a21 a22 a23 a24 )
-              ( V4 a31 a32 a33 a34 )
+        -> V4 ( V3 a11 a21 a31 )
+              ( V3 a12 a22 a32 )
+              ( V3 a13 a23 a33 )
+              ( V3 a14 a24 a34 )
       )
   where Mat34
             a11 a12 a13 a14
             a21 a22 a23 a24
             a31 a32 a33 a34
-          = Mat :$ Vec3
-              ( Vec4 a11 a12 a13 a14 )
-              ( Vec4 a21 a22 a23 a24 )
-              ( Vec4 a31 a32 a33 a34 )
+          = Mat :$ Vec4
+              ( Vec3 a11 a21 a31 )
+              ( Vec3 a12 a22 a32 )
+              ( Vec3 a13 a23 a33 )
+              ( Vec3 a14 a24 a34 )
 
 {-# COMPLETE Mat42 #-}
 pattern Mat42
@@ -618,21 +656,17 @@ pattern Mat42 a11 a12
               a31 a32
               a41 a42
    <- ( fromAST . ( UnMat :$ )
-        -> V4 ( V2 a11 a12 )
-              ( V2 a21 a22 )
-              ( V2 a31 a32 )
-              ( V2 a41 a42 )
+        -> V2 ( V4 a11 a21 a31 a41 )
+              ( V4 a12 a22 a32 a42 )
       )
   where Mat42
             a11 a12
             a21 a22
             a31 a32
             a41 a42
-          = Mat :$ Vec4
-              ( Vec2 a11 a12 )
-              ( Vec2 a21 a22 )
-              ( Vec2 a31 a32 )
-              ( Vec2 a41 a42 )
+          = Mat :$ Vec2
+              ( Vec4 a11 a21 a31 a41 )
+              ( Vec4 a12 a22 a32 a42 )
 
 {-# COMPLETE Mat43 #-}
 pattern Mat43
@@ -647,21 +681,19 @@ pattern Mat43 a11 a12 a13
               a31 a32 a33
               a41 a42 a43
    <- ( fromAST . ( UnMat :$ )
-        -> V4 ( V3 a11 a12 a13 )
-              ( V3 a21 a22 a23 )
-              ( V3 a31 a32 a33 )
-              ( V3 a41 a42 a43 )
+        -> V3 ( V4 a11 a21 a31 a41 )
+              ( V4 a12 a22 a32 a42 )
+              ( V4 a13 a23 a33 a43 )
       )
   where Mat43
             a11 a12 a13
             a21 a22 a23
             a31 a32 a33
             a41 a42 a43
-          = Mat :$ Vec4
-              ( Vec3 a11 a12 a13 )
-              ( Vec3 a21 a22 a23 )
-              ( Vec3 a31 a32 a33 )
-              ( Vec3 a41 a42 a43 )
+          = Mat :$ Vec3
+              ( Vec4 a11 a21 a31 a41 )
+              ( Vec4 a12 a22 a32 a42 )
+              ( Vec4 a13 a23 a33 a43 )
 
 {-# COMPLETE Mat44 #-}
 pattern Mat44
@@ -676,10 +708,10 @@ pattern Mat44 a11 a12 a13 a14
               a31 a32 a33 a34
               a41 a42 a43 a44
    <- ( fromAST . ( UnMat :$ )
-        -> V4 ( V4 a11 a12 a13 a14 )
-              ( V4 a21 a22 a23 a24 )
-              ( V4 a31 a32 a33 a34 )
-              ( V4 a41 a42 a43 a44 )
+        -> V4 ( V4 a11 a21 a31 a41 )
+              ( V4 a12 a22 a32 a42 )
+              ( V4 a13 a23 a33 a43 )
+              ( V4 a14 a24 a34 a44 )
       )
   where Mat44
             a11 a12 a13 a14
@@ -687,7 +719,7 @@ pattern Mat44 a11 a12 a13 a14
             a31 a32 a33 a34
             a41 a42 a43 a44
           = Mat :$ Vec4
-              ( Vec4 a11 a12 a13 a14 )
-              ( Vec4 a21 a22 a23 a24 )
-              ( Vec4 a31 a32 a33 a34 )
-              ( Vec4 a41 a42 a43 a44 )
+              ( Vec4 a11 a21 a31 a41 )
+              ( Vec4 a12 a22 a32 a42 )
+              ( Vec4 a13 a23 a33 a43 )
+              ( Vec4 a14 a24 a34 a44 )

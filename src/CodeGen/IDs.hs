@@ -90,7 +90,7 @@ import FIR.Prim.Struct
 import FIR.ProgramState
   ( FunctionContext(InEntryPoint), executionContext )
 import Math.Linear
-  ( M(unM), Matrix(transpose) )
+  ( M(unM) )
 import qualified SPIRV.Builtin      as SPIRV
 import qualified SPIRV.Decoration   as SPIRV
 import qualified SPIRV.Extension    as SPIRV
@@ -296,7 +296,7 @@ constID a =
 
         SMatrix {} ->
           createIDRec _knownAConstant
-            ( traverse constID . unM . transpose $ a ) -- get the ID for each column
+            ( traverse constID . unM $ a ) -- get the ID for each column
             ( \ cols -> 
                   mkConstantInstruction 
                     SPIRV.Op.ConstantComposite 

@@ -471,14 +471,6 @@ instance
   => ReifiedGetter (OfType_ ty :: Optic i s a) where
   view = error "unreachable"
 
-instance {-# OVERLAPPING #-}
-         ( r ~ a, empty ~ '[] )
-      => Settable      (OfType_ a :: Optic empty a r) where
-instance {-# OVERLAPPING #-}
-         ( r ~ a, empty ~ '[], ListVariadic '[] a ~ a )
-      => ReifiedSetter (OfType_ a :: Optic empty a r) where
-  set = const
-
 -- Default instance to use: "a" does not contain components of type "ty".
 -- Should be overridden by specific instances that
 -- provide evidence that "a" does in fact contain components of type "ty".

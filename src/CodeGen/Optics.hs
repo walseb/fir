@@ -264,6 +264,13 @@ data OpticalNode where
   Combine  :: (PrimTy p, All PrimTy as, IsProduct p as)
            => Proxy p -> Proxy as -> [ OpticalOperationTree ] -> OpticalNode
 
+instance Show OpticalNode where
+  show (Access safe is) = "Access " ++ show safe ++ " " ++ show is
+  show (OfTypeOp s a) = "OfTypeOp @" ++ show s ++ " @" ++ show a
+  show (Combine (_ :: Proxy p) ( _ :: Proxy as) trees)
+    = "Combine @" ++ show (primTy @p) ++ " @" ++ show (primTys @as)
+    ++ " " ++ show trees
+
 type OpticalOperationTree = [ OpticalNode ]
 
 operationTree :: forall k is (s :: k) a (optic :: Optic is s a)

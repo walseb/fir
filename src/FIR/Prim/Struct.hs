@@ -69,8 +69,6 @@ import GHC.TypeNats
   , type (+), type(-), type (*)
   , Mod, Div
   )
-import Unsafe.Coerce
-  ( unsafeCoerce )
 
 -- fir
 import Data.Product
@@ -78,7 +76,7 @@ import Data.Product
 import Data.Type.List
   ( type (:++:) )
 import Data.Type.Map
-  ( (:->)((:->)), Key, Value )
+  ( (:->)((:->)) )
 import Data.Type.Known
   ( Demotable(Demote)
   , Known(known), knownValue
@@ -90,10 +88,7 @@ import Data.Type.Ord
 import Data.Type.String
   ( ShowNat )
 import Math.Algebra.GradedSemigroup
-  ( GradedSemigroup(..)
-  , GeneratedGradedSemigroup(..)
-  , FreeGradedSemigroup(..)
-  )
+  ( GradedSemigroup(..) )
 import {-# SOURCE #-} FIR.Prim.Singletons
   ( PrimTy
   , PrimTyMap(primTyMapSing)
@@ -184,44 +179,6 @@ instance GradedSemigroup (Struct :: [ fld :-> Type ] -> Type) [fld :-> Type] whe
   (<!>) :: Struct as -> Struct bs -> Struct (as :++: bs)
   End <!> t = t
   (a :& s) <!> t = a :& ( s <!> t )
-
-instance GeneratedGradedSemigroup
-            (Struct :: [ fld :-> Type ] -> Type)
-            [fld  :-> Type]
-            (fld  :-> Type)
-            where
-  type GenType                (Struct :: [ fld :-> Type ] -> Type) (fld :-> Type) kv = Value kv
-  type GenDeg [fld  :-> Type] (Struct :: [ fld :-> Type ] -> Type) (fld :-> Type) kv = '[ kv ]
-  generator :: forall (kv :: fld :-> Type). Value kv -> Struct '[ kv ]
-  generator a = unsafeCoerce ( (a :& End) :: Struct '[ Key kv ':-> Value kv] )
-                --   ^^^^   GHC cannot deduce that kv ~ Key kv ':-> Value kv
-                -- see [GHC trac #7259](https://gitlab.haskell.org/ghc/ghc/issues/7259)
-
-instance FreeGradedSemigroup
-            (Struct :: [ fld :-> Type ] -> Type)
-            [fld :-> Type]
-            (fld :-> Type)
-            where
-  type ValidDegree (Struct :: [ fld :-> Type ] -> Type) as = PrimTyMap as
-  (>!<) :: forall as bs. (PrimTyMap as, PrimTyMap bs)
-        => Struct (as :++: bs) -> ( Struct as, Struct bs )
-  (>!<) End = unsafeCoerce ( End, End )
-          --    ^^^^^^   GHC cannot deduce (as ~ '[], bs ~ '[]) from (as :++: bs) ~ '[]
-  (>!<) (s :& ss)
-    = case primTyMapSing @_ @as of
-        SNil
-          -> ( End, s :& ss )
-        sCons@SCons
-          -> case sCons of
-                ( _ :: SPrimTyMap ((k ':-> a) ': as'))
-                  -> let
-                        l :: Struct as'
-                        r :: Struct bs
-                        (l,r) = ( (>!<) @_ @_ @_ @_ @bs ss)
-                      in ( s :& l, r )
-  generated :: Struct '[ kv ] -> Value kv
-  generated (a :& End) = a
-
 
 foldrStruct
     :: forall as b. PrimTyMap as

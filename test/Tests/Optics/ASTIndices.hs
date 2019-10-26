@@ -21,7 +21,8 @@ import Math.Linear
 type Defs =
   '[ "nested" ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
         ( Array 4 ( Struct '[ "r" ':-> Float, "ijk" ':-> V 3 Float ] ) )
-   , "out"    ':-> Output '[Location 0 ] ( V 4 Float )
+   , "out1"    ':-> Output '[Location 0] ( V 4 Float )
+   , "out2"    ':-> Output '[Location 1] ( M 3 2 Float )
    , "main"   ':-> EntryPoint '[] Vertex
    ]
 
@@ -48,5 +49,18 @@ program = Module $ entryPoint @"main" @Vertex do
             ( ConsHList :$ 4 :$ ( ConsHList :$ 3 :$ NilHList ) )
   let f = view @(Index 1) twoFloats
 
-  assign @(Name "out" :.: AnIndex Word32) 0 r
-  assign @(Name "out" :.: Swizzle "yzw" :.: AnIndex) 1 f
+  assign @(Name "out1" :.: AnIndex Word32) 0 (r + f)
+
+  let
+    mat :: AST (M 3 4 Float)
+    mat = Mat34
+      0 1  2  3
+      4 5  6  7
+      8 9 10 11
+
+    mat' :: AST (M 3 2 Float)
+    mat' = view @( Prod ( Col 1 :*: Col 3 :*: EndProd ) ) mat
+
+  assign @(Name "out2") mat'
+
+  assign @(Name "out2" :.: Rows) (Vec2 1 3)

@@ -18,7 +18,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0, Block ]
+type Defs = '[ "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
                                 ( Struct '[ "mvp" ':-> M 4 4 Float ] )
              , "in_pos"  ':-> Input  '[ Location 0 ] (V 4 Float) 
              , "out_pos" ':-> Output '[ Location 0 ] (V 4 Float) 

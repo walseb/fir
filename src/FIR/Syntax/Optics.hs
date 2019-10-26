@@ -62,10 +62,6 @@ import GHC.TypeNats
   , type (+), type (-)
   )
 
--- distributive
-import Data.Distributive
-  ( Distributive(..) )
-
 -- vector
 import qualified Data.Vector as Array
 
@@ -110,7 +106,7 @@ import FIR.Prim.Image
   , ImageCoordinates
   )
 import FIR.Prim.Singletons
-  ( PrimTy(primTySing), showSPrimTy
+  ( PrimTy(primTySing)
   , IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
   , PrimTyMap
@@ -210,7 +206,7 @@ infixr 9 %:.:
 o1 %:.: o2 = SComposeO (sLength @_ @is) o1 o2
 
 showSOptic :: SOptic (o :: Optic is s a) -> String
-showSOptic (SOfType _ sTy ) = "OfType " ++ showSPrimTy sTy
+showSOptic (SOfType _ sTy ) = "OfType " ++ show sTy
 showSOptic (SAnIndex _ _ _) = "AnIndex"
 showSOptic (SIndex   _ _ n) = "Index "   ++ show n
 showSOptic (SBinding    k  ) = "Binding "    ++ show (symbolVal k)
@@ -701,7 +697,7 @@ instance ( KnownNat m
       => ReifiedGetter
             (Field_ (i :: Nat) :: Optic empty (M m n a) r)
       where
-  view (M rows) = at @i (distribute rows)
+  view (M cols) = at @i cols
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -717,7 +713,7 @@ instance ( KnownNat m
       => ReifiedGetter
             (RTOptic_ :: Optic ix (M m n a) r)
       where
-  view i (M rows) = distribute rows ^! fromIntegral i
+  view i (M cols) = cols ^! fromIntegral i
 
 
 instance
@@ -995,9 +991,7 @@ instance ( KnownNat m, KnownNat n, KnownNat i, 1 <= n
        where
   set c (M m)
     = ( M
-      . distribute
       . set @(Field_ (i :: Nat) :: Optic '[] (V n (V m a)) (V m a)) c
-      . distribute
       ) m
 
 instance ( IntegralTy ty
@@ -1014,9 +1008,7 @@ instance ( IntegralTy ty
        where
   set i c (M m)
     = ( M
-      . distribute
       . set @(RTOptic_ :: Optic ix (V n (V m a)) (V m a)) i c
-      . distribute
       ) m
 
 instance
@@ -1165,7 +1157,7 @@ instance ( b ~ V m a
          , KnownNat n
          )
       => SetMatrix m n a b (Just Column) where
-  setMatrix col _ = M . distribute $ ( pure col :: V n (V m a) )
+  setMatrix col _ = M ( pure col :: V n (V m a) )
 instance SetMatrix m n a b Nothing where
   setMatrix _ = id
 
