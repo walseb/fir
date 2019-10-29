@@ -88,7 +88,7 @@ type family ValidGlobals
               ( globs :: [ SPIRV.StorageClass :-> [ Symbol :-> TLInterfaceVariable ] ] )
               :: Constraint
               where
-  ValidGlobals '[] = ( () :: Constraint )
+  ValidGlobals '[] = ()
   ValidGlobals ( ( Storage.Input ':-> _ ) ': globs )
   -- no validity checking for input variables (see "FIR.Validation.Interface")
     = ValidGlobals globs
@@ -106,7 +106,7 @@ type family MapValidGlobal
               ( globals :: [ Symbol :-> TLInterfaceVariable ] )
             :: Constraint
             where
-  MapValidGlobal _ '[] = ( () :: Constraint )
+  MapValidGlobal _ '[] = ()
   MapValidGlobal storage ( ( k ':-> '( decs, ty ) ) ': globals )
     = ( ValidGlobal  k storage decs ty
       , MapValidGlobal storage globals
@@ -177,7 +177,7 @@ type family ValidGlobal
         :<>: Text " should be backed by a struct or array containing a struct;"
         :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
-  ValidGlobal _ _ _ _ = ( () :: Constraint )
+  ValidGlobal _ _ _ _ = ()
 
 type family ValidUniformDecorations
               ( name :: ErrorMessage             )
@@ -193,7 +193,7 @@ type family HasBinding
               ( decs :: [ SPIRV.Decoration Nat ] )
             :: Constraint
             where
-  HasBinding _    ( SPIRV.Binding _ ': _ ) = ( () :: Constraint )
+  HasBinding _    ( SPIRV.Binding _ ': _ ) = ()
   HasBinding name ( _ ': decs ) = HasBinding name decs
   HasBinding name '[]
     = TypeError
@@ -204,7 +204,7 @@ type family HasDescriptorSet
               ( decs :: [ SPIRV.Decoration Nat ] )
             :: Constraint
             where
-  HasDescriptorSet _    ( SPIRV.DescriptorSet _ ': _ ) = ( () :: Constraint )
+  HasDescriptorSet _    ( SPIRV.DescriptorSet _ ': _ ) = ()
   HasDescriptorSet name ( _ ': decs ) = HasDescriptorSet name decs
   HasDescriptorSet name '[]
     = TypeError
@@ -217,7 +217,7 @@ type family ValidImageDecorations
               ( decs    :: [ SPIRV.Decoration Nat] )
             :: Constraint
             where
-  ValidImageDecorations _    _ '[]          = ( () :: Constraint )
+  ValidImageDecorations _    _ '[]          = ()
   ValidImageDecorations name ty ( SPIRV.DescriptorSet _ ': decs )
     = ValidImageDecorations name ty decs
   ValidImageDecorations name ty ( SPIRV.Binding _ ': decs )

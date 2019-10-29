@@ -10,7 +10,7 @@
 
 module Data.Type.List
   ( type (:++:)
-  , Elem
+  , Elem, AtIndex
   , Tail, MapTail
   , MapSingleton
   , Zip, ExactZip, ZipCons
@@ -40,16 +40,21 @@ import Data.Type.Snoc -- for re-export
 
 infixr 6 :++:
 
-type family (:++:) (as :: [k]) (bs :: [k]) where
+type family (:++:) (as :: [k]) (bs :: [k]) :: [k] where
   '[]       :++: bs = bs
   (a ': as) :++: bs = a ': ( as :++: bs )
 
 infix 4 `Elem`
 
-type family Elem (x :: k) (as :: [k]) where
+type family Elem (x :: k) (as :: [k]) :: Bool where
   Elem _ '[]       = 'False
   Elem x (x ': _ ) = 'True
   Elem x (_ ': as) = Elem x as
+
+type family AtIndex (i :: Nat) (as :: [k]) :: Maybe k where
+  AtIndex _ '[]       = Nothing
+  AtIndex 0 (k ': _ ) = Just k
+  AtIndex i (_ ': ks) = AtIndex (i-1) ks
 
 type family Tail (x :: [k]) :: [k] where
   Tail (x ': xs) = xs

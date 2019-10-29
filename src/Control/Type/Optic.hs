@@ -161,7 +161,7 @@ In fact 'FIR.Syntax.Optics.Center' can be simply defined as @Diag :.: OfType elt
 
 module Control.Type.Optic
   ( -- * Type-level optics
-    Optic(..)
+    Optic(..), ShowOptic
     -- $kind_coercion
   , AnIndex, Index, Name
     -- ** Getters and setters
@@ -411,6 +411,13 @@ class Container (s :: Type) where
   --
   -- Chiefly needed for overlap checking for 'FIR.Prim.Struct.Struct's.
   type FieldIndexFromName s (k :: Symbol) :: Nat
+  -- | Default instance: don't allow symbolic indexing. Can be overriden.
+  type FieldIndexFromName s k
+    = TypeError
+      (    Text "Attempt to index object of type " :<>: ShowType s
+      :<>: Text " with symbolic index " :<>: ShowType k :<>: Text "."
+      :$$: Text "This type does not support symbolic indexing."
+      )
 
 ----------------------------------------------------------------------
 -- $instances

@@ -37,8 +37,9 @@ module Control.Monad.Indexed
   , IxApplicative((<<*>>))
   , (*>>), (<<*), ixLiftA2, ixLiftA3, ixLiftA4
 
-    -- ** Foldable operations
+    -- ** Foldable/traversable operations
   , IxId(ixId)
+  , ixTraverse, ixFor
   , ixTraverse_, ixFor_
 
     -- * Rebindable syntax for @do@ notation
@@ -200,6 +201,18 @@ instance IxApplicative f => Prelude.Applicative (IxId f i) where
   pure = coerce ( ixPure @f @a @i )
   (<*>) :: forall a b. IxId f i (a -> b) -> (IxId f i a -> IxId f i b)
   (<*>) = coerce ( (<<*>>) @f @a @b @i @i @i )
+
+ixTraverse
+  :: forall f t a b i.
+     (Prelude.Traversable t, IxApplicative f)
+  => (a -> f (b := i) i) -> t a -> f (t b := i) i
+ixTraverse f = coerce ( traverse @t (IxId . f) )
+
+ixFor
+  :: forall f t a b i.
+     (Prelude.Traversable t, IxApplicative f)
+  => t a -> (a -> f (b := i) i) -> f (t b := i) i
+ixFor = flip ixTraverse
 
 ixTraverse_
   :: forall f t a b i.

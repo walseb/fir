@@ -9,12 +9,14 @@ module Data.Type.Ord where
 -- base
 import Data.Type.Bool
   ( If, Not )
-import Data.Type.Equality
-  ( type (==) )
 import GHC.TypeLits
   ( Symbol, CmpSymbol )
 import GHC.TypeNats
   ( Nat, CmpNat, type (+), type (-) )
+
+-- fir
+import Data.Type.LazyEquality
+  ( LazyEq )
 
 -------------------------------------------------------------------------------
 
@@ -27,13 +29,13 @@ infix 4 `Compare`
 class POrd a where
   type Compare (x :: a) (y :: a) :: Ordering
   type (x :: a) :<  (y :: a) :: Bool
-  type x :< y = Compare x y == LT
+  type x :< y = Compare x y `LazyEq` LT
   type (x :: a) :>  (y :: a) :: Bool
-  type x :> y = Compare x y == GT
+  type x :> y = Compare x y `LazyEq` GT
   type (x :: a) :<= (y :: a) :: Bool
-  type x :<= y = Not (Compare x y == GT)
+  type x :<= y = Not (Compare x y `LazyEq` GT)
   type (x :: a) :>= (y :: a) :: Bool
-  type x :>= y = Not (Compare x y == LT)
+  type x :>= y = Not (Compare x y `LazyEq` LT)
   type Max (x :: a) (y :: a) :: a
   type Max x y = If (x :< y) y x
   type Min (x :: a) (y :: a) :: a

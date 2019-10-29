@@ -134,7 +134,7 @@ import qualified SPIRV.ScalarTy as SPIRV
 
 -- | Validate the layout of a collection of located types.
 type family ValidLayout (as :: [LocationSlot Nat :-> Type]) :: Constraint where
-  ValidLayout '[] = ( () :: Constraint )
+  ValidLayout '[] = ()
   ValidLayout ( ( loc ':-> ty ) ': slots )
     = ( IsRight ( ValidateSlot loc ( PrimTySing ty ) ) -- validate individual slot
       , CheckOverlaps ( loc ':-> ty ) slots -- pairwise overlap checks
@@ -235,7 +235,7 @@ type family CheckOverlaps
               ( slots :: [ LocationSlot Nat :-> Type ] )
             :: Constraint
             where
-  CheckOverlaps _ '[] = ( () :: Constraint )
+  CheckOverlaps _ '[] = ()
   CheckOverlaps slot ( s ': ss ) = ( CheckOverlap slot s, CheckOverlaps slot ss )
 
 type family CheckOverlap
@@ -264,7 +264,7 @@ type family ValidateOverlap
     _ _
     _ _
     'Nothing
-      = ( () :: Constraint )
+      = ()
   ValidateOverlap
     slot1 ty1
     slot2 ty2

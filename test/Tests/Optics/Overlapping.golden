@@ -1,7 +1,11 @@
 
 test\Tests\Optics\Overlapping.hs:33:5: error:
-    * Cannot create product setter.
-      Name "field_0" and index 0 refer to the same field.
+    * Cannot create product setter at type:
+        Struct '[ "field_0" ':-> Float, "field_1" ':-> Bool]
+      Overlap between optics
+        - Name "field_0",
+        - Index 0,
+                 at index 0.
     * In a stmt of a 'do' block:
         assign
           @(Name "struct"
@@ -19,7 +23,8 @@ test\Tests\Optics\Overlapping.hs:33:5: error:
               (Lit (4 :& 5 :& End))'
       In a stmt of a 'do' block:
         entryPoint
-          @"main" @Vertex
+          @"main"
+          @Vertex
           do def @"struct" @RW @MyStruct (Lit (3 :& True :& End))
              assign
                @(Name "struct"

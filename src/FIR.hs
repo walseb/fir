@@ -92,6 +92,7 @@ module FIR
   -- re-exports
   , module Control.Monad.Indexed
   , Control.Type.Optic.Optic
+  , Control.Type.Optic.ShowOptic
   , (Control.Type.Optic.:*:), Control.Type.Optic.Prod, Control.Type.Optic.EndProd
   , (Control.Type.Optic.:.:)
   , Control.Type.Optic.OfType
@@ -105,7 +106,7 @@ module FIR
   , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
   , FIR.AST.AST
-    ( (:$), Lit
+    ( (:$), Lit, Struct, Array
     -- image operands
     , NilOps, Proj, Dref, Bias
     , LOD, MinLOD, Grad
@@ -142,6 +143,10 @@ module FIR
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
   , FIR.Prim.Image.GatherInfo(..)
+  , FIR.Prim.Singletons.PrimTy
+  , FIR.Prim.Singletons.ScalarTy
+  , FIR.Prim.Singletons.IntegralTy
+  , FIR.Prim.Singletons.PrimTyMap
   , module FIR.Prim.Struct
   , FIR.ProgramState.ProgramState(ProgramState)
   , FIR.ProgramState.FunctionContext(TopLevel)
@@ -285,6 +290,7 @@ import FIR.Module
 import FIR.Pipeline
 import FIR.Prim.Array
 import FIR.Prim.Image
+import FIR.Prim.Singletons
 import FIR.Prim.Struct
 import FIR.ProgramState
 import FIR.Syntax.AST

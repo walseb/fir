@@ -58,7 +58,7 @@ module Math.Linear
 
   -- * Operations involving the vector data type
   , headV, tailV, headTailV
-  , (^!), at
+  , (^!), at, replaceV
   , sum
   , buildV
   , dfoldrV
@@ -287,6 +287,11 @@ infixl 9 ^!
 at :: forall i n a. (KnownNat i, KnownNat n, CmpNat i n ~ Prelude.LT)
    => V n a -> a
 at v = v ^! fromIntegral (dim @i)
+
+replaceV :: Int -> a -> V n a -> V n a
+replaceV _ _ VNil      = VNil
+replaceV 0 b (_ :. as) = (b :. as)
+replaceV i b (a :. as) = a :. replaceV (i-1) b as
 
 -----------------------------------------------------------
 -- todo: temporary workaround

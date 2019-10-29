@@ -52,7 +52,8 @@ import GHC.TypeNats
   ( Nat, KnownNat, natVal, type (+) )
 
 -- vector
-import qualified Data.Vector as Array
+import qualified Data.Vector as Vector
+  ( Vector, slice, replicate, (++) )
 
 -- fir
 import {-# SOURCE #-} FIR.AST
@@ -64,12 +65,12 @@ import Math.Algebra.GradedSemigroup
 -- arrays
 
 data Array :: Nat -> Type -> Type where
-  MkArray :: forall n a. KnownNat n => Array.Vector a -> Array n a
+  MkArray :: forall n a. KnownNat n => Vector.Vector a -> Array n a
 
-mkArray :: forall n a. KnownNat n => Array.Vector a -> Array n a
+mkArray :: forall n a. KnownNat n => Vector.Vector a -> Array n a
 mkArray arr
   = let n = fromIntegral (natVal (Proxy @n))
-    in MkArray @n (Array.slice 0 n arr)
+    in MkArray @n (Vector.slice 0 n arr)
 
 
 deriving stock instance Eq   a => Eq   (Array l a)
@@ -79,7 +80,7 @@ deriving stock instance Functor     (Array n)
 deriving stock instance Foldable    (Array n)
 deriving stock instance Traversable (Array n)
 instance KnownNat n => Applicative (Array n) where
-  pure = MkArray . Array.replicate (fromIntegral . natVal $ Proxy @n)
+  pure = MkArray . Vector.replicate (fromIntegral . natVal $ Proxy @n)
   (MkArray f) <*> (MkArray a) = MkArray (f <*> a)
 
 instance Syntactic a => Syntactic (Array n a) where
@@ -91,9 +92,9 @@ instance GradedSemigroup (Array 0 a) Nat where
   type Grade Nat (Array 0 a) l = Array l a
   type l1 :<!>: l2 = l1 + l2
   (<!>) :: forall l1 l2. Array l1 a -> Array l2 a -> Array (l1+l2) a
-  MkArray v1 <!> MkArray v2 = MkArray (v1 Array.++ v2)
+  MkArray v1 <!> MkArray v2 = MkArray (v1 Vector.++ v2)
 
-newtype RuntimeArray a = MkRuntimeArray (Array.Vector a)
+newtype RuntimeArray a = MkRuntimeArray (Vector.Vector a)
 
 deriving stock instance Eq   a => Eq   (RuntimeArray a)
 deriving stock instance Ord  a => Ord  (RuntimeArray a)

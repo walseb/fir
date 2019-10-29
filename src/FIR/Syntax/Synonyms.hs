@@ -53,7 +53,7 @@ module FIR.Syntax.Synonyms
   , pattern StructInput
 
   -- * Synonyms for optics
-  -- ** Synonyms for matrix optics
+  , Field
   , Col, Cols
   , Row, Rows
   , Entry, Elts
@@ -81,6 +81,8 @@ import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Word
   ( Word8, Word16, Word32 )
+import GHC.TypeLits
+  ( Symbol )
 import GHC.TypeNats
   ( Nat, KnownNat
   , type (*)
@@ -100,7 +102,7 @@ import Control.Type.Optic
 import Data.Type.Known
   ( Known )
 import Data.Type.Map
-  ( (:->)((:->)), InsertionSort )
+  ( (:->)((:->)), InsertionSort, Value )
 import FIR.AST
   ( AST((:$), MkVector, Mat, UnMat, Gather)
   , Syntactic(fromAST)
@@ -135,6 +137,8 @@ import FIR.Prim.Struct
   ( Struct
   , LocationSlot(LocationSlot)
   )
+import FIR.Validation.Bounds
+  ( StructIndexFromName )
 import FIR.Validation.Formats
   ( ComputeFormats )
 import Math.Linear
@@ -301,6 +305,11 @@ type LocationDescriptionsOfStruct
 
 ----------------------------------------------------------------------
 -- synonyms for optics
+
+type Field ( k :: Symbol )
+  = ( Field_ (k :: Symbol)
+        :: Optic '[] (Struct as) (Value (StructIndexFromName k as))
+    )
 
 -- internal synonyms to help inference in subsequent definitions
 type Col_  (i :: Nat) = ( Index i :: Optic '[] (M m n a) (V m a) )

@@ -56,6 +56,10 @@ import Data.Text.Short
 import qualified Data.Text.Short as ShortText
   ( pack )
 
+-- vector
+import qualified Data.Vector as Vector
+  ( toList )
+
 -- fir
 import CodeGen.Application
   ( UAST(UAST)
@@ -128,12 +132,16 @@ import FIR.AST
   ( AST(..), Syntactic(fromAST) )
 import FIR.Binding
   ( Permission(Write) )
+import FIR.Prim.Array
+  ( Array(MkArray) )
 import FIR.Prim.Op
   ( PrimOp(opName) )
 import FIR.Prim.Singletons
   ( primTy
   , KnownVars(knownVars)
   )
+import FIR.Prim.Struct
+  ( ASTStructFields(traverseStructASTs) )
 import FIR.ProgramState
   ( FunctionContext(TopLevel) )
 import FIR.Syntax.AST
@@ -430,6 +438,12 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
                                <> ShortText.pack ( show x )
                                )
         (compositeConstruct compositeTy . map fst) =<< traverseASTs codeGen as
+codeGen (Struct struct :: AST a)
+  = compositeConstruct (primTy @a)
+        =<< traverseStructASTs (fmap fst . codeGen) struct
+codeGen (Array (MkArray vec) :: AST a)
+  = compositeConstruct (primTy @a)
+        =<< traverse     (fmap fst . codeGen) (Vector.toList vec)
 codeGen (GradedMappend :$ (a :: AST a) :$ (b :: AST b))
   = do
       (a_ID, a_ty) <- codeGen a
@@ -483,7 +497,7 @@ codeGen (Locally :$ a)
 codeGen (Embed :$ a)
   = codeGen a
 codeGen (If :$ c :$ t :$ f)
-  = codeGen (IfM :$ c :$ (Return :$ t) :$ (Return :$ f))
+  = codeGen (IfM :$ (Return :$ c) :$ (Return :$ t) :$ (Return :$ f))
 codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
   = do  headerBlock <- fresh
         trueBlock   <- fresh

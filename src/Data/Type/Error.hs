@@ -38,14 +38,6 @@ type family All ( xs :: [ Either ErrorMessage () ] ) :: Either ErrorMessage () w
 data family Dummy1 :: k
 data family Dummy2 :: k
 
-type family Seq (x :: k) :: k where
-  Seq Dummy1 = Dummy2
-  Seq x      = x
-
-type family MapSeq (x :: [k]) :: [k] where
-  MapSeq '[]       = '[]
-  MapSeq (x ': xs) = Seq x ': MapSeq xs
-
 type family Assert (x :: k) (y :: l) :: l where
   Assert Dummy1 _ = Dummy2
   Assert _      y = y

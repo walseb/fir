@@ -305,19 +305,6 @@ instance {-# OVERLAPPING #-} KnownArity b => KnownArity (a -> b) where
 
 ------------------------------------------------
 
-class HasField (k :: Symbol) (as :: [ Symbol :-> Type ]) where
-  fieldIndex :: Word32
-
-instance HasField k ( (k ':-> v) ': as ) where
-  fieldIndex = 0
-
-instance {-# OVERLAPPABLE #-} HasField k as
-       => HasField k ( (l ':-> v) ': as)
-       where
-  fieldIndex = succ ( fieldIndex @k @as )
-
-------------------------------------------------
-
 class ( Show ty                    -- for convenience
       , Eq ty, Ord ty, Typeable ty -- to keep track of lists of constants
       , ty ~ ListVariadic '[] ty   -- ty is not a function type... useful for optics
@@ -528,6 +515,11 @@ primTys = case allDict @PrimTy @as of
     case consDict of
       ( _ :: AllDict PrimTy (b ': bs) ) ->
         primTy @b : primTys @bs
+
+primTyMap :: forall (fld :: Type) (flds :: [fld :-> Type])
+          .  PrimTyMap flds
+          => [ (Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations) ]
+primTyMap = sPrimTyMap ( primTyMapSing @fld @flds )
 
 sPrimTy :: SPrimTy ty -> SPIRV.PrimTy
 sPrimTy SUnit = SPIRV.Unit

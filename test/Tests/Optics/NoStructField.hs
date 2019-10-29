@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedLabels    #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RebindableSyntax    #-}
@@ -12,12 +11,8 @@
 
 module Tests.Optics.NoStructField where
 
--- vector
-import qualified Data.Vector as Array
-
 -- fir
 import FIR
-import FIR.Syntax.Labels
 import Math.Linear
 
 ------------------------------------------------
@@ -41,4 +36,4 @@ program = Module do
 
     position <- use @( Name "vertexData" :.: Name "inexistent" )
 
-    #gl_Position .= position
+    put @"gl_Position" position

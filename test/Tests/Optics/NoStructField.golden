@@ -1,19 +1,20 @@
 
-test\Tests\Optics\NoStructField.hs:42:17: error:
-    * get: struct has no field with name "inexistent".
-      This struct has the following fields:
+test\Tests\Optics\NoStructField.hs:37:17: error:
+    * Structure has no field with name "inexistent".
+      This structure has the following fields:
       '[ "position" ':-> V 3 Float, "colour" ':-> V 4 Float,
          "size" ':-> Float, "weight" ':-> Float]
     * In a stmt of a 'do' block:
         position <- use @(Name "vertexData" :.: Name "inexistent")
       In the third argument of `entryPoint', namely
         `do position <- use @(Name "vertexData" :.: Name "inexistent")
-            #gl_Position .= position'
+            put @"gl_Position" position'
       In a stmt of a 'do' block:
         entryPoint
-          @"main" @Vertex
+          @"main"
+          @Vertex
           do position <- use @(Name "vertexData" :.: Name "inexistent")
-             #gl_Position .= position
+             put @"gl_Position" position
    |
-42 |     position <- use @( Name "vertexData" :.: Name "inexistent" )
+37 |     position <- use @( Name "vertexData" :.: Name "inexistent" )
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

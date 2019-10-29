@@ -43,10 +43,6 @@ module FIR.Syntax.Optics where
 -- base
 import Data.Kind
   ( Type, Constraint )
-import Data.Type.Bool
-  ( If )
-import Data.Type.Equality
-  ( type (==) )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Word
@@ -58,12 +54,12 @@ import GHC.TypeLits
   )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal
-  , CmpNat, type (<=)
-  , type (+), type (-)
+  , CmpNat, type (<=), type (-)
   )
 
 -- vector
-import qualified Data.Vector as Array
+import qualified Data.Vector as Vector
+  ( (!), (//) )
 
 -- fir
 import Control.Monad.Indexed
@@ -79,8 +75,6 @@ import Control.Type.Optic
   )
 import Data.Constraint.All
   ( All )
-import Data.Type.Known
-  ( Known )
 import Data.Function.Variadic
   ( ListVariadic )
 import Data.Product
@@ -88,6 +82,10 @@ import Data.Product
   , Distribute
   , MapHList
   )
+import Data.Type.Known
+  ( Known )
+import Data.Type.LazyEquality
+  ( LazyEq )
 import Data.Type.List
   ( type (:++:), ZipCons
   , SLength, KnownLength(sLength)
@@ -96,7 +94,7 @@ import Data.Type.List
   )
 import Data.Type.Map
   ( (:->)((:->))
-  , Value, Lookup
+  , Key
   )
 import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray )
@@ -111,18 +109,27 @@ import FIR.Prim.Singletons
   , ScalarTy(scalarTySing), SScalarTy
   , PrimTyMap
   , SPrimTy(SStruct)
-  , HasField(fieldIndex)
   )
 import FIR.ProgramState
   ( ProgramState )
 import FIR.Prim.Struct
-  ( Struct((:&)) )
+  ( Struct((:&))
+  , HasStructField(getStructField, setStructField)
+  )
 import qualified FIR.Validation.Bindings as Binding
   ( Has, CanGet, CanPut )
+import FIR.Validation.Bounds
+  ( VectorIndexInBounds
+  , MatrixColumnIndexInBounds
+  , ArrayIndexInBounds
+  , StructFieldFromIndex, StructIndexFromName
+  )
 import FIR.Validation.Images
   ( LookupImageProperties )
 import Math.Linear
-  ( V((:.)), M(M), (^!), at )
+  ( V((:.)), M(M)
+  , (^!), at, replaceV
+  )
 
 ----------------------------------------------------------------------
 -- singletons
@@ -224,7 +231,7 @@ class KnownLength (Indices optic) => KnownOptic optic where
   opticSing :: SOptic optic
 
 instance ( empty ~ '[]
-         , ty ~ a
+         , a ~ ty
          , Container s
          , PrimTy s
          , PrimTy a
@@ -239,16 +246,18 @@ instance ( KnownNat n
        => KnownOptic (Field_ (n :: Nat) :: Optic empty s a)
        where
   opticSing = SIndex (primTySing @s) (primTySing @a) (fromIntegral . natVal $ Proxy @n)
-instance forall (as :: [Symbol :-> Type]) (k :: Symbol) (a :: Type) (empty :: [Type]).
-         ( KnownSymbol k
-         , PrimTyMap as
-         , PrimTy a
-         , HasField k as
-         , Just a ~ Lookup k as
-         , empty ~ '[]
-         ) => KnownOptic (Field_ (k :: Symbol) :: Optic empty (Struct as) a)
-         where
-  opticSing = SIndex (SStruct @Symbol @as) (primTySing @a) (fieldIndex @k @as)
+instance forall (as :: [Symbol :-> Type]) (k :: Symbol) (a :: Type)
+                (empty :: [Type]) (i :: Nat)
+         . ( KnownSymbol k
+           , PrimTyMap as
+           , PrimTy a
+           , KnownNat i
+           , (i ':-> a) ~ StructIndexFromName k as
+           , empty ~ '[]
+           )
+        => KnownOptic (Field_ (k :: Symbol) :: Optic empty (Struct as) a)
+        where
+  opticSing = SIndex (SStruct @Symbol @as) (primTySing @a) (fromIntegral . natVal $ Proxy @i)
 instance ( KnownSymbol k
          , empty ~ '[]
          , a ~ Binding.Has k bds
@@ -266,21 +275,19 @@ instance forall is js ks (s :: Type) a b (o1 :: Optic is s a) (o2 :: Optic js a 
          )
        => KnownOptic ((o1 `ComposeO` o2) :: Optic ks s b) where
   opticSing = (opticSing @o1) %:.: (opticSing @o2)
-instance forall k is js ks (s :: ProgramState) x a b
-                (o1 :: Optic is s x) (o2 :: Optic js x b) (o :: Optic ks a b)
+instance forall k is js ks (s :: ProgramState) a b
+                (o1 :: Optic is s a) (o2 :: Optic js a b)
                 .
          ( KnownSymbol k
-         , KnownOptic o
-         , ( ( (o1 `ComposeO` o2) :: Optic ks s b )
-             ~
-             ( (Field_ (k :: Symbol) :: Optic '[] s a) `ComposeO` (o :: Optic ks a b) )
-            )
+         , o1 ~ ( Field_ k :: Optic is s a )
+         , KnownOptic o2
          , KnownLength ks
+         , is ~ '[]
          , ks ~ (is :++: js)
          , a ~ Binding.Has k s
          )
        => KnownOptic ( (o1 `ComposeO` o2) :: Optic ks s b ) where
-  opticSing = SBinding (Proxy @k) %:.: (opticSing @o)
+  opticSing = SBinding (Proxy @k) %:.: (opticSing @o2)
 instance forall iss s as js p (os :: ProductComponents iss s as)
        . ( KnownComponents os
          , SameLength (Distribute iss as) as
@@ -431,18 +438,8 @@ instance
 
 -- arrays
 instance ( KnownNat n, KnownNat i
-         , r ~ If
-                 ( CmpNat i n == LT )
-                 a
-                 ( TypeError
-                   (     Text "get: array index "
-                    :<>: ShowType i
-                    :<>: Text " is out of bounds."
-                    :$$: Text "Array size is "
-                    :<>: ShowType n :<>: Text "."
-                    :$$: Text "Note: indexing starts from 0."
-                   )
-                 )
+         , ArrayIndexInBounds n i
+         , r ~ a
          , empty ~ '[]
          )
       => Gettable (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
@@ -453,7 +450,7 @@ instance ( KnownNat i
          , Gettable (Field_ (i :: Nat) :: Optic empty (Array n a) r)
          )
        => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
-  view (MkArray arr) = arr Array.! (fromIntegral (natVal (Proxy @i)))
+  view (MkArray arr) = arr Vector.! (fromIntegral (natVal (Proxy @i)))
 
 instance ( KnownNat i
          , empty ~ '[]
@@ -467,7 +464,7 @@ instance ( KnownNat i
          )
        => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
   view = error "unreachable"
-  --view (MkRuntimeArray arr) = arr Array.! (fromIntegral (natVal (Proxy @i)))
+  --view (MkRuntimeArray arr) = arr Vector.! (fromIntegral (natVal (Proxy @i)))
 
 
 instance ( IntegralTy ty
@@ -482,7 +479,7 @@ instance ( IntegralTy ty
          , PrimTy a
          )
       => ReifiedGetter (RTOptic_ :: Optic ix (Array n a) r) where
-  view i (MkArray arr) = arr Array.! fromIntegral i
+  view i (MkArray arr) = arr Vector.! fromIntegral i
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -494,7 +491,7 @@ instance ( IntegralTy ty, ix ~ '[ty], r ~ a
          )
       => ReifiedGetter (RTOptic_ :: Optic ix (RuntimeArray a) r) where
   view = error "unreachable"
-  --view i (MkRuntimeArray arr) = arr Array.! fromIntegral i
+  --view i (MkRuntimeArray arr) = arr Vector.! fromIntegral i
 
 instance
     TypeError (    Text "get: attempt to access array element \
@@ -514,71 +511,35 @@ instance
 
 -- structs
 instance ( KnownSymbol k
-         , r ~ StructElemFromName
-                 (Text "get: ")
-                 k
-                 as
-                 (Lookup k as)
+         , (n ':-> r) ~ StructIndexFromName k as
          , empty ~ '[]
          )
        => Gettable (Field_ (k :: Symbol) :: Optic empty (Struct as) r) where
 instance ( KnownSymbol k
-         , r ~ StructElemFromName
-                 (Text "get: ")
-                 k
-                 ((k ':-> a) ': as)
-                 (Lookup k ((k ':-> a) ': as))
-         , empty ~ '[]
-         , PrimTy a
-         , Gettable (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
-         )
-      => ReifiedGetter
-            (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
-      where
-  view (a :& _) = a
-instance {-# OVERLAPPABLE #-}
-         ( KnownSymbol k
-         , r ~ StructElemFromName
-                  (Text "get: ")
-                  k
-                  (a ': as)
-                  (Lookup k (a ': as))
-         , empty ~ '[]
-         , ReifiedGetter
-             -- this forces evaluation of r before looking for the constraint
-             -- this is needed to have the correct error messages
-             (Field_ (If (r == r) k k) :: Optic '[] (Struct as) r)
-         )
-      => ReifiedGetter
-            (Field_ (k :: Symbol) :: Optic empty (Struct (a ': as)) r)
-      where
-  view (_ :& as) = view @(Field_ (If (r == r) k k) :: Optic '[] (Struct as) r) as
-
-
-instance ( KnownNat n
-         , r ~ Value (StructElemFromIndex (Text "get: ") n as n as)
-         , empty ~ '[]
-         ) => Gettable (Field_ (n :: Nat) :: Optic empty (Struct as) r) where
-instance ( r ~ Value (StructElemFromIndex (Text "get: ") 0 (a ': as) 0 (a ': as))
+         , HasStructField k r as
+         , (n ':-> r) ~ StructIndexFromName k as
          , empty ~ '[]
          , PrimTy r
          )
       => ReifiedGetter
-           (Field_ 0 :: Optic empty (Struct (a ': as)) r)
-       where
-  view (a :& _) = a
-instance {-# OVERLAPPABLE #-}
-         ( KnownNat n, 1 <= n
-         , r ~ Value (StructElemFromIndex (Text "get: ") n (a ': as) n (a ': as))
+            (Field_ (k :: Symbol) :: Optic empty (Struct as) r)
+      where
+  view = getStructField @k @r @as
+
+instance ( KnownNat n
+         , (k ':-> r) ~ StructFieldFromIndex n as
          , empty ~ '[]
-         , ReifiedGetter
-             -- as above, force evaluation of r for correct error message
-             (Field_ (If (r == r) (n-1) (n-1)) :: Optic empty (Struct as) r)
+         ) => Gettable (Field_ (n :: Nat) :: Optic empty (Struct as) r) where
+instance ( KnownNat n
+         , empty ~ '[]
+         , PrimTy r
+         , HasStructField n r as
+         , (k ':-> r) ~ StructFieldFromIndex n as
          )
       => ReifiedGetter
-          (Field_ (n :: Nat) :: Optic empty (Struct (a ': as)) r)
-      where
-  view (_ :& as) = view @(Field_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) as
+           (Field_ (n :: Nat) :: Optic empty (Struct as) r)
+       where
+  view = getStructField @n @r @as
 
 instance
     TypeError (    Text "get: attempt to access struct element \
@@ -591,38 +552,17 @@ instance
 
 -- vectors
 instance ( KnownNat i
-         , r ~ If
-                 (CmpNat i n == LT)
-                 a
-                 ( TypeError
-                   (     Text "get: vector index "
-                    :<>: ShowType i
-                    :<>: Text " is out of bounds."
-                    :$$: Text "Vector dimension is "
-                    :<>: ShowType n :<>: Text "."
-                    :$$: Text "Note: indexing starts from 0."
-                   )
-                 )
-          , empty ~ '[]
-          )
+         , VectorIndexInBounds n i
+         , empty ~ '[]
+         )
       => Gettable (Field_ (i :: Nat) :: Optic empty (V n a) r) where
 instance ( KnownNat n
          , KnownNat i
-         , r ~ If
-                 (CmpNat i n == LT)
-                 a
-                 ( TypeError
-                   (     Text "get: vector index "
-                    :<>: ShowType i
-                    :<>: Text " is out of bounds."
-                    :$$: Text "Vector dimension is "
-                    :<>: ShowType n :<>: Text "."
-                    :$$: Text "Note: indexing starts from 0."
-                   )
-                 )
+         , VectorIndexInBounds n i
          , empty ~ '[]
          , PrimTy a
          , CmpNat i n ~ 'LT
+         , r ~ a
          )
       => ReifiedGetter
             (Field_ (i :: Nat) :: Optic empty (V n a) r)
@@ -658,39 +598,16 @@ instance
 -- matrices
 instance ( KnownNat n
          , KnownNat i
-         , r ~ If
-                  (CmpNat i n == LT)
-                  (V m a)
-                  ( TypeError
-                    (     Text "get: matrix column index "
-                     :<>: ShowType i
-                     :<>: Text " is out of bounds."
-                     :$$: Text "This matrix has "
-                     :<>: ShowType m :<>: Text " rows, "
-                     :<>: ShowType n :<>: Text " columns."
-                     :$$: Text "Note: indexing starts from 0."
-                    )
-                  )
+         , r ~ V m a
+         , MatrixColumnIndexInBounds m n i
          , empty ~ '[]
          )
       => Gettable (Field_ (i :: Nat) :: Optic empty (M m n a) r) where
 instance ( KnownNat m
          , KnownNat n
          , KnownNat i
-         , r ~ If
-                  (CmpNat i n == LT)
-                  (V m a)
-                  ( TypeError
-                    (     Text "get: matrix column index "
-                     :<>: ShowType i
-                     :<>: Text " is out of bounds."
-                     :$$: Text "This matrix has "
-                     :<>: ShowType m :<>: Text " rows, "
-                     :<>: ShowType n :<>: Text " columns."
-                     :$$: Text "Note: indexing starts from 0."
-                    )
-                  )
-         , ListVariadic '[] r ~ V m a
+         , MatrixColumnIndexInBounds m n i
+         , r ~ V m a
          , CmpNat i n ~ 'LT
          , empty ~ '[]
          )
@@ -748,19 +665,9 @@ instance
 
 -- arrays
 instance ( KnownNat n, KnownNat i
-         , r ~ If
-                  (CmpNat i n == LT)
-                  a
-                  ( TypeError
-                    (     Text "set: array index "
-                     :<>: ShowType i
-                     :<>: Text " is out of bounds."
-                     :$$: Text "Array size is "
-                     :<>: ShowType n :<>: Text "."
-                     :$$: Text "Note: indexing starts from 0."
-                    )
-                  )
+         , ArrayIndexInBounds n i
          , empty ~ '[]
+         , r ~ a
          )
       => Settable (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
 instance ( KnownNat i         
@@ -771,7 +678,7 @@ instance ( KnownNat i
       => ReifiedSetter
            (Field_ (i :: Nat) :: Optic empty (Array n a) r)
       where
-  set a (MkArray arr) = MkArray ( arr Array.// [( fromIntegral (natVal (Proxy @i)), a)] )
+  set a (MkArray arr) = MkArray ( arr Vector.// [( fromIntegral (natVal (Proxy @i)), a)] )
 
 instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       => Settable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
@@ -781,7 +688,7 @@ instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       where
   set = error "unreachable"
   --set a (MkRuntimeArray arr)
-  --  = MkRuntimeArray ( arr Array.// [( fromIntegral (natVal (Proxy @i)), a)] )
+  --  = MkRuntimeArray ( arr Vector.// [( fromIntegral (natVal (Proxy @i)), a)] )
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -796,7 +703,7 @@ instance ( IntegralTy ty
       => ReifiedSetter
            (RTOptic_ :: Optic ix (Array n a) r)
       where
-  set i a (MkArray arr) = MkArray ( arr Array.// [(fromIntegral i, a)] )
+  set i a (MkArray arr) = MkArray ( arr Vector.// [(fromIntegral i, a)] )
 
 instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       => Settable (RTOptic_ :: Optic ix (RuntimeArray a) r) where
@@ -806,7 +713,7 @@ instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
       where
   set = error "unreachable"
   --set i a (MkRuntimeArray arr)
-  --  = MkRuntimeArray ( arr Array.// [(fromIntegral i, a)] )
+  --  = MkRuntimeArray ( arr Vector.// [(fromIntegral i, a)] )
   
 instance 
     TypeError (    Text "set: attempt to update array element \
@@ -824,65 +731,33 @@ instance
 
 -- structs
 instance ( KnownSymbol k
-         , r ~ StructElemFromName (Text "set: ") k as (Lookup k as)
+         , (n ':-> r) ~ StructIndexFromName k as
          , empty ~ '[]
          )
   => Settable (Field_ (k :: Symbol) :: Optic empty (Struct as) r) where
 instance ( KnownSymbol k
-         , r ~ StructElemFromName
-                  (Text "set: ")
-                  k
-                  ((k ':-> a) ': as)
-                  (Lookup k ((k ':-> a) ': as))
+         , HasStructField k r as
+         , (n ':-> r) ~ StructIndexFromName k as
          , empty ~ '[]
-         , Settable (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
          )
       => ReifiedSetter
-            (Field_ (k :: Symbol) :: Optic empty (Struct ((k ':-> a) ': as)) r)
+            (Field_ (k :: Symbol) :: Optic empty (Struct as) r)
       where
-  set b (_ :& as) = b :& as
-instance {-# OVERLAPPABLE #-}
-         ( KnownSymbol k
-         , r ~ StructElemFromName
-                  (Text "set: ")
-                  k
-                  (a ': as)
-                  (Lookup k (a ': as))
-         , empty ~ '[]
-         , ReifiedSetter
-             -- this forces evaluation of r before looking for the constraint
-             -- this is needed to have the correct error messages
-             (Field_ (If (r == r) k k) :: Optic '[] (Struct as) r)
-         )
-      => ReifiedSetter
-            (Field_ (k :: Symbol) :: Optic empty (Struct (a ': as)) r)
-      where
-  set b (a :& as) = a :& set @(Field_ (If (r == r) k k) :: Optic '[] (Struct as) r) b as
+  set = setStructField @k @r @as
 
 instance ( KnownNat n
-         , r ~ Value (StructElemFromIndex (Text "set: ") n as n as)
+         , (k ':-> r) ~ StructFieldFromIndex n as
          , empty ~ '[]
          ) => Settable (Field_ (n :: Nat) :: Optic empty (Struct as) r) where
-instance ( r ~ Value (StructElemFromIndex (Text "set: ") 0 (a ': as) 0 (a ': as))
+instance ( KnownNat n
+         , HasStructField n r as
+         , (k ':-> r) ~ StructFieldFromIndex n as
          , empty ~ '[]
-         , r ~ ListVariadic '[] r
          )
       => ReifiedSetter
-           (Field_ 0 :: Optic empty (Struct (a ': as)) r)
-       where
-  set b (_ :& as) = b :& as
-instance {-# OVERLAPPABLE #-}
-         ( KnownNat n, 1 <= n
-         , r ~ Value (StructElemFromIndex (Text "set: ") n (a ': as) n (a ': as))
-         , empty ~ '[]
-         , ReifiedSetter
-             -- as above, force evaluation of r for correct error message
-             (Field_ (If (r == r) (n-1) (n-1)) :: Optic empty (Struct as) r)
-         )
-      => ReifiedSetter
-          (Field_ (n :: Nat) :: Optic empty (Struct (a ': as)) r)
+          (Field_ (n :: Nat) :: Optic empty (Struct as) r)
       where
-  set b (a :& as) = a :& set @(Field_ (If (r == r) (n-1) (n-1)) :: Optic '[] (Struct as) r) b as
+  set = setStructField @n @r @as
 
 instance
     TypeError (    Text "set: attempt to set struct element \
@@ -894,46 +769,20 @@ instance
 
 -- vectors
 instance ( KnownNat i
-         , r ~ If
-                  (CmpNat i n == LT)
-                  a
-                  ( TypeError
-                    (     Text "set: vector index "
-                     :<>: ShowType i
-                     :<>: Text " is out of bounds."
-                     :$$: Text "Vector dimension is "
-                     :<>: ShowType n :<>: Text "."
-                     :$$: Text "Note: indexing starts from 0."
-                    )
-                  )
+         , VectorIndexInBounds n i
          , empty ~ '[]
          )
       => Settable (Field_ (i :: Nat) :: Optic empty (V n a) r) where
-
-instance ( KnownNat n, 1 <= n
-         , empty ~ '[]
-         , r ~ a
-         , r ~ ListVariadic '[] r
-         , Settable (Field_ 0 :: Optic empty (V n a) r)
-         )
-      => ReifiedSetter
-           (Field_ 0 :: Optic empty (V n a) r)
-       where
-  set b (_ :. as) = b :. as
-instance {-# OVERLAPPABLE #-}
-         ( KnownNat n, KnownNat i, 1 <= n
+instance ( KnownNat n, KnownNat i, 1 <= n
          , CmpNat i n ~ 'LT
          , r ~ a
          , empty ~ '[]
-         , Settable (Field_ (i :: Nat) :: Optic empty (V n a) r)
-         , ReifiedSetter
-             -- as above, force evaluation of r for correct error message
-             (Field_ (If (r == r) (i-1) (i-1)) :: Optic empty (V (n-1) a) r)
+         , VectorIndexInBounds n i
          )
       => ReifiedSetter
           (Field_ (i :: Nat) :: Optic empty (V n a) r)
       where
-  set b (a :. as) = a :. set @(Field_ (If (r == r) (i-1) (i-1)) :: Optic '[] (V (n-1) a) r) b as
+  set = replaceV ( fromIntegral ( natVal ( Proxy @i ) ) )
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -964,35 +813,18 @@ instance
 -- matrices
 instance ( KnownNat i
          , empty ~ '[]
-         , r ~ If
-                  (CmpNat i n == LT)
-                  (V m a)
-                  ( TypeError
-                    (     Text "set: matrix column index "
-                     :<>: ShowType i
-                     :<>: Text " is out of bounds."
-                     :$$: Text "This matrix has "
-                     :<>: ShowType m :<>: Text " rows, "
-                     :<>: ShowType n :<>: Text " columns."
-                     :$$: Text "Note: indexing starts from 0."
-                    )
-                  )
+         , MatrixColumnIndexInBounds m n i
          )
       => Settable (Field_ (i :: Nat) :: Optic empty (M m n a) r) where
 instance ( KnownNat m, KnownNat n, KnownNat i, 1 <= n
          , empty ~ '[]
-         , CmpNat i n ~ 'LT
          , r ~ V m a
-         , Settable (Field_ (i :: Nat) :: Optic empty (M m n a) r)
-         , ReifiedSetter ( Field_ (i :: Nat) :: Optic '[] (V n (V m a)) (V m a) )
+         , MatrixColumnIndexInBounds m n i
          )
       => ReifiedSetter
            (Field_ (i :: Nat) :: Optic empty (M m n a) r)
        where
-  set c (M m)
-    = ( M
-      . set @(Field_ (i :: Nat) :: Optic '[] (V n (V m a)) (V m a)) c
-      ) m
+  set c (M m) = M $ replaceV ( fromIntegral ( natVal ( Proxy @i ) ) ) c m
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -1018,92 +850,21 @@ instance
               )
     => Settable (Field_ (k :: Symbol) :: Optic empty (M m n a) r) where
 
-----------------------------------------------------------------------
--- helper type families for structs
-
-type Field ( k :: Symbol )
-  = ( Field_ (k :: Symbol)
-        :: Optic '[]
-            (Struct as)
-            (StructElemFromName (Text "optic: ") k as (Lookup k as))
-    )
-
-type family StructElemFromName
-    ( msg :: ErrorMessage   )
-    ( k   :: Symbol         )
-    ( as  :: [Symbol :-> v] )
-    ( ma  :: Maybe a        )
-  = ( r   :: v              ) where
-  StructElemFromName _   _ _  (Just a) = a
-  StructElemFromName msg k as Nothing
-    = TypeError ( msg :<>: Text "struct has no field with name "
-                 :<>: ShowType k :<>: Text "."
-                 :$$: Text "This struct has the following fields:"
-                 :$$: ShowType as
-                )
-
-type family StructElemFromIndex
-    ( msg    :: ErrorMessage   )
-    ( n      :: Nat            )
-    ( as     :: [Symbol :-> v] )
-    ( n_rec  :: Nat            )
-    ( as_rec :: [Symbol :-> v] )
-  = ( r      :: (Symbol :-> v) ) where
-  StructElemFromIndex msg n as _ '[]
-    = TypeError ( msg :<>: Text "index "
-                 :<>: ShowType n
-                 :<>: Text " out of bounds when accessing struct with fields"
-                 :$$: ShowType as
-                 :$$: Text "Note: indexing starts at 0."
-                )
-  StructElemFromIndex _   _ _  0     (bd ': _)     = bd
-  StructElemFromIndex msg n as n_rec (_ ': as_rec)
-    = StructElemFromIndex msg n as (n_rec - 1) as_rec
-
-type StructIndexFromName k as = ( StructIndexFromNameRec 0 k as as :: Nat )
-
-type family StructIndexFromNameRec
-              ( i      :: Nat              )
-              ( k      :: Symbol           )
-              ( as     :: [ Symbol :-> v ] )
-              ( as_rec :: [ Symbol :-> v ] )
-            :: Nat
-            where
-  StructIndexFromNameRec _ k as '[]
-    = TypeError
-    (    Text "optic: structure of type "
-    :$$: ShowType (Struct as)
-    :$$: Text "does not contain any field named " :<>: ShowType k
-    :<>: Text "."
-    )
-  StructIndexFromNameRec i k _  ( ( k ':-> _ ) ': _   ) = i
-  StructIndexFromNameRec i k as ( _            ': nxt )
-    = StructIndexFromNameRec (i+1) k as nxt
 
 ----------------------------------------------------------------------
 -- type class instances for containers
 
+instance Container (Array n a) where
+instance Container (RuntimeArray a) where
+instance KnownNat n => Container (M m n a) where
 instance Container (V n a) where
   type FieldIndexFromName (V n a) k
     = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
                 :$$: Text "Maybe you intended to use a swizzle?"
                 )
-
-instance KnownNat n => Container (M m n a) where
-  type FieldIndexFromName (M m n a) k
-    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
-
 instance Container (Struct (as :: [Symbol :-> Type])) where
   type FieldIndexFromName (Struct (as :: [Symbol :-> Type])) k
-    = StructIndexFromName k as
-
-instance Container (Array n a) where
-  type FieldIndexFromName (Array n a) k
-    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
-
-instance Container (RuntimeArray a) where
-  type FieldIndexFromName (RuntimeArray a) k
-    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
+    = Key (StructIndexFromName k as)
 
 ----------------------------------------------------------------------
 -- type class instances for "OfType" optic
@@ -1118,18 +879,18 @@ instance SetVector n a b 'False where
 
 instance ( empty ~ '[]
          , KnownNat n
-         , SetVector n a b (a == b)
+         , SetVector n a b (a `LazyEq` b)
          )
       => Settable (OfType_ ty :: Optic empty (V n a) b)
       where
 instance ( empty ~ '[]
          , b ~ a
          , KnownNat n
-         , SetVector n a b (a == b)
+         , SetVector n a b (a `LazyEq` b)
          )
       => ReifiedSetter (OfType_ ty :: Optic empty (V n a) b)
       where
-  set = setVector @n @a @b @(a == b)
+  set = setVector @n @a @b @(a `LazyEq` b)
 
 -- matrices
 data MatrixComponent

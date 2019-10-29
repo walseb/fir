@@ -137,6 +137,7 @@ library
       , Data.Product
       , Data.Type.Error
       , Data.Type.Known
+      , Data.Type.LazyEquality
       , Data.Type.List
       , Data.Type.Map
       , Data.Type.Maybe
@@ -167,6 +168,7 @@ library
       , FIR.Validation.Ambiguity
       , FIR.Validation.Arrayness
       , FIR.Validation.Bindings
+      , FIR.Validation.Bounds
       , FIR.Validation.Definitions
       , FIR.Validation.ExecutionModes
       , FIR.Validation.Formats

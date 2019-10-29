@@ -10,7 +10,8 @@ test\Tests\Vector\MixedSwizzle.hs:35:12: error:
             put @"out_col" col'
       In the second argument of `($)', namely
         `entryPoint
-           @"main" @Fragment
+           @"main"
+           @Fragment
            do col <- use @(Name "in_col" :.: Swizzle "rgxb")
               put @"out_col" col'
    |
@@ -28,7 +29,8 @@ test\Tests\Vector\MixedSwizzle.hs:35:12: error:
             put @"out_col" col'
       In the second argument of `($)', namely
         `entryPoint
-           @"main" @Fragment
+           @"main"
+           @Fragment
            do col <- use @(Name "in_col" :.: Swizzle "rgxb")
               put @"out_col" col'
    |

@@ -59,9 +59,17 @@ import Data.Tree
 import Control.Monad.State.Lazy
   ( evalState )
 
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+
 -- tree-view
 import Data.Tree.View
   ( showTree )
+
+-- vector
+import qualified Data.Vector as Vector
+  ( toList )
 
 -- fir
 import CodeGen.Instruction
@@ -89,13 +97,17 @@ import FIR.Prim.Image
   , ImageComponent
   )
 import qualified FIR.Prim.Image as Image
+import FIR.Prim.Array
+  ( Array(MkArray) )
 import FIR.Prim.Op
   ( PrimOp(PrimOpType, opName) )
 import FIR.Prim.Singletons
-  ( PrimTy, primTy, KnownVars
+  ( PrimTy, primTy, PrimTyMap, primTyMap
+  , KnownVars, KnownArity
   , PrimFunc, primFuncName
-  , KnownArity
   )
+import FIR.Prim.Struct
+  ( Struct, ASTStructFields(traverseStructASTs) )
 import FIR.ProgramState
   ( ProgramState, TLInterface )
 import FIR.Syntax.Optics
@@ -269,7 +281,7 @@ data AST :: Type -> Type where
         => AST ( Bool -> a -> a -> a )
   -- | Monadic if-then-else.
   IfM   :: GHC.Stack.HasCallStack
-        => AST ( Bool -> (a := j) i -> (a := k) i -> (a := i) i )
+        => AST ( ( Bool := i ) i -> (a := j) i -> (a := k) i -> (a := i) i )
   -- | While loop.
   While :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (() := j) i -> (() := i) i )
@@ -302,6 +314,11 @@ data AST :: Type -> Type where
   Mat   :: (KnownNat m, KnownNat n) => AST ( V n (V m a) -> M m n a )
   -- | Newtype unwrapping for matrices.
   UnMat :: (KnownNat m, KnownNat n) => AST ( M m n a -> V n (V m a) )
+  -- | Construct a structure from statically-known parts.
+  Struct :: (PrimTyMap bs, ASTStructFields as bs) => Struct as -> AST (Struct bs)
+  -- | Construct an array from its components.
+  Array :: PrimTy a => Array n (AST a) -> AST (Array n a)
+
   -- | Coercions (unsafe).
   Coerce :: forall a b. AST (a -> b)
 
@@ -400,9 +417,6 @@ data AST :: Type -> Type where
     => AST Word32  -- ^ Sample number.
     -> AST ( ImageOperands props ops )
     -> AST ( ImageOperands props (BaseOperand SPIRV.Sample ': ops) )
-
-  -- MkStruct
-  -- MkArray
 
   -- | Internal HList data type.
   --
@@ -523,6 +537,25 @@ toTreeArgs (SampleNo no ops) as = do
   n <- toTreeArgs no  []
   a <- toTreeArgs ops []
   pure $ Node "SampleNo" (n:a:as)
+toTreeArgs mkStruct@(Struct elts) as
+  = case mkStruct of
+      ( _ :: AST (Struct bs) ) ->
+        do
+          trees <- traverseStructASTs (`toTreeArgs` []) elts
+          let
+            fieldNames :: [ (Maybe ShortText, SPIRV.PrimTy) ]
+            fieldNames = map ( \(k,t,_) -> (k,t) ) ( primTyMap @_ @bs )
+          pure $ Node ("Struct @" ++ show fieldNames) (trees ++ as)
+toTreeArgs mkArray@(Array (MkArray vec)) as
+  = case mkArray of
+      ( _ :: AST (Array n a) )
+        -> do
+            let comps = Vector.toList vec
+            trees <- traverse (`toTreeArgs` []) comps
+            pure $
+              Node ( "Array @" ++ show (natVal (Proxy @n))
+                             ++ " @" ++ show (primTy @a)
+                   ) (trees ++ as)
 toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
 toTreeArgs GradedMappend    as = return (Node "GradedMappend" as)
 toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)

@@ -3,9 +3,9 @@
 {-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE InstanceSigs           #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -47,9 +47,11 @@ module FIR.Prim.Struct
   , ShowLocationSlot
   , FieldKind(..)
   , StructFieldKind(fieldKind)
+  , HasStructField(getStructField, setStructField)
   , headS, tailS
   , foldrStruct
   , traverseStruct
+  , ASTStructFields(..)
   )
   where
 
@@ -60,10 +62,12 @@ import Data.Kind
   ( Type )
 import Data.List
   ( intercalate )
+import Data.Typeable
+  ( Typeable )
 import Data.Word
   ( Word32 )
 import GHC.TypeLits
-  ( Symbol, AppendSymbol )
+  ( Symbol, KnownSymbol, AppendSymbol )
 import GHC.TypeNats
   ( Nat, KnownNat
   , type (+), type(-), type (*)
@@ -87,6 +91,8 @@ import Data.Type.Ord
   )
 import Data.Type.String
   ( ShowNat )
+import {-# SOURCE #-} FIR.AST
+  ( AST )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..) )
 import {-# SOURCE #-} FIR.Prim.Singletons
@@ -132,6 +138,34 @@ instance StructFieldKind (LocationSlot Nat) where
   fieldKind = LocationField
 instance {-# OVERLAPPABLE #-} Show (Demote fld) => StructFieldKind fld where
   fieldKind = OtherField
+
+class HasStructField k a as | k as -> a where
+  getStructField :: Struct as -> a
+  setStructField :: a -> Struct as -> Struct as
+instance {-# OVERLAPPING #-}
+         forall fld (k :: fld) (a :: Type) (as :: [ fld :-> Type ])
+         .  HasStructField k a ((k ':-> a) ': as)
+         where
+  getStructField = headS
+  setStructField b ( _ :& as ) = b :& as
+instance forall fld (k :: fld) (a :: Type) (l :: fld) (x :: Type) (as :: [ fld :-> Type ])
+         .  HasStructField k a as
+         => HasStructField k a ((l ':-> x) ': as)
+         where
+  getStructField = getStructField @k @a @as . tailS
+  setStructField b ( a :& as ) = a :& setStructField @k @a @as b as
+instance {-# OVERLAPPING #-}
+         forall fld (k :: fld) (a :: Type) (as :: [ fld :-> Type ])
+         .  HasStructField (0 :: Nat) a ((k ':-> a) ': as)
+         where
+  getStructField = headS
+  setStructField b ( _ :& as ) = b :& as
+instance forall fld (l :: fld) (i :: Nat) (a :: Type) (x :: Type) (as :: [ fld :-> Type])
+         .  HasStructField (i-1) a as
+         => HasStructField i a ((l ':-> x) ': as)
+         where
+  getStructField = getStructField @(i-1) @a @as . tailS
+  setStructField b ( a :& as ) = a :& setStructField @(i-1) @a @as b as
 
 instance PrimTyMap as => Eq (Struct as) where
   s1 == s2 = case primTyMapSing @_ @as of
@@ -201,6 +235,17 @@ traverseStruct
 traverseStruct f
    = foldrStruct ( \a bs -> liftA2 (:) (f a) bs )
        ( pure [] )
+
+class Typeable bs => ASTStructFields (as :: [ Symbol :-> Type]) (bs :: [ Symbol :-> Type])
+        | as -> bs, bs -> as where
+  traverseStructASTs
+    :: forall f b. Applicative f
+    => ( forall a. AST a -> f b ) -> Struct as -> f [b]
+instance ASTStructFields '[] '[] where
+  traverseStructASTs _ _ = pure []
+instance (KnownSymbol k2, k1 ~ k2, a ~ AST b, Typeable b, ASTStructFields as bs)
+   => ASTStructFields ( (k1 ':-> a) ': as) ( (k2 ':-> b) ': bs) where
+  traverseStructASTs f (a :& as) = (:) <$> f a <*> traverseStructASTs f as
 
 -----------------------------------------------------------
 -- instances for 'LocationSlot'

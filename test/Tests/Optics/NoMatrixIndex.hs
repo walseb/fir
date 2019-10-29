@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedLabels    #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RebindableSyntax    #-}
@@ -12,12 +11,8 @@
 
 module Tests.Optics.NoMatrixIndex where
 
--- vector
-import qualified Data.Vector as Array
-
 -- fir
 import FIR
-import FIR.Syntax.Labels
 import Math.Linear
 
 ------------------------------------------------
@@ -33,6 +28,6 @@ program = Module do
 
   entryPoint @"main" @Vertex do
 
-    c <- use @( Name "vertexData" :.: Entry 4 2 )
+    c <- use @( Name "vertexData" :.: Entry 1 4 )
 
-    #gl_Position .= Vec4 c c c 1
+    put @"gl_Position" (Vec4 c c c 1)

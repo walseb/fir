@@ -102,7 +102,7 @@ import Data.Type.List
   , type (:++:), Postpend
   )
 import Data.Type.Map
-  ( (:->) )
+  ( (:->), Key )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal, toAST, fromAST)
@@ -113,7 +113,6 @@ import FIR.Syntax.Optics
   , KnownComponents
   , (%:.:)
   , ValidAnIndexOptic
-  , StructIndexFromName
   )
 import FIR.Prim.Array
   ( Array, RuntimeArray )
@@ -128,6 +127,8 @@ import FIR.Prim.Singletons
   )
 import FIR.Prim.Struct
   ( Struct )
+import FIR.Validation.Bounds
+  ( StructIndexFromName )
 import Math.Algebra.Class
   ( AdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring
@@ -588,22 +589,12 @@ instance Container (AST (V n a)) where
     = TypeError (    Text "optic: attempt to index a vector component with name " :<>: ShowType k
                 :$$: Text "Maybe you intended to use a swizzle?"
                 )
-
 instance KnownNat m => Container (AST (M m n a)) where
-  type FieldIndexFromName (AST (M m n a)) k
-    = TypeError ( Text "optic: attempt to index a matrix component with name " :<>: ShowType k )
-
 instance Container (AST (Struct (as :: [Symbol :-> Type]))) where
   type FieldIndexFromName (AST (Struct (as :: [Symbol :-> Type]))) k
-    = StructIndexFromName k as
-
+    = Key (StructIndexFromName k as)
 instance Container (AST (Array n a)) where
-  type FieldIndexFromName (AST (Array n a)) k
-    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
-
 instance Container (AST (RuntimeArray a)) where
-  type FieldIndexFromName (AST (RuntimeArray a)) k
-    = TypeError ( Text "optic: attempt to index an array using name " :<>: ShowType k )
 
 -- *** Optic focusing on parts with a given type
 --

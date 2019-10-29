@@ -54,8 +54,6 @@ import FIR.Binding
   )
 import FIR.Builtin
   ( ModelBuiltins )
-import FIR.Prim.Image
-  ( Image )
 import FIR.ProgramState
   ( FunctionContext(..)
   , ProgramState(ProgramState)
@@ -97,12 +95,7 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
   GetBinding k 'Nothing
    = TypeError
       (  Text "'get'/'use': no binding named " :<>: ShowType k :<>: Text " is in scope." )
-  GetBinding k ('Just (Var _ (Image _)))
-    = TypeError 
-          (     Text "'get'/'use': variable named " :<>: ShowType k :<>: Text " refers to an image."
-           :$$: Text "To access image data, use the 'ImageTexel' optic or the 'imageRead' function."
-          )
-  GetBinding k ('Just (Var perms a))
+  GetBinding k ('Just (Var perms _))
     = If 
         ( Elem 'Read perms )
         ( () :: Constraint )
@@ -129,12 +122,7 @@ type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Constraint whe
       :<>: ShowType (Fun as b) :<>: Text "."
       :$$: Text "Use 'fundef' to define a function."
     )
-  PutBinding k ('Just (Var _ (Image _)))
-    = TypeError 
-          (     Text "'put'/'assign': image bound by name " :<>: ShowType k :<>: Text "."
-           :$$: Text "To write to a storage image, assign with the 'ImageTexel' optic or use 'imageWrite'."
-          )
-  PutBinding k ('Just (Var perms a))
+  PutBinding k ('Just (Var perms _))
     = If
         ( Elem 'Write perms )
         ( () :: Constraint )
@@ -591,6 +579,7 @@ type family BuiltinDoesNotAppearBefore
 -- * Constraints for 'FIR.Syntax.Codensity.embed'.
 
 type family Embeddable (i :: ProgramState) (j :: ProgramState) :: Constraint where
+  Embeddable ('ProgramState '[] 'TopLevel '[] _) _ = ()
   Embeddable ('ProgramState i_bds i_ctx i_funs _) ('ProgramState j_bds i_ctx j_funs _)
     = ( SubsetBindings  i_bds  j_bds
       , SubsetFunctions i_funs j_funs

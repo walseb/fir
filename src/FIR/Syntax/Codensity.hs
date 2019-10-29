@@ -37,7 +37,7 @@ See also the validation modules:
 module FIR.Syntax.Codensity
   ( -- * Monadic control operations
     when, unless, while
-  , locally, embed, locallyPair, embedPair
+  , locally, embed, purely, locallyPair, embedPair
 
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
@@ -231,6 +231,14 @@ locally = fromAST Locally
 embed :: forall i j r. (Embeddable i j, Syntactic r)
       => Codensity AST (r := i) i -> Codensity AST (r := j) j
 embed = fromAST Embed
+
+purely
+  :: ( Syntactic r
+     , i ~ 'ProgramState '[] 'TopLevel '[] '[]
+     , Embeddable i k
+     )
+  => Codensity AST (r := j) i -> Codensity AST (r := k) k
+purely = embed . locally
 
 -- temporary helpers until I find a nice typeclass for this
 locallyPair :: forall i a b j
@@ -682,12 +690,12 @@ instance Modifier is s a => Modifier (i ': is) s a where
 -- 'Boolean', 'Choose',
 --
 -- 'Eq', 'Ord' (note: not the "Prelude" type classes).
-instance Boolean (Codensity AST (AST Bool := i) i) where
-  true  = ixPure true
-  false = ixPure false
+instance Boolean b => Boolean (Codensity AST (b := i) i) where
+  true  = ixPure   true
+  false = ixPure   false
   (&&)  = ixLiftA2 (&&)
   (||)  = ixLiftA2 (||)
-  not   = ixFmap not
+  not   = ixFmap   not
 
 instance ( PrimTy a
          , t ~ ( Codensity AST (AST a := j) i )
@@ -695,6 +703,19 @@ instance ( PrimTy a
          , r ~ ( AST a := i )
          ) =>
   Choose  ( AST Bool )
+         '( t
+          , f
+          , Codensity AST r i
+          ) where
+  choose c x y = choose (ixPure c :: Codensity AST (AST Bool := i) i) x y
+
+instance ( PrimTy a
+         , l ~ i
+         , t ~ ( Codensity AST (AST a := j) i )
+         , f ~ ( Codensity AST (AST a := k) i )
+         , r ~ ( AST a := i )
+         ) =>
+  Choose ( Codensity AST (AST Bool := l) i )
          '( t
           , f
           , Codensity AST r i
