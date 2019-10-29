@@ -1,15 +1,14 @@
-{-# LANGUAGE DeriveFunctor              #-}
-{-# LANGUAGE DeriveFoldable             #-}
-{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
 
 module CodeGen.Instruction
-  ( Args(..), foldrArgs, arity, toArgs, Pairs(..)
+  ( Args(..), foldrArgs, arity, toArgs, Pair(..)
   , ID(..), TyID(MkTyID, TyID, tyID)
   , Instruction(..)
   , prependArg, setArgs
@@ -50,8 +49,11 @@ arity = foldrArgs (const (+1)) 0
 toArgs :: ( Show a, Put a, Foldable t ) => t a -> Args
 toArgs = foldr Arg EndArgs
 
-newtype Pairs a = Pairs [(a,a)]
- deriving stock ( Functor, Foldable, Traversable )
+newtype Pair a b = Pair (a,b)
+  deriving stock Show
+instance ( Put a, Put b ) => Put (Pair a b) where
+  put (Pair (a,b)) = put a *> put b
+  wordCount (Pair (a,b)) = wordCount a + wordCount b
 
 ----------------------------------------------------------------------------
 -- instructions

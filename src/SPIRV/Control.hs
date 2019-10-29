@@ -27,9 +27,10 @@ module SPIRV.Control
   , SideEffects(..)
   , FunctionControl
   , type NoFunctionControl, pattern NoFunctionControl
-  , SelectionControl(..)
+  , SelectionControl(..), pattern NoSelectionControl
   , LoopUnrolling(..)
   , LoopDependency(..)
+  , LoopControl
   , type NoLoopControl, pattern NoLoopControl
   )
   where
@@ -101,6 +102,9 @@ data SelectionControl
   | DontFlatten
   deriving stock ( Eq, Show )
 
+pattern NoSelectionControl :: Maybe SelectionControl
+pattern NoSelectionControl = Nothing
+
 instance Put SelectionControl where
   wordCount _ = 1
   put Flatten     = put @Word32 1
@@ -130,6 +134,7 @@ data LoopUnrolling
 data LoopDependency n
   = DependencyInfinite
   | DependencyLength n
+  deriving stock ( Eq, Show )
 
 type LoopControl n = ( Maybe LoopUnrolling, Maybe (LoopDependency n) )
 type NoLoopControl = ( '( Nothing, Nothing ) :: LoopControl Nat )

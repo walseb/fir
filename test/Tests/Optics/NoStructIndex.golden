@@ -4,7 +4,7 @@ test\Tests\Optics\NoStructIndex.hs:42:17: error:
       '[ "position" ':-> V 3 Float, "colour" ':-> V 4 Float,
          "size" ':-> Float, "weight" ':-> Float]
       Structure has only 4 fields.
-      Note: indexing starts at 0.
+      Note: indexing starts from 0.
     * In a stmt of a 'do' block:
         position <- use @(Name "vertexData" :.: Index 5)
       In the third argument of `entryPoint', namely

@@ -76,6 +76,8 @@ import CodeGen.Instruction
   ( ID(ID) )
 import CodeGen.Monad
   ( MonadFresh(fresh), runFreshSuccT )
+import Control.Arrow.Strength
+  ( secondF )
 import Control.Type.Optic
   ( Gettable, Settable, Indices )
 import Control.Monad.Indexed
@@ -105,6 +107,7 @@ import FIR.Prim.Singletons
   ( PrimTy, primTy, PrimTyMap, primTyMap
   , KnownVars, KnownArity
   , PrimFunc, primFuncName
+  , IntegralTy
   )
 import FIR.Prim.Struct
   ( Struct, ASTStructFields(traverseStructASTs) )
@@ -282,6 +285,26 @@ data AST :: Type -> Type where
   -- | Monadic if-then-else.
   IfM   :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (a := j) i -> (a := k) i -> (a := i) i )
+  -- | Switch statement.
+  Switch :: ( GHC.Stack.HasCallStack
+            , PrimTy a
+            , IntegralTy s
+            )
+          => AST s -- ^ Scrutinee.
+          -> AST a -- ^ Default case.
+          -> [ (s, AST a) ] -- ^ Cases.
+          -> AST a
+  -- | Monadic switch statement.
+  SwitchM :: ( GHC.Stack.HasCallStack
+             , PrimTy a
+             , IntegralTy s
+             )
+           => AST ( ( s := i ) i ) -- ^ Scrutinee.
+           -> AST ( ( a := i ) i ) -- ^ Default case.
+           -> [ ( s, AST ( ( a := i ) i ) ) ] -- ^ Cases.
+           -> AST ( (a := i) i )
+  -- ( SwitchM could be generalised by allowing different return types in the branches.)
+
   -- | While loop.
   While :: GHC.Stack.HasCallStack
         => AST ( ( Bool := i ) i -> (() := j) i -> (() := i) i )
@@ -306,10 +329,6 @@ data AST :: Type -> Type where
            => Proxy n
            -> Proxy a
            -> AST ( NatVariadic n a ( V n a ) )
-  -- | Graded mappend to concatenate objects (e.g. two vectors).
-  GradedMappend :: ( GradedSemigroup g k, a ~ Grade k g i, b ~ Grade k g j )
-    => AST ( a -> b -> Grade k g (i :<!>: j) )
-
   -- | Newtype wrapping for matrices.
   Mat   :: (KnownNat m, KnownNat n) => AST ( V n (V m a) -> M m n a )
   -- | Newtype unwrapping for matrices.
@@ -318,6 +337,9 @@ data AST :: Type -> Type where
   Struct :: (PrimTyMap bs, ASTStructFields as bs) => Struct as -> AST (Struct bs)
   -- | Construct an array from its components.
   Array :: PrimTy a => Array n (AST a) -> AST (Array n a)
+  -- | Graded mappend to concatenate objects (e.g. two vectors).
+  GradedMappend :: ( GradedSemigroup g k, a ~ Grade k g i, b ~ Grade k g j )
+    => AST ( a -> b -> Grade k g (i :<!>: j) )
 
   -- | Coercions (unsafe).
   Coerce :: forall a b. AST (a -> b)
@@ -468,122 +490,134 @@ instance {-# OVERLAPPABLE #-} HasUndefined a where
 ------------------------------------------------
 -- display AST for viewing
 
-toTreeArgs :: forall m ast. MonadFresh ID m => AST ast -> [Tree String] -> m (Tree String)
-toTreeArgs (f :$ a) as = do
-  at <- toTreeArgs a []
-  toTreeArgs f (at:as)
-toTreeArgs (Lam f) as = do
+toTreeArgs :: forall m ast. MonadFresh ID m => [Tree String] -> AST ast -> m (Tree String)
+toTreeArgs as (f :$ a) = do
+  at <- toTreeArgs [] a
+  toTreeArgs (at:as) f
+toTreeArgs as (Lam f) = do
   v <- fresh
   let var = MkID (v,undefined)
-  body <- toTreeArgs (f var) []
+  body <- toTreeArgs [] (f var)
   return $ case as of
     [] -> Node ("Lam " ++ show v) [body]
     _  -> Node  ":$"              (body : as)
-toTreeArgs (PrimOp (_ :: Proxy a) (_ :: Proxy op) ) as 
+toTreeArgs as (PrimOp (_ :: Proxy a) (_ :: Proxy op) )
   = return (Node ("PrimOp " ++ show ( SPIRV.op ( opName @_ @_ @op @a ) ) ) as)
-toTreeArgs If        as = return (Node "If"            as)
-toTreeArgs IfM       as = return (Node "IfM"           as)
-toTreeArgs While     as = return (Node "While"         as)
-toTreeArgs Locally   as = return (Node "Locally"       as)
-toTreeArgs Embed     as = return (Node "Embed"         as)
-toTreeArgs Return    as = return (Node "Return"        as)
-toTreeArgs Bind      as = return (Node "Bind"          as)
-toTreeArgs Mat       as = return (Node "Mat"           as)
-toTreeArgs UnMat     as = return (Node "UnMat"         as)
-toTreeArgs Coerce    as = return (Node "Coerce"        as)
-toTreeArgs Undefined as = return (Node "Undefined"     as)
-toTreeArgs NilHList  as = return (Node "NilHListAST"  as)
-toTreeArgs ConsHList as = return (Node "ConsHListAST" as)
-toTreeArgs NilOps    as = return (Node "NilOps" as)
-toTreeArgs (Proj ops) as = do
-  a <- toTreeArgs ops []
+toTreeArgs as If        = return (Node "If"           as)
+toTreeArgs as IfM       = return (Node "IfM"          as)
+toTreeArgs as While     = return (Node "While"        as)
+toTreeArgs as Locally   = return (Node "Locally"      as)
+toTreeArgs as Embed     = return (Node "Embed"        as)
+toTreeArgs as Return    = return (Node "Return"       as)
+toTreeArgs as Bind      = return (Node "Bind"         as)
+toTreeArgs as Mat       = return (Node "Mat"          as)
+toTreeArgs as UnMat     = return (Node "UnMat"        as)
+toTreeArgs as Coerce    = return (Node "Coerce"       as)
+toTreeArgs as Undefined = return (Node "Undefined"    as)
+toTreeArgs as NilHList  = return (Node "NilHListAST"  as)
+toTreeArgs as ConsHList = return (Node "ConsHListAST" as)
+toTreeArgs as (Switch    s d cs) = do
+  scrut <- toTreeArgs [] s
+  def   <- toTreeArgs [] d
+  cases <- traverse ( secondF ( toTreeArgs [] ) ) cs
+  let allCases = map ( \(v,a) -> Node ("Case " ++ show v) [a] ) cases ++ [Node "Default" [def]]
+  return (Node "Switch" (scrut : allCases ++ as))
+toTreeArgs as (SwitchM   s d cs) = do
+  scrut <- toTreeArgs [] s
+  def   <- toTreeArgs [] d
+  cases <- traverse ( secondF ( toTreeArgs [] ) ) cs
+  let allCases = map ( \(v,a) -> Node ("Case " ++ show v) [a] ) cases ++ [Node "Default" [def]]
+  return (Node "SwitchM" (scrut : allCases ++ as))
+toTreeArgs as NilOps    = return (Node "NilOps"       as)
+toTreeArgs as (Proj ops) = do
+  a <- toTreeArgs [] ops
   pure $ Node "Proj" (a:as)
-toTreeArgs (Dref ref ops) as = do
-  r <- toTreeArgs ref []
-  a <- toTreeArgs ops []
+toTreeArgs as (Dref ref ops) = do
+  r <- toTreeArgs [] ref
+  a <- toTreeArgs [] ops
   pure $ Node "Dref" (r:a:as)
-toTreeArgs (Bias bias ops) as = do
-  b <- toTreeArgs bias []
-  a <- toTreeArgs ops  []
+toTreeArgs as (Bias bias ops) = do
+  b <- toTreeArgs [] bias
+  a <- toTreeArgs [] ops
   pure $ Node "Bias=" (b:a:as)
-toTreeArgs (LOD lod ops) as = do
-  l <- toTreeArgs lod []
-  a <- toTreeArgs ops []
+toTreeArgs as (LOD lod ops) = do
+  l <- toTreeArgs [] lod
+  a <- toTreeArgs [] ops
   pure $ Node "LOD" (l:a:as)
-toTreeArgs (MinLOD lod ops) as = do
-  l <- toTreeArgs lod []
-  a <- toTreeArgs ops []
+toTreeArgs as (MinLOD lod ops) = do
+  l <- toTreeArgs [] lod
+  a <- toTreeArgs [] ops
   pure $ Node "MinLOD" (l:a:as)
-toTreeArgs (Grad (dfdx, dfdy) ops) as = do
-  x <- toTreeArgs dfdx []
-  y <- toTreeArgs dfdy []
-  a <- toTreeArgs ops  []
+toTreeArgs as (Grad (dfdx, dfdy) ops) = do
+  x <- toTreeArgs [] dfdx
+  y <- toTreeArgs [] dfdy
+  a <- toTreeArgs [] ops
   pure $ Node "Grad" (x:y:a:as)
-toTreeArgs (ConstOffsetBy vec ops) as = do
-  a <- toTreeArgs ops []
+toTreeArgs as (ConstOffsetBy vec ops) = do
+  a <- toTreeArgs [] ops
   pure $ Node "ConstOffsetBy" (pure (show vec):a:as)
-toTreeArgs (OffsetBy vec ops) as = do
-  v <- toTreeArgs vec []
-  a <- toTreeArgs ops []
+toTreeArgs as (OffsetBy vec ops) = do
+  v <- toTreeArgs [] vec
+  a <- toTreeArgs [] ops
   pure $ Node "OffsetBy" (v:a:as)
-toTreeArgs (Gather (Image.ComponentWithOffsets comp offs) ops) as = do
-  c <- toTreeArgs comp []
-  a <- toTreeArgs ops  []
+toTreeArgs as (Gather (Image.ComponentWithOffsets comp offs) ops) = do
+  c <- toTreeArgs [] comp
+  a <- toTreeArgs [] ops
   pure $ Node "GatherComponentWithOffsets" (c:pure (show offs):a:as)
-toTreeArgs (Gather (Image.DepthWithOffsets offs) ops) as = do
-  a <- toTreeArgs ops  []
+toTreeArgs as (Gather (Image.DepthWithOffsets offs) ops) = do
+  a <- toTreeArgs [] ops
   pure $ Node "GatherDepthWithOffsets" (pure (show offs):a:as)
-toTreeArgs (SampleNo no ops) as = do
-  n <- toTreeArgs no  []
-  a <- toTreeArgs ops []
+toTreeArgs as (SampleNo no ops) = do
+  n <- toTreeArgs [] no
+  a <- toTreeArgs [] ops
   pure $ Node "SampleNo" (n:a:as)
-toTreeArgs mkStruct@(Struct elts) as
+toTreeArgs as mkStruct@(Struct elts)
   = case mkStruct of
       ( _ :: AST (Struct bs) ) ->
         do
-          trees <- traverseStructASTs (`toTreeArgs` []) elts
+          trees <- traverseStructASTs (toTreeArgs []) elts
           let
             fieldNames :: [ (Maybe ShortText, SPIRV.PrimTy) ]
             fieldNames = map ( \(k,t,_) -> (k,t) ) ( primTyMap @_ @bs )
           pure $ Node ("Struct @" ++ show fieldNames) (trees ++ as)
-toTreeArgs mkArray@(Array (MkArray vec)) as
+toTreeArgs as mkArray@(Array (MkArray vec))
   = case mkArray of
       ( _ :: AST (Array n a) )
         -> do
             let comps = Vector.toList vec
-            trees <- traverse (`toTreeArgs` []) comps
+            trees <- traverse (toTreeArgs []) comps
             pure $
               Node ( "Array @" ++ show (natVal (Proxy @n))
                              ++ " @" ++ show (primTy @a)
                    ) (trees ++ as)
-toTreeArgs (MkID     (v,_)) as = return (Node (show v) as)
-toTreeArgs GradedMappend    as = return (Node "GradedMappend" as)
-toTreeArgs (MkVector   n _) as = return (Node ("Vec"       ++ show (natVal n)) as)
-toTreeArgs (Use    _ o    ) as = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
-toTreeArgs (Assign _ o    ) as = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)
-toTreeArgs (View   _ o    ) as = return (Node ("View @("   ++ showSOptic o ++ ")") as)
-toTreeArgs (Set    _ o    ) as = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
-toTreeArgs (Def    k _    ) as = return (Node ("Def @"     ++ symbolVal k ) as)
-toTreeArgs (FunDef k _ _  ) as = return (Node ("FunDef @"  ++ symbolVal k ) as)
-toTreeArgs (Entry  _ (_ :: Proxy (stageInfo :: SPIRV.ExecutionInfo Nat stage) )) as
+toTreeArgs as (MkID     (v,_)) = return (Node (show v) as)
+toTreeArgs as GradedMappend    = return (Node "GradedMappend" as)
+toTreeArgs as (MkVector   n _) = return (Node ("Vec"       ++ show (natVal n)) as)
+toTreeArgs as (Use    _ o    ) = return (Node ("Use @("    ++ showSOptic o ++ ")") as)
+toTreeArgs as (Assign _ o    ) = return (Node ("Assign @(" ++ showSOptic o ++ ")") as)
+toTreeArgs as (View   _ o    ) = return (Node ("View @("   ++ showSOptic o ++ ")") as)
+toTreeArgs as (Set    _ o    ) = return (Node ("Set @("    ++ showSOptic o ++ ")") as)
+toTreeArgs as (Def    k _    ) = return (Node ("Def @"     ++ symbolVal k ) as)
+toTreeArgs as (FunDef k _ _  ) = return (Node ("FunDef @"  ++ symbolVal k ) as)
+toTreeArgs as (Entry  _ (_ :: Proxy (stageInfo :: SPIRV.ExecutionInfo Nat stage) ))
   = return (Node ("Entry @(" ++ show (knownValue @stage) ++ ")") as)
-toTreeArgs (Lit (a :: ty)) as
+toTreeArgs as (Lit (a :: ty))
   = return (Node ("Lit @(" ++ show (primTy @ty) ++ ") " ++ show a ) as)
-toTreeArgs fm@Fmap as
+toTreeArgs as fm@Fmap
   = case fm of
       ( _ :: AST ( (x -> y) -> f x -> f y ) )
         -> return (Node ("Fmap @(" ++ primFuncName @f ++ ") ") as)
-toTreeArgs pur@Pure as
+toTreeArgs as pur@Pure
   = case pur of
       ( _ :: AST ( x -> f x ) )
         -> return (Node ("Pure @(" ++ primFuncName @f ++ ") ") as)
-toTreeArgs app@Ap as
+toTreeArgs as app@Ap
   = case app of
       ( _ :: AST ( f (x -> y) -> f x -> f y ) )
         -> return (Node ("Ap @("   ++ primFuncName @f ++ ") ") as)
 
 toTree :: AST ast -> Tree String
-toTree = (`evalState` (ID 1)) . runFreshSuccT . ( `toTreeArgs` [] )
+toTree = (`evalState` (ID 1)) . runFreshSuccT . toTreeArgs []
 
 instance Show (AST ast) where
   show = showTree . toTree

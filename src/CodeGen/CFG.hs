@@ -1,27 +1,79 @@
+{-# LANGUAGE BlockArguments    #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE TypeOperators     #-}
+
 module CodeGen.CFG where
 
+-- base
+import Control.Arrow
+  ( first )
+import Control.Monad
+  ( when, unless, forM )
+import Data.Word
+  ( Word32 )
+
+-- bytestring
+import Data.ByteString.Lazy
+  ( ByteString )
+
 -- containers
+import Data.Map
+  ( Map )
 import qualified Data.Map.Strict as Map
 
 -- lens
 import Control.Lens
-  ( assign )
+  ( use, assign, modifying )
+
+-- mtl
+import Control.Monad.Except
+  ( throwError )
+import Control.Monad.Reader
+  ( ask )
+import Control.Monad.State
+  ( get, put )
+
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- fir
+import CodeGen.Application
+  ( UAST(UAST) )
 import CodeGen.Binary
   ( putInstruction )
+import {-# SOURCE #-} CodeGen.CodeGen
+  ( codeGen )
+import CodeGen.Debug
+  ( whenAsserting )
 import CodeGen.Instruction
-  ( Args(Arg, EndArgs)
-  , ID, Instruction(..)
+  ( Args(Arg, EndArgs), toArgs
+  , ID(ID), Instruction(..)
+  , Pair(Pair)
   )
 import CodeGen.Monad
   ( MonadFresh(fresh)
-  , CGMonad, liftPut
+  , CGMonad, runCGMonad
+  , liftPut, note
   )
+import CodeGen.Phi
+  ( phiInstruction, phiInstructions )
 import CodeGen.State
-  ( _currentBlock )
+  ( CGState(currentBlock, localBindings)
+  , _currentBlock
+  , _localBindings, _localBinding
+  )
+import FIR.AST
+  ( AST )
+import FIR.Prim.Singletons
+  ( IntegralTy )
 import qualified SPIRV.Control   as SPIRV
 import qualified SPIRV.Operation as SPIRV.Op
+import qualified SPIRV.PrimTy    as SPIRV
+  ( PrimTy(Unit, Boolean) )
 
 ----------------------------------------------------------------------------
 -- blocks and branching
@@ -73,3 +125,214 @@ selectionMerge mergeBlockID mbControl
                     $ Arg mbControl
                     EndArgs
         }
+loopMerge :: ID -> ID -> SPIRV.LoopControl Word32 -> CGMonad ()
+loopMerge mergeBlockID loopBlockID loopControl
+  = liftPut $ putInstruction Map.empty
+      Instruction
+         { operation = SPIRV.Op.LoopMerge
+         , resTy = Nothing
+         , resID = Nothing
+         , args  = Arg mergeBlockID
+                 $ Arg loopBlockID
+                 $ Arg loopControl
+                 EndArgs
+         }
+
+multiWaySwitch :: IntegralTy s => ID -> ID -> [Pair s ID] -> CGMonad ()
+multiWaySwitch scrut def ids
+  = liftPut $ putInstruction Map.empty
+      Instruction
+        { operation = SPIRV.Op.Switch
+        , resTy     = Nothing
+        , resID     = Nothing
+        , args      = Arg scrut
+                    $ Arg def
+                    $ toArgs ids
+        }
+
+----------------------------------------------------------------------------
+-- code generation for "if" and "switch" statements
+
+ifm :: AST b -> AST t -> AST f-> CGMonad (ID, SPIRV.PrimTy)
+ifm cond bodyTrue bodyFalse
+  = selection conditionalHeader [UAST bodyTrue, UAST bodyFalse]
+      where
+        conditionalHeader :: [ID] -> ID -> CGMonad ()
+        conditionalHeader [trueBlockID, falseBlockID] mergeBlockID = do
+          (condID, condTy) <- locally (codeGen cond)
+          ( whenAsserting . when ( condTy /= SPIRV.Boolean ) )
+            ( throwError
+            $  "codeGen: 'if' expected boolean conditional, but got "
+            <> ShortText.pack (show condTy)
+            )
+          selectionMerge mergeBlockID SPIRV.NoSelectionControl
+          branchConditional condID trueBlockID falseBlockID
+        conditionalHeader ids _ =
+          throwError
+            ( "codeGen: if statement with "
+            <> ShortText.pack ( show ( length ids ))
+            <> " branches"
+            )
+
+switch :: IntegralTy t => AST s -> AST a -> [(t, UAST)] -> CGMonad (ID, SPIRV.PrimTy)
+switch scrut def cases
+  = selection switchHeader (map snd cases)
+      where
+        switchHeader :: [ID] -> ID -> CGMonad ()
+        switchHeader caseBlockIDs mergeBlockID = do
+          (scrutID, _) <- locally (codeGen scrut)
+          (defID,   _) <- locally (codeGen def  )
+          selectionMerge mergeBlockID SPIRV.NoSelectionControl
+          multiWaySwitch scrutID defID
+            (zipWith ( \(t,_) i -> Pair (t,i) ) cases caseBlockIDs)
+
+selection :: ( [ID] -> ID -> CGMonad () ) -> [ UAST ] -> CGMonad (ID, SPIRV.PrimTy)
+selection mkHeader cases = do
+  headerBlockID  <- fresh
+  caseBlockIDs   <- traverse (\x -> (,x) <$> fresh) cases
+  mergeBlockID   <- fresh
+  bindingsBefore <- use _localBindings
+  branch headerBlockID
+
+  -- header block
+  block headerBlockID
+  mkHeader ( map fst caseBlockIDs ) mergeBlockID
+
+  -- case blocks
+  (bodies, endBlocks, endBindings) <- unzip3 <$>
+    forM caseBlockIDs \ (caseBlockID, UAST caseBody) -> do
+      block caseBlockID
+      assign _localBindings bindingsBefore
+      bodyRes <- codeGen caseBody
+      bodyEndBlock <- note ( "codeGen: branch statement escaped CFG" )
+        =<< use _currentBlock
+      bodyBindings <- use _localBindings
+      branch mergeBlockID
+      pure (bodyRes, bodyEndBlock, bodyBindings)
+
+  -- reset local bindings to what they were outside the branches
+  assign _localBindings bindingsBefore
+
+  -- merge block
+  block mergeBlockID
+  phiBindings <- phiInstructions ( `Map.member` bindingsBefore ) endBlocks endBindings
+  -- update local bindings to refer to the phi instructions
+  Map.traverseWithKey
+    ( \ bdName bdID -> modifying ( _localBinding bdName ) ( fmap $ first (const bdID) ) )
+    phiBindings
+
+  -- return the result
+  resType <- case map snd bodies of
+    [] -> throwError "codeGen: empty list of branches in conditional"
+    (ty : tys)
+      -> do ( whenAsserting . unless ( all (== ty) tys ) )
+              ( throwError "codeGen: branches of conditional return different types" )
+            pure ty
+  if resType == SPIRV.Unit
+  then pure (ID 0, resType) -- ID should never be used
+  else do
+    res <- fresh
+    phiInstruction
+      ( res, resType )
+      ( zipWith ( \(t,_) i -> Pair (t,i)) bodies endBlocks )
+    pure (res, resType)
+
+----------------------------------------------------------------------------
+-- code generation for "while" loop
+
+while :: AST c -> AST b -> CGMonad (ID, SPIRV.PrimTy)
+while cond loopBody = do
+  beforeBlockID <- note ( "codeGen: while loop outside of a block" )
+                   =<< use _currentBlock
+  headerBlockID <- fresh
+  loopBlockID   <- fresh
+  mergeBlockID  <- fresh -- block where control flow merges back
+  branch headerBlockID
+
+  -- Need to perform code generation for the loop block first,
+  -- as we need to know which phi instructions to put in the header.
+  -- However, the loop block (also called the continue block)
+  -- needs to appear after the header block in the CFG.
+  ctxt  <- ask
+  state <- get
+  let bindingsBefore :: Map ShortText (ID, SPIRV.PrimTy)
+      bindingsBefore  = localBindings state
+
+      -- The first CGState is the one we pass manually and that we want.
+      -- The second CGState has the wrong "currentBlock" information,
+      -- because we branched to the header block at the end.
+      loopGenOutput :: Either ShortText (CGState, CGState, ByteString)
+      loopGenOutput
+        = runCGMonad ctxt state
+            do  block loopBlockID
+                _ <- codeGen loopBody
+                endState <- get
+                branch headerBlockID
+                pure endState
+
+  (loopEndState, _) -- (loopEndState,loopBodyASM)
+    <- case loopGenOutput of
+          Left  err     -> throwError err
+          Right (s,_,a) -> pure (s,a)
+  let mbLoopEndBlockID = currentBlock  loopEndState
+      loopEndBindings  = localBindings loopEndState
+  loopEndBlockID <- note ( "codeGen: while loop escaped CFG" )
+                    mbLoopEndBlockID
+
+  -- Update the state to be the state at the end of the loop
+  -- (e.g. don't forget about new constants that were defined),
+  -- but reset bindings to what they were before the loop block.
+  -- This is because all bindings within the loop remain local to it.
+  put loopEndState
+  assign _localBindings bindingsBefore
+
+  -- header block
+  block headerBlockID
+  phiLocalBindings <-
+    phiInstructions
+      ( const True )
+      [ beforeBlockID , loopEndBlockID  ]
+      [ bindingsBefore, loopEndBindings ] -- need loopEndBindings
+
+  -- update local bindings to refer to the phi instructions
+  Map.traverseWithKey
+    ( \ bdName bdID -> modifying ( _localBinding bdName ) ( fmap $ first (const bdID) ) )
+    phiLocalBindings
+  updatedLocalBindings <- use _localBindings
+  (condID, condTy) <- locally (codeGen cond)
+  updatedState <- get
+  ( whenAsserting . when ( condTy /= SPIRV.Boolean ) )
+    ( throwError
+    $  "codeGen: 'while' expected boolean conditional, but got "
+    <> ShortText.pack (show condTy)
+    )
+  loopMerge mergeBlockID loopBlockID SPIRV.NoLoopControl
+  branchConditional condID loopBlockID mergeBlockID
+
+  -- writing the loop block proper
+  {- can't simply use code gen we already did,
+  because the bindings don't refer to the phi instructions as they should
+  -- liftPut $ Binary.putLazyByteString loopBodyASM
+  -}
+  -- do code generation a second time for the loop body,
+  -- but this time with updated local bindings referring to the phi instructions
+  put state
+  assign _localBindings updatedLocalBindings
+  block loopBlockID
+  _ <- codeGen loopBody
+  branch headerBlockID
+  put updatedState -- account for what happened in the loop header (e.g. IDs of phi instructions)
+
+  -- merge block (first block after the loop)
+  block mergeBlockID
+  pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+----------------------------------------------------------------------------
+-- helper for resetting local bindings
+
+locally :: CGMonad a -> CGMonad a
+locally action = do
+  bindingsBefore <- use _localBindings
+  res <- action
+  assign _localBindings bindingsBefore
+  pure res

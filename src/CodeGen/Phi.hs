@@ -29,7 +29,7 @@ import CodeGen.Binary
 import CodeGen.IDs
   ( typeID )
 import CodeGen.Instruction
-  ( ID, Pairs(Pairs), Instruction(..), toArgs )
+  ( ID, Pair(Pair), Instruction(..), toArgs )
 import CodeGen.Monad
   ( CGMonad, MonadFresh(fresh), liftPut )
 import CodeGen.State
@@ -58,9 +58,8 @@ conflicts keyIsOK
       )
   . map (fmap (:[]))
 
--- 'Pairs ID' has the right traversable instance for the 'toArgs' function
--- (recall that 'Pairs a' is a newtype wrapper around '[(a,a)]')
-phiInstruction :: (ID, SPIRV.PrimTy) -> Pairs ID -> CGMonad ()
+-- use "Pair" for the correct "Put" instance for list of pairs
+phiInstruction :: (ID, SPIRV.PrimTy) -> [ Pair ID ID ] -> CGMonad ()
 phiInstruction (v, ty) bdAndBlockIDs
   = do
       tyID <- typeID ty
@@ -81,12 +80,12 @@ phiInstructions isRelevant blocks bindings
       ( \ name idsAndTys ->
         case idsAndTys of
           (_,ty) : _
-            -> let  bdAndBlockIDs :: Pairs ID
+            -> let  bdAndBlockIDs :: [Pair ID ID]
                     bdAndBlockIDs 
-                      = Pairs $ zipWith 
-                                  (\(x_ID, _) blk -> (x_ID, blk))
-                                  idsAndTys
-                                  blocks
+                      = zipWith
+                          (\(x_ID, _) blk -> Pair (x_ID, blk))
+                          idsAndTys
+                          blocks
                in do
                   v <- fresh
                   phiInstruction (v,ty) bdAndBlockIDs

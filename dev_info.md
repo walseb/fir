@@ -219,8 +219,8 @@ Here are a few aspects of the backend that I find interesting and would like to 
   See [FIR.Syntax.Images](src/FIR/Syntax/Images.hs), which includes a detailed explanation.
 
   * Code-generation for branching control flow using ϕ-functions.
-  See [CodeGen.CodeGen](src/CodeGen/CodeGen.hs), specifically the cases of the function
-  `codeGen` for the constructors `IfM` and `While`.
+  See [CodeGen.CFG](src/CodeGen/CFG.hs), specifically the functions
+  `selection` and `while`.
 
   * _Hall of shame_ Vectorisation of functions by applying a function at the wrong type
   using `unsafeCoerce`, manually fixing up the resulting AST, and then using another
