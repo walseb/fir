@@ -8,7 +8,17 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 
-module CodeGen.IDs where
+module CodeGen.IDs
+  ( extInstID
+  , typeID
+  , constID
+  , bindingID
+  , undefID
+  , builtinID
+  , globalID
+  , stringLitID
+  )
+  where
 
 -- base
 import Control.Arrow

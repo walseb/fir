@@ -25,13 +25,13 @@ import Data.Text.Short
 
 -- fir
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import CodeGen.IDs
   ( typeID )
 import CodeGen.Instruction
   ( ID, Pair(Pair), Instruction(..), toArgs )
 import CodeGen.Monad
-  ( CGMonad, MonadFresh(fresh), liftPut )
+  ( CGMonad, MonadFresh(fresh) )
 import CodeGen.State
   ( _localBinding )
 import qualified SPIRV.Operation as SPIRV.Op
@@ -63,7 +63,7 @@ phiInstruction :: (ID, SPIRV.PrimTy) -> [ Pair ID ID ] -> CGMonad ()
 phiInstruction (v, ty) bdAndBlockIDs
   = do
       tyID <- typeID ty
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = SPIRV.Op.Phi
           , resTy     = Just tyID

@@ -170,6 +170,7 @@ module FIR
   , SPIRV.Stage.Fragment
   , SPIRV.Stage.Compute
   , SPIRV.Stage.Shader(..)
+  , SPIRV.Version.Version(..)
   -- image properties
   , SPIRV.Image.Dimensionality(..)
   , SPIRV.Image.HasDepth(..)
@@ -231,8 +232,6 @@ module FIR
   ) where
 
 -- base
-import qualified Control.Monad as Monad
-  ( unless )
 import Data.String
   ( IsString(fromString) )
 import Prelude
@@ -311,9 +310,11 @@ import SPIRV.Control
 import SPIRV.Decoration
 import SPIRV.ExecutionMode
 import SPIRV.Extension
-import qualified SPIRV.Extension as SPIRV
+import qualified SPIRV.Extension  as SPIRV
 import SPIRV.Image
 import SPIRV.Stage
+import SPIRV.Version
+import qualified SPIRV.Version    as SPIRV
 
 ------------------------------------------------
 
@@ -339,7 +340,17 @@ data CompilerFlag
   = NoCode -- ^ Don't emit any SPIR-V code.
   | Debug  -- ^ Include additional debug instructions, such as source-code line-number annotations.
   | Assert -- ^ Include additional assertions.
+  | SPIRV SPIRV.Version -- ^ SPIR-V version number.
   deriving stock ( Prelude.Eq, Show )
+
+updateContextFromFlags :: CGContext -> [ CompilerFlag ] -> CGContext
+updateContextFromFlags = foldl updateContext
+  where
+    updateContext :: CGContext -> CompilerFlag -> CGContext
+    updateContext ctxt NoCode      = ctxt { emittingCode = False }
+    updateContext ctxt Debug       = ctxt { debugging    = True  }
+    updateContext ctxt Assert      = ctxt { asserting    = True  }
+    updateContext ctxt (SPIRV ver) = ctxt { spirvVersion = ver   }
 
 -- | Information about requirements for a given SPIR-V module,
 -- such as which SPIR-V capabilities and extensions are needed.
@@ -362,16 +373,17 @@ newtype ModuleBinary = ModuleBinary { moduleBinary :: ByteString }
 
 -- | Functionality for compiling a program into a SPIR-V module.
 class CompilableProgram prog where
-  compile :: [CompilerFlag] -> prog -> IO ( Either ShortText ( ModuleBinary, ModuleRequirements ) )
+  compile :: [CompilerFlag] -> prog -> IO ( Either ShortText ( Maybe ModuleBinary, ModuleRequirements ) )
   compileTo :: FilePath -> [CompilerFlag] -> prog -> IO ( Either ShortText ModuleRequirements )
   compileTo filePath flags prog =
     compile flags prog Prelude.>>= \case
       Left err
         -> Prelude.pure (Left err)
-      Right (ModuleBinary bytes, reqs)
-        -> Monad.unless ( NoCode `elem` flags )
-              ( ByteString.writeFile filePath bytes )
-           *> Prelude.pure ( Right reqs )
+      Right (mbBin, reqs)
+        | Just (ModuleBinary bytes) <- mbBin
+        -> ( ByteString.writeFile filePath bytes ) *> Prelude.pure ( Right reqs )
+        | otherwise
+        -> Prelude.pure ( Right reqs )
 
 instance KnownDefinitions defs => CompilableProgram (Module defs a) where
   compile flags (Module program)
@@ -384,17 +396,18 @@ instance KnownDefinitions defs => CompilableProgram (Module defs a) where
                   { requiredCapabilities = neededCapabilities
                   , requiredExtensions   = neededExtensions
                   }
-                bin :: ModuleBinary
-                bin =
-                  if NoCode `elem` flags
-                  then ModuleBinary mempty
-                  else ModuleBinary bytes
-              in Prelude.pure  (Right (bin, reqs) )
+                mbBin :: Maybe ModuleBinary
+                mbBin
+                  | emittingCode cgContext
+                  = Just (ModuleBinary bytes)
+                  | otherwise
+                  = Nothing
+              in Prelude.pure ( Right (mbBin, reqs) )
       where cgContext :: CGContext
-            cgContext = (initialCGContext @defs)
-              { debugging = Debug  `elem` flags
-              , asserting = Assert `elem` flags
-              }
+            cgContext =
+              updateContextFromFlags
+                ( initialCGContext @defs )
+                flags
 
 instance ( KnownDefinitions defs )
       => CompilableProgram (ShaderModule name stage defs endState)

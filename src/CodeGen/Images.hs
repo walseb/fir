@@ -27,9 +27,6 @@ import Data.Ord
 import Data.Word
   ( Word32 )
 
--- containers
-import qualified Data.Map as Map
-
 -- mtl
 import Control.Monad.Except
   ( throwError )
@@ -40,7 +37,7 @@ import qualified Data.Text.Short as ShortText
 
 -- fir
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.IDs
@@ -50,9 +47,7 @@ import CodeGen.Instruction
   , Args(Arg,EndArgs), toArgs
   )
 import CodeGen.Monad
-  ( CGMonad, liftPut
-  , MonadFresh(fresh)
-  )
+  ( CGMonad, MonadFresh(fresh) )
 import CodeGen.State
   ( requireCapabilities )
 import Data.Type.Known
@@ -148,7 +143,7 @@ imageTexel (imgID, imgTy) ops coords
                                 )
                 if gathering
                 then do
-                  liftPut $ putInstruction Map.empty
+                  instruction
                     Instruction
                       { operation = gatherOperation dtest
                       , resTy     = Just resTyID
@@ -159,7 +154,7 @@ imageTexel (imgID, imgTy) ops coords
                       }
                   pure False
                 else do
-                  liftPut $ putInstruction Map.empty
+                  instruction
                     Instruction
                       { operation = sampleOperation lod dtest proj
                       , resTy     = Just resTyID
@@ -181,7 +176,7 @@ imageTexel (imgID, imgTy) ops coords
                                ( "codeGen: image read operation provided non-image \
                                  \of type " <> ShortText.pack ( show imgTy )
                                )
-                liftPut $ putInstruction Map.empty
+                instruction
                   Instruction
                     { operation = SPIRV.Op.ImageRead
                     , resTy     = Just resTyID
@@ -227,7 +222,7 @@ writeTexel (imgID, imgTy) ops coords texel
                      ( "codeGen: image write operation provided non-image \
                        \of type " <> ShortText.pack ( show imgTy )
                      )
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = SPIRV.Op.ImageWrite
           , resTy     = Nothing
@@ -254,7 +249,7 @@ addSampler (imgID, imgTy) samplerID
       let sampledImgTy = SPIRV.PrimTy.SampledImage imgTy
       sampledImgTyID <- typeID sampledImgTy
       v <- fresh
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = SPIRV.Op.SampledImage
           , resTy     = Just sampledImgTyID
@@ -271,7 +266,7 @@ removeSampler (imgID, imgTy)
       let plainImgTy = SPIRV.PrimTy.Image imgTy
       plainImgTyID <- typeID plainImgTy
       v <- fresh
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = SPIRV.Op.Image
           , resTy     = Just plainImgTyID

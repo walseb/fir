@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -8,9 +9,16 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-module CodeGen.Binary where
+module CodeGen.Binary
+  ( putModule
+  , instruction
+  , whenEmitting
+  )
+  where
 
 -- base
+import Control.Monad
+  ( when )
 import Data.Coerce
   ( coerce )
 import Data.List
@@ -32,9 +40,15 @@ import qualified Data.Map.Strict as Map
 import Data.Set
   ( Set )
 
+-- lens
+import Control.Lens
+  ( view, use )
+
 -- mtl
 import Control.Monad.Except
   ( ExceptT )
+import Control.Monad.Reader
+  ( MonadReader )
 
 -- text-short
 import Data.Text.Short
@@ -53,9 +67,11 @@ import CodeGen.Instruction
   , Instruction(..)
   )
 import CodeGen.Monad
-  ( note )
+  ( CGMonad, note, liftPut )
 import CodeGen.State
-  ( CGContext(..), CGState(..) )
+  ( CGContext(..), CGState(..)
+  , _knownExtInsts, _emittingCode
+  )
 import Data.Binary.Class.Put
   ( Put(put, wordCount) )
 import Data.Containers.Traversals
@@ -68,6 +84,7 @@ import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Operation     as SPIRV.Op
 import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Stage         as SPIRV
+import qualified SPIRV.Version       as SPIRV
 
 ----------------------------------------------------------------------------
 -- emitting a SPIR-V module
@@ -77,8 +94,8 @@ putModule :: CGContext -> CGState -> ExceptT ShortText Binary.PutM ()
 putModule
   CGContext { .. }
   CGState   { .. }
-  = do
-    lift $ do putHeader               ( idNumber currentID )
+  | emittingCode = do
+    lift $ do putHeader spirvVersion ( idNumber currentID )
               putCapabilities         neededCapabilities
               putExtensions           neededExtensions
               putExtendedInstructions knownExtInsts
@@ -103,9 +120,20 @@ putModule
               putUndefineds           knownUndefineds
 
     putGlobals knownTypes usedGlobals
+  | otherwise = pure ()
 
 ----------------------------------------------------------------------------
 -- individual binary instructions
+
+whenEmitting :: MonadReader CGContext m => m () -> m ()
+whenEmitting action = (`when` action) =<< view _emittingCode
+
+-- | Emit code for an instruction (wrapper).
+instruction :: Instruction -> CGMonad ()
+instruction inst = do
+  whenEmitting do
+    extInsts <- use _knownExtInsts
+    liftPut $ putInstruction extInsts inst
 
 putInstruction :: Map SPIRV.ExtInst ID -> Instruction -> Binary.Put
 putInstruction extInsts
@@ -138,17 +166,17 @@ putInstruction extInsts
                             opArgs
                 }
 
-
-putHeader :: Word32 -> Binary.Put
-putHeader bound
-  = traverse_
-      ( put @Word32 )
-      [ 0x07230203   -- magic number
-      , 0x00010300   -- SPIR-V version 1.3 ( 0 | 1 | 3 | 0 )
-      , 0x21524946   -- FIR!
-      , bound
-      , 0            -- always 0
-      ]
+putHeader :: SPIRV.Version -> Word32 -> Binary.Put
+putHeader ver bound
+  = do
+      put SPIRV.magicNo
+      put ver
+      put libraryMagicNo
+      put bound
+      put ( 0 :: Word32 )
+  where
+    libraryMagicNo :: Word32
+    libraryMagicNo = 0x21524946 -- FIR!
 
 putCapabilities :: Set SPIRV.Capability -> Binary.Put
 putCapabilities = traverseSet_ putCap
@@ -348,12 +376,6 @@ putMemberDecorations
                      }
              )
       )
-
-putInstructionsInOrder :: Map a Instruction -> Binary.Put
-putInstructionsInOrder
-  = traverse_ ( putInstruction Map.empty )
-  . sortOn resID
-  . Map.elems
 
 putTypesAndConstants
   :: Map types     Instruction

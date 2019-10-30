@@ -3,7 +3,11 @@
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeOperators     #-}
 
-module CodeGen.CFG where
+module CodeGen.CFG
+  ( newBlock
+  , selection, ifM, switch, while, locally
+  )
+  where
 
 -- base
 import Control.Arrow
@@ -44,11 +48,13 @@ import qualified Data.Text.Short as ShortText
 import CodeGen.Application
   ( UAST(UAST) )
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import {-# SOURCE #-} CodeGen.CodeGen
   ( codeGen )
 import CodeGen.Debug
   ( whenAsserting )
+import CodeGen.IDs
+  ( typeID )
 import CodeGen.Instruction
   ( Args(Arg, EndArgs), toArgs
   , ID(ID), Instruction(..)
@@ -57,7 +63,7 @@ import CodeGen.Instruction
 import CodeGen.Monad
   ( MonadFresh(fresh)
   , CGMonad, runCGMonad
-  , liftPut, note
+  , note
   )
 import CodeGen.Phi
   ( phiInstruction, phiInstructions )
@@ -80,7 +86,7 @@ import qualified SPIRV.PrimTy    as SPIRV
 
 block :: ID -> CGMonad ()
 block blockID = do
-  liftPut $ putInstruction Map.empty
+  instruction
     Instruction
       { operation = SPIRV.Op.Label
       , resTy = Nothing
@@ -94,7 +100,7 @@ newBlock = fresh >>= block
 
 branch :: ID -> CGMonad ()
 branch branchID
-  = liftPut $ putInstruction Map.empty
+  = instruction
       Instruction
        { operation = SPIRV.Op.Branch
        , resID = Nothing
@@ -104,7 +110,7 @@ branch branchID
 
 branchConditional :: ID -> ID -> ID -> CGMonad ()
 branchConditional b t f
-  = liftPut $ putInstruction Map.empty
+  = instruction
       Instruction
         { operation = SPIRV.Op.BranchConditional
         , resTy = Nothing
@@ -114,9 +120,32 @@ branchConditional b t f
                 $ Arg f EndArgs
         }
 
+select :: ID -> (ID, SPIRV.PrimTy) -> (ID, SPIRV.PrimTy) -> CGMonad (ID, SPIRV.PrimTy)
+select c (o1, ty1) (o2, ty2) = do
+  ( whenAsserting . when (ty1 /= ty2) )
+    ( throwError
+      ( "select: objects of different types: \n\
+        \object 1: " <> ShortText.pack (show ty1) <> "\n\
+        \object 2: " <> ShortText.pack (show ty2) <> "."
+      )
+    )
+  v <- fresh
+  resTyID <- typeID ty1
+  instruction
+    Instruction
+      { operation = SPIRV.Op.Select
+      , resTy     = Just resTyID
+      , resID     = Just v
+      , args      = Arg c
+                  $ Arg o1
+                  $ Arg o2
+                  EndArgs
+      }
+  pure (v, ty1)
+
 selectionMerge :: ID -> Maybe SPIRV.SelectionControl -> CGMonad ()
 selectionMerge mergeBlockID mbControl
-  = liftPut $ putInstruction Map.empty
+  = instruction
       Instruction
         { operation = SPIRV.Op.SelectionMerge
         , resTy     = Nothing
@@ -127,7 +156,7 @@ selectionMerge mergeBlockID mbControl
         }
 loopMerge :: ID -> ID -> SPIRV.LoopControl Word32 -> CGMonad ()
 loopMerge mergeBlockID loopBlockID loopControl
-  = liftPut $ putInstruction Map.empty
+  = instruction
       Instruction
          { operation = SPIRV.Op.LoopMerge
          , resTy = Nothing
@@ -140,7 +169,7 @@ loopMerge mergeBlockID loopBlockID loopControl
 
 multiWaySwitch :: IntegralTy s => ID -> ID -> [Pair s ID] -> CGMonad ()
 multiWaySwitch scrut def ids
-  = liftPut $ putInstruction Map.empty
+  = instruction
       Instruction
         { operation = SPIRV.Op.Switch
         , resTy     = Nothing
@@ -151,16 +180,28 @@ multiWaySwitch scrut def ids
         }
 
 ----------------------------------------------------------------------------
--- code generation for "if" and "switch" statements
+-- code generation for selections (pure or branching)
 
-ifm :: AST b -> AST t -> AST f-> CGMonad (ID, SPIRV.PrimTy)
-ifm cond bodyTrue bodyFalse
-  = selection conditionalHeader [UAST bodyTrue, UAST bodyFalse]
+selection :: AST Bool -> AST a -> AST a -> CGMonad (ID, SPIRV.PrimTy)
+selection cond x y = do
+  (condID, condTy) <- codeGen cond
+  ( whenAsserting . unless ( condTy == SPIRV.Boolean) )
+    ( throwError
+    $  "codeGen: 'select' expected boolean conditional, but got "
+    <> ShortText.pack (show condTy)
+    )
+  o1 <- codeGen x
+  o2 <- codeGen y
+  select condID o1 o2
+
+ifM :: AST b -> AST t -> AST f -> CGMonad (ID, SPIRV.PrimTy)
+ifM cond bodyTrue bodyFalse
+  = branchingSelection conditionalHeader [UAST bodyTrue, UAST bodyFalse]
       where
         conditionalHeader :: [ID] -> ID -> CGMonad ()
         conditionalHeader [trueBlockID, falseBlockID] mergeBlockID = do
           (condID, condTy) <- locally (codeGen cond)
-          ( whenAsserting . when ( condTy /= SPIRV.Boolean ) )
+          ( whenAsserting . unless ( condTy == SPIRV.Boolean ) )
             ( throwError
             $  "codeGen: 'if' expected boolean conditional, but got "
             <> ShortText.pack (show condTy)
@@ -176,7 +217,7 @@ ifm cond bodyTrue bodyFalse
 
 switch :: IntegralTy t => AST s -> AST a -> [(t, UAST)] -> CGMonad (ID, SPIRV.PrimTy)
 switch scrut def cases
-  = selection switchHeader (map snd cases)
+  = branchingSelection switchHeader (map snd cases)
       where
         switchHeader :: [ID] -> ID -> CGMonad ()
         switchHeader caseBlockIDs mergeBlockID = do
@@ -186,8 +227,8 @@ switch scrut def cases
           multiWaySwitch scrutID defID
             (zipWith ( \(t,_) i -> Pair (t,i) ) cases caseBlockIDs)
 
-selection :: ( [ID] -> ID -> CGMonad () ) -> [ UAST ] -> CGMonad (ID, SPIRV.PrimTy)
-selection mkHeader cases = do
+branchingSelection :: ( [ID] -> ID -> CGMonad () ) -> [ UAST ] -> CGMonad (ID, SPIRV.PrimTy)
+branchingSelection mkHeader cases = do
   headerBlockID  <- fresh
   caseBlockIDs   <- traverse (\x -> (,x) <$> fresh) cases
   mergeBlockID   <- fresh

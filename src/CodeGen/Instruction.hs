@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments             #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -74,6 +75,7 @@ data Instruction
   = Instruction
     { operation :: SPIRV.Operation
     , resTy     :: Maybe TyID
+    -- making 'resTy' and 'resID' of different types prevents accidentally mixing them up
     , resID     :: Maybe ID
     , args      :: Args
     }

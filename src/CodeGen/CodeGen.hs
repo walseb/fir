@@ -60,7 +60,7 @@ import CodeGen.Applicative
 import CodeGen.Binary
   ( putModule )
 import CodeGen.CFG
-  ( ifm, switch, while, locally )
+  ( selection, ifM, switch, while, locally )
 import CodeGen.Composite
   ( compositeConstruct, compositeExtract )
 import CodeGen.Debug
@@ -100,6 +100,7 @@ import CodeGen.State
   , _functionContext
   , _localBinding
   , _userFunction
+  , _spirvVersion
   , initialState
   )
 import Data.Type.Known
@@ -126,9 +127,10 @@ import FIR.Syntax.AST
   ( )
 import FIR.Syntax.Optics
   ( SOptic(..), showSOptic )
-import qualified SPIRV.Control   as SPIRV
-import qualified SPIRV.PrimTy    as SPIRV
-import qualified SPIRV.Storage   as Storage
+import qualified SPIRV.Control as SPIRV
+import qualified SPIRV.PrimTy  as SPIRV
+import qualified SPIRV.Storage as Storage
+import qualified SPIRV.Version as SPIRV
 
 ----------------------------------------------------------------------------
 -- run the code generator with given context to create a SPIR-V module
@@ -467,10 +469,24 @@ codeGen (Coerce :$ a) = codeGen a
 -- control flow
 codeGen (Locally :$ a) = locally (codeGen a)
 codeGen (Embed   :$ a) = codeGen a
-codeGen (If :$ c :$ t :$ f)
-  = codeGen (IfM :$ (Return :$ c) :$ (Return :$ t) :$ (Return :$ f))
-codeGen (IfM :$ cond :$ bodyTrue :$ bodyFalse)
-  = ifm cond bodyTrue bodyFalse
+codeGen (If :$ c :$ ( t :: AST a ) :$ f )
+  = do
+      ver <- view _spirvVersion
+      if canUseSelection (primTy @a) ver
+      then selection c t f
+      else ifM       c t f
+    where
+      canUseSelection :: SPIRV.PrimTy -> SPIRV.Version -> Bool
+      canUseSelection (SPIRV.Scalar    _) _ = True
+      canUseSelection (SPIRV.Vector  _ _) _ = True
+      canUseSelection (SPIRV.Pointer _ _) _ = True
+      canUseSelection ty ver
+        | ver < SPIRV.Version 1 4 = False
+        | SPIRV.Matrix {} <- ty   = True
+        | SPIRV.Array  {} <- ty   = True
+        | SPIRV.Struct {} <- ty   = True
+        | otherwise               = False
+codeGen (IfM :$ c :$ t :$ f) = ifM c t f
 codeGen (Switch scrut def cases )
   = codeGen
   ( SwitchM

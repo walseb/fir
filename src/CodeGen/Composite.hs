@@ -17,8 +17,6 @@ module CodeGen.Composite
 import Data.Word
   ( Word32 )
 
--- containers
-import qualified Data.Map.Strict as Map
 
 -- mtl
 import Control.Monad.Except
@@ -34,7 +32,7 @@ import qualified Data.Text.Short as ShortText
 
 -- fir
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import CodeGen.IDs
   ( typeID, undefID )
 import CodeGen.Instruction
@@ -42,11 +40,7 @@ import CodeGen.Instruction
   , ID, Instruction(..)
   )
 import CodeGen.Monad
-  ( CGMonad
-  , MonadFresh(fresh)
-  , liftPut
-  , note
-  )
+  ( CGMonad, MonadFresh(fresh), note )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 import           SPIRV.PrimTy
@@ -59,7 +53,7 @@ compositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad (ID, SPIRV.PrimTy)
 compositeConstruct compositeType constituents
   = do tyID <- typeID compositeType
        v <- fresh
-       liftPut $ putInstruction Map.empty
+       instruction
          Instruction
            { operation = SPIRV.Op.CompositeConstruct
            , resTy = Just tyID
@@ -82,7 +76,7 @@ compositeExtract (compositeID, compositeTy) indices
           ( accessedTy ( fmap Just indices ) compositeTy )
       constituentTyID <- typeID constituentTy
       v <- fresh
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = SPIRV.Op.CompositeExtract
           , resTy     = Just constituentTyID
@@ -112,7 +106,7 @@ compositeInsert (inserteeID, inserteeTy) (compositeID, compositeTy) indices
         then pure inserteeID
         else do
           u <- fresh
-          liftPut $ putInstruction Map.empty
+          instruction
             Instruction
                { operation = SPIRV.Op.BitCast
                , resTy     = Just constituentTyID
@@ -121,7 +115,7 @@ compositeInsert (inserteeID, inserteeTy) (compositeID, compositeTy) indices
                }
           pure u
       v <- fresh
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = SPIRV.Op.CompositeInsert
           , resTy     = Just compositeTyID
@@ -160,7 +154,7 @@ vectorShuffle ((u_ID, SPIRV.Vector n s), is) ((v_ID, SPIRV.Vector _ t), js)
       let indices = is ++ map (+n) js
           shuffleTy = SPIRV.Vector ( fromIntegral (length is + length js) ) s
       shuffleTyID <- typeID shuffleTy
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = SPIRV.Op.VectorShuffle
           , resTy     = Just shuffleTyID

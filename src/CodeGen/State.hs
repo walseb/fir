@@ -79,6 +79,7 @@ import qualified SPIRV.Extension     as SPIRV
 import qualified SPIRV.Image         as SPIRV
 import qualified SPIRV.PrimTy        as SPIRV
 import qualified SPIRV.Stage         as SPIRV
+import qualified SPIRV.Version       as SPIRV
 
 ----------------------------------------------------------------------------
 -- * Code generation state and context
@@ -204,11 +205,11 @@ data CGContext
      , userEntryPoints
           :: Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes
 
-     -- | Capabilities that are required (computed from user definitions).
+       -- | Capabilities that are required (computed from user definitions).
      , userCapabilities
           :: Set                                   SPIRV.Capability
 
-     -- | Extensions that are required (computed from user definitions).
+       -- | Extensions that are required (computed from user definitions).
      , userExtensions
           :: Set                                   SPIRV.Extension
 
@@ -216,11 +217,17 @@ data CGContext
      , userImages
           :: Map ShortText SPIRV.Image
 
+       -- | SPIR-V version to use.
+     , spirvVersion :: SPIRV.Version
+
        -- | Whether to add extra source information in the generated SPIR-V assembly.
      , debugging :: Bool
 
        -- | Whether to enable assertions.
      , asserting :: Bool
+
+       -- | Whether to emit assembly code.
+     , emittingCode :: Bool
      }
   deriving stock Show
 
@@ -233,8 +240,10 @@ emptyContext
       , userCapabilities = Set.empty
       , userExtensions   = Set.empty
       , userImages       = Map.empty
-      , debugging        = True
-      , asserting        = True
+      , spirvVersion     = SPIRV.Version 1 3
+      , debugging        = False
+      , asserting        = False
+      , emittingCode     = True
       }
 
 ----------------------------------------------------------------------------
@@ -440,11 +449,17 @@ _userImages = lens userImages ( \c v -> c { userImages = v } )
 _userImage :: ShortText -> Lens' CGContext ( Maybe SPIRV.Image )
 _userImage image = _userImages . at image
 
+_spirvVersion :: Lens' CGContext SPIRV.Version
+_spirvVersion = lens spirvVersion ( \c v -> c { spirvVersion = v } )
+
 _debugging :: Lens' CGContext Bool
 _debugging = lens debugging ( \c v -> c { debugging = v } )
 
 _asserting :: Lens' CGContext Bool
 _asserting = lens asserting ( \c v -> c { asserting = v } )
+
+_emittingCode :: Lens' CGContext Bool
+_emittingCode = lens emittingCode ( \c v -> c { emittingCode = v } )
 
 -----------------------------------------------------------------------------
 -- * Helper state update functions

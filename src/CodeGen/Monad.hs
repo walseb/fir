@@ -5,7 +5,17 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 
-module CodeGen.Monad where
+module CodeGen.Monad
+  ( MonadFresh(fresh), runFreshSuccT
+  , CGMonad, putCG
+  , liftPut
+  , create, createID
+  , createRec, createIDRec
+  , tryToUse, tryToUseWith
+  , runExceptTPutM, runCGMonad
+  , note
+  )
+  where
 
 -- base
 import Control.Arrow

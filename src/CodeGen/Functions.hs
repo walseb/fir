@@ -3,7 +3,9 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module CodeGen.Functions where
+module CodeGen.Functions
+  ( declareFunction, declareFunctionCall, declareEntryPoint )
+  where
 
 -- base
 import Data.Foldable
@@ -39,7 +41,7 @@ import Data.Text.Short
 
 -- fir
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import CodeGen.CFG
   ( newBlock )
 import CodeGen.IDs
@@ -146,7 +148,7 @@ declareFunctionCall :: (TyID, SPIRV.PrimTy)
                     -> CGMonad ID
 declareFunctionCall res func argIDs
   = do v <- fresh
-       liftPut $ putInstruction Map.empty
+       instruction
          Instruction
            { operation = SPIRV.Op.FunctionCall
            , resTy = Just (fst res)
@@ -169,7 +171,7 @@ declareFunction funName control as b body
            pure (resTyID, fnTyID)
       )
       ( \(resTyID,fnTyID) v -> do
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.Function
             , resTy     = Just resTyID
@@ -180,21 +182,21 @@ declareFunction funName control as b body
         (retValID, _) <- inFunctionContext funName as body
         case b of
           SPIRV.Unit
-            -> liftPut $ putInstruction Map.empty
+            -> instruction
                  Instruction
                    { operation = SPIRV.Op.Return
                    , resTy = Nothing
                    , resID = Nothing
                    , args  = EndArgs
                    }
-          _ -> liftPut $ putInstruction Map.empty
+          _ -> instruction
                  Instruction
                    { operation = SPIRV.Op.ReturnValue
                    , resTy = Nothing
                    , resID = Just retValID
                    , args  = EndArgs
                    }
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.FunctionEnd
             , resTy     = Nothing
@@ -213,12 +215,13 @@ declareArgument argName (argTy, _)
   = createIDRec ( _localBinding argName )
      ( ( , argTy) <$> typeID argTy )
      ( \(argTyID,_) v -> do
-        liftPut $ putInstruction Map.empty Instruction
-          { operation = SPIRV.Op.FunctionParameter
-          , resTy = Just argTyID
-          , resID = Just v
-          , args = EndArgs
-          }
+        instruction
+          Instruction
+            { operation = SPIRV.Op.FunctionParameter
+            , resTy = Just argTyID
+            , resID = Just v
+            , args = EndArgs
+            }
         pure (v, argTy)
      )
 
@@ -243,7 +246,7 @@ declareEntryPoint modelName modelInfo mbIface body
         -- set the required capabilities
         requireCapabilities ( SPIRV.executionModelCapabilities model )
 
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.Function
             , resTy     = Just unitTyID
@@ -252,14 +255,14 @@ declareEntryPoint modelName modelInfo mbIface body
                         $ Arg fnTyID EndArgs
             }
         _ <- inEntryPointContext modelName modelInfo mbIface body
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.Return
             , resTy = Nothing
             , resID = Nothing
             , args  = EndArgs
             }
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.FunctionEnd
             , resTy     = Nothing

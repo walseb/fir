@@ -4,13 +4,9 @@ module CodeGen.PrimOps (primOp) where
 import Control.Monad
   ( void )
 
--- lens
-import Control.Lens
-  ( use )
-
 -- fir
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import CodeGen.IDs
   ( typeID, extInstID )
 import CodeGen.Instruction
@@ -19,11 +15,7 @@ import CodeGen.Instruction
   , Instruction(..)
   )
 import CodeGen.Monad
-  ( CGMonad
-  , MonadFresh(fresh)
-  , liftPut )
-import CodeGen.State
-  ( _knownExtInsts )
+  ( CGMonad, MonadFresh(fresh) )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimOp    as SPIRV
 import qualified SPIRV.PrimTy    as SPIRV
@@ -40,11 +32,9 @@ primOp prim as =
           -> void (extInstID extInst) -- ensure extended instruction set is declared
         _ -> pure ()
 
-      extInsts <- use _knownExtInsts
-
       case retTy of
         SPIRV.Unit -> do
-          liftPut $ putInstruction extInsts
+          instruction
             Instruction
               { operation = op
               , resTy = Nothing
@@ -55,7 +45,7 @@ primOp prim as =
         _ -> do
           resTyID <- typeID retTy
           v <- fresh
-          liftPut $ putInstruction extInsts
+          instruction
             Instruction
               { operation = op
               , resTy = Just resTyID

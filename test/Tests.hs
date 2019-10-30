@@ -38,7 +38,9 @@ allTests
           , ( "Sign"      , Validate  )
           ]
     , Folder "Control"
-          [ ( "Loop", Validate )
+          [ ( "Def"      , Validate )
+          , ( "Loop"     , Validate )
+          , ( "Selection", Validate )
           ]
     , Folder "Geometry"
           [ ( "Geometry"   , Validate  )

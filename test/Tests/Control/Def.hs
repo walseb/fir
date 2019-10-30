@@ -17,7 +17,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type Defs = '[ "position" ':-> Output     '[] (V 4 Float)
+type Defs = '[ "position" ':-> Output     '[Location 0] (V 4 Float)
              , "main"     ':-> EntryPoint '[] Vertex
              ]
 

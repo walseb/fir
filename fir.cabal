@@ -196,6 +196,7 @@ library
       , SPIRV.ScalarTy
       , SPIRV.Stage
       , SPIRV.Storage
+      , SPIRV.Version
 
     build-depends: 
         base

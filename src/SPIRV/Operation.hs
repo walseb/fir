@@ -326,6 +326,8 @@ pattern LogicalAnd      :: Operation
 pattern LogicalAnd      = Code 167
 pattern LogicalNot      :: Operation
 pattern LogicalNot      = Code 168
+pattern Select          :: Operation
+pattern Select          = Code 169
 -- integer comparisons
 pattern IEqual            :: Operation
 pattern IEqual            = Code 170

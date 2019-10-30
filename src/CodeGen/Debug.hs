@@ -15,9 +15,6 @@ import Data.Word
 import qualified GHC.Stack
 import qualified GHC.Stack.Types as GHC.Stack
 
--- containers
-import qualified Data.Map.Strict as Map
-
 -- lens
 import Control.Lens
   ( view )
@@ -34,7 +31,7 @@ import qualified Data.Text.Short as ShortText
 
 -- fir
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import CodeGen.IDs
   ( stringLitID )
 import CodeGen.Instruction
@@ -42,10 +39,7 @@ import CodeGen.Instruction
   , Instruction(..)
   )
 import CodeGen.Monad
-  ( CGMonad
-  , liftPut
-  , note
-  )
+  ( CGMonad, note )
 import CodeGen.State
   ( CGContext
   , _debugging
@@ -82,7 +76,7 @@ putSrcInfo callstack
                   \needed for debug statement"
                   ( sourceInfo callstack )
         fileID <- stringLitID fileName
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.Line
             , resTy = Nothing

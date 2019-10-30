@@ -9,7 +9,15 @@
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
 
-module CodeGen.Application where
+module CodeGen.Application
+  ( UAST(UAST), UASTs(NilUAST, SnocUAST)
+  , ASTs(NilAST, ConsAST)
+  , traverseASTs, astsLength
+  , pattern UApplied
+  , unsafeRetypeUASTs
+  , pattern Applied
+  )
+  where
 
 -- base
 import Data.Kind

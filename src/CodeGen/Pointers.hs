@@ -37,7 +37,7 @@ import qualified Data.Text.Short as ShortText
 
 -- fir
 import CodeGen.Binary
-  ( putInstruction )
+  ( instruction )
 import CodeGen.Composite
   ( accessedTy )
 import CodeGen.IDs
@@ -49,7 +49,6 @@ import CodeGen.Instruction
 import CodeGen.Monad
   ( CGMonad
   , MonadFresh(fresh)
-  , liftPut
   , tryToUse
   , note
   )
@@ -114,7 +113,7 @@ temporaryVariable baseID ptrTy
 declareVariable :: ID -> SPIRV.PointerTy -> CGMonad ()
 declareVariable v ptrTy@(SPIRV.PointerTy storage _)
   = do  ptrTyID <- typeID (SPIRV.pointerTy ptrTy)
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.Variable
             , resTy     = Just ptrTyID
@@ -149,7 +148,7 @@ accessChain (basePtrID, SPIRV.PointerTy storage baseTy) safe indices
           accessPtrTy = SPIRV.PointerTy storage eltTy
       accessPtrTyID <- typeID (SPIRV.pointerTy accessPtrTy)
       v <- fresh
-      liftPut $ putInstruction Map.empty
+      instruction
         Instruction
           { operation = opAccessChain
           , resTy     = Just accessPtrTyID
@@ -205,7 +204,7 @@ loadInstruction :: SPIRV.PrimTy -> ID -> CGMonad (ID, SPIRV.PrimTy)
 loadInstruction ty loadeeID
   = do  tyID <- typeID ty
         v <- fresh
-        liftPut $ putInstruction Map.empty
+        instruction
           Instruction
             { operation = SPIRV.Op.Load
             , resTy = Just tyID
@@ -231,7 +230,7 @@ store (storeeName, storeeID) pointerID (SPIRV.PointerTy storage _)
 
 storeInstruction :: ID -> ID -> CGMonad ()
 storeInstruction pointerID storeeID
-  = liftPut $ putInstruction Map.empty
+  = instruction
       Instruction
         { operation = SPIRV.Op.Store
         , resTy = Nothing
