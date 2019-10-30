@@ -69,7 +69,7 @@ intersectAABB
   :: forall (s :: ProgramState). ( _ )
   => Ray (AST (V 3 Float))
   -> AABB (AST (V 3 Float))
-  -> Codensity AST ( AST (Struct '[ "tMin" ':-> Float, "tMax" ':-> Float ]) := s ) s
+  -> Program s s ( AST Float, AST Float )
 intersectAABB
   Ray  { pos, invDir }
   AABB { low, high   }
@@ -86,14 +86,14 @@ intersectAABB
           tMin = maxV3 ( min @(AST Float) <$$> t1 <**> t2 )
           tMax = minV3 ( max @(AST Float) <$$> t1 <**> t2 )
 
-        pure ( Struct ( tMin :& tMax :& End ) )
+        pure ( tMin, tMax )
 
 
 intersectTriangle
   :: forall (s :: ProgramState). ( _ )
   => Ray (AST (V 3 Float))
   -> Triangle (AST (V 3 Float))
-  -> Codensity AST ( AST ( Struct '[ "t" ':-> Float, "uv" ':-> V 2 Float ] ) := s) s
+  -> Program s s ( AST Float, AST (V 2 Float) )
 intersectTriangle
   Ray { pos, dir }
   Triangle { v0, v1, v2 }
@@ -111,7 +111,7 @@ intersectTriangle
           v = f * ( dir `dot` q )
           t = f * ( e2  `dot` q )
 
-        pure ( Struct ( t :& Vec2 u v :& End ) )
+        pure (t, Vec2 u v)
 
 
 onTriangle :: AST (V 2 Float) -> AST Bool
@@ -212,7 +212,7 @@ type ComputeDefs =
                     Compute
    ]
 
-computeShader :: Module ComputeDefs ()
+computeShader :: Module ComputeDefs
 computeShader = Module $ entryPoint @"main" @Compute do
 
     ~(Vec3 i_x i_y _) <- get @"gl_GlobalInvocationID"
@@ -256,9 +256,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
 
         let ray = Ray { pos, dir, invDir }
 
-        aabbIntersection <- ray `intersectAABB` cube
-        tMin <- def @"tMin" @R $ view @(Name "tMin") aabbIntersection
-        tMax <- def @"tMax" @R $ view @(Name "tMax") aabbIntersection
+        (tMin, tMax) <- ray `intersectAABB` cube
 
         let
           cubeOut :: AST (V 3 Float)
@@ -294,12 +292,8 @@ computeShader = Module $ entryPoint @"main" @Compute do
           _ <- def @"hitCol" @RW cubeCol
           _ <- def @"hit_t"  @RW tMax
 
-          ixFor_ sceneTriangles \ (tri, col) -> locally do
-
-              triIntersection <- ray `intersectTriangle` tri
-              t  <- def @"t"  @R $ view @(Field "t" ) triIntersection
-              uv <- def @"uv" @R $ view @(Field "uv") triIntersection
-
+          ixFor_ sceneTriangles \ (tri, col) -> do
+              (t, uv) <- ray `intersectTriangle` tri
               curr_t <- get @"hit_t"
               when (t > 0 && onTriangle uv && t < curr_t) do
                 put @"hitCol" col

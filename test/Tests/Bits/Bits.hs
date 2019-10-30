@@ -23,7 +23,7 @@ type Defs = '[ "x"    ':-> Input  '[Location 0] Word32
              , "main" ':-> EntryPoint '[] Vertex
              ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @Vertex do
 
     a <- get @"x" .&. get @"y"

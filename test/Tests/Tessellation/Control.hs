@@ -19,7 +19,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type TessellationControlDefs =
+type Defs =
   '[ "in_col"   ':-> Input  '[ Location 0 ] (Array 3 (V 4 Float))
    , "out_col"  ':-> Output '[ Location 0 ] (Array 3 (V 4 Float))
    , "patchOut" ':-> Output '[ Patch ]
@@ -28,7 +28,7 @@ type TessellationControlDefs =
                       TessellationControl
    ]
 
-program :: Module TessellationControlDefs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @TessellationControl do
   
   i <- get @"gl_InvocationID"

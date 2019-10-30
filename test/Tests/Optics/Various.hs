@@ -61,7 +61,7 @@ type Defs
      , "out_col" ':-> Output '[Location 0] ( V 4 Float )
      ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
 
   entryPoint @"main" @Vertex do

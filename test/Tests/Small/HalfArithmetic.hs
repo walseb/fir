@@ -25,7 +25,7 @@ type Defs
       , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment
       ]
 
-program :: Module Defs ()
+program :: Module Defs
 program =
   Module $ entryPoint @"main" @Fragment do
     def @"h" @R @Half (5 * pi / 4)

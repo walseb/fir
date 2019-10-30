@@ -77,14 +77,14 @@ FIR
  │  │   Syntax for objects of type 'AST a'.
  │  │   Mostly contains type-class instances, e.g. 'Floating a => Floating (AST a)'.
  │  │  
- │  ├╴Codensity
- │  │   Syntax for objects of type 'Codensity AST (AST a := j) i'.
+ │  ├╴Program
+ │  │   Syntax for objects of type 'Program i j a', i.e. 'Codensity AST (a := j) i'.
  │  │   Most importantly, stateful operations:
  │  │     - 'get'/'put'/'use'/'assign',
  │  │     - 'imageRead'/'imageWrite',
  │  │     - control flow: loops, monadic if statement,
  │  │     - 'emitVertex'/'endPrimitive' operations for geometry shaders.
- │  │   Also contains type-class instances, e.g. 'Floating a => Floating (Codensity AST (AST a := i) i)'.
+ │  │   Also contains type-class instances, e.g. 'Floating a => Floating (Program i i a)'.
  │  │   
  │  ├╴Labels
  │  │   Optional imperative-like syntax for stateful 'get'/'put' operations,
@@ -209,7 +209,7 @@ Here are a few aspects of the backend that I find interesting and would like to 
   which in conjunction with the `Syntactic` type-class provides
   a convenient way to handle monadic AST tagged with type-level information.    
   See [Control.Monad.Indexed](src/Control/Monad/Indexed.hs) for the definition
-  of the codensity transformation, and [FIR.Syntax.Codensity](src/FIR/Syntax/Codensity.hs)
+  of the codensity transformation, and [FIR.Syntax.Program](src/FIR/Syntax/Program.hs)
   for the `Syntactic` instance which allow the library to easily internalise and externalise
   stateful code, preserving the ability to do code-generation.
 

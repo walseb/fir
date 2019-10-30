@@ -15,8 +15,8 @@
 {-|
 Module: FIR.Syntax.Images 
 
-This module allows for the operations 'FIR.Syntax.Codensity.use'
-and 'FIR.Syntax.Codensity.assign' to work with images, by providing the 'ImageTexel' lens.
+This module allows for the operations 'FIR.Syntax.Program.use'
+and 'FIR.Syntax.Program.assign' to work with images, by providing the 'ImageTexel' lens.
 
 This allows accessing image data in a shader like so:
 

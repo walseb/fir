@@ -25,7 +25,7 @@ type Defs = '[ "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
              , "main"    ':-> EntryPoint '[] Vertex
              ]
 
-program :: Module Defs ()
+program :: Module Defs
 program =
   Module $ entryPoint @"main" @Vertex do
     ubo    <- use @(Name "ubo")

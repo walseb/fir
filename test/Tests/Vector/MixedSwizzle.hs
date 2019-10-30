@@ -29,7 +29,7 @@ type Defs = '[ "in_col"  ':-> Input      '[Location 0] (V 4 Float)
              ]
 
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @Fragment do
 
     col <- use @(Name "in_col" :.: Swizzle "rgxb") -- cannot mix "rgba" and "xyzw"

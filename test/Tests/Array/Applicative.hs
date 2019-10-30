@@ -23,7 +23,7 @@ type Defs = '[ "arr"  ':-> Input      '[ Location 0 ] (Array 17 Float)
              , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
              ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
 
   entryPoint @"main" @Fragment do

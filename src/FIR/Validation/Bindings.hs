@@ -10,7 +10,7 @@
 Module: FIR.Validation.Bindings
 
 Validation module providing checks for stateful operations
-such as 'FIR.Syntax.Codensity.get' and 'FIR.Syntax.Codensity.put',
+such as 'FIR.Syntax.Program.get' and 'FIR.Syntax.Program.put',
 using type families with custom type errors.
 
 These are used, for instance, to prevent any name from being bound twice,
@@ -85,7 +85,7 @@ type family HasBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   HasBinding _ ('Just (Fun as b)) = FunctionType as b
 
 -------------------------------------------------
--- * Constraints for 'FIR.Syntax.Codensity.get' and 'FIR.Syntax.Codensity.use'
+-- * Constraints for 'FIR.Syntax.Program.get' and 'FIR.Syntax.Program.use'
 
 -- | Check whether we can 'get' a binding.
 type family CanGet (k :: Symbol) (i :: ProgramState) :: Constraint where
@@ -105,7 +105,7 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
   GetBinding _ ('Just (Fun as b)) = ()
 
 -------------------------------------------------
--- * Constraints for 'FIR.Syntax.Codensity.put' and 'FIR.Syntax.Codensity.assign'
+-- * Constraints for 'FIR.Syntax.Program.put' and 'FIR.Syntax.Program.assign'
 
 -- | Check whether we can write to a binding.
 type family CanPut (k :: Symbol) (i :: ProgramState) :: Constraint where
@@ -131,7 +131,7 @@ type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Constraint whe
         )
 
 -------------------------------------------------
--- * Constraints for 'FIR.Syntax.Codensity.def'
+-- * Constraints for 'FIR.Syntax.Program.def'
 
 -- | Add a new binding to the indexed state.
 type family AddBinding
@@ -154,7 +154,7 @@ type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constra
     ( Text "'def': a binding by the name " :<>: ShowType k :<>: Text " already exists." )
 
 -------------------------------------------------
--- * Constraints for 'FIR.Syntax.Codensity.fundef'
+-- * Constraints for 'FIR.Syntax.Program.fundef'
 
 -- | Indexed monadic state at start of function body.
 --
@@ -345,7 +345,7 @@ type family NoFunctionNameConflict
   NoFunctionNameConflict _ 'Nothing = ()
 
 -------------------------------------------------
--- * Constraints for 'FIR.Syntax.Codensity.entryPoint'
+-- * Constraints for 'FIR.Syntax.Program.entryPoint'
 
 -- | Check that an entry point definition is valid.
 --
@@ -576,7 +576,7 @@ type family BuiltinDoesNotAppearBefore
                 )
 
 -------------------------------------------------
--- * Constraints for 'FIR.Syntax.Codensity.embed'.
+-- * Constraints for 'FIR.Syntax.Program.embed'.
 
 type family Embeddable (i :: ProgramState) (j :: ProgramState) :: Constraint where
   Embeddable ('ProgramState '[] 'TopLevel '[] _) _ = ()

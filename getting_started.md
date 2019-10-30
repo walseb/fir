@@ -87,8 +87,8 @@ Type class overloading allows for simple construction of values of this type, e.
 ```haskell
 ( \ t -> exp ( - tan t ** 2 ) / ( cos t ** 4 ) ) :: AST Float -> AST Float
 ```
-* __`Module defs a`__: a program that can be compiled to a SPIR-V module. `defs` is a type-level map which specifies the program inputs/outputs, top-level functions and entry-points; this is the mechanism by which the user specifies shader interfaces and execution modes.
-* __`Codensity AST (AST a := j) i`__: an *indexed* monadic expression, starting in state `i` and ending in state `j`. Can be thought of as stateful GPU code producing a value of type `a`. The additional type-level information (the indices) allows the library to enforce program correctness.
+* __`Module defs`__: a program that can be compiled to a SPIR-V module. `defs` is a type-level map which specifies the program inputs/outputs, top-level functions and entry-points; this is the mechanism by which the user specifies shader interfaces and execution modes.
+* __`Program i j a`__: an *indexed* monadic expression, starting in state `i` and ending in state `j`. Can be thought of as stateful GPU code producing a value of type `a`. The additional type-level information (the indices) allows the library to enforce program correctness.
 
 Shaders are written using __do__ notation, using this indexed monad (with *RebindableSyntax*).
 Stateful operations such as reading/writing data use lens-like syntax, such as:
@@ -112,7 +112,7 @@ type VertexShaderDefs =
    , "main"   ':-> EntryPoint '[] Vertex
    ]
 
-vertexShader :: Module VertexShaderDefs ()
+vertexShader :: Module VertexShaderDefs
 vertexShader = Module $ entryPoint @"main" @Vertex do
   mvp <- use @(Name "ubo" :.: Name "mvp") -- (:.:) denotes composition of type-level lenses
   in_pos <- get @"in_pos"
@@ -133,7 +133,7 @@ See [FIR.Layout](src/FIR/Layout.hs).
 
 To compile a shader to a file, use the `compileTo` function:
 ```haskell
-compileTo :: FilePath -> [CompilerFlag] -> Module defs a -> IO ( Either ShortText ModuleRequirements )
+compileTo :: FilePath -> [CompilerFlag] -> Module defs -> IO ( Either ShortText ModuleRequirements )
 ```
 To compile the above vertex shader, we can run the function
 ```haskell
@@ -205,7 +205,7 @@ shaderCompilationResult
 
 Note that it is also possible to directly obtain a SPIR-V binary by using the `compile` function:
 ```haskell
-compile :: [CompilerFlag] -> Module defs a -> IO ( Either ShortText ( ModuleBinary, ModuleRequirements ) )
+compile :: [CompilerFlag] -> Module defs -> IO ( Either ShortText ( Maybe ModuleBinary, ModuleRequirements ) )
 ```
 Such binaries can be passed directly to Vulkan without needing any disk read/write operations.
 
@@ -277,7 +277,7 @@ This effect can compound rapidly with successive inlinings, so it is best to be 
 To circumvent this problem, we define variables that record the result of intermediate computations, as follows:
 
 ```haskell
-shared :: AST Float -> Codensity AST (AST (V 3 Float) := _j) _i
+shared :: AST Float -> Program _i _j (AST (V 3 Float))
 shared t = do
   u <- def @"u" @R $ cos ( 2 * pi * t )
   pure (Vec3 u u u)

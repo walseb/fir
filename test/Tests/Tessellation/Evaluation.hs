@@ -19,7 +19,7 @@ import Math.Linear
 ------------------------------------------------
 -- program
 
-type TessellationEvaluationDefs =
+type Defs =
   '[ "in_cols" ':-> Input      '[ Location 0 ] (Array 3 (V 4 Float))
    , "out_col" ':-> Output     '[ Location 0 ] (V 4 Float)
    , "ubo"     ':-> Uniform '[ Binding 0, DescriptorSet 0 ]
@@ -30,7 +30,7 @@ type TessellationEvaluationDefs =
    , "main"    ':-> EntryPoint '[ Triangles ] TessellationEvaluation
    ]
 
-program :: Module TessellationEvaluationDefs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @TessellationEvaluation do
   ~(Vec3 u v w) <- get @"gl_TessCoord"
   

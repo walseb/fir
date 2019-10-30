@@ -41,11 +41,11 @@ Here are some of the library's __features__:
 
 Current __limitations__ of the library include:
 
-  * No support for sum types, or for user-defined types such as newtypes. This is not a fundamental limitation, and will hopefully be addressed in the future.
-  * Lack of validation involving device limits. This should also be addressed in the future.
-  * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be circumvented as explained in the ["getting started" guide](getting_started.md#inlining).
+  * Inconsistent quality of error messages. This is a work in progress: the custom type errors are concise and informative, but every now and then GHC produces large error messages with internal representations leaking out.
+  * Lack of validation involving device limits. This should be addressed in the future.
+  * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be mitigated as explained in the ["getting started" guide](getting_started.md#inlining).
   * Meta-programming is difficult. This is due to the type-level information that is carried around, which can hardly cope being made polymorphic.
-  It is possible that a GHC type-checking plugin could address this limitation.  
+  It is possible that a GHC type-checking plugin could address this limitation. 
 
 See also the library's [issue tracker](https://gitlab.com/sheaf/fir/issues) for other missing features and limitations.
 

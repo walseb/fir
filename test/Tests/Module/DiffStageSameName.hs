@@ -22,7 +22,7 @@ type Defs =
    , "main" ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
   entryPoint @"main" @Vertex   do
     put @"out" =<< get @"in"

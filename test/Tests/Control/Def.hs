@@ -21,7 +21,7 @@ type Defs = '[ "position" ':-> Output     '[Location 0] (V 4 Float)
              , "main"     ':-> EntryPoint '[] Vertex
              ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
 
   entryPoint @"main" @Vertex do

@@ -32,7 +32,7 @@ type GeometryDefs =
                           Geometry
    ]
 
-program :: Module GeometryDefs ()
+program :: Module GeometryDefs
 program = Module $ entryPoint @"main" @Geometry do
   v0 <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position")
   v1 <- use @(Name "gl_in" :.: Index 1 :.: Name "gl_Position")

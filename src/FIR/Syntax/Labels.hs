@@ -77,15 +77,15 @@ import GHC.TypeLits
   ( Symbol, KnownSymbol )
 
 -- fir
-import Control.Monad.Indexed
-  ( Codensity, (:=) )
 import Control.Type.Optic
   ( Optic, Name )
 import FIR.AST
   ( AST )
 import FIR.Binding
   ( Var, R, RW )
-import FIR.Syntax.Codensity
+import FIR.Module
+  ( Program )
+import FIR.Syntax.Program
   ( def, use, assign, modifying )
 import FIR.Prim.Singletons
   ( PrimTy )
@@ -126,10 +126,11 @@ instance ( KnownSymbol k
          , PrimTy a
          , a ~ Has k i
          , CanGet k i
-         , r ~ (AST a := i)
+         , r ~ AST a
+         , j ~ i
          , usage ~ 'Use k i
          )
-      => IsLabel k a usage (Codensity AST r i) where
+      => IsLabel k a usage (Program i j r) where
   fromLabel = use @(Name k :: Optic '[] i a)
 
 --------------------------------------------------------------------------
@@ -148,7 +149,7 @@ infixr 1 .=
         )
      => Label k a
      -> AST a
-     -> Codensity AST (AST a := AddBinding k (Var RW a) i) i
+     -> Program i (AddBinding k (Var RW a) i) (AST a)
 _ #= a = def @k @RW a
 
 -- | Define a new constant using a label.
@@ -160,7 +161,7 @@ _ #= a = def @k @RW a
         )
      => Label k a
      -> AST a
-     -> Codensity AST (AST a := AddBinding k (Var R a) i) i
+     -> Program i (AddBinding k (Var R a) i) (AST a)
 _ #=! a = def @k @R a
 
 -- | Set the value of a variable with given label.
@@ -173,7 +174,7 @@ _ #=! a = def @k @R a
         )
      => Label k a
      -> AST a
-     -> Codensity AST (AST () := i) i
+     -> Program i i (AST ())
 _ .= a = assign @(Name k :: Optic '[] i a) a
 
 -- | Modify a variable with given label using a function.
@@ -186,5 +187,5 @@ _ .= a = assign @(Name k :: Optic '[] i a) a
         )
      => Label k a
      -> (AST a -> AST a)
-     -> Codensity AST (AST () := i) i
+     -> Program i i (AST ())
 _ %= f = modifying @(Name k :: Optic '[] i a) f

@@ -26,7 +26,7 @@ type Defs
       , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment
       ]
 
-program :: Module Defs ()
+program :: Module Defs
 program =
   Module $ entryPoint @"main" @Fragment do
     pos <- get @"in_pos"

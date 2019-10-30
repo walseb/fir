@@ -23,7 +23,7 @@
 {-|
 Module: FIR.Syntax.AST
 
-This module, together with "FIR.Syntax.Codensity",
+This module, together with "FIR.Syntax.Program",
 provides most of the user-facing syntax for constructing
 and manipulating values in the EDSL.
 
@@ -102,7 +102,7 @@ import Data.Type.List
   , type (:++:), Postpend
   )
 import Data.Type.Map
-  ( (:->), Key )
+  ( (:->)((:->)), Key )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal, toAST, fromAST)
@@ -126,7 +126,7 @@ import FIR.Prim.Singletons
   , KnownArity
   )
 import FIR.Prim.Struct
-  ( Struct )
+  ( Struct((:&), End) )
 import FIR.Validation.Bounds
   ( StructIndexFromName )
 import Math.Algebra.Class
@@ -988,12 +988,30 @@ instance Syntactic () where
   toAST   = const ( Lit () )
   fromAST = const ()
 
-{-
-instance (Syntactic a, Syntactic b) => Syntactic (a,b) where
-  type Internal (a,b) = (Internal a, Internal b)
-  toAST  (a,b) = Pair :$ toAST a :$ toAST b
-  fromAST p = ( fromAST (Fst :$ p), fromAST (Snd :$ p) )
--}
+instance ( Syntactic a, Syntactic b
+         , PrimTy (Internal a)
+         , PrimTy (Internal b)
+         ) => Syntactic (a,b) where
+  type Internal (a,b) = Struct '[ "_0" ':-> Internal a, "_1" ':-> Internal b ]
+  toAST (a,b) = Struct ( toAST a :& toAST b :& End )
+  fromAST struct =
+    ( fromAST (view @(Index 0) struct)
+    , fromAST (view @(Index 1) struct)
+    )
+
+instance ( Syntactic a, Syntactic b, Syntactic c
+         , PrimTy (Internal a)
+         , PrimTy (Internal b)
+         , PrimTy (Internal c)
+         ) => Syntactic (a,b,c) where
+  type Internal (a,b,c)
+    = Struct '[ "_0" ':-> Internal a, "_1" ':-> Internal b, "_2" ':-> Internal c ]
+  toAST (a,b,c) = Struct ( toAST a :& toAST b :& toAST c :& End )
+  fromAST struct =
+    ( fromAST (view @(Index 0) struct)
+    , fromAST (view @(Index 1) struct)
+    , fromAST (view @(Index 2) struct)
+    )
 
 -- utility type for the following instance declaration
 newtype B n a b i = B { unB :: AST (NatVariadic (n-i) a b) }
@@ -1146,4 +1164,3 @@ instance (ScalarTy a, Floating a) => Matrix Nat (AST (M 0 0 a)) where
   (!*) :: forall i j. (KnownNat i, KnownNat j)
        => AST (M i j a) -> AST a -> AST (M i j a)
   (!*) = primOp @'(a,i,j) @SPIRV.MMulK
-

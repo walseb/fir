@@ -26,7 +26,7 @@ type Defs = '[ "in_col1" ':-> Input      '[Location 0] (V 3 Float)
              , "main"    ':-> EntryPoint '[OriginUpperLeft] Fragment
              ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
 
   entryPoint @"main" @Fragment do

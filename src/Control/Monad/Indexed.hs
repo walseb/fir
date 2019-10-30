@@ -38,7 +38,7 @@ module Control.Monad.Indexed
   , (*>>), (<<*), ixLiftA2, ixLiftA3, ixLiftA4
 
     -- ** Foldable/traversable operations
-  , IxId(ixId)
+  , IxF(..)
   , ixTraverse, ixFor
   , ixTraverse_, ixFor_
 
@@ -138,7 +138,7 @@ withKey f (AtKey a) = AtKey (f a)
 ------------------------------------------------------------
 -- useful operators & functions for AtKey-style indexing
 
-ixFmap :: FunctorIx m => (a -> b) -> m (a := j) i -> m (b := j) i
+ixFmap :: forall m i j a b. FunctorIx m => (a -> b) -> m (a := j) i -> m (b := j) i
 ixFmap f = fmapIx ( withKey f )
 
 infixl 4 <<$>>
@@ -190,23 +190,23 @@ ixLiftA4 f a b c d = f <<$>> a <<*>> b <<*>> c <<*>> d
 ------------------------------------------------
 -- foldable/traversable
 
--- newtype for state-preserving operations
-newtype IxId f i a = IxId { ixId :: f (a := i) i }
+-- newtype to put type variable last
+newtype IxF f i j a = IxF { ixF :: f (a := j) i }
 
-instance FunctorIx f => Prelude.Functor (IxId f i) where
-  fmap :: forall a b. (a -> b) -> (IxId f i a -> IxId f i b)
-  fmap = coerce ( ixFmap @f @a @b @i @i )
-instance IxApplicative f => Prelude.Applicative (IxId f i) where
-  pure :: forall a. a -> IxId f i a
+instance FunctorIx f => Prelude.Functor (IxF f i j) where
+  fmap :: forall a b. (a -> b) -> (IxF f i j a -> IxF f i j b)
+  fmap = coerce ( ixFmap @f @i @j @a @b)
+instance IxApplicative f => Prelude.Applicative (IxF f i i) where
+  pure :: forall a. a -> IxF f i i a
   pure = coerce ( ixPure @f @a @i )
-  (<*>) :: forall a b. IxId f i (a -> b) -> (IxId f i a -> IxId f i b)
+  (<*>) :: forall a b. IxF f i i (a -> b) -> (IxF f i i a -> IxF f i i b)
   (<*>) = coerce ( (<<*>>) @f @a @b @i @i @i )
 
 ixTraverse
   :: forall f t a b i.
      (Prelude.Traversable t, IxApplicative f)
   => (a -> f (b := i) i) -> t a -> f (t b := i) i
-ixTraverse f = coerce ( traverse @t (IxId . f) )
+ixTraverse f = coerce ( traverse @t (IxF . f) )
 
 ixFor
   :: forall f t a b i.
@@ -218,7 +218,7 @@ ixTraverse_
   :: forall f t a b i.
      (Prelude.Foldable t, IxApplicative f)
   => (a -> f (b := i) i) -> t a -> f (() := i) i
-ixTraverse_ f = coerce ( traverse_ @t (IxId . f) )
+ixTraverse_ f = coerce ( traverse_ @t (IxF . f) )
 
 ixFor_
   :: (Prelude.Foldable t, IxApplicative f)

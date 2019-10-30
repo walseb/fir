@@ -57,16 +57,16 @@ fragment =
 
 Note the lens-like operations:
 
-  - @'FIR.Syntax.Codensity.get' \@"in_pos"@ – equivalent to
-    @'FIR.Syntax.Codensity.use' \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
+  - @'FIR.Syntax.Program.get' \@"in_pos"@ – equivalent to
+    @'FIR.Syntax.Program.use' \@(Name "in_pos")@ – obtains the shader input varying "in_pos".
     This operation is similar to @get@ in a state monad, except that an additional binding name
     is provided via a type application.
-  - @'FIR.Syntax.Codensity.use' \@(ImageTexel "image") NilOps pos@ samples the provided image
+  - @'FIR.Syntax.Program.use' \@(ImageTexel "image") NilOps pos@ samples the provided image
     at coordinates @pos@. Additional image operands can be provided for this sampling operation,
     such as an explicit level of detail or whether to use projective coordinates
     (refer to the SPIR-V specification for further information concerning image operands).
-  - @'FIR.Syntax.Codensity.put' \@"out_col" col@ – equivalent to
-    @'FIR.Syntax.Codensity.assign' \@(Name "out_col") col@ –
+  - @'FIR.Syntax.Program.put' \@"out_col" col@ – equivalent to
+    @'FIR.Syntax.Program.assign' \@(Name "out_col") col@ –
     sets the output value of the shader.
 
 
@@ -127,9 +127,10 @@ module FIR
       , EntryPoint
       )
   , module FIR.Syntax.AST
-  , module FIR.Syntax.Codensity
   , module FIR.Syntax.Images
   , module FIR.Syntax.Optics
+  , module FIR.Syntax.Option
+  , module FIR.Syntax.Program
   , module FIR.Syntax.Swizzle
   , module FIR.Syntax.Synonyms
   , FIR.Layout.Layout(..)
@@ -293,9 +294,10 @@ import FIR.Prim.Singletons
 import FIR.Prim.Struct
 import FIR.ProgramState
 import FIR.Syntax.AST
-import FIR.Syntax.Codensity
 import FIR.Syntax.Images
 import FIR.Syntax.Optics
+import FIR.Syntax.Option
+import FIR.Syntax.Program
 import FIR.Syntax.Swizzle
 import FIR.Syntax.Synonyms
 import Instances.TH.Lift
@@ -328,9 +330,9 @@ class DrawableProgramAST prog where
 
 instance DrawableProgramAST (AST a) where
   showAST = showTree . toTree
-instance DrawableProgramAST (Codensity AST (AST a := j) i) where
+instance Syntactic a => DrawableProgramAST (Codensity AST (a := j) i) where
   showAST = showTree . toTree . toAST
-instance DrawableProgramAST (Module defs a) where
+instance DrawableProgramAST (Module def) where
   showAST (Module prog) = showAST prog
 instance DrawableProgramAST (ShaderModule name stage defs endState) where
   showAST (ShaderModule prog) = showAST prog
@@ -385,7 +387,7 @@ class CompilableProgram prog where
         | otherwise
         -> Prelude.pure ( Right reqs )
 
-instance KnownDefinitions defs => CompilableProgram (Module defs a) where
+instance ( KnownDefinitions defs ) => CompilableProgram (Module defs) where
   compile flags (Module program)
     = case runCodeGen cgContext (toAST program) of
         Left  err -> Prelude.pure ( Left err )

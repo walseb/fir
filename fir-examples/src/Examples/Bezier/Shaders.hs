@@ -134,7 +134,7 @@ tessellationEvaluation = shader do
 miterConstant :: AST Float
 miterConstant = Lit 0.8660255 -- sqrt 3 / 2, rounded up slightly
 
-miter :: AST (V 4 Float) -> AST (V 4 Float) -> Codensity AST ( AST (V 4 Float) := i ) i
+miter :: AST (V 4 Float) -> AST (V 4 Float) -> Program i i (AST (V 4 Float))
 miter u v = do
   #w   #= view @(Swizzle "xyz") u `cross` view @(Swizzle "xyz") v
   #sec #= invSqrt (w `dot` w)

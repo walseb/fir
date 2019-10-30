@@ -21,7 +21,7 @@ type Defs = '[ "x"    ':-> Input      '[Location 0] Float
              , "main" ':-> EntryPoint '[OriginUpperLeft] Fragment
              ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @Fragment do
 
   -- test "selection" instruction

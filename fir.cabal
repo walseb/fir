@@ -160,9 +160,10 @@ library
       , FIR.Prim.Op
       , FIR.ProgramState
       , FIR.Syntax.AST
-      , FIR.Syntax.Codensity
       , FIR.Syntax.Images
       , FIR.Syntax.Optics
+      , FIR.Syntax.Option
+      , FIR.Syntax.Program
       , FIR.Syntax.Swizzle
       , FIR.Syntax.Synonyms
       , FIR.Validation.Ambiguity

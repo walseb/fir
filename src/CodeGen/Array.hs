@@ -48,7 +48,7 @@ import FIR.ProgramState
   ( ProgramState(ProgramState) )
 import FIR.Syntax.AST
   ( )
-import FIR.Syntax.Codensity
+import FIR.Syntax.Program
   ( def, get, put, assign
   , locally, while
   )

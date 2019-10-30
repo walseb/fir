@@ -38,7 +38,7 @@ blue2 :: V 3 Float
 blue2 = view @(Swizzle "rgb") blue1
 
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @Fragment do
 
     col1 <- use @(Name "in_col" :.: Swizzle "rgb")

@@ -28,7 +28,7 @@ type Defs
      , "main"       ':-> EntryPoint '[] Vertex
      ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
 
   entryPoint @"main" @Vertex do

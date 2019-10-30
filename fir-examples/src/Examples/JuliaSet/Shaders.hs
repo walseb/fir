@@ -118,7 +118,7 @@ fragment = shader do
       while ( #ySampleNo #< pure ySamples ) do
 
 
-        xNo <- #xSampleNo 
+        xNo <- #xSampleNo
         yNo <- #ySampleNo
 
         let

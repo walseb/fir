@@ -28,7 +28,7 @@ type Defs
      ]
 
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
 
   (f :: AST Float -> AST Float) <- fundef @"f" do

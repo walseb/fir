@@ -25,7 +25,7 @@ type Defs
       , "main"    ':-> EntryPoint '[ OriginLowerLeft ] Fragment
       ]
 
-program :: Module Defs ()
+program :: Module Defs
 program =
   Module $ entryPoint @"main" @Fragment do
     _ <- def @"i" @R @Int16 ( - 5 * 4  )

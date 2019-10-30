@@ -26,7 +26,7 @@ type Defs
       , "main"    ':-> EntryPoint '[ ] Vertex
       ]
 
-program :: Module Defs ()
+program :: Module Defs
 program =
   Module $ entryPoint @"main" @Vertex do
     ~(Vec2 x y) <- get @"in_col1"

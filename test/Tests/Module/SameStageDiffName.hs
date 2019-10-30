@@ -22,7 +22,7 @@ type Defs =
    , "vert2" ':-> EntryPoint '[            ] Vertex
    ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
   entryPoint @"vert1" @Vertex do
     put @"out" =<< get @"in"

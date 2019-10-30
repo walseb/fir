@@ -32,7 +32,7 @@ type TwoFloats
    , "2" ':-> Float
    ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @Vertex do
 
   r <- use @(Name "nested" :.: AnIndex Word32 :.: Name "r") 3

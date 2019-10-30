@@ -24,7 +24,7 @@ type Defs =
    , "main" ':-> EntryPoint '[] Vertex
    ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module $ entryPoint @"main" @Vertex do
 
   row <- use @(Name "ubo" :.: Name "mvp" :.: Row 0)

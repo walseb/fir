@@ -15,7 +15,7 @@ Module: FIR.AST
 Representation of programs using abstract syntax trees.
 
 The user interface to the AST is through type class overloading,
-see "FIR.Syntax.AST" and "FIR.Syntax.Codensity".
+see "FIR.Syntax.AST" and "FIR.Syntax.Program".
 
 This AST uses a higher-order abstract syntax representation (HOAS),
 as seen in the paper /Combining Deep and Shallow Embeddings of Domain-Specific Languages/

@@ -26,7 +26,7 @@ type Defs = '[ "mvp1"    ':-> Input      '[Location 1] (M 3 3 Float)
              , "main"    ':-> EntryPoint '[] Vertex
              ]
 
-program :: Module Defs ()
+program :: Module Defs
 program = Module do
 
   entryPoint @"main" @Vertex do

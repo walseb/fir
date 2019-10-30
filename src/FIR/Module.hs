@@ -52,28 +52,27 @@ import qualified SPIRV.Stage  as SPIRV
 -- * Program type synonym
 --
 -- $wrappers
--- Synonym for the main internal representation
--- @Codensity AST (AST a := j) i@
+-- Wrapper for the main internal representation
+-- @Codensity AST (a := j) i@
 
 type Program (i :: ProgramState) (j :: ProgramState) (a :: Type)
-  = Codensity AST (AST a := j) i
+  = Codensity AST (a := j) i
 
 --------------------------------------------------------------------------
 -- * Module type
 
--- | A 'Module' wraps a value of type @Codensity AST (AST a := j) i@
--- with additional 'Definition's which specify the interface of the module,
+-- | A 'Module' wraps a value-level program with additional
+-- 'Definition's which specify the interface of the module,
 -- such as memory layout of input and output data.
 --
 -- Corresponds to the concept of a SPIR-V module.
 data Module
       ( defs :: [ Symbol :-> Definition ] )
-      ( a    :: Type                      )
     :: Type where
-  Module  :: forall defs a endState
+  Module  :: forall defs endState
           .  ( KnownDefinitions defs, ValidDefinitions defs )
-          => Program (StartState defs) endState a
-          -> Module defs a
+          => Program (StartState defs) endState (AST ())
+          -> Module defs
 
 --------------------------------------------------------------------------
 -- * Shader stage type
@@ -95,5 +94,5 @@ data ShaderModule
   ShaderModule
     :: forall name stage defs endState
     .  ( KnownDefinitions defs, ValidDefinitions defs )
-    => Program (StartState defs) endState ()
+    => Program (StartState defs) endState (AST ())
     -> ShaderModule name stage defs endState
