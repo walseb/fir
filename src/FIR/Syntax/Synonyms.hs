@@ -306,10 +306,17 @@ type LocationDescriptionsOfStruct
 ----------------------------------------------------------------------
 -- synonyms for optics
 
-type Field ( k :: Symbol )
-  = ( Field_ (k :: Symbol)
-        :: Optic '[] (Struct as) (Value (StructIndexFromName k as))
-    )
+type family FieldRes ( k :: Symbol ) ( struct :: Type ) :: Type where
+  FieldRes k (Struct as)  = Value (StructIndexFromName k as)
+  FieldRes k (AST (Struct as)) = AST (Value (StructIndexFromName k as))
+
+type family Field ( k :: Symbol ) :: Optic '[] struct (FieldRes k struct) where
+  Field k = ( Field_ (k :: Symbol)
+              :: Optic '[] (Struct as) (FieldRes k (Struct as))
+            )
+  Field k = ( Field_ (k :: Symbol)
+              :: Optic '[] (AST (Struct as)) (FieldRes k (AST (Struct as)))
+            )
 
 -- internal synonyms to help inference in subsequent definitions
 type Col_  (i :: Nat) = ( Index i :: Optic '[] (M m n a) (V m a) )

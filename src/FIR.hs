@@ -115,7 +115,7 @@ module FIR
     -- internal hlist
     , NilHList, ConsHList
     )
-  , FIR.AST.fromAST, FIR.AST.toAST -- might be a bad idea
+  , FIR.AST.Syntactic(..)
   , FIR.AST.HasUndefined(undefined)
   , FIR.Binding.BindingsMap
   , FIR.Binding.Var, FIR.Binding.Fun

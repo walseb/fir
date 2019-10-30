@@ -64,15 +64,16 @@ minV3 (Vec3 x y z) = min x (min y z)
 maxV3 :: AST (V 3 Float) -> AST Float
 maxV3 (Vec3 x y z) = max x (max y z)
 
+
 intersectAABB
   :: forall (s :: ProgramState). ( _ )
   => Ray (AST (V 3 Float))
   -> AABB (AST (V 3 Float))
-  -> Codensity AST ( ( AST Float, AST Float ) := s ) s
+  -> Codensity AST ( AST (Struct '[ "tMin" ':-> Float, "tMax" ':-> Float ]) := s ) s
 intersectAABB
   Ray  { pos, invDir }
   AABB { low, high   }
-    = locallyPair do
+    = locally do
         t1 :: AST (V 3 Float)
           <- def @"t1" @R
              $ ( \ s p i -> ( s - p ) * i :: AST Float ) <$$> low  <**> pos <**> invDir
@@ -85,18 +86,18 @@ intersectAABB
           tMin = maxV3 ( min @(AST Float) <$$> t1 <**> t2 )
           tMax = minV3 ( max @(AST Float) <$$> t1 <**> t2 )
 
-        pure (tMin, tMax)
+        pure ( Struct ( tMin :& tMax :& End ) )
 
 
 intersectTriangle
   :: forall (s :: ProgramState). ( _ )
   => Ray (AST (V 3 Float))
   -> Triangle (AST (V 3 Float))
-  -> Codensity AST ( ( AST Float, AST (V 2 Float) ) := s) s
+  -> Codensity AST ( AST ( Struct '[ "t" ':-> Float, "uv" ':-> V 2 Float ] ) := s) s
 intersectTriangle
   Ray { pos, dir }
   Triangle { v0, v1, v2 }
-    = locallyPair do
+    = locally do
         e1 <- def @"e1" @R $ v1 ^-^ v0
         e2 <- def @"e2" @R $ v2 ^-^ v0
 
@@ -110,7 +111,7 @@ intersectTriangle
           v = f * ( dir `dot` q )
           t = f * ( e2  `dot` q )
 
-        pure (t, Vec2 u v)
+        pure ( Struct ( t :& Vec2 u v :& End ) )
 
 
 onTriangle :: AST (V 2 Float) -> AST Bool
@@ -255,7 +256,9 @@ computeShader = Module $ entryPoint @"main" @Compute do
 
         let ray = Ray { pos, dir, invDir }
 
-        (tMin, tMax) <- ray `intersectAABB` cube
+        aabbIntersection <- ray `intersectAABB` cube
+        tMin <- def @"tMin" @R $ view @(Name "tMin") aabbIntersection
+        tMax <- def @"tMax" @R $ view @(Name "tMax") aabbIntersection
 
         let
           cubeOut :: AST (V 3 Float)
@@ -291,8 +294,12 @@ computeShader = Module $ entryPoint @"main" @Compute do
           _ <- def @"hitCol" @RW cubeCol
           _ <- def @"hit_t"  @RW tMax
 
-          ixFor_ sceneTriangles \ (tri, col) -> do
-              (t,uv) <- ray `intersectTriangle` tri
+          ixFor_ sceneTriangles \ (tri, col) -> locally do
+
+              triIntersection <- ray `intersectTriangle` tri
+              t  <- def @"t"  @R $ view @(Field "t" ) triIntersection
+              uv <- def @"uv" @R $ view @(Field "uv") triIntersection
+
               curr_t <- get @"hit_t"
               when (t > 0 && onTriangle uv && t < curr_t) do
                 put @"hitCol" col

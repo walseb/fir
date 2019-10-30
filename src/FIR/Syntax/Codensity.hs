@@ -37,7 +37,7 @@ See also the validation modules:
 module FIR.Syntax.Codensity
   ( -- * Monadic control operations
     when, unless, while
-  , locally, embed, purely, locallyPair, embedPair
+  , locally, embed, purely
 
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
@@ -239,24 +239,6 @@ purely
      )
   => Codensity AST (r := j) i -> Codensity AST (r := k) k
 purely = embed . locally
-
--- temporary helpers until I find a nice typeclass for this
-locallyPair :: forall i a b j
-            .  Codensity AST ( (AST a, AST b) := j ) i
-            -> Codensity AST ( (AST a, AST b) := i ) i
-locallyPair p =
-  ixLiftA2 (,)
-    ( locally . ixFmap fst $ p )
-    ( locally . ixFmap snd $ p )
-
-embedPair :: forall i a b j
-            .  (Embeddable i j)
-            => Codensity AST ( (AST a, AST b) := i ) i
-            -> Codensity AST ( (AST a, AST b) := j ) j
-embedPair p =
-  ixLiftA2 (,)
-    ( embed @i @j . ixFmap fst $ p )
-    ( embed @i @j . ixFmap snd $ p )
 
 while :: ( GHC.Stack.HasCallStack
          , i' ~ i, i'' ~ i
