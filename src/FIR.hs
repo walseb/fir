@@ -127,6 +127,7 @@ module FIR
       , EntryPoint
       )
   , module FIR.Syntax.AST
+  , module FIR.Syntax.IfThenElse
   , module FIR.Syntax.Images
   , module FIR.Syntax.Optics
   , module FIR.Syntax.Option
@@ -294,6 +295,7 @@ import FIR.Prim.Singletons
 import FIR.Prim.Struct
 import FIR.ProgramState
 import FIR.Syntax.AST
+import FIR.Syntax.IfThenElse
 import FIR.Syntax.Images
 import FIR.Syntax.Optics
 import FIR.Syntax.Option

@@ -164,8 +164,8 @@ infix 4 >=
 infix 4 >
 
 class Eq a => Ord a where
-  type Ordering a
-  compare :: a -> a -> Ordering a
+  --type Ordering a
+  --compare :: a -> a -> Ordering a
   (<=)    :: a -> a -> Logic a
   (>=)    :: a -> a -> Logic a
   (<)     :: a -> a -> Logic a
@@ -178,8 +178,6 @@ class Eq a => Ord a where
 
 
 instance Prelude.Ord a => Ord (Base a) where
-  type Ordering (Base a) = Prelude.Ordering
-  compare = coerce ( Prelude.compare :: a -> a -> Prelude.Ordering )
   (<=)    = coerce ( (Prelude.<=)    :: a -> a -> Bool )
   (>=)    = coerce ( (Prelude.>=)    :: a -> a -> Bool )
   (<)     = coerce ( (Prelude.<)     :: a -> a -> Bool )

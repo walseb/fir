@@ -38,6 +38,8 @@ import FIR.Prim.Struct
   ( Struct(..) )
 import FIR.Syntax.AST
   ( )
+import FIR.Syntax.IfThenElse
+  ( )
 import FIR.Syntax.Program
   ( )
 import Math.Logic.Class

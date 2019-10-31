@@ -278,6 +278,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
         else do
           -- ray interacts with cube, perform ray-tracing inside the cube
           let
+            cubeCol :: AST (V 4 Float)
             cubeCol =
               if (  ( abs outx > Lit 0.995 && abs outy > Lit 0.995 )
                  || ( abs outx > Lit 0.995 && abs outz > Lit 0.995 )

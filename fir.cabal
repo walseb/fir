@@ -160,6 +160,7 @@ library
       , FIR.Prim.Op
       , FIR.ProgramState
       , FIR.Syntax.AST
+      , FIR.Syntax.IfThenElse
       , FIR.Syntax.Images
       , FIR.Syntax.Optics
       , FIR.Syntax.Option

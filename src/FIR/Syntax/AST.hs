@@ -148,10 +148,7 @@ import Math.Linear
 import Math.Logic.Bits
   ( Bits(..), BitShift(..) )
 import Math.Logic.Class
-  ( Eq(..), Boolean(..)
-  , Choose(..)
-  , Ord(..)
-  )
+  ( Eq(..), Boolean(..), Ord(..) )
 import qualified SPIRV.ScalarTy as SPIRV
 import qualified SPIRV.PrimOp   as SPIRV
 
@@ -163,9 +160,12 @@ import qualified SPIRV.PrimOp   as SPIRV
 -- $logical
 -- Instances for:
 --
--- 'Boolean', 'Choose',
+-- 'Boolean',
 --
 -- 'Eq', 'Ord' (note: not the "Prelude" type classes).
+--
+-- Note that rebindable syntax for if-then-else is provided
+-- by the module "FIR.Syntax.IfThenElse".
 
 instance Boolean (AST Bool) where
   true  = Lit True
@@ -173,13 +173,6 @@ instance Boolean (AST Bool) where
   (&&)  = primOp @Bool @SPIRV.BoolAnd
   (||)  = primOp @Bool @SPIRV.BoolOr
   not   = primOp @Bool @SPIRV.BoolNot
-
-instance ( PrimTy a
-         , x ~ AST a
-         , y ~ AST a
-         )
-       => Choose (AST Bool) '(x, y, AST a) where
-  choose = fromAST If
 
 instance ( PrimTy a, Eq a, Logic a ~ Bool )
   => Eq (AST a) where
@@ -189,8 +182,6 @@ instance ( PrimTy a, Eq a, Logic a ~ Bool )
 
 instance ( ScalarTy a, Ord a, Logic a ~ Bool ) 
   => Ord (AST a) where
-  type Ordering (AST a) = AST Int32
-  compare = error "todo"
   (<=) = primOp @a @SPIRV.LTE
   (>=) = primOp @a @SPIRV.GTE
   (<)  = primOp @a @SPIRV.LT

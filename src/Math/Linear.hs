@@ -211,9 +211,6 @@ instance (KnownNat n, Eq a) => Eq (V n a) where
   (==) = (foldr (&&) true .) . liftA2 (==)
 
 instance (KnownNat n, Ord a) => Ord (V n a) where
-  type Ordering (V n a) = Ordering a
-  compare = error "todo"
-
   VNil <= VNil = true
   (a :. as) <= (b :. bs) = a < b || (a <= b && as <= bs)
   _ <= _ = error "unreachable"

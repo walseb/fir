@@ -39,8 +39,7 @@ See also the validation modules:
 
 module FIR.Syntax.Program
   ( -- * Monadic control operations
-    when, unless, while
-  , locally, embed, purely
+    while, locally, embed, purely
 
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
@@ -102,8 +101,6 @@ import Prelude hiding
   , undefined
   )
 import qualified Prelude
-import Data.Int
-  ( Int32 )
 import Data.Kind
   ( Type )
 import Data.Proxy
@@ -207,28 +204,13 @@ import Math.Linear
 import Math.Logic.Bits
   ( Bits(..), BitShift(..) )
 import Math.Logic.Class
-  ( Eq(..), Boolean(..)
-  , Choose(..), ifThenElse
-  , Ord(..)
-  )
+  ( Eq(..), Boolean(..), Ord(..) )
 import qualified SPIRV.PrimOp as SPIRV
   ( GeomPrimOp(..) )
 import qualified SPIRV.Stage  as SPIRV
 
 --------------------------------------------------------------------------
 -- * Monadic control operations
-
-when :: forall i. AST Bool -> Program i i (AST ()) -> Program i i (AST ())
-when b action
-  = if b
-    then action
-    else ixPure (Lit ()) :: Program i i (AST ())
-
-unless :: forall i. AST Bool -> Program i i (AST ()) -> Program i i (AST ())
-unless b action
-  = if b
-    then ixPure (Lit ()) :: Program i i (AST ())
-    else action
 
 locally :: forall i j r. Syntactic r => Program i j r -> Program i i r
 locally = fromAST Locally
@@ -671,7 +653,7 @@ instance Modifier is s a => Modifier (i ': is) s a where
 -- $logical
 -- Instances for:
 --
--- 'Boolean', 'Choose',
+-- 'Boolean',
 --
 -- 'Eq', 'Ord' (note: not the "Prelude" type classes).
 instance Boolean b => Boolean (Program i i b) where
@@ -680,33 +662,6 @@ instance Boolean b => Boolean (Program i i b) where
   (&&)  = ixLiftA2 (&&)
   (||)  = ixLiftA2 (||)
   not   = ixFmap   not
-
-instance ( PrimTy a
-         , t ~ Program i j (AST a)
-         , f ~ Program i k (AST a)
-         , r ~ AST a
-         , i' ~ i
-         ) =>
-  Choose  ( AST Bool )
-         '( t
-          , f
-          , Program i i' r
-          ) where
-  choose c x y = choose (ixPure c :: Program i i (AST Bool)) x y
-
-instance ( PrimTy a
-         , l ~ i
-         , t ~ Program i j (AST a)
-         , f ~ Program i k (AST a)
-         , r ~ AST a
-         , i' ~ i
-         ) =>
-  Choose ( Program i l (AST Bool) )
-         '( t
-          , f
-          , Program i i' r
-          ) where
-  choose = fromAST IfM
 
 instance ( PrimTy a, Eq a, Logic a ~ Bool
          , i ~ j
@@ -722,8 +677,6 @@ instance ( ScalarTy a, Ord a, Logic a ~ Bool
          , r ~ AST a
          )
   => Ord (Program i j r) where
-  type Ordering (Program i j r) = Program i i (AST Int32)
-  compare = ixLiftA2 compare
   (<=) = ixLiftA2 (<=)
   (>=) = ixLiftA2 (>=)
   (<)  = ixLiftA2 (<)
