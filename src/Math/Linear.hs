@@ -138,7 +138,6 @@ import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..) )
 import Math.Logic.Class
   ( Boolean(..), Eq(Logic,(==))
-  , Choose(choose)
   , (#.)
   , Ord(..)
   )
@@ -201,10 +200,6 @@ instance KnownNat n => Applicative (V n) where
   (f :. fs) <*> (a :. as) = f a :. fs <*> as
   _         <*> _         = error "unreachable"
 
-
-instance (KnownNat n, Choose b '(x,y,z))
-        => Choose b '(V n x, V n y, V n z) where
-  choose b = liftA2 ( choose b )
 
 instance (KnownNat n, Eq a) => Eq (V n a) where
   type Logic (V n a) = Logic a
@@ -646,9 +641,6 @@ deriving stock   instance (KnownNat m, KnownNat n) => Traversable (M m n)
 deriving newtype instance (KnownNat m, KnownNat n, Binary a) => Binary (M m n a)
 deriving newtype instance (KnownNat n, KnownNat m, Storable a) => Storable (M m n a)
 
-deriving via '(V n (V m x), V n (V m y), V n (V m z))
-                 instance (KnownNat m, KnownNat n, Choose b '(x,y,z))
-                       => Choose b '(M m n x, M m n y, M m n z)
 
 ------------------------------------------------------------------
 -- products for matrices

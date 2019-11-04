@@ -319,7 +319,6 @@ putBindingAnnotations
 putNames :: Set ( ID, Either ShortText (Word32, ShortText) ) -> Binary.Put
 putNames = traverse_
   ( \case
-
       ( ident, Left name )
         -> putInstruction Map.empty
               Instruction

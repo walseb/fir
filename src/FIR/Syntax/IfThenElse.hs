@@ -32,7 +32,7 @@ import FIR.AST
       ( (:$), Lit
       , If, IfM
       , Return
-      ) 
+      )
   , Syntactic(Internal, fromAST)
   )
 import FIR.Module

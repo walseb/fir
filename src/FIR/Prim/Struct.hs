@@ -169,34 +169,38 @@ instance forall fld (l :: fld) (i :: Nat) (a :: Type) (x :: Type) (as :: [ fld :
 
 instance PrimTyMap as => Eq (Struct as) where
   s1 == s2 = case primTyMapSing @_ @as of
-    SNil
-      -> True
-    SCons {}
-      -> case (s1, s2) of
-            (a :& as, b :& bs)
-              -> a == b && as == bs
+    SNil -> True
+    SCons ->
+      case (s1, s2) of
+        (a :& as, b :& bs) ->
+          a == b && as == bs
 
 instance PrimTyMap as => Ord (Struct as) where
   compare s1 s2 = case primTyMapSing @_ @as of
-    SNil
-      -> EQ
-    SCons {}
-      -> case (s1, s2) of
-            (a :& as, b :& bs)
-              -> case compare a b of
-                    EQ -> compare as bs
-                    un -> un
+    SNil -> EQ
+    SCons ->
+      case (s1, s2) of
+        (a :& as, b :& bs) ->
+          case compare a b of
+            EQ -> compare as bs
+            un -> un
 
-display :: forall as. PrimTyMap as => Struct as -> [String]
+display :: forall fld (as :: [fld :-> Type])
+        .  ( StructFieldKind fld, PrimTyMap as )
+        => Struct as -> [String]
 display s = case primTyMapSing @_ @as of
-  SNil
-    -> []
-  SCons {}
-    -> case s of
-          (a :& as)
-            -> show a : display as
+  SNil -> []
+  sCons@SCons ->
+    case sCons of
+      ( _ :: SPrimTyMap ((k ':-> a) ': xs) ) ->
+        case s of
+          (a :& as) ->
+            ( show (knownValue @k) ++ " :-> " ++ show a )
+            : display as
 
-instance PrimTyMap as => Show (Struct as) where
+instance forall fld (as :: [fld :-> Type])
+         .  ( StructFieldKind fld, PrimTyMap as )
+         => Show (Struct as) where
   show s = "{ " ++ intercalate ", " (display s) ++ " }"
 
 instance IsProduct (Struct '[]) '[] where

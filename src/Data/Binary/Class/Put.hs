@@ -48,6 +48,10 @@ import qualified Data.Binary.Put as Binary
   , putShortByteString
   )
 
+-- bytestring
+import qualified Data.ByteString.Short as ShortByteString
+  ( length )
+
 -- half
 import Numeric.Half
   ( Half(Half) )
@@ -56,7 +60,7 @@ import Numeric.Half
 import Data.Text.Short
   ( ShortText )
 import qualified Data.Text.Short as ShortText
-  ( length, toShortByteString )
+  ( toShortByteString )
 
 ----------------------------------------------------------------------------
 -- Put type class
@@ -128,12 +132,12 @@ instance Put Double where
 -- | @C@-style string
 instance Put ShortText where
   put lit =
-    let n = ShortText.length lit
+    let n = ShortByteString.length (ShortText.toShortByteString lit)
         pad = 4 - (n `mod` 4)
     in Binary.putShortByteString (ShortText.toShortByteString lit)
     <> (pad `stimes` Binary.putWord8 0)
   wordCount lit
-    = let n = fromIntegral $ ShortText.length lit
+    = let n = fromIntegral $ ShortByteString.length (ShortText.toShortByteString lit)
       in 1 + (n `div` 4)
 
 ----------------------------------------------------------------------------

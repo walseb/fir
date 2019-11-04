@@ -41,11 +41,14 @@ Here are some of the library's __features__:
 
 Current __limitations__ of the library include:
 
-  * Inconsistent quality of error messages. This is a work in progress: the custom type errors are concise and informative, but every now and then GHC produces large error messages with internal representations leaking out.
+  * Inconsistent quality of error messages. This is a work in progress: the custom type errors are concise and informative, but regularly GHC also produces large error messages with internal representations leaking out (such as a full print-out of the indexed monadic state, which often fills several screens).
   * Lack of validation involving device limits. This should be addressed in the future.
-  * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be mitigated as explained in the ["getting started" guide](getting_started.md#inlining).
+  * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be mitigated (rather tediously) as explained in the ["getting started" guide](getting_started.md#inlining).
   * Meta-programming is difficult. This is due to the type-level information that is carried around, which can hardly cope being made polymorphic.
-  It is possible that a GHC type-checking plugin could address this limitation. 
+  It is possible that a GHC type-checking plugin could address this limitation.    
+  Instead of attempting meta-programming involving manipulation of indexed monadic states,
+  it is preferable to keep the state fully polymorphic (by encapsulating local state),
+  and instead pass data as arguments instead of through monadic state.
 
 See also the library's [issue tracker](https://gitlab.com/sheaf/fir/issues) for other missing features and limitations.
 

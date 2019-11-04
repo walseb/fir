@@ -92,6 +92,9 @@ allTests
           [ ( "Control"   , Validate )
           , ( "Evaluation", Validate )
           ]
+    , Folder "Unicode"
+          [ ( "Syntax", Validate )
+          ]
     , Folder "Vector"
           [ ( "Applicative" , Validate  )
           , ( "Functor"     , Validate  )
