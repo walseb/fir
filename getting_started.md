@@ -251,7 +251,7 @@ On Windows, this can be achieved with the command `chcp.com 65001`.
 <a name="inlining"></a>
 ## Controlling inlining
 
-The SPIR-V created by this library tends to be of high quality, e.g. using [ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form) instead of load/store operations, and vectorised operations whenever possible. However, one needs to be careful about inlining. Consider the following example:
+When working with this library, one needs to be careful with inlining. Consider the following example:
 
 ```haskell
 inlined :: AST Float -> AST (V 3 Float)

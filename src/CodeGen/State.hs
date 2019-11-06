@@ -128,9 +128,15 @@ data CGState
       , memberDecorations   :: Map (TyID, Word32)                    SPIRV.Decorations
 
       -- | Map of all declared types.
+      --
+      -- We keep the full 'Instruction' rather than just its 'TyID',
+      -- as the types have to be declared at the top of the SPIR-V module,
+      -- rather than inline with the rest of the code.
       , knownTypes          :: Map SPIRV.PrimTy                      Instruction
 
       -- | Map of all declared constants.
+      --
+      -- Same comment than for 'knownTypes' regarding 'Instruction' vs 'ID'.
       , knownConstants      :: Map AConstant                         Instruction
 
       -- | Map of all types who have a corresponding "Undefined" instruction.
