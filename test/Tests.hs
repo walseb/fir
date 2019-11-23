@@ -65,6 +65,9 @@ allTests
           , ( "SameStageDiffName", Validate  )
           , ( "SameStageSameName", Typecheck )
           ]
+    , Folder "OpenCL"
+          [ ( "Kernel", Validate )
+          ]
     , Folder "Optics"
           [ ( "ASTIndices"    , Validate  )
           , ( "ASTProducts"   , Validate  )

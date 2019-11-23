@@ -61,6 +61,9 @@ module FIR.Syntax.Program
   -- * Geometry shader primitive instructions
   , emitVertex, endPrimitive
 
+  -- * Memory synchronisation primitive operations
+  , controlBarrier, memoryBarrier
+
     -- * Instances
 
     -- ** Syntactic type class
@@ -103,6 +106,8 @@ import Prelude hiding
 import qualified Prelude
 import Data.Kind
   ( Type )
+import Data.Maybe
+  ( fromMaybe )
 import Data.Proxy
   ( Proxy(Proxy) )
 import qualified GHC.Stack
@@ -205,9 +210,13 @@ import Math.Logic.Bits
   ( Bits(..), BitShift(..) )
 import Math.Logic.Class
   ( Eq(..), Boolean(..), Ord(..) )
-import qualified SPIRV.PrimOp as SPIRV
-  ( GeomPrimOp(..) )
-import qualified SPIRV.Stage  as SPIRV
+import qualified SPIRV.PrimOp          as SPIRV
+  ( GeomPrimOp(..), SyncPrimOp(..) )
+import qualified SPIRV.Stage           as SPIRV
+import qualified SPIRV.Synchronisation as SPIRV
+  ( SynchronisationScope, MemorySemantics
+  , synchronisationScope, memorySemanticsBitmask
+  )
 
 --------------------------------------------------------------------------
 -- * Monadic control operations
@@ -221,7 +230,7 @@ embed = fromAST Embed
 
 purely
   :: ( Syntactic r
-     , i ~ 'ProgramState '[] 'TopLevel '[] '[]
+     , i ~ 'ProgramState '[] 'TopLevel '[] '[] bkend
      , Embeddable i k
      )
   => Program i j r -> Program k k r
@@ -389,20 +398,21 @@ shader :: forall
             ( j_iface   :: TLInterface                   )
             ( funs      :: [Symbol :-> FunctionInfo   ]  )
             ( eps       :: [Symbol :-> EntryPointInfo ]  )
+            ( bkend     :: SPIRV.Backend                 )
             ( i         :: ProgramState                  )
        . ( GHC.Stack.HasCallStack
          , KnownDefinitions defs
          , ValidDefinitions defs
          , GetExecutionInfo name stage i ~ stageInfo
          , funs ~ '[ ]
-         , i ~ 'ProgramState (StartBindings defs) 'TopLevel funs eps
+         , i ~ 'ProgramState (StartBindings defs) 'TopLevel funs eps bkend
          , i ~ StartState defs
          , KnownSymbol name
          , stage ~ 'SPIRV.Stage ('SPIRV.ShaderStage shader)
          , Known SPIRV.Shader shader
          , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
          , EndBindings defs ~ StartBindings defs
-         , ValidEntryPoint name stageInfo ('ProgramState (EndBindings defs) 'TopLevel funs eps) j_bds
+         , ValidEntryPoint name stageInfo ('ProgramState (EndBindings defs) 'TopLevel funs eps bkend) j_bds
          )
        => Program
             ( EntryPointStartState name stageInfo i )
@@ -564,16 +574,42 @@ imageWrite = assign
 -- geometry shader primitive instructions
 
 -- | Geometry shader: write the current output values at the current vertex index.
-emitVertex :: forall (i :: ProgramState).
-              ( ExecutionContext i ~ Just SPIRV.Geometry )
+emitVertex :: forall (i :: ProgramState)
+           . ( ExecutionContext i ~ Just SPIRV.Geometry )
            => Program i i ( AST () )
 emitVertex = primOp @i @SPIRV.EmitGeometryVertex
 
 -- | Geometry shader: end the current primitive and pass to the next one.
-endPrimitive :: forall (i :: ProgramState).
-                ( ExecutionContext i ~ Just SPIRV.Geometry )
+endPrimitive :: forall (i :: ProgramState)
+             .  ( ExecutionContext i ~ Just SPIRV.Geometry )
              => Program i i ( AST () )
 endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
+
+--------------------------------------------------------------------------
+-- memory synchronisation primitive instructions
+
+-- | Control barrier: wait for other invocations to reach the current point of execution.
+--
+-- Can also act as a memory barrier if a memory synchronisation scope is specified.
+controlBarrier :: forall (i :: ProgramState)
+               .  SPIRV.SynchronisationScope
+               -> Maybe ( SPIRV.SynchronisationScope, SPIRV.MemorySemantics )
+               -> Program i i ( AST () )
+controlBarrier controlScope memScope
+  = primOp @i @SPIRV.ControlSync
+      ( Lit $ SPIRV.synchronisationScope controlScope )
+      ( Lit $ fromMaybe 0 $ SPIRV.synchronisationScope   . fst <$> memScope )
+      ( Lit $ fromMaybe 0 $ SPIRV.memorySemanticsBitmask . snd <$> memScope )
+
+-- | Memory barrier: ensure ordering on memory accesses.
+memoryBarrier :: forall (i :: ProgramState)
+               .  SPIRV.SynchronisationScope
+               -> Maybe SPIRV.MemorySemantics
+               -> Program i i ( AST () )
+memoryBarrier memScope memSem
+  = primOp @i @SPIRV.MemorySync
+      ( Lit $ SPIRV.synchronisationScope memScope )
+      ( Lit $ fromMaybe 0 $ SPIRV.memorySemanticsBitmask <$> memSem )
 
 --------------------------------------------------------------------------
 -- type synonyms for use/assign

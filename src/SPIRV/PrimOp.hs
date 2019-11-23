@@ -28,6 +28,7 @@ module SPIRV.PrimOp
   , VecPrimOp(..), MatPrimOp(..)
   , ConvPrimOp(..)
   , GeomPrimOp(..)
+  , SyncPrimOp(..)
   , opAndReturnType, op
   ) where
 
@@ -45,6 +46,8 @@ import SPIRV.PrimTy
   ( PrimTy(..) )
 import SPIRV.ScalarTy
   ( ScalarTy(..), Signedness(..) )
+import SPIRV.Stage
+  ( Backend(Vulkan, OpenCL) )
 
 -------------------------------------------------------------------------------
 -- names of primitive operations
@@ -60,6 +63,7 @@ data PrimOp where
   MatOp   :: MatPrimOp   -> Word32 -> Word32 -> ScalarTy -> PrimOp
   ConvOp  :: ConvPrimOp  -> ScalarTy         -> ScalarTy -> PrimOp
   GeomOp  :: GeomPrimOp                                  -> PrimOp
+  SyncOp  :: SyncPrimOp                                  -> PrimOp
   deriving stock Show
 
 data BoolPrimOp
@@ -129,7 +133,7 @@ data FloatPrimOp
   | FExp
   | FLog
   | FSqrt
-  | FInvsqrt
+  | FInvSqrt
   deriving stock Show
 
 data VecPrimOp
@@ -164,36 +168,47 @@ data GeomPrimOp
   | EndGeometryPrimitive
   deriving stock Show
 
-opAndReturnType :: PrimOp -> (Operation, PrimTy)
-opAndReturnType (BoolOp boolOp )
+data SyncPrimOp
+  = ControlSync
+  | MemorySync
+  deriving stock Show
+
+backendOp :: Backend -> Operation -> Operation -> Operation
+backendOp Vulkan o _ = o
+backendOp OpenCL _ o = o
+
+opAndReturnType :: Backend -> PrimOp -> (Operation, PrimTy)
+opAndReturnType _ (BoolOp boolOp )
   = ( booleanOp  boolOp
     , Boolean
     )
-opAndReturnType (EqOp eqOp s)
+opAndReturnType _ (EqOp eqOp s)
   = ( equalityOp eqOp s
     , Boolean
     )
-opAndReturnType (OrdOp ordOp s)
-  = orderOp ordOp s
-opAndReturnType (BitOp bitOp s)
+opAndReturnType bk (OrdOp ordOp s)
+  = orderOp bk ordOp s
+opAndReturnType _ (BitOp bitOp s)
   = bitwiseOp bitOp s
-opAndReturnType (NumOp numOp s)
-  = second Scalar (numericOp numOp s)
-opAndReturnType (FloatOp flOp s)
-  = ( floatingOp flOp
+opAndReturnType bk (NumOp numOp s)
+  = second Scalar (numericOp bk numOp s)
+opAndReturnType bk (FloatOp flOp s)
+  = ( floatingOp bk flOp
     , Scalar s -- should be a Floating type always
     )
-opAndReturnType (VecOp vecOp n s)
-  = vectorOp vecOp n s
-opAndReturnType (MatOp matOp n m s)
-  = matrixOp matOp n m s
-opAndReturnType (ConvOp cOp s1 s2)
-  = second Scalar (convOp cOp s1 s2)
-opAndReturnType (GeomOp gOp)
+opAndReturnType bk (VecOp vecOp n s)
+  = vectorOp bk vecOp n s
+opAndReturnType bk (MatOp matOp n m s)
+  = matrixOp bk matOp n m s
+opAndReturnType bk (ConvOp cOp s1 s2)
+  = second Scalar (convOp bk cOp s1 s2)
+opAndReturnType _ (GeomOp gOp)
   = geomOp gOp
+opAndReturnType _ (SyncOp sOp)
+  = syncOp sOp
 
-op :: PrimOp -> Operation
-op = fst . opAndReturnType
+op :: Backend -> PrimOp -> Operation
+op bkend = fst . opAndReturnType bkend
 
 booleanOp :: BoolPrimOp -> Operation
 booleanOp BoolOr  = LogicalOr
@@ -209,25 +224,25 @@ equalityOp NotEqual (Scalar (Integer _ _)) = INotEqual
 equalityOp NotEqual Boolean                = LogicalNotEqual
 equalityOp primOp ty = error $ "internal error: unsupported type " ++ show ty ++ " with equality operation " ++ show primOp
 
-orderOp :: OrdPrimOp -> ScalarTy -> (Operation, PrimTy)
-orderOp GT  (Integer Unsigned _) = ( UGreaterThan        , Boolean )
-orderOp GT  (Integer Signed   _) = ( SGreaterThan        , Boolean )
-orderOp GT  (Floating         _) = ( FOrdGreaterThan     , Boolean )
-orderOp GTE (Integer Unsigned _) = ( UGreaterThanEqual   , Boolean )
-orderOp GTE (Integer Signed   _) = ( SGreaterThanEqual   , Boolean )
-orderOp GTE (Floating         _) = ( FOrdGreaterThanEqual, Boolean )
-orderOp LT  (Integer Unsigned _) = ( ULessThan           , Boolean )
-orderOp LT  (Integer Signed   _) = ( SLessThan           , Boolean )
-orderOp LT  (Floating         _) = ( FOrdLessThan        , Boolean )
-orderOp LTE (Integer Unsigned _) = ( ULessThanEqual      , Boolean )
-orderOp LTE (Integer Signed   _) = ( SLessThanEqual      , Boolean )
-orderOp LTE (Floating         _) = ( FOrdLessThanEqual   , Boolean )
-orderOp Min (Integer Unsigned w) = ( UMin , Scalar (Integer Unsigned w) )
-orderOp Min (Integer Signed   w) = ( SMin , Scalar (Integer Signed   w) )
-orderOp Min (Floating         w) = ( FMin , Scalar (Floating         w) )
-orderOp Max (Integer Unsigned w) = ( UMax , Scalar (Integer Unsigned w) )
-orderOp Max (Integer Signed   w) = ( SMax , Scalar (Integer Signed   w) )
-orderOp Max (Floating         w) = ( FMax , Scalar (Floating         w) )
+orderOp :: Backend -> OrdPrimOp -> ScalarTy -> (Operation, PrimTy)
+orderOp _  GT  (Integer Unsigned _) = ( UGreaterThan        , Boolean )
+orderOp _  GT  (Integer Signed   _) = ( SGreaterThan        , Boolean )
+orderOp _  GT  (Floating         _) = ( FOrdGreaterThan     , Boolean )
+orderOp _  GTE (Integer Unsigned _) = ( UGreaterThanEqual   , Boolean )
+orderOp _  GTE (Integer Signed   _) = ( SGreaterThanEqual   , Boolean )
+orderOp _  GTE (Floating         _) = ( FOrdGreaterThanEqual, Boolean )
+orderOp _  LT  (Integer Unsigned _) = ( ULessThan           , Boolean )
+orderOp _  LT  (Integer Signed   _) = ( SLessThan           , Boolean )
+orderOp _  LT  (Floating         _) = ( FOrdLessThan        , Boolean )
+orderOp _  LTE (Integer Unsigned _) = ( ULessThanEqual      , Boolean )
+orderOp _  LTE (Integer Signed   _) = ( SLessThanEqual      , Boolean )
+orderOp _  LTE (Floating         _) = ( FOrdLessThanEqual   , Boolean )
+orderOp bk Min (Integer Unsigned w) = ( backendOp bk GLSL_UMin OpenCL_UMin , Scalar (Integer Unsigned w) )
+orderOp bk Min (Integer Signed   w) = ( backendOp bk GLSL_SMin OpenCL_SMin , Scalar (Integer Signed   w) )
+orderOp bk Min (Floating         w) = ( backendOp bk GLSL_FMin OpenCL_FMin , Scalar (Floating         w) )
+orderOp bk Max (Integer Unsigned w) = ( backendOp bk GLSL_UMax OpenCL_UMax , Scalar (Integer Unsigned w) )
+orderOp bk Max (Integer Signed   w) = ( backendOp bk GLSL_SMax OpenCL_SMax , Scalar (Integer Signed   w) )
+orderOp bk Max (Floating         w) = ( backendOp bk GLSL_FMax OpenCL_FMax , Scalar (Floating         w) )
 
 bitwiseOp :: BitPrimOp -> ScalarTy -> (Operation, PrimTy)
 bitwiseOp BitAnd s = (BitwiseAnd, Scalar s)
@@ -238,115 +253,127 @@ bitwiseOp BitShiftRightLogical    s = (ShiftRightLogical   , Scalar s)
 bitwiseOp BitShiftRightArithmetic s = (ShiftRightArithmetic, Scalar s)
 bitwiseOp BitShiftLeft            s = (ShiftLeftLogical    , Scalar s)
 
-numericOp :: NumPrimOp -> ScalarTy -> (Operation, ScalarTy)
+numericOp :: Backend -> NumPrimOp -> ScalarTy -> (Operation, ScalarTy)
 -- additive monoid
-numericOp Add  (Floating         w) = ( FAdd   , Floating         w )
-numericOp Add  (Integer s        w) = ( IAdd   , Integer s        w )
+numericOp _  Add  (Floating         w) = ( FAdd   , Floating         w )
+numericOp _  Add  (Integer s        w) = ( IAdd   , Integer s        w )
 -- semiring
-numericOp Mul  (Floating         w) = ( FMul   , Floating         w )
-numericOp Mul  (Integer s        w) = ( IMul   , Integer s        w )
+numericOp _  Mul  (Floating         w) = ( FMul   , Floating         w )
+numericOp _  Mul  (Integer s        w) = ( IMul   , Integer s        w )
 -- additive group
-numericOp Sub  (Floating         w) = ( FSub   , Floating         w )
-numericOp Sub  (Integer s        w) = ( ISub   , Integer s        w ) -- technically can call subtraction on unsigned integer types
-numericOp Neg  (Floating         w) = ( FNegate, Floating         w )
-numericOp Neg  (Integer Signed   w) = ( SNegate, Integer Signed   w )
-numericOp Neg  (Integer Unsigned _) = error "internal error: 'negate' called on unsigned type"
+numericOp _  Sub  (Floating         w) = ( FSub   , Floating         w )
+numericOp _  Sub  (Integer s        w) = ( ISub   , Integer s        w ) -- technically can call subtraction on unsigned integer types
+numericOp _  Neg  (Floating         w) = ( FNegate, Floating         w )
+numericOp _  Neg  (Integer Signed   w) = ( SNegate, Integer Signed   w )
+numericOp _  Neg  (Integer Unsigned _) = error "internal error: 'negate' called on unsigned type"
 -- signed
-numericOp Abs  (Floating         w) = ( FAbs   , Floating         w )
-numericOp Abs  (Integer Signed   w) = ( SAbs   , Integer Signed   w )
-numericOp Abs  (Integer Unsigned _) = error "internal error: 'abs' called on unsigned type"
-numericOp Sign (Floating         w) = ( FSign  , Floating         w )
-numericOp Sign (Integer Signed   w) = ( SSign  , Integer Signed   w )
-numericOp Sign (Integer Unsigned _) = error "internal error: 'signum' called on unsigned type"
+numericOp bk Abs  (Floating         w) = ( backendOp bk GLSL_FAbs OpenCL_FAbs  , Floating         w )
+numericOp bk Abs  (Integer Signed   w) = ( backendOp bk GLSL_SAbs OpenCL_SAbs  , Integer Signed   w )
+numericOp _  Abs  (Integer Unsigned _) = error "internal error: 'abs' called on unsigned type"
+numericOp bk Sign (Floating         w) = ( backendOp bk GLSL_FSign OpenCL_FSign, Floating         w )
+numericOp bk Sign (Integer Signed   w) 
+  | OpenCL <- bk = error "TODO: OpenCL backend does not support 'signum' operation on integer types"
+  | otherwise =  ( GLSL_SSign  , Integer Signed   w )
+numericOp _  Sign (Integer Unsigned _) = error "internal error: 'signum' called on unsigned type"
 -- division ring
-numericOp Div  (Floating         w) = ( FDiv   , Floating         w )
-numericOp Div  (Integer  _       _) = error "internal error: Div used with integral type"
+numericOp _  Div  (Floating         w) = ( FDiv   , Floating         w )
+numericOp _  Div  (Integer  _       _) = error "internal error: Div used with integral type"
 -- archimedean ordered group
-numericOp Mod  (Floating         w) = ( FMod   , Floating         w )
-numericOp Mod  (Integer Signed   w) = ( SMod   , Integer Signed   w )
-numericOp Mod  (Integer Unsigned w) = ( UMod   , Integer Unsigned w )
-numericOp Rem  (Floating         w) = ( FRem   , Floating         w )
-numericOp Rem  (Integer Signed   w) = ( SRem   , Integer Signed   w )
-numericOp Rem  (Integer Unsigned w) = ( UMod   , Integer Unsigned w ) -- URem pointless for unsigned type
-numericOp Quot (Integer Signed   w) = ( SDiv   , Integer Signed   w )
-numericOp Quot (Integer Unsigned w) = ( UDiv   , Integer Unsigned w )
-numericOp Quot (Floating         _) = error "internal error: Quot used with floating-point type"
+numericOp _  Mod  (Floating         w) = ( FMod   , Floating         w )
+numericOp _  Mod  (Integer Signed   w) = ( SMod   , Integer Signed   w )
+numericOp _  Mod  (Integer Unsigned w) = ( UMod   , Integer Unsigned w )
+numericOp _  Rem  (Floating         w) = ( FRem   , Floating         w )
+numericOp _  Rem  (Integer Signed   w) = ( SRem   , Integer Signed   w )
+numericOp _  Rem  (Integer Unsigned w) = ( UMod   , Integer Unsigned w ) -- URem pointless for unsigned type
+numericOp _  Quot (Integer Signed   w) = ( SDiv   , Integer Signed   w )
+numericOp _  Quot (Integer Unsigned w) = ( UDiv   , Integer Unsigned w )
+numericOp _  Quot (Floating         _) = error "internal error: Quot used with floating-point type"
 
-floatingOp :: FloatPrimOp -> Operation
-floatingOp FSin     = Sin
-floatingOp FCos     = Cos
-floatingOp FTan     = Tan
-floatingOp FAsin    = Asin
-floatingOp FAcos    = Acos
-floatingOp FAtan    = Atan
-floatingOp FSinh    = Sinh
-floatingOp FCosh    = Cosh
-floatingOp FTanh    = Tanh
-floatingOp FAsinh   = Asinh
-floatingOp FAcosh   = Acosh
-floatingOp FAtanh   = Atanh
-floatingOp FAtan2   = Atan2
-floatingOp FPow     = Pow
-floatingOp FExp     = Exp
-floatingOp FLog     = Log
-floatingOp FSqrt    = Sqrt
-floatingOp FInvsqrt = Invsqrt
+floatingOp :: Backend -> FloatPrimOp -> Operation
+floatingOp bk FSin     = backendOp bk GLSL_Sin     OpenCL_Sin
+floatingOp bk FCos     = backendOp bk GLSL_Cos     OpenCL_Cos
+floatingOp bk FTan     = backendOp bk GLSL_Tan     OpenCL_Tan
+floatingOp bk FAsin    = backendOp bk GLSL_Asin    OpenCL_Asin
+floatingOp bk FAcos    = backendOp bk GLSL_Acos    OpenCL_Acos
+floatingOp bk FAtan    = backendOp bk GLSL_Atan    OpenCL_Atan
+floatingOp bk FSinh    = backendOp bk GLSL_Sinh    OpenCL_Sinh
+floatingOp bk FCosh    = backendOp bk GLSL_Cosh    OpenCL_Cosh
+floatingOp bk FTanh    = backendOp bk GLSL_Tanh    OpenCL_Tanh
+floatingOp bk FAsinh   = backendOp bk GLSL_Asinh   OpenCL_Asinh
+floatingOp bk FAcosh   = backendOp bk GLSL_Acosh   OpenCL_Acosh
+floatingOp bk FAtanh   = backendOp bk GLSL_Atanh   OpenCL_Atanh
+floatingOp bk FAtan2   = backendOp bk GLSL_Atan2   OpenCL_Atan2
+floatingOp bk FPow     = backendOp bk GLSL_Pow     OpenCL_Pow
+floatingOp bk FExp     = backendOp bk GLSL_Exp     OpenCL_Exp
+floatingOp bk FLog     = backendOp bk GLSL_Log     OpenCL_Log
+floatingOp bk FSqrt    = backendOp bk GLSL_Sqrt    OpenCL_Sqrt
+floatingOp bk FInvSqrt = backendOp bk GLSL_InvSqrt OpenCL_InvSqrt
 
-vectorOp :: VecPrimOp -> Word32 -> ScalarTy -> (Operation, PrimTy)
-vectorOp (Vectorise prim) n s  = ( op prim, Vector n (Scalar s) )
-vectorOp DotV   _ (Floating w) = ( Dot, Scalar (Floating w) )
-vectorOp DotV   _ _            = error "internal error: dot product: vector elements must be of floating-point type."
-vectorOp VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Scalar (Floating w)) )
-vectorOp VMulK  _ _            = error "internal error: scalar multiplication: vector elements must be of floating-point type."
-vectorOp CrossV n (Floating w) = ( Cross, Vector n (Scalar (Floating w)) )
-vectorOp CrossV _ _            = error "internal error: cross product: vector elements must be of floating-point type."
-vectorOp NormaliseV n (Floating w) = ( Normalize, Vector n (Scalar (Floating w)) )
-vectorOp NormaliseV _ _            = error "internal error: normalise: vector elements must be of floating-point type."
+vectorOp :: Backend -> VecPrimOp -> Word32 -> ScalarTy -> (Operation, PrimTy)
+vectorOp bk (Vectorise prim) n s  = ( op bk prim, Vector n (Scalar s) )
+vectorOp _  DotV   _ (Floating w) = ( Dot, Scalar (Floating w) )
+vectorOp _  DotV   _ _            = error "internal error: dot product: vector elements must be of floating-point type."
+vectorOp _  VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Scalar (Floating w)) )
+vectorOp _  VMulK  _ _            = error "internal error: scalar multiplication: vector elements must be of floating-point type."
+vectorOp bk CrossV n (Floating w) = ( backendOp bk GLSL_Cross OpenCL_Cross, Vector n (Scalar (Floating w)) )
+vectorOp _  CrossV _ _            = error "internal error: cross product: vector elements must be of floating-point type."
+vectorOp bk NormaliseV n (Floating w) = ( backendOp bk GLSL_Normalize OpenCL_Normalize, Vector n (Scalar (Floating w)) )
+vectorOp _  NormaliseV _ _            = error "internal error: normalise: vector elements must be of floating-point type."
 
-matrixOp :: MatPrimOp -> Word32 -> Word32 -> ScalarTy -> (Operation, PrimTy)
-matrixOp MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
-matrixOp MMulV  n _ s = ( MatrixTimesVector, Vector n   (Scalar s) )
-matrixOp VMulM  n _ s = ( VectorTimesMatrix, Vector n   (Scalar s) )
-matrixOp MMulM  n m s = ( MatrixTimesMatrix, Matrix n m s )
-matrixOp Transp n m s = ( Transpose        , Matrix n m s )
-matrixOp Det    _ _ s = ( Determinant      , Scalar     s )
-matrixOp Inv    n m s = ( MatrixInverse    , Matrix n m s )
-matrixOp Out    n m s = ( OuterProduct     , Matrix n m s )
+matrixOp :: Backend -> MatPrimOp -> Word32 -> Word32 -> ScalarTy -> (Operation, PrimTy)
+matrixOp _  MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )
+matrixOp _  MMulV  n _ s = ( MatrixTimesVector, Vector n   (Scalar s) )
+matrixOp _  VMulM  n _ s = ( VectorTimesMatrix, Vector n   (Scalar s) )
+matrixOp _  MMulM  n m s = ( MatrixTimesMatrix, Matrix n m s )
+matrixOp _  Transp n m s = ( Transpose        , Matrix n m s )
+matrixOp bk Det    _ _ s
+  | Vulkan <- bk = ( GLSL_Determinant      , Scalar     s )
+  | otherwise    = error "todo: determinant not implemented in OpenCL backend"
+matrixOp bk Inv    n m s
+  | Vulkan <- bk = ( GLSL_MatrixInverse    , Matrix n m s )
+  | otherwise    = error "todo: matrix inverse not implemented in OpenCL backend"
+matrixOp _  Out    n m s = ( OuterProduct     , Matrix n m s )
 
-convOp :: ConvPrimOp -> ScalarTy -> ScalarTy -> (Operation, ScalarTy)
-convOp Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF, Floating         w )
-convOp Convert (Integer Unsigned _) (Floating         w) = ( ConvertUToF, Floating         w )
-convOp Convert (Floating         _) (Integer Signed   w) = ( ConvertFToS, Integer Signed   w )
-convOp Convert (Floating         _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
-convOp Convert (Integer Unsigned v) (Integer Signed   w)
-  | v == w = ( BitCast    , Integer Signed   w )
+convOp :: Backend -> ConvPrimOp -> ScalarTy -> ScalarTy -> (Operation, ScalarTy)
+convOp _  Convert (Integer Signed   _) (Floating         w) = ( ConvertSToF, Floating         w )
+convOp _  Convert (Integer Unsigned _) (Floating         w) = ( ConvertUToF, Floating         w )
+convOp _  Convert (Floating         _) (Integer Signed   w) = ( ConvertFToS, Integer Signed   w )
+convOp _  Convert (Floating         _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
+convOp bk Convert (Integer Unsigned v) (Integer Signed   w)
+  | OpenCL <- bk = ( SatConvertUToS, Integer Signed w )
+  | v == w = ( BitCast, Integer Signed   w )
   | otherwise = error "internal error: unsupported conversion between integer types of different width and sign"
-convOp Convert (Integer Signed   v) (Integer Unsigned w)
+convOp bk Convert (Integer Signed   v) (Integer Unsigned w)
+  | OpenCL <- bk = ( SatConvertSToU, Integer Unsigned w )
   | v == w = ( BitCast    , Integer Unsigned w )
   | otherwise = error "internal error: unsupported conversion between integer types of different width and sign"
-convOp Convert (Floating         v) (Floating         w)
+convOp _  Convert (Floating         v) (Floating         w)
   | v /= w = ( FConvert, Floating         w)
-convOp Convert (Integer Signed   v) (Integer Signed   w)
+convOp _  Convert (Integer Signed   v) (Integer Signed   w)
   | v /= w = ( SConvert, Integer Signed   w)
-convOp Convert (Integer Unsigned v) (Integer Unsigned w)
+convOp _  Convert (Integer Unsigned v) (Integer Unsigned w)
   | v /= w = ( UConvert, Integer Unsigned w)
-convOp CTruncate (Floating _) (Integer Signed   w) = ( ConvertFToS, Integer Signed   w )
-convOp CTruncate (Floating _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
-convOp CTruncate (Floating v) (Floating w)
-  | v == w    = ( Trunc, Floating w )
+convOp _  CTruncate (Floating _) (Integer Signed   w) = ( ConvertFToS, Integer Signed   w )
+convOp _  CTruncate (Floating _) (Integer Unsigned w) = ( ConvertFToU, Integer Unsigned w )
+convOp bk CTruncate (Floating v) (Floating w)
+  | v == w    = ( backendOp bk GLSL_Trunc OpenCL_Trunc, Floating w )
   | otherwise = error "internal error: unsupported truncation between floating point types of different widths"
-convOp CRound    (Floating v) (Floating w)
-  | v == w    = ( Round, Floating w )
+convOp bk CRound    (Floating v) (Floating w)
+  | v == w    = ( backendOp bk GLSL_Round OpenCL_Round, Floating w )
   | otherwise = error "internal error: unsupported rounding between floating point types of different widths"
-convOp CFloor    (Floating v) (Floating w)
-  | v == w    = ( Floor, Floating w )
+convOp bk CFloor    (Floating v) (Floating w)
+  | v == w    = ( backendOp bk GLSL_Floor OpenCL_Floor, Floating w )
   | otherwise = error "internal error: unsupported floor operation between floating point types of different widths"
-convOp CCeiling (Floating v) (Floating w)
-  | v == w    = ( Ceil, Floating w )
+convOp bk CCeiling (Floating v) (Floating w)
+  | v == w    = ( backendOp bk GLSL_Ceil OpenCL_Ceil, Floating w )
   | otherwise = error "internal error: unsupported ceiling operation between floating point types of different widths"
-convOp cOp a b
+convOp _  cOp a b
   = error $ "internal error: unsupported operation " ++ show cOp ++ " from type " ++ show a ++ " to type " ++ show b
 
 geomOp :: GeomPrimOp -> (Operation, PrimTy)
 geomOp EmitGeometryVertex   = ( EmitVertex  , Unit )
 geomOp EndGeometryPrimitive = ( EndPrimitive, Unit )
+
+syncOp :: SyncPrimOp -> (Operation, PrimTy)
+syncOp ControlSync = ( ControlBarrier, Unit )
+syncOp MemorySync  = ( MemoryBarrier , Unit )

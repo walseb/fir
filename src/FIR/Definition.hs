@@ -75,6 +75,8 @@ import GHC.TypeNats
 -- containers
 import Data.Map
   ( Map )
+import qualified Data.Map.Strict as Map
+  ( toList )
 import Data.Set
   ( Set )
 import qualified Data.Set as Set
@@ -123,7 +125,7 @@ import FIR.ProgramState
 import qualified FIR.ProgramState as ProgramState
   ( FunctionContext(TopLevel) )
 import FIR.Validation.Bindings
-  ( InsertEntryPointInfo )
+  ( InsertEntryPointInfo, EntryPointsBackend )
 import FIR.Validation.ExecutionModes
   ( ValidateExecutionModes )
 import qualified SPIRV.Capability    as SPIRV
@@ -147,7 +149,7 @@ import qualified SPIRV.Requirements  as SPIRV
   , executionModelCapabilities, executionModelExtensions
   )
 import qualified SPIRV.Stage         as SPIRV
-  ( ExecutionModel, ExecutionInfo )
+  ( ExecutionModel, ExecutionInfo, Backend, backendOf )
 import qualified SPIRV.Storage       as SPIRV
   ( StorageClass )
 import qualified SPIRV.Storage       as Storage
@@ -219,7 +221,13 @@ initialCGContext =
         , userEntryPoints  = executionAnnotations
         , userCapabilities = annotationCapabilities
         , userExtensions   = annotationExtensions
+        , backend          = entryPointsBackend executionAnnotations
         }
+
+entryPointsBackend :: Map (ShortText, SPIRV.ExecutionModel) SPIRV.ExecutionModes -> SPIRV.Backend
+entryPointsBackend eps = case Map.toList eps of
+  [] -> error "internal error: empty list of entry points"
+  ( ( (_, em), _ ) : _ ) -> SPIRV.backendOf em
 
 instance Demotable Definition where
   type Demote Definition = Annotate
@@ -328,6 +336,7 @@ type family StartStateFromTriage
         ProgramState.TopLevel
         funs
         ( EntryPointInfos globals eps ) -- validates entry points and checks for duplicates
+        ( EntryPointsBackend eps )
 
 -- | Perform triage of user-supplied definitions,
 -- so that different kinds of definition can be handled separately.

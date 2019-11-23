@@ -161,7 +161,7 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        , "gl_SamplePosition" ':-> Var R ( V 2 Float )
        , "gl_FragDepth"      ':-> Var W Float
        ]
-  ModelBuiltins' (ComputeInfo _)
+  ModelBuiltins' ( ComputeInfo _ )
     = '[ "gl_NumWorkgroups"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupSize"        ':-> Var R ( V 3 Word32 )
        , "gl_WorkgroupID"          ':-> Var R ( V 3 Word32 )
@@ -169,27 +169,16 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        , "gl_GlobalInvocationID"   ':-> Var R ( V 3 Word32 )
        , "gl_LocalInvocationIndex" ':-> Var R Word32
        ]
-  {-
-  ModelBuiltins' KernelInfo
-    = '[ "gl_NumWorkgroups"             ':-> Var R Word32
-       , "gl_WorkgroupSize"             ':-> Var R Word32
-       , "gl_WorkgroupID"               ':-> Var R Word32
-       , "gl_LocalInvocationID"         ':-> Var R Word32
-       , "gl_GlobalInvocationID"        ':-> Var R Word32
-       , "gl_LocalInvocationIndex"      ':-> Var R Word32
-       , "gl_WorkDim"                   ':-> Var R Word32
-       , "gl_GlobalSize"                ':-> Var R Word32
-       , "gl_EnqueuedWorkgroupSize"     ':-> Var R Word32
-       , "gl_GlobalOffset"              ':-> Var R Word32
-       , "gl_GlobalLinearID"            ':-> Var R Word32
-       , "gl_SubgroupSize"              ':-> Var R Word32
-       , "gl_SubgroupMaxSize"           ':-> Var R Word32
-       , "gl_NumSubgroups"              ':-> Var R Word32
-       , "gl_NumEnqueuedSubgroups"      ':-> Var R Word32
-       , "gl_SubgroupID"                ':-> Var R Word32
-       , "gl_SubgroupLocalInvocationID" ':-> Var R Word32
+  ModelBuiltins' ( KernelInfo _ )
+    = '[ "cl_WorkDim"            ':-> Var R Word32
+       , "cl_GlobalSize"         ':-> Var R (V 3 Word32)
+       , "cl_GlobalInvocationID" ':-> Var R (V 3 Word32)
+       , "cl_LocalInvocationID"  ':-> Var R (V 3 Word32)
+       , "cl_NumWorkgroups"      ':-> Var R (V 3 Word32)
+       , "cl_WorkgroupID"        ':-> Var R (V 3 Word32)
+       , "cl_GlobalOffset"       ':-> Var R (V 3 Word32)
+       , "cl_GlobalLinearID"     ':-> Var R Word32
        ]
-  -}
 
 shaderBuiltins :: ShaderInfo Word32 shader -> [ (ShortText, SPIRV.PointerTy) ]
 shaderBuiltins VertexShaderInfo
@@ -213,10 +202,8 @@ shaderBuiltins (ComputeShaderInfo _)
 
 modelBuiltins :: ExecutionInfo Word32 model -> [ (ShortText, SPIRV.PointerTy) ]
 modelBuiltins (ShaderExecutionInfo shaderInfo) = shaderBuiltins shaderInfo
-{-
-modelBuiltins KernelInfo
-  = builtinPointer ( knownInterface @(ModelBuiltins' KernelInfo) )
--}
+modelBuiltins (KernelInfo _)
+  = builtinPointer ( knownInterface @(ModelBuiltins' (KernelInfo '(1,1,1))) ) -- dummy again
 
 builtinPointer
     :: [ (ShortText, (SPIRV.PrimTy, SPIRV.StorageClass)) ]

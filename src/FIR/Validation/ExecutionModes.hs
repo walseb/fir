@@ -132,6 +132,10 @@ type family ValidateExecutionModes
     = If ( PertainTo k Compute modes )
         ( Just (ComputeInfo (LocalSizes k Compute modes) ) )
         Nothing
+  ValidateExecutionModes k Kernel modes
+    = If ( PertainTo k Kernel modes )
+        ( Just (KernelInfo (LocalSizes k Kernel modes) ) )
+        Nothing
   ValidateExecutionModes k em _
     = TypeError ( Text "Unsupported " :<>: Text (NamedExecutionModel k em) )
 
@@ -355,9 +359,8 @@ type family LocalSizes
     = TypeError
     ( Text (NamedExecutionModel k em) :<>: Text " is missing 'LocalSize' information." )
   LocalSizes k em ( LocalSize x y z ': modes )
-    = If ( NoLocalSizes k em '(x,y,z) modes )
-      ( '(x,y,z) )
-      ( '(1,1,1) ) -- unreachable
+    = Assert ( NoLocalSizes k em '(x,y,z) modes )
+        ( '(x,y,z) )
   LocalSizes k em ( _ ': modes ) = LocalSizes k em modes
 
 type family NoLocalSizes

@@ -356,11 +356,11 @@ instance (ScalarTy a, Floating a) => PrimOp SPIRV.FSqrt (a :: Type) where
   opName = SPIRV.FloatOp SPIRV.FSqrt (scalarTy @a)
   vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.FSqrt)
   vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
-instance (ScalarTy a, Floating a) => PrimOp SPIRV.FInvsqrt (a :: Type) where
-  type PrimOpType SPIRV.FInvsqrt a = a -> a
+instance (ScalarTy a, Floating a) => PrimOp SPIRV.FInvSqrt (a :: Type) where
+  type PrimOpType SPIRV.FInvSqrt a = a -> a
   op = recip . sqrt
-  opName = SPIRV.FloatOp SPIRV.FInvsqrt (scalarTy @a)
-  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.FInvsqrt)
+  opName = SPIRV.FloatOp SPIRV.FInvSqrt (scalarTy @a)
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.FInvSqrt)
   vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
 
 
@@ -405,6 +405,17 @@ instance PrimOp SPIRV.EndGeometryPrimitive (i :: ProgramState) where
   type PrimOpType SPIRV.EndGeometryPrimitive i = (() := i) i
   op = AtKey ()
   opName = SPIRV.GeomOp SPIRV.EndGeometryPrimitive
+
+-- memory synchronisation instructions
+instance PrimOp SPIRV.ControlSync (i :: ProgramState) where
+  type PrimOpType SPIRV.ControlSync i = Word32 -> Word32 -> Word32 -> (() := i) i
+  op _ _ _ = AtKey ()
+  opName = SPIRV.SyncOp SPIRV.ControlSync
+instance PrimOp SPIRV.MemorySync (i :: ProgramState) where
+  type PrimOpType SPIRV.MemorySync i = Word32 -> Word32 -> (() := i) i
+  op _ _ = AtKey ()
+  opName = SPIRV.SyncOp SPIRV.MemorySync
+
 
 -- vector operations
 -- doing it by hand because I'm an idiot who doesn't know better
@@ -569,10 +580,10 @@ instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FSqr
   type PrimOpType ('Vectorise SPIRV.FSqrt) (V n a) = V n a -> V n a
   op = fmap sqrt
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FSqrt @a)) (val @n) (scalarTy @a)
-instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FInvsqrt) (V n a) where
-  type PrimOpType ('Vectorise SPIRV.FInvsqrt) (V n a) = V n a -> V n a
+instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FInvSqrt) (V n a) where
+  type PrimOpType ('Vectorise SPIRV.FInvSqrt) (V n a) = V n a -> V n a
   op = fmap ( recip . sqrt )
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FInvsqrt @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FInvSqrt @a)) (val @n) (scalarTy @a)
 
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp SPIRV.DotV (V n a) where
   type PrimOpType SPIRV.DotV (V n a) = V n a -> V n a -> a

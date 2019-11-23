@@ -18,7 +18,7 @@ import Data.Word
 
 -- fir
 import SPIRV.Extension
-  ( ExtInst(GLSL) )
+  ( ExtInst(GLSL, OpenCL) )
 
 --------------------------------------------------
 -- operation data type
@@ -398,6 +398,11 @@ pattern EmitStreamVertex :: Operation
 pattern EmitStreamVertex = Code 220
 pattern EndStreamPrimitive :: Operation
 pattern EndStreamPrimitive = Code 221
+-- memory synchronisation
+pattern ControlBarrier :: Operation
+pattern ControlBarrier = Code 224
+pattern MemoryBarrier :: Operation
+pattern MemoryBarrier = Code 225
 -- control flow
 pattern Phi               :: Operation
 pattern Phi               = Code 245
@@ -422,82 +427,214 @@ pattern ReturnValue       = Code 254
 pattern Unreachable       :: Operation
 pattern Unreachable       = Code 255
 -- GLSL extended instructions
-pattern Round         :: Operation
-pattern Round         = ExtCode GLSL 1
-pattern RoundEven     :: Operation
-pattern RoundEven     = ExtCode GLSL 2
-pattern Trunc         :: Operation
-pattern Trunc         = ExtCode GLSL 3
-pattern FAbs          :: Operation
-pattern FAbs          = ExtCode GLSL 4
-pattern SAbs          :: Operation
-pattern SAbs          = ExtCode GLSL 5
-pattern FSign         :: Operation
-pattern FSign         = ExtCode GLSL 6
-pattern SSign         :: Operation
-pattern SSign         = ExtCode GLSL 7
-pattern Floor         :: Operation
-pattern Floor         = ExtCode GLSL 8
-pattern Ceil          :: Operation
-pattern Ceil          = ExtCode GLSL 9
-pattern Fract         :: Operation
-pattern Fract         = ExtCode GLSL 10
-pattern Sin           :: Operation
-pattern Sin           = ExtCode GLSL 13
-pattern Cos           :: Operation
-pattern Cos           = ExtCode GLSL 14
-pattern Tan           :: Operation
-pattern Tan           = ExtCode GLSL 15
-pattern Asin          :: Operation
-pattern Asin          = ExtCode GLSL 16
-pattern Acos          :: Operation
-pattern Acos          = ExtCode GLSL 17
-pattern Atan          :: Operation
-pattern Atan          = ExtCode GLSL 18
-pattern Sinh          :: Operation
-pattern Sinh          = ExtCode GLSL 19
-pattern Cosh          :: Operation
-pattern Cosh          = ExtCode GLSL 20
-pattern Tanh          :: Operation
-pattern Tanh          = ExtCode GLSL 21
-pattern Asinh         :: Operation
-pattern Asinh         = ExtCode GLSL 22
-pattern Acosh         :: Operation
-pattern Acosh         = ExtCode GLSL 23
-pattern Atanh         :: Operation
-pattern Atanh         = ExtCode GLSL 24
-pattern Atan2         :: Operation
-pattern Atan2         = ExtCode GLSL 25
-pattern Pow           :: Operation
-pattern Pow           = ExtCode GLSL 26
-pattern Exp           :: Operation
-pattern Exp           = ExtCode GLSL 27
-pattern Log           :: Operation
-pattern Log           = ExtCode GLSL 28
-pattern Sqrt          :: Operation
-pattern Sqrt          = ExtCode GLSL 31
-pattern Invsqrt       :: Operation
-pattern Invsqrt       = ExtCode GLSL 32
-pattern Determinant   :: Operation
-pattern Determinant   = ExtCode GLSL 33
-pattern MatrixInverse :: Operation
-pattern MatrixInverse = ExtCode GLSL 34
-pattern FMin          :: Operation
-pattern FMin          = ExtCode GLSL 37
-pattern UMin          :: Operation
-pattern UMin          = ExtCode GLSL 38
-pattern SMin          :: Operation
-pattern SMin          = ExtCode GLSL 39
-pattern FMax          :: Operation
-pattern FMax          = ExtCode GLSL 40
-pattern UMax          :: Operation
-pattern UMax          = ExtCode GLSL 41
-pattern SMax          :: Operation
-pattern SMax          = ExtCode GLSL 42
-pattern Cross         :: Operation
-pattern Cross         = ExtCode GLSL 68
-pattern Normalize     :: Operation
-pattern Normalize     = ExtCode GLSL 69
+pattern GLSL_Round         :: Operation
+pattern GLSL_Round         = ExtCode GLSL 1
+pattern GLSL_RoundEven     :: Operation
+pattern GLSL_RoundEven     = ExtCode GLSL 2
+pattern GLSL_Trunc         :: Operation
+pattern GLSL_Trunc         = ExtCode GLSL 3
+pattern GLSL_FAbs          :: Operation
+pattern GLSL_FAbs          = ExtCode GLSL 4
+pattern GLSL_SAbs          :: Operation
+pattern GLSL_SAbs          = ExtCode GLSL 5
+pattern GLSL_FSign         :: Operation
+pattern GLSL_FSign         = ExtCode GLSL 6
+pattern GLSL_SSign         :: Operation
+pattern GLSL_SSign         = ExtCode GLSL 7
+pattern GLSL_Floor         :: Operation
+pattern GLSL_Floor         = ExtCode GLSL 8
+pattern GLSL_Ceil          :: Operation
+pattern GLSL_Ceil          = ExtCode GLSL 9
+pattern GLSL_Fract         :: Operation
+pattern GLSL_Fract         = ExtCode GLSL 10
+pattern GLSL_Sin           :: Operation
+pattern GLSL_Sin           = ExtCode GLSL 13
+pattern GLSL_Cos           :: Operation
+pattern GLSL_Cos           = ExtCode GLSL 14
+pattern GLSL_Tan           :: Operation
+pattern GLSL_Tan           = ExtCode GLSL 15
+pattern GLSL_Asin          :: Operation
+pattern GLSL_Asin          = ExtCode GLSL 16
+pattern GLSL_Acos          :: Operation
+pattern GLSL_Acos          = ExtCode GLSL 17
+pattern GLSL_Atan          :: Operation
+pattern GLSL_Atan          = ExtCode GLSL 18
+pattern GLSL_Sinh          :: Operation
+pattern GLSL_Sinh          = ExtCode GLSL 19
+pattern GLSL_Cosh          :: Operation
+pattern GLSL_Cosh          = ExtCode GLSL 20
+pattern GLSL_Tanh          :: Operation
+pattern GLSL_Tanh          = ExtCode GLSL 21
+pattern GLSL_Asinh         :: Operation
+pattern GLSL_Asinh         = ExtCode GLSL 22
+pattern GLSL_Acosh         :: Operation
+pattern GLSL_Acosh         = ExtCode GLSL 23
+pattern GLSL_Atanh         :: Operation
+pattern GLSL_Atanh         = ExtCode GLSL 24
+pattern GLSL_Atan2         :: Operation
+pattern GLSL_Atan2         = ExtCode GLSL 25
+pattern GLSL_Pow           :: Operation
+pattern GLSL_Pow           = ExtCode GLSL 26
+pattern GLSL_Exp           :: Operation
+pattern GLSL_Exp           = ExtCode GLSL 27
+pattern GLSL_Log           :: Operation
+pattern GLSL_Log           = ExtCode GLSL 28
+pattern GLSL_Sqrt          :: Operation
+pattern GLSL_Sqrt          = ExtCode GLSL 31
+pattern GLSL_InvSqrt       :: Operation
+pattern GLSL_InvSqrt       = ExtCode GLSL 32
+pattern GLSL_Determinant   :: Operation
+pattern GLSL_Determinant   = ExtCode GLSL 33
+pattern GLSL_MatrixInverse :: Operation
+pattern GLSL_MatrixInverse = ExtCode GLSL 34
+pattern GLSL_FMin          :: Operation
+pattern GLSL_FMin          = ExtCode GLSL 37
+pattern GLSL_UMin          :: Operation
+pattern GLSL_UMin          = ExtCode GLSL 38
+pattern GLSL_SMin          :: Operation
+pattern GLSL_SMin          = ExtCode GLSL 39
+pattern GLSL_FMax          :: Operation
+pattern GLSL_FMax          = ExtCode GLSL 40
+pattern GLSL_UMax          :: Operation
+pattern GLSL_UMax          = ExtCode GLSL 41
+pattern GLSL_SMax          :: Operation
+pattern GLSL_SMax          = ExtCode GLSL 42
+pattern GLSL_Cross         :: Operation
+pattern GLSL_Cross         = ExtCode GLSL 68
+pattern GLSL_Normalize     :: Operation
+pattern GLSL_Normalize     = ExtCode GLSL 69
+-- OpenCL extended instructions
+  -- floating point instructions
+pattern OpenCL_Acos :: Operation
+pattern OpenCL_Acos = ExtCode OpenCL 0
+pattern OpenCL_Acosh :: Operation
+pattern OpenCL_Acosh = ExtCode OpenCL 1
+pattern OpenCL_Asin :: Operation
+pattern OpenCL_Asin = ExtCode OpenCL 3
+pattern OpenCL_Asinh :: Operation
+pattern OpenCL_Asinh = ExtCode OpenCL 4
+pattern OpenCL_Atan :: Operation
+pattern OpenCL_Atan = ExtCode OpenCL 6
+pattern OpenCL_Atan2 :: Operation
+pattern OpenCL_Atan2 = ExtCode OpenCL 7
+pattern OpenCL_Atanh :: Operation
+pattern OpenCL_Atanh = ExtCode OpenCL 8
+pattern OpenCL_Cbrt :: Operation
+pattern OpenCL_Cbrt = ExtCode OpenCL 11
+pattern OpenCL_Ceil :: Operation
+pattern OpenCL_Ceil = ExtCode OpenCL 12
+pattern OpenCL_Cos :: Operation
+pattern OpenCL_Cos = ExtCode OpenCL 14
+pattern OpenCL_Cosh :: Operation
+pattern OpenCL_Cosh = ExtCode OpenCL 15
+pattern OpenCL_Erfc :: Operation
+pattern OpenCL_Erfc = ExtCode OpenCL 17
+pattern OpenCL_Erf :: Operation
+pattern OpenCL_Erf = ExtCode OpenCL 18
+pattern OpenCL_Exp :: Operation
+pattern OpenCL_Exp = ExtCode OpenCL 19
+pattern OpenCL_Exp2 :: Operation
+pattern OpenCL_Exp2 = ExtCode OpenCL 20
+pattern OpenCL_Exp10 :: Operation
+pattern OpenCL_Exp10 = ExtCode OpenCL 21
+pattern OpenCL_Expm1 :: Operation
+pattern OpenCL_Expm1 = ExtCode OpenCL 22
+pattern OpenCL_FAbs :: Operation
+pattern OpenCL_FAbs = ExtCode OpenCL 23
+pattern OpenCL_FDim :: Operation
+pattern OpenCL_FDim = ExtCode OpenCL 24
+pattern OpenCL_Floor :: Operation
+pattern OpenCL_Floor = ExtCode OpenCL 25
+pattern OpenCL_FMAdd :: Operation
+pattern OpenCL_FMAdd = ExtCode OpenCL 26
+pattern OpenCL_FMax :: Operation
+pattern OpenCL_FMax = ExtCode OpenCL 27
+pattern OpenCL_FMin :: Operation
+pattern OpenCL_FMin = ExtCode OpenCL 28
+pattern OpenCL_FMod :: Operation
+pattern OpenCL_FMod = ExtCode OpenCL 29
+pattern OpenCL_Fract :: Operation
+pattern OpenCL_Fract = ExtCode OpenCL 30
+pattern OpenCL_FRExp :: Operation
+pattern OpenCL_FRExp = ExtCode OpenCL 31
+pattern OpenCL_Hypot :: Operation
+pattern OpenCL_Hypot = ExtCode OpenCL 32
+pattern OpenCL_LogGamma :: Operation
+pattern OpenCL_LogGamma = ExtCode OpenCL 35
+pattern OpenCL_Log :: Operation
+pattern OpenCL_Log = ExtCode OpenCL 37
+pattern OpenCL_Log2 :: Operation
+pattern OpenCL_Log2 = ExtCode OpenCL 38
+pattern OpenCL_Log10 :: Operation
+pattern OpenCL_Log10 = ExtCode OpenCL 39
+pattern OpenCL_Log1P :: Operation
+pattern OpenCL_Log1P = ExtCode OpenCL 40
+pattern OpenCL_LogB :: Operation
+pattern OpenCL_LogB = ExtCode OpenCL 41
+pattern OpenCL_MAdd :: Operation
+pattern OpenCL_MAdd = ExtCode OpenCL 42
+pattern OpenCL_MaxMag :: Operation
+pattern OpenCL_MaxMag = ExtCode OpenCL 43
+pattern OpenCL_MinMag :: Operation
+pattern OpenCL_MinMag = ExtCode OpenCL 44
+pattern OpenCL_ModF :: Operation
+pattern OpenCL_ModF = ExtCode OpenCL 45
+pattern OpenCL_NaN :: Operation
+pattern OpenCL_NaN = ExtCode OpenCL 46
+pattern OpenCL_NextAfter :: Operation
+pattern OpenCL_NextAfter = ExtCode OpenCL 47
+pattern OpenCL_Pow :: Operation
+pattern OpenCL_Pow = ExtCode OpenCL 48
+pattern OpenCL_FRem :: Operation
+pattern OpenCL_FRem = ExtCode OpenCL 51
+pattern OpenCL_FRemQuot :: Operation
+pattern OpenCL_FRemQuot = ExtCode OpenCL 52
+pattern OpenCL_RoundEven :: Operation
+pattern OpenCL_RoundEven = ExtCode OpenCL 53
+pattern OpenCL_Round :: Operation
+pattern OpenCL_Round = ExtCode OpenCL 55
+pattern OpenCL_InvSqrt :: Operation
+pattern OpenCL_InvSqrt = ExtCode OpenCL 56
+pattern OpenCL_Sin :: Operation
+pattern OpenCL_Sin = ExtCode OpenCL 57
+pattern OpenCL_SinCos :: Operation
+pattern OpenCL_SinCos = ExtCode OpenCL 58
+pattern OpenCL_Sinh :: Operation
+pattern OpenCL_Sinh = ExtCode OpenCL 59
+pattern OpenCL_Sqrt :: Operation
+pattern OpenCL_Sqrt = ExtCode OpenCL 61
+pattern OpenCL_Tan :: Operation
+pattern OpenCL_Tan = ExtCode OpenCL 62
+pattern OpenCL_Tanh :: Operation
+pattern OpenCL_Tanh = ExtCode OpenCL 63
+pattern OpenCL_Gamma :: Operation
+pattern OpenCL_Gamma = ExtCode OpenCL 65
+pattern OpenCL_Trunc :: Operation
+pattern OpenCL_Trunc = ExtCode OpenCL 66
+pattern OpenCL_FSign :: Operation
+pattern OpenCL_FSign = ExtCode OpenCL 103
+  -- integral instructions
+pattern OpenCL_SAbs :: Operation
+pattern OpenCL_SAbs = ExtCode OpenCL 141
+pattern OpenCL_SAbsDiff :: Operation
+pattern OpenCL_SAbsDiff = ExtCode OpenCL 142
+pattern OpenCL_SMax :: Operation
+pattern OpenCL_SMax = ExtCode OpenCL 156
+pattern OpenCL_UMax :: Operation
+pattern OpenCL_UMax = ExtCode OpenCL 157
+pattern OpenCL_SMin :: Operation
+pattern OpenCL_SMin = ExtCode OpenCL 158
+pattern OpenCL_UMin :: Operation
+pattern OpenCL_UMin = ExtCode OpenCL 159
+pattern OpenCL_UAbs :: Operation
+pattern OpenCL_UAbs = ExtCode OpenCL 201
+pattern OpenCL_UAbsDiff :: Operation
+pattern OpenCL_UAbsDiff = ExtCode OpenCL 202
+  -- vectors and matrices
+pattern OpenCL_Cross :: Operation
+pattern OpenCL_Cross = ExtCode OpenCL 104
+pattern OpenCL_Normalize :: Operation
+pattern OpenCL_Normalize = ExtCode OpenCL 107
 
 showOperation :: Operation -> String
 showOperation Nop = "Nop"
@@ -673,43 +810,107 @@ showOperation Kill = "Kill"
 showOperation Return = "Return"
 showOperation ReturnValue = "ReturnValue"
 showOperation Unreachable = "Unreachable"
-showOperation Round = "Round"
-showOperation RoundEven = "RoundEven"
-showOperation Trunc = "Trunc"
-showOperation FAbs = "FAbs"
-showOperation SAbs = "SAbs"
-showOperation FSign = "FSign"
-showOperation SSign = "SSign"
-showOperation Floor = "Floor"
-showOperation Ceil = "Ceil"
-showOperation Fract = "Fract"
-showOperation Sin = "Sin"
-showOperation Cos = "Cos"
-showOperation Tan = "Tan"
-showOperation Asin = "Asin"
-showOperation Acos = "Acos"
-showOperation Atan = "Atan"
-showOperation Sinh = "Sinh"
-showOperation Cosh = "Cosh"
-showOperation Tanh = "Tanh"
-showOperation Asinh = "Asinh"
-showOperation Acosh = "Acosh"
-showOperation Atanh = "Atanh"
-showOperation Atan2 = "Atan2"
-showOperation Pow = "Pow"
-showOperation Exp = "Exp"
-showOperation Log = "Log"
-showOperation Sqrt = "Sqrt"
-showOperation Invsqrt = "Invsqrt"
-showOperation Determinant = "Determinant"
-showOperation MatrixInverse = "MatrixInverse"
-showOperation FMin = "FMin"
-showOperation UMin = "UMin"
-showOperation SMin = "SMin"
-showOperation FMax = "FMax"
-showOperation UMax = "UMax"
-showOperation SMax = "SMax"
-showOperation Cross = "Cross"
-showOperation Normalize = "Normalize"
+showOperation GLSL_Round = "Round"
+showOperation GLSL_RoundEven = "RoundEven"
+showOperation GLSL_Trunc = "Trunc"
+showOperation GLSL_FAbs = "FAbs"
+showOperation GLSL_SAbs = "SAbs"
+showOperation GLSL_FSign = "FSign"
+showOperation GLSL_SSign = "SSign"
+showOperation GLSL_Floor = "Floor"
+showOperation GLSL_Ceil = "Ceil"
+showOperation GLSL_Fract = "Fract"
+showOperation GLSL_Sin = "Sin"
+showOperation GLSL_Cos = "Cos"
+showOperation GLSL_Tan = "Tan"
+showOperation GLSL_Asin = "Asin"
+showOperation GLSL_Acos = "Acos"
+showOperation GLSL_Atan = "Atan"
+showOperation GLSL_Sinh = "Sinh"
+showOperation GLSL_Cosh = "Cosh"
+showOperation GLSL_Tanh = "Tanh"
+showOperation GLSL_Asinh = "Asinh"
+showOperation GLSL_Acosh = "Acosh"
+showOperation GLSL_Atanh = "Atanh"
+showOperation GLSL_Atan2 = "Atan2"
+showOperation GLSL_Pow = "Pow"
+showOperation GLSL_Exp = "Exp"
+showOperation GLSL_Log = "Log"
+showOperation GLSL_Sqrt = "Sqrt"
+showOperation GLSL_InvSqrt = "InvSqrt"
+showOperation GLSL_Determinant = "Determinant"
+showOperation GLSL_MatrixInverse = "MatrixInverse"
+showOperation GLSL_FMin = "FMin"
+showOperation GLSL_UMin = "UMin"
+showOperation GLSL_SMin = "SMin"
+showOperation GLSL_FMax = "FMax"
+showOperation GLSL_UMax = "UMax"
+showOperation GLSL_SMax = "SMax"
+showOperation GLSL_Cross = "Cross"
+showOperation GLSL_Normalize = "Normalize"
+showOperation OpenCL_Acos      = "Acos"
+showOperation OpenCL_Acosh     = "Acosh"
+showOperation OpenCL_Asin      = "Asin"
+showOperation OpenCL_Asinh     = "Asinh"
+showOperation OpenCL_Atan      = "Atan"
+showOperation OpenCL_Atan2     = "Atan2"
+showOperation OpenCL_Atanh     = "Atanh"
+showOperation OpenCL_Cbrt      = "Cbrt"
+showOperation OpenCL_Ceil      = "Ceil"
+showOperation OpenCL_Cos       = "Cos"
+showOperation OpenCL_Cosh      = "Cosh"
+showOperation OpenCL_Erfc      = "Erfc"
+showOperation OpenCL_Erf       = "Erf"
+showOperation OpenCL_Exp       = "Exp"
+showOperation OpenCL_Exp2      = "Exp2"
+showOperation OpenCL_Exp10     = "Exp10"
+showOperation OpenCL_Expm1     = "Expm1"
+showOperation OpenCL_FAbs      = "FAbs"
+showOperation OpenCL_FDim      = "FDim"
+showOperation OpenCL_Floor     = "Floor"
+showOperation OpenCL_FMAdd     = "FMAdd"
+showOperation OpenCL_FMax      = "FMax"
+showOperation OpenCL_FMin      = "FMin"
+showOperation OpenCL_FMod      = "FMod"
+showOperation OpenCL_Fract     = "Fract"
+showOperation OpenCL_FRExp     = "FRExp"
+showOperation OpenCL_Hypot     = "Hypot"
+showOperation OpenCL_LogGamma  = "LogGamma"
+showOperation OpenCL_Log       = "Log"
+showOperation OpenCL_Log2      = "Log2"
+showOperation OpenCL_Log10     = "Log10"
+showOperation OpenCL_Log1P     = "Log1P"
+showOperation OpenCL_LogB      = "LogB"
+showOperation OpenCL_MAdd      = "MAdd"
+showOperation OpenCL_MaxMag    = "MaxMag"
+showOperation OpenCL_MinMag    = "MinMag"
+showOperation OpenCL_ModF      = "ModF"
+showOperation OpenCL_NaN       = "NaN"
+showOperation OpenCL_NextAfter = "NextAfter"
+showOperation OpenCL_Pow       = "Pow"
+showOperation OpenCL_FRem      = "FRem"
+showOperation OpenCL_FRemQuot  = "FRemQuot"
+showOperation OpenCL_RoundEven = "RoundEven"
+showOperation OpenCL_Round     = "Round"
+showOperation OpenCL_InvSqrt   = "InvSqrt"
+showOperation OpenCL_Sin       = "Sin"
+showOperation OpenCL_SinCos    = "SinCos"
+showOperation OpenCL_Sinh      = "Sinh"
+showOperation OpenCL_Sqrt      = "Sqrt"
+showOperation OpenCL_Tan       = "Tan"
+showOperation OpenCL_Tanh      = "Tanh"
+showOperation OpenCL_Gamma     = "Gamma"
+showOperation OpenCL_Trunc     = "Trunc"
+showOperation OpenCL_FSign     = "FSign"
+showOperation OpenCL_SAbs      = "SAbs"
+showOperation OpenCL_SAbsDiff  = "SAbsDiff"
+showOperation OpenCL_SMax      = "SMax"
+showOperation OpenCL_UMax      = "UMax"
+showOperation OpenCL_SMin      = "SMin"
+showOperation OpenCL_UMin      = "UMin"
+showOperation OpenCL_UAbs      = "UAbs"
+showOperation OpenCL_UAbsDiff  = "UAbsDiff"
+showOperation OpenCL_Cross     = "Cross"
+showOperation OpenCL_Normalize = "Normalize"
 showOperation (Code i) = show i
 showOperation (ExtCode _ i) = show i

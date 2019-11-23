@@ -65,6 +65,7 @@ import FIR.Validation.Interface
 import qualified SPIRV.Stage as SPIRV
   ( ExecutionModel, NamedExecutionModel
   , ExecutionInfo
+  , Backend, OtherBackend, BackendOf
   )
 
 -------------------------------------------------
@@ -74,7 +75,7 @@ import qualified SPIRV.Stage as SPIRV
 --
 -- Throws a type error if no variable by that name exists.
 type family Has (k :: Symbol) (i :: ProgramState) :: Type where
-  Has k ('ProgramState bds _ _ _) = HasBinding k (Lookup k bds)
+  Has k ('ProgramState bds _ _ _ _) = HasBinding k (Lookup k bds)
 
 type family HasBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
   HasBinding k 'Nothing
@@ -89,7 +90,7 @@ type family HasBinding (k :: Symbol) (mbd :: Maybe Binding) :: Type where
 
 -- | Check whether we can 'get' a binding.
 type family CanGet (k :: Symbol) (i :: ProgramState) :: Constraint where
-  CanGet k ('ProgramState bds _ _ _) = GetBinding k (Lookup k bds)
+  CanGet k ('ProgramState bds _ _ _ _) = GetBinding k (Lookup k bds)
 
 type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
   GetBinding k 'Nothing
@@ -109,7 +110,7 @@ type family GetBinding (k :: Symbol) (mbd :: Maybe Binding) :: Constraint where
 
 -- | Check whether we can write to a binding.
 type family CanPut (k :: Symbol) (i :: ProgramState) :: Constraint where
-  CanPut k ('ProgramState bds _ _ _) = PutBinding k (Lookup k bds)
+  CanPut k ('ProgramState bds _ _ _ _) = PutBinding k (Lookup k bds)
 
 type family PutBinding (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
   PutBinding k 'Nothing = TypeError
@@ -139,14 +140,14 @@ type family AddBinding
               ( bd :: Binding )
               ( s  :: ProgramState )
               :: ProgramState where
-  AddBinding k bd ('ProgramState bds ctx funs eps)
-    = 'ProgramState (Insert k bd bds) ctx funs eps
+  AddBinding k bd ('ProgramState bds ctx funs eps bkend)
+    = 'ProgramState (Insert k bd bds) ctx funs eps bkend
 
 -- | Check that it is valid to define a new variable with given name.
 --
 -- Throws a type error if a binding by this name already exists.
 type family ValidDef (k :: Symbol) (i :: ProgramState) :: Constraint where
-  ValidDef k ('ProgramState bds _ _ _) = NotAlreadyDefined k (Lookup k bds)
+  ValidDef k ('ProgramState bds _ _ _ _) = NotAlreadyDefined k (Lookup k bds)
 
 type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
   NotAlreadyDefined _ 'Nothing  = ()
@@ -166,8 +167,8 @@ type family FunctionDefinitionStartState
             = ( j  :: ProgramState )
             | j -> k as
             where
-  FunctionDefinitionStartState k as ('ProgramState i ctx funs eps)
-    = 'ProgramState (Union i as) ('InFunction k as) funs eps
+  FunctionDefinitionStartState k as ('ProgramState i ctx funs eps bkend)
+    = 'ProgramState (Union i as) ('InFunction k as) funs eps bkend
 
 type family FunctionDefinitionEndState
               ( k   :: Symbol       )
@@ -177,19 +178,20 @@ type family FunctionDefinitionEndState
             = ( j   :: ProgramState )
             | j -> k as bds
             where
-  FunctionDefinitionEndState k as bds ('ProgramState _ _ funs eps)
+  FunctionDefinitionEndState k as bds ('ProgramState _ _ funs eps bkend)
     = 'ProgramState
         bds
         ( 'InFunction k as)
         funs
         eps
+        bkend
 
 type family GetFunctionInfo
               ( k :: Symbol       )
               ( i :: ProgramState )
             :: FunctionInfo
             where
-  GetFunctionInfo k ('ProgramState _ _ funs _)
+  GetFunctionInfo k ('ProgramState _ _ funs _ _)
     = GetFunctionInfoFromLookup k (Lookup k funs)
 
 type family FunctionTypes
@@ -219,9 +221,9 @@ type family GetFunctionInfoFromLookup
 
 -- | Adds a function binding to the indexed monadic state.
 type family AddFunBinding (k :: Symbol) (as :: BindingsMap) (b :: Type) (s :: ProgramState) :: ProgramState where
-  AddFunBinding k as b ('ProgramState bds ctx funs eps)
+  AddFunBinding k as b ('ProgramState bds ctx funs eps bkend)
   -- 'ValidFunDef' should have already checked that name 'k' is not already in use
-    = 'ProgramState (Insert k (Fun as b) bds) ctx (SetFunctionDefined k funs) eps
+    = 'ProgramState (Insert k (Fun as b) bds) ctx (SetFunctionDefined k funs) eps bkend
 
 type family SetFunctionDefined
               ( k    :: Symbol                  )
@@ -249,16 +251,16 @@ type family SetFunctionContext
               ( as :: BindingsMap  )
               ( s  :: ProgramState )
               :: ProgramState where
-  SetFunctionContext k as ('ProgramState bds TopLevel funs eps)
-    = 'ProgramState bds ('InFunction k as) funs eps
-  SetFunctionContext k _ ('ProgramState _ ('InFunction l _) _ _ )
+  SetFunctionContext k as ('ProgramState bds TopLevel funs eps bkend)
+    = 'ProgramState bds ('InFunction k as) funs eps bkend
+  SetFunctionContext k _ ('ProgramState _ ('InFunction l _) _ _ _)
     = TypeError
         (    Text "'fundef': unexpected nested function definition."
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
   SetFunctionContext k _
-    ( 'ProgramState _ ('InEntryPoint stageName ( _ :: SPIRV.ExecutionInfo Nat em) _) _ _ )
+    ( 'ProgramState _ ('InEntryPoint stageName ( _ :: SPIRV.ExecutionInfo Nat em) _) _ _ _ )
     = TypeError
         (    Text "'fundef': unexpected function definition inside entry point."
         :$$: Text "Function " :<>: ShowType k
@@ -281,14 +283,14 @@ type family ValidFunDef
       ( l  :: BindingsMap  )  -- total bindings at the end of the function definition
     :: Constraint
     where
-  ValidFunDef k _ ('ProgramState _ ('InFunction l _) _ _ ) _
+  ValidFunDef k _ ('ProgramState _ ('InFunction l _) _ _ _ ) _
     = TypeError
         (    Text "'fundef': unexpected nested function definition."
         :$$: Text "Function " :<>: ShowType k
         :<>: Text " declared inside the body of function " :<>: ShowType l :<>: Text "."
         )
   ValidFunDef k _
-    ( 'ProgramState _ ('InEntryPoint stageName ( _ :: SPIRV.ExecutionInfo Nat em) _) _ _ )
+    ( 'ProgramState _ ('InEntryPoint stageName ( _ :: SPIRV.ExecutionInfo Nat em) _) _ _ _)
     _
       = TypeError
           (    Text "'fundef': unexpected function definition inside entry point."
@@ -296,7 +298,7 @@ type family ValidFunDef
           :<>: Text " declared inside " :<>: Text (SPIRV.NamedExecutionModel stageName em)
           :<>: Text "."
           )
-  ValidFunDef k as ('ProgramState i 'TopLevel _ _) l
+  ValidFunDef k as ('ProgramState i 'TopLevel _ _ _) l
     = ( NoFunctionNameConflict k ( Lookup k i ) -- check that function name is not already in use
       , ValidArguments k as (Remove i (Remove as l)) )
         --     │                      └━━━━━━┬━━━━━┘
@@ -359,12 +361,47 @@ type family ValidEntryPoint
               ( i        :: ProgramState              )
               ( l        :: BindingsMap               )
             :: Constraint where
-  ValidEntryPoint k (nfo :: SPIRV.ExecutionInfo Nat s) ('ProgramState i _ _ eps) l
+  ValidEntryPoint k (nfo :: SPIRV.ExecutionInfo Nat s) ('ProgramState i _ _ eps bkend) l
     = ( ValidInterface k ( LookupEntryPointInfo k s eps )
       , NoEntryPointNameConflict k (Lookup k i)
       , ValidLocalBehaviour s (Remove i l)
       , BuiltinsDoNotAppearBefore s (ModelBuiltins nfo) i
       )
+
+type family EntryPointsBackend
+              ( eps :: [ Symbol :-> ( SPIRV.ExecutionModel, modes ) ] )
+            :: SPIRV.Backend
+            where
+  EntryPointsBackend '[]
+    = TypeError
+    (    Text "SPIR-V module must specify at least one entry point."
+    :$$: Text "Entry points are specified as part of a type signature containing module definitions."
+    :$$: Text "For instance, a fragment shader can be specified as follows:"
+    :$$: Text " \"main\" ':-> EntryPoint '[ OriginLowerLeft ] Fragment "
+    )
+  EntryPointsBackend ( ( k ':-> '( s, _ ) ) ': eps )
+    = CompatibleWithBackend k s (SPIRV.BackendOf s) eps
+
+type family CompatibleWithBackend
+              ( k     :: Symbol               )
+              ( s     :: SPIRV.ExecutionModel )
+              ( bkend :: SPIRV.Backend        )
+              ( eps   :: [ Symbol :-> ( SPIRV.ExecutionModel, modes ) ] )
+            :: SPIRV.Backend
+            where
+  CompatibleWithBackend _ _ bk '[] = bk
+  CompatibleWithBackend k s bk ( ( k' ':-> '( s', _ ) ) ': eps )
+    = If ( SPIRV.BackendOf s' == bk )
+        ( CompatibleWithBackend k s bk eps )
+        ( TypeError
+          (    Text "Incompatible backends."
+          :$$: Text ( SPIRV.NamedExecutionModel k s )
+          :<>: Text " uses " :<>: ShowType bk :<>: Text ","
+          :$$: Text "while " :<>: Text ( SPIRV.NamedExecutionModel k' s' )
+          :<>: Text " uses " :<>: ShowType ( SPIRV.OtherBackend bk ) :<>: Text "."
+          )
+        )
+
 
 -- | Indexed monadic state at start of entry point body.
 type family EntryPointStartState
@@ -374,7 +411,7 @@ type family EntryPointStartState
             = ( j    :: ProgramState              )
             | j -> k nfo
             where
-  EntryPointStartState k nfo ('ProgramState i _ funs eps)
+  EntryPointStartState k nfo ('ProgramState i _ funs eps bkend)
     = 'ProgramState
         ( Union i (ModelBuiltins nfo) ) -- bindings at the beginning
         ( 'InEntryPoint                 -- context: now within an entry point
@@ -384,6 +421,7 @@ type family EntryPointStartState
         )
         funs
         eps
+        bkend
 
 -- | Indexed monadic state at end of entry point body.
 type family EntryPointEndState
@@ -395,12 +433,13 @@ type family EntryPointEndState
             = ( j     :: ProgramState              )
             | j -> k nfo bds iface
             where
-  EntryPointEndState k nfo bds iface ('ProgramState _ _ funs eps)
+  EntryPointEndState k nfo bds iface ('ProgramState _ _ funs eps bkend)
     = 'ProgramState
         bds
         ( InEntryPoint k nfo ('Just iface) )
         funs
         eps
+        bkend
 
 type family GetExecutionInfo
               ( k  :: Symbol               )
@@ -408,13 +447,13 @@ type family GetExecutionInfo
               ( i  :: ProgramState         )
             :: SPIRV.ExecutionInfo Nat em
             where
-  GetExecutionInfo k em ('ProgramState _ _ _ eps)
+  GetExecutionInfo k em ('ProgramState _ _ _ eps _)
     = GetExecutionInfoOf k em eps
 
 type family GetExecutionInfoOf
-              ( k  :: Symbol                       )
-              ( em :: SPIRV.ExecutionModel         )
-              ( i  :: [ Symbol :-> EntryPointInfo] )
+              ( k  :: Symbol                        )
+              ( em :: SPIRV.ExecutionModel          )
+              ( i  :: [ Symbol :-> EntryPointInfo ] )
             :: SPIRV.ExecutionInfo Nat em
             where
   GetExecutionInfoOf k em '[]
@@ -437,15 +476,15 @@ type family SetInterface
               ( i     :: ProgramState              )
             :: ProgramState
             where
-  SetInterface k (nfo :: SPIRV.ExecutionInfo Nat s) iface ('ProgramState i fc funs eps)
-    = 'ProgramState i fc funs (SetInterfaceOf k s iface eps)
+  SetInterface k (nfo :: SPIRV.ExecutionInfo Nat s) iface ('ProgramState i fc funs eps bkend)
+    = 'ProgramState i fc funs (SetInterfaceOf k s iface eps) bkend
 
 type family SetInterfaceOf
               ( k     :: Symbol                      )
               ( em    :: SPIRV.ExecutionModel        )
               ( iface :: TLInterface                 )
-              ( eps   :: [Symbol :-> EntryPointInfo] )
-            :: [ Symbol :-> EntryPointInfo]
+              ( eps   :: [ Symbol :-> EntryPointInfo ] )
+            :: [ Symbol :-> EntryPointInfo ]
             where
   SetInterfaceOf k em  _ '[]
     = TypeError
@@ -467,10 +506,10 @@ type family SetInterfaceOf
     = ep ': SetInterfaceOf k em iface eps
 
 type family InsertEntryPointInfo
-              ( k     :: Symbol                       )
-              ( nfo   :: EntryPointInfo               )
-              ( eps   :: [ Symbol :-> EntryPointInfo] )
-              :: [ Symbol :-> EntryPointInfo]
+              ( k     :: Symbol                        )
+              ( nfo   :: EntryPointInfo                )
+              ( eps   :: [ Symbol :-> EntryPointInfo ] )
+              :: [ Symbol :-> EntryPointInfo ]
               where
   InsertEntryPointInfo k nfo '[]
     = '[ k ':-> nfo ]
@@ -579,12 +618,12 @@ type family BuiltinDoesNotAppearBefore
 -- * Constraints for 'FIR.Syntax.Program.embed'.
 
 type family Embeddable (i :: ProgramState) (j :: ProgramState) :: Constraint where
-  Embeddable ('ProgramState '[] 'TopLevel '[] _) _ = ()
-  Embeddable ('ProgramState i_bds i_ctx i_funs _) ('ProgramState j_bds i_ctx j_funs _)
+  Embeddable ('ProgramState '[] 'TopLevel '[] _ _) _ = ()
+  Embeddable ('ProgramState i_bds i_ctx i_funs _ _) ('ProgramState j_bds i_ctx j_funs _ _)
     = ( SubsetBindings  i_bds  j_bds
       , SubsetFunctions i_funs j_funs
       )
-  Embeddable ('ProgramState _ i_ctx _ _) ('ProgramState _ j_ctx _ _)
+  Embeddable ('ProgramState _ i_ctx _ _ _) ('ProgramState _ j_ctx _ _ _)
     = TypeError
       (      Text "'embed': cannot embed computation with function context "
         :<>: ShowType i_ctx

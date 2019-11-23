@@ -169,26 +169,28 @@ data EntryPointInfo where
 --    - which entry points are to be declared,
 --    whether they have been declared yet, together with
 --    some additional info pertaining to their respective execution modes,
---    and their interfaces (user defined inputs/outputs).
+--    and their interfaces (user defined inputs/outputs),
+--    - which SPIR-V backend is being used (Vulkan or OpenCL).
 data ProgramState
   = ProgramState
       { bindings    :: BindingsMap
       , context     :: TLFunctionContext
       , functions   :: Map Symbol FunctionInfo
       , entryPoints :: Map Symbol EntryPointInfo
+      , backend     :: SPIRV.Backend
       }
 
 type family Bindings ( s :: ProgramState) :: BindingsMap where
-  Bindings ('ProgramState bds _ _ _) = bds
+  Bindings ('ProgramState bds _ _ _ _) = bds
 
 type family FunctionInfos ( s :: ProgramState ) :: Map Symbol FunctionInfo where
-  FunctionInfos ('ProgramState _ _ fs _ ) = fs
+  FunctionInfos ('ProgramState _ _ fs _ _) = fs
 
 type family EntryPointInfos ( s :: ProgramState ) :: Map Symbol EntryPointInfo where
-  EntryPointInfos ('ProgramState _ _ _ eps) = eps
+  EntryPointInfos ('ProgramState _ _ _ eps _) = eps
 
 type family ExecutionContext ( s :: ProgramState ) :: Maybe SPIRV.ExecutionModel where
-  ExecutionContext ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
+  ExecutionContext ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _)
     = Just stage
   ExecutionContext _
     = Nothing
@@ -198,7 +200,7 @@ executionContext (InEntryPoint stageName stageInfo _) = Just (stageName, SPIRV.m
 executionContext _ = Nothing
 
 type family ExecutionContext' ( s :: ProgramState ) :: SPIRV.ExecutionModel where
-  ExecutionContext' ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _)
+  ExecutionContext' ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _)
     = stage
   ExecutionContext' _
     = TypeError
@@ -208,6 +210,6 @@ type family ExecutionInfoContext
                 ( s :: ProgramState )
               :: Maybe (SPIRV.ExecutionInfo Nat (ExecutionContext' s))
                 where
-  ExecutionInfoContext ('ProgramState _ ('InEntryPoint _ info _) _ _)
+  ExecutionInfoContext ('ProgramState _ ('InEntryPoint _ info _) _ _ _)
     = Just info
   ExecutionInfoContext _ = 'Nothing

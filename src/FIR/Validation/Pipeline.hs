@@ -413,7 +413,7 @@ type family GetExecutionInfo
               ( state  :: ProgramState )
           :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader))
           where
-  GetExecutionInfo shader name ('ProgramState _ _ _ eps)
+  GetExecutionInfo shader name ('ProgramState _ _ _ eps _)
     = GetExecutionInfoOf shader name eps
 
 type family GetExecutionInfoOf
@@ -448,7 +448,7 @@ type family GetInterface
               ( state  :: ProgramState )
           :: TLInterface
           where
-  GetInterface shader name ('ProgramState _ _ _ eps)
+  GetInterface shader name ('ProgramState _ _ _ eps _)
     = GetInterfaceOf shader name eps
 
 type family GetInterfaceOf

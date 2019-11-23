@@ -259,6 +259,31 @@ type family NamedExecutionModel (k :: Symbol) (em :: ExecutionModel) :: Symbol w
   NamedExecutionModel k em = ExecutionModelName em `AppendSymbol` " named \"" `AppendSymbol` k `AppendSymbol` "\""
 
 --------------------------------------------------------------------------
+-- execution backends: whether Vulkan or OpenCL
+
+data Backend = Vulkan | OpenCL
+  deriving stock ( Eq, Show )
+
+type family OtherBackend ( bk :: Backend ) :: Backend where
+  OtherBackend Vulkan = OpenCL
+  OtherBackend OpenCL = Vulkan
+
+instance Demotable Backend where
+  type Demote Backend = Backend
+instance Known Backend Vulkan where
+  known = Vulkan
+instance Known Backend OpenCL where
+  known = OpenCL
+
+type family BackendOf ( model :: ExecutionModel ) :: Backend where
+  BackendOf ( 'Stage _ ) = Vulkan
+  BackendOf Kernel       = OpenCL
+
+backendOf :: ExecutionModel -> Backend
+backendOf ( Stage _ ) = Vulkan
+backendOf Kernel      = OpenCL
+
+--------------------------------------------------------------------------
 -- additional execution model information that needs to be known at the type-level
 
 data TessellationMode
@@ -348,6 +373,9 @@ deriving stock instance Ord  n => Ord  (ShaderInfo n s)
 
 data ExecutionInfo (n :: Type) (em :: ExecutionModel) where
   ShaderExecutionInfo :: ShaderInfo n s -> ExecutionInfo n ('Stage ('ShaderStage s))
+  KernelInfo
+    :: (n,n,n) -- kernel local size
+    -> ExecutionInfo n Kernel
   -- other infos not yet implemented
 
 type VertexInfo = 'ShaderExecutionInfo 'VertexShaderInfo
@@ -374,6 +402,8 @@ modelOf (ShaderExecutionInfo FragmentShaderInfo)
   = Stage (ShaderStage FragmentShader)
 modelOf (ShaderExecutionInfo (ComputeShaderInfo {}))
   = Stage (ShaderStage ComputeShader)
+modelOf (KernelInfo {})
+  = Kernel
 
 
 instance Demotable (ShaderInfo Nat s) where
@@ -419,3 +449,6 @@ instance Known (ShaderInfo Nat s) info
            (ShaderExecutionInfo info)
       where
   known = ShaderExecutionInfo ( knownValue @info )
+instance ( Known (Nat,Nat,Nat) ijk )
+      => Known (ExecutionInfo Nat 'Kernel) (KernelInfo ijk) where
+  known = KernelInfo ( knownValue @ijk)

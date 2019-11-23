@@ -289,7 +289,7 @@ instance (ScalarTy a, Floating a) => Floating (AST a) where
   exp     = primOp @a @SPIRV.FExp
   log     = primOp @a @SPIRV.FLog
   sqrt    = primOp @a @SPIRV.FSqrt
-  invSqrt = primOp @a @SPIRV.FInvsqrt
+  invSqrt = primOp @a @SPIRV.FInvSqrt
   sin     = primOp @a @SPIRV.FSin
   cos     = primOp @a @SPIRV.FCos
   tan     = primOp @a @SPIRV.FTan
@@ -652,8 +652,7 @@ instance {-# OVERLAPPING #-}
                 .
          ( Gettable o1
          , Gettable o2
-         , Gettable o1'
-         , Gettable o2'
+         , ReifiedGetter ( ( o1' `ComposeO` o2' ) :: Optic ks' s b )
          , KnownASTOptic o1 o1'
          , KnownASTOptic o2 o2'
          , ks  ~ ( is  :++: js  )
@@ -677,8 +676,7 @@ instance {-# OVERLAPPING #-}
                 .
          ( Settable o1
          , Settable o2
-         , Settable o1'
-         , Settable o2'
+         , ReifiedSetter ( ( o1' `ComposeO` o2' ) :: Optic ks' s b )
          , KnownASTOptic o1 o1'
          , KnownASTOptic o2 o2'
          , ks  ~ ( is  :++: js  )
@@ -783,6 +781,7 @@ instance  {-# OVERLAPPING #-}
             , KnownASTOpticComponents os' os
             , KnownComponents os
             , KnownOptic (Prod_ os :: Optic js s p)
+            , ReifiedGetter (Prod_ os :: Optic js s p)
             , SameLength (Distribute iss  as ) as
             , SameLength (Distribute iss' as') as'
             , IsProduct p as
@@ -852,6 +851,7 @@ instance  {-# OVERLAPPING #-}
             , KnownASTOpticComponents os' os
             , KnownComponents os
             , KnownOptic (Prod_ os :: Optic js s p)
+            , ReifiedSetter (Prod_ os :: Optic js s p)
             , SameLength (Distribute iss  as ) as
             , SameLength (Distribute iss' as') as'
             , IsProduct p as

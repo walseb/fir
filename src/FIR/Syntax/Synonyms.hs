@@ -33,6 +33,8 @@ module FIR.Syntax.Synonyms
   , UniformConstant, Input, Output
   , Uniform, PushConstant
   , StorageBuffer, Private
+  , Workgroup, CrossWorkgroup
+  , AtomicCounter
 
   -- * Synonyms for function with given function control information
   , Function, Function'
@@ -177,6 +179,9 @@ type Uniform         decs ty = Global Storage.Uniform         decs ty
 type PushConstant    decs ty = Global Storage.PushConstant    decs ty
 type StorageBuffer   decs ty = Global Storage.StorageBuffer   decs ty
 type Private         decs ty = Global Storage.Private         decs ty
+type Workgroup       decs ty = Global Storage.Workgroup       decs ty
+type CrossWorkgroup  decs ty = Global Storage.CrossWorkgroup  decs ty
+type AtomicCounter   decs ty = Global Storage.AtomicCounter   decs ty
 
 -- synonym for function with no function control information
 type Function     as b = Def.Function NoFunctionControl as b

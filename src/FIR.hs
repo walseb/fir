@@ -172,6 +172,8 @@ module FIR
   , SPIRV.Stage.Fragment
   , SPIRV.Stage.Compute
   , SPIRV.Stage.Shader(..)
+  , SPIRV.Stage.ExecutionModel(Kernel)
+  , module SPIRV.Synchronisation
   , SPIRV.Version.Version(..)
   -- image properties
   , SPIRV.Image.Dimensionality(..)
@@ -319,6 +321,7 @@ import SPIRV.Image
 import SPIRV.Stage
 import SPIRV.Version
 import qualified SPIRV.Version    as SPIRV
+import SPIRV.Synchronisation
 
 ------------------------------------------------
 

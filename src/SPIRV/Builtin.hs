@@ -129,6 +129,14 @@ readBuiltin "gl_SubgroupID"                = Just SubgroupId
 readBuiltin "gl_SubgroupLocalInvocationID" = Just SubgroupLocalInvocationId
 readBuiltin "gl_VertexIndex"               = Just VertexIndex
 readBuiltin "gl_InstanceIndex"             = Just InstanceIndex
+readBuiltin "cl_WorkDim"                   = Just WorkDim
+readBuiltin "cl_GlobalSize"                = Just GlobalSize
+readBuiltin "cl_GlobalInvocationID"        = Just GlobalInvocationId
+readBuiltin "cl_LocalInvocationID"         = Just LocalInvocationId
+readBuiltin "cl_NumWorkgroups"             = Just NumWorkgroups
+readBuiltin "cl_WorkgroupID"               = Just WorkgroupId
+readBuiltin "cl_GlobalOffset"              = Just GlobalOffset
+readBuiltin "cl_GlobalLinearID"            = Just GlobalLinearId
 readBuiltin _ = Nothing
 
 instance Put Builtin where

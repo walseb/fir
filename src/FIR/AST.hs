@@ -79,7 +79,10 @@ import CodeGen.Monad
 import Control.Arrow.Strength
   ( secondF )
 import Control.Type.Optic
-  ( Gettable, Settable, Indices )
+  ( Gettable, ReifiedGetter
+  , Settable, ReifiedSetter
+  , Indices
+  )
 import Control.Monad.Indexed
   ( (:=) )
 import Data.Function.Variadic
@@ -134,7 +137,7 @@ import qualified SPIRV.Image  as SPIRV
 import qualified SPIRV.PrimOp as SPIRV
 import qualified SPIRV.PrimTy as SPIRV
 import qualified SPIRV.Stage  as SPIRV
-  ( ExecutionModel, ExecutionInfo )
+  ( ExecutionModel, ExecutionInfo, Backend(..) )
 
 ------------------------------------------------------------
 -- main AST data type
@@ -264,7 +267,7 @@ data AST :: Type -> Type where
   --
   -- Like @view@ from the lens library.
   View :: forall optic.
-          ( GHC.Stack.HasCallStack, KnownOptic optic, Gettable optic )
+          ( GHC.Stack.HasCallStack, KnownOptic optic, ReifiedGetter optic )
        => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
        -> SOptic optic            -- ^ Singleton for the optic.
        -> AST ( Viewer optic )
@@ -272,7 +275,7 @@ data AST :: Type -> Type where
   --
   -- Like @set@ from the lens library.
   Set :: forall optic.
-         ( GHC.Stack.HasCallStack, KnownOptic optic, Settable optic )
+         ( GHC.Stack.HasCallStack, KnownOptic optic, ReifiedSetter optic )
       => SLength (Indices optic) -- ^ Singleton for the number of run-time indices.
       -> SOptic optic            -- ^ Singleton for the optic.
       -> AST ( Setter optic )
@@ -502,7 +505,8 @@ toTreeArgs as (Lam f) = do
     [] -> Node ("Lam " ++ show v) [body]
     _  -> Node  ":$"              (body : as)
 toTreeArgs as (PrimOp (_ :: Proxy a) (_ :: Proxy op) )
-  = return (Node ("PrimOp " ++ show ( SPIRV.op ( opName @_ @_ @op @a ) ) ) as)
+  -- use the Vulkan backend as a default for printing operation names
+  = return (Node ("PrimOp " ++ show ( SPIRV.op SPIRV.Vulkan ( opName @_ @_ @op @a ) ) ) as)
 toTreeArgs as If        = return (Node "If"           as)
 toTreeArgs as IfM       = return (Node "IfM"          as)
 toTreeArgs as While     = return (Node "While"        as)

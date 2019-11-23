@@ -99,7 +99,7 @@ putModule
               putCapabilities         neededCapabilities
               putExtensions           neededExtensions
               putExtendedInstructions knownExtInsts
-              putMemoryModel
+              putMemoryModel          backend
     let knownBindingIDs = fmap fst knownBindings
         usedGlobalIDs   = fmap fst usedGlobals
     putEntryPoints    entryPoints interfaces
@@ -217,17 +217,22 @@ putExtendedInstructions
           , args      = Arg ( SPIRV.extInstName extInst ) EndArgs
           }
       
-putMemoryModel :: Binary.Put
-putMemoryModel 
+putMemoryModel :: SPIRV.Backend -> Binary.Put
+putMemoryModel bk
   = putInstruction Map.empty
       Instruction
         { operation = SPIRV.Op.MemoryModel
         , resTy     = Nothing
         , resID     = Nothing
         , args      = Arg @Word32 0 -- logical addressing
-                    $ Arg @Word32 1 -- GLSL450 memory model
+                    $ Arg memoryModel
                     EndArgs
         }
+    where
+      memoryModel :: Word32
+      memoryModel = case bk of
+        SPIRV.Vulkan -> 1 -- GLSL450 memory model
+        SPIRV.OpenCL -> 2 -- OpenCL memory model
 
 putEntryPoint :: SPIRV.ExecutionModel -> ShortText -> ID -> Map ShortText ID -> Binary.Put
 putEntryPoint model modelName entryPointID interface

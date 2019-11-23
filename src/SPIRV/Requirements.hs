@@ -38,18 +38,18 @@ import           SPIRV.ScalarTy
   ( ScalarTy, Width(..) )
 import qualified SPIRV.ScalarTy as ScalarTy
 import           SPIRV.Stage
-  ( ExecutionModel(Stage), Stage(..), Shader )
+  ( ExecutionModel(Stage), Stage(..), Shader, Backend )
 import qualified SPIRV.Stage    as Stage
   ( ExecutionModel(..), Shader(..) )
 
 --------------------------------------------------------------------------
 -- primitive operations
 
-primOpCapabilities :: PrimOp -> Set Capability
-primOpCapabilities ( op -> SatConvertSToU ) = [ Kernel ]
-primOpCapabilities ( op -> SatConvertUToS ) = [ Kernel ]
-primOpCapabilities ( MatOp {}             ) = [ Matrix ]
-primOpCapabilities _                        = [ ]
+primOpCapabilities :: Backend -> PrimOp -> Set Capability
+primOpCapabilities bk ( op bk -> SatConvertSToU ) = [ ComputeKernel ]
+primOpCapabilities bk ( op bk -> SatConvertUToS ) = [ ComputeKernel ]
+primOpCapabilities _  ( MatOp {}                ) = [ Matrix ]
+primOpCapabilities _  _                           = [ ]
 
 --------------------------------------------------------------------------
 -- types
@@ -104,7 +104,7 @@ stageCapabilities (RayStage    _) = [ RayTracingNV  ]
 
 executionModelCapabilities :: ExecutionModel -> Set Capability
 executionModelCapabilities (Stage s)    = stageCapabilities s
-executionModelCapabilities Stage.Kernel = [ Kernel ]
+executionModelCapabilities Stage.Kernel = [ ComputeKernel ]
 
 stageExtensions :: Stage -> Set Extension
 stageExtensions (ShaderStage _) = [ ]
@@ -144,7 +144,7 @@ msCapabilities _                  = [ ]
 lodCapabilities :: Word32 -> Set Capability
 lodCapabilities bm
   -- uses the LOD operand
-  | bm `testBit` 9  = [ Kernel, ImageBasic, ImageMipmap ]
+  | bm `testBit` 9  = [ ComputeKernel, ImageBasic, ImageMipmap ]
   -- uses the MinLOD opeand
   | bm `testBit` 15 = [ Shader, MinLod ]
   | otherwise       = [ ]

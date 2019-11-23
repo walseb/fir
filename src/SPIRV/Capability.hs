@@ -55,8 +55,8 @@ pattern Addresses = Capability 4
 pattern Linkage :: Capability
 pattern Linkage = Capability 5
 
-pattern Kernel :: Capability
-pattern Kernel = Capability 6
+pattern ComputeKernel :: Capability
+pattern ComputeKernel = Capability 6
 
 pattern Vector16 :: Capability
 pattern Vector16 = Capability 7
@@ -223,7 +223,7 @@ showCapability Geometry = "Geometry"
 showCapability Tessellation = "Tessellation"
 showCapability Addresses = "Addresses"
 showCapability Linkage = "Linkage"
-showCapability Kernel = "Kernel"
+showCapability ComputeKernel = "ComputeKernel"
 showCapability Vector16 = "Vector16"
 showCapability Float16Buffer = "Float16Buffer"
 showCapability Float16 = "Float16"

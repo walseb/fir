@@ -226,6 +226,9 @@ data CGContext
        -- | SPIR-V version to use.
      , spirvVersion :: SPIRV.Version
 
+       -- | SPIR-V backend to use (Vulkan or OpenCL).
+     , backend :: SPIRV.Backend
+
        -- | Whether to add extra source information in the generated SPIR-V assembly.
      , debugging :: Bool
 
@@ -247,6 +250,7 @@ emptyContext
       , userExtensions   = Set.empty
       , userImages       = Map.empty
       , spirvVersion     = SPIRV.Version 1 3
+      , backend          = SPIRV.Vulkan
       , debugging        = False
       , asserting        = False
       , emittingCode     = True
@@ -457,6 +461,9 @@ _userImage image = _userImages . at image
 
 _spirvVersion :: Lens' CGContext SPIRV.Version
 _spirvVersion = lens spirvVersion ( \c v -> c { spirvVersion = v } )
+
+_backend :: Lens' CGContext SPIRV.Backend
+_backend = lens backend ( \c v -> c { backend = v } )
 
 _debugging :: Lens' CGContext Bool
 _debugging = lens debugging ( \c v -> c { debugging = v } )

@@ -198,6 +198,7 @@ library
       , SPIRV.ScalarTy
       , SPIRV.Stage
       , SPIRV.Storage
+      , SPIRV.Synchronisation
       , SPIRV.Version
 
     build-depends: 

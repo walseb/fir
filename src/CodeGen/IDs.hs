@@ -80,6 +80,7 @@ import CodeGen.State
   , _builtin
   , _usedGlobal
   , _userGlobal
+  , _backend
   , _interfaceBinding
   , requireCapabilities
   , addName, addMemberName
@@ -131,15 +132,17 @@ extInstID extInst =
 -- get an ID for a given type ( result ID of corresponding type constructor instruction )
 -- ( if one is known use it, otherwise recursively create fresh IDs for necessary types )
 typeID :: forall m.
-          ( MonadState CGState   m
-          , MonadFresh ID        m
-          , MonadError ShortText m -- only needed for the constant instruction call for array length
+          ( MonadReader CGContext m
+          , MonadState  CGState   m
+          , MonadFresh  ID        m
+          , MonadError  ShortText m -- only needed for the constant instruction call for array length
           )
        => SPIRV.PrimTy -> m TyID
 typeID ty = TyID <$>
   tryToUseWith _knownPrimTy
     ( coerce . fromJust . resID ) -- type constructor instructions always have a result ID
     do requireCapabilities ( SPIRV.primTyCapabilities ty )
+       bk <- view _backend
        case ty of
 
         SPIRV.Matrix m n a -> 
@@ -189,11 +192,14 @@ typeID ty = TyID <$>
         SPIRV.Boolean -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
 
         SPIRV.Scalar (SPIRV.Integer s w)
+          | SPIRV.Signed <- s
+          , SPIRV.OpenCL <- bk
+          -> tyID <$> typeID ( SPIRV.Scalar (SPIRV.Integer SPIRV.Unsigned w) ) -- no "sign semantics" in OpenCL
+
+        SPIRV.Scalar (SPIRV.Integer s w)
           -> createID _knownPrimTy
                 ( mkTyConInstruction
-                  ( Arg (SPIRV.width w)
-                  $ Arg (SPIRV.signedness s) EndArgs
-                  )
+                    ( Arg (SPIRV.width w) $ Arg (SPIRV.signedness s) EndArgs )
                 )
 
         SPIRV.Scalar (SPIRV.Floating w)
@@ -282,9 +288,10 @@ typeID ty = TyID <$>
 -- get the ID for a given constant, or create one if none exist
 -- this is the crucial location where we make use of singletons to perform type-case
 constID :: forall m a.
-           ( MonadState CGState   m
-           , MonadFresh ID        m
-           , MonadError ShortText m
+           ( MonadReader CGContext m
+           , MonadState  CGState   m
+           , MonadFresh  ID        m
+           , MonadError  ShortText m
            , PrimTy a
            )
         => a -> m ID
@@ -416,9 +423,10 @@ bindingID varName
                 ( "codeGen: no binding with name " <> varName )
                 ( mbLoc <<?> mbKnown <<?> mbGlob )
 
-undefID :: ( MonadState CGState   m
-           , MonadError ShortText m
-           , MonadFresh ID        m
+undefID :: ( MonadReader CGContext m
+           , MonadState  CGState   m
+           , MonadError  ShortText m
+           , MonadFresh  ID        m
            )
         => SPIRV.PrimTy -> m ID
 undefID ty =
@@ -433,9 +441,10 @@ undefID ty =
 --
 -- Automatically switches on this built-in in the interface of the relevant entry-point,
 -- by using the '_builtin' lens.
-builtinID :: ( MonadState CGState   m
-             , MonadError ShortText m
-             , MonadFresh ID        m
+builtinID :: ( MonadReader CGContext m
+             , MonadState  CGState   m
+             , MonadError  ShortText m
+             , MonadFresh  ID        m
              )
           => ShortText -> SPIRV.ExecutionInfo Word32 model -> ShortText -> SPIRV.PointerTy -> m ID
 builtinID modelName modelInfo builtinName ptrTy =
