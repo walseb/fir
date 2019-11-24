@@ -604,12 +604,12 @@ controlBarrier controlScope memScope
 -- | Memory barrier: ensure ordering on memory accesses.
 memoryBarrier :: forall (i :: ProgramState)
                .  SPIRV.SynchronisationScope
-               -> Maybe SPIRV.MemorySemantics
+               -> SPIRV.MemorySemantics
                -> Program i i ( AST () )
 memoryBarrier memScope memSem
   = primOp @i @SPIRV.MemorySync
-      ( Lit $ SPIRV.synchronisationScope memScope )
-      ( Lit $ fromMaybe 0 $ SPIRV.memorySemanticsBitmask <$> memSem )
+      ( Lit $ SPIRV.synchronisationScope   memScope )
+      ( Lit $ SPIRV.memorySemanticsBitmask memSem   )
 
 --------------------------------------------------------------------------
 -- type synonyms for use/assign

@@ -40,7 +40,7 @@ data ExtInst
   deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 extInstName :: ExtInst -> ShortText
-extInstName OpenCL = "OpenCL.std.100"
+extInstName OpenCL = "OpenCL.std"
 extInstName GLSL   = "GLSL.std.450"
 
 --------------------------------------------------
