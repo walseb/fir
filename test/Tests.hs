@@ -41,6 +41,7 @@ allTests
           [ ( "Def"      , Validate )
           , ( "Loop"     , Validate )
           , ( "Selection", Validate )
+          , ( "Switch"   , Validate )
           ]
     , Folder "Geometry"
           [ ( "Geometry"   , Validate  )

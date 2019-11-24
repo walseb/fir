@@ -12,7 +12,7 @@
 
 <a name="introduction"></a>
 # Introduction
-<img src="img/FIR_logo_small.svg" alt="FIR (logo)"> is an embedded language for writing GPU shaders in Haskell, compiling to *SPIR-V* for use in *Vulkan* applications.
+<img src="img/FIR_logo_small.svg" alt="FIR (logo)"> is an embedded language for writing GPU shaders in Haskell, compiling to *SPIR-V* for use in *Vulkan* or *OpenCL* applications.
 
 FIR is intended as an alternative shading language to *GLSL*, providing amenities of modern functional programming such as a strong type-system, user-managed control-flow with monads and *do* notation, applicative/foldable/traversable functors, etc.
 The Haskell type system helps in verifying programs at compile-time, with the use of *indexed monads* to keep track of program state. Invalid behaviour is reported with custom type errors, preventing run-time errors and lost hours spent debugging a black screen.
@@ -31,9 +31,9 @@ Refer to the ["getting started" guide (simple shader example)](getting_started.m
 
 Here are some of the library's __features__:
 
-  * Support for all native Vulkan execution models (all graphics shaders, as well as compute shaders). See the [examples](#examples) for illustration.
+  * Support for all native Vulkan execution models (all graphics shaders, as well as compute shaders), and OpenCL compute kernels. See the [examples](#examples) for illustration.
   * Image sampling and load/store, with a convenient functional interface given by specifying image operands. This avoids having many different image sampling functions like in GLSL (e.g. `sampler2DArrayShadow`, `textureProjOffset`, ...).
-  * Control flow: if-then-else and loops, compiled to [SSA form using ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form).
+  * Control flow: if-then-else, switch statements and loops, compiled to [SSA form using ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form). GPU synchronisation with control and memory barriers.
   * Functor/applicative operations, compiling to efficient code (vectorised operations, loops).
   * Type-level optic combinator framework, including the ability to take side-by-side products of optics (disjointness checked at the type-level, ensuring lawfulness). Usage is similar to the [lens library](http://hackage.haskell.org/package/lens), e.g. `view @getter a s`, `assign @setter a`. Refer to the [section on optics](getting_started.md#optics) in the "getting started" guide.
   * Extensive type-level validation: shader interface matching, decorations and execution modes, validation of image read/write/sample operations (including compatibility checking of operations in conjunction with specified image operands and image formats).

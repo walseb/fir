@@ -168,14 +168,14 @@ loopMerge mergeBlockID loopBlockID loopControl
          }
 
 multiWaySwitch :: IntegralTy s => ID -> ID -> [Pair s ID] -> CGMonad ()
-multiWaySwitch scrut def ids
+multiWaySwitch scrut defBlock ids
   = instruction
       Instruction
         { operation = SPIRV.Op.Switch
         , resTy     = Nothing
         , resID     = Nothing
         , args      = Arg scrut
-                    $ Arg def
+                    $ Arg defBlock
                     $ toArgs ids
         }
 
@@ -217,14 +217,14 @@ ifM cond bodyTrue bodyFalse
 
 switch :: IntegralTy t => AST s -> AST a -> [(t, UAST)] -> CGMonad (ID, SPIRV.PrimTy)
 switch scrut def cases
-  = branchingSelection switchHeader (map snd cases)
+  = branchingSelection switchHeader (UAST def : map snd cases)
       where
         switchHeader :: [ID] -> ID -> CGMonad ()
-        switchHeader caseBlockIDs mergeBlockID = do
+        switchHeader [] _ = whenAsserting (throwError "codeGen: 'switch' statement missing default case")
+        switchHeader ( defaultBlockID : caseBlockIDs ) mergeBlockID = do
           (scrutID, _) <- locally (codeGen scrut)
-          (defID,   _) <- locally (codeGen def  )
           selectionMerge mergeBlockID SPIRV.NoSelectionControl
-          multiWaySwitch scrutID defID
+          multiWaySwitch scrutID defaultBlockID
             (zipWith ( \(t,_) i -> Pair (t,i) ) cases caseBlockIDs)
 
 branchingSelection :: ( [ID] -> ID -> CGMonad () ) -> [ UAST ] -> CGMonad (ID, SPIRV.PrimTy)

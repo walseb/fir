@@ -39,7 +39,7 @@ See also the validation modules:
 
 module FIR.Syntax.Program
   ( -- * Monadic control operations
-    while, locally, embed, purely
+    while, switchM, locally, embed, purely
 
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
@@ -134,7 +134,7 @@ import Data.Type.Known
 import Data.Type.List
   ( KnownLength(sLength), Postpend )
 import Data.Type.Map
-  ( (:->) )
+  ( (:->)((:->)) )
 import FIR.AST
   ( AST(..)
   , Syntactic(Internal,toAST,fromAST)
@@ -160,7 +160,9 @@ import FIR.Prim.Image
   , ImageData, ImageCoordinates
   )
 import FIR.Prim.Singletons
-  ( PrimTy, ScalarTy, KnownVars )
+  ( PrimTy, ScalarTy, IntegralTy
+  , KnownVars
+  )
 import FIR.ProgramState
   ( FunctionInfo
   , FunctionContext(..)
@@ -241,6 +243,17 @@ while :: ( GHC.Stack.HasCallStack )
       -> Program i j (AST ())
       -> Program i i (AST ())
 while = fromAST While
+
+switchM :: ( Syntactic scrut
+           , IntegralTy (Internal scrut)
+           , Syntactic val
+           , PrimTy (Internal val)
+           )
+        => Program i i scrut -- ^ Scrutinee.
+        -> [ Internal scrut :-> Program i i val ] -- ^ Cases.
+        -> Program i i val   -- ^ Default (fallthrough) case.
+        -> Program i i val
+switchM scrut cases val = fromAST $ SwitchM (toAST scrut) (toAST val) (map ( \ (x :-> y) -> (x, toAST y) ) cases)
 
 --------------------------------------------------------------------------
 -- Syntactic type class

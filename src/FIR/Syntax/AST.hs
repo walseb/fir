@@ -34,9 +34,13 @@ orphan instances for types of the form @AST a@
 -}
 
 module FIR.Syntax.AST
-  ( -- functor/applicative for AST values
-    ASTFunctor(fmapAST)
+  ( -- switch statement
+    switch
+
+    -- functor/applicative for AST values
+  , ASTFunctor(fmapAST)
   , ASTApplicative(pureAST, (<**>)), (<$$>)
+
     -- + orphan instances
   )
   where
@@ -188,6 +192,17 @@ instance ( ScalarTy a, Ord a, Logic a ~ Bool )
   (>)  = primOp @a @SPIRV.GT
   min  = primOp @a @SPIRV.Min
   max  = primOp @a @SPIRV.Max
+
+switch :: ( Syntactic scrut
+          , IntegralTy (Internal scrut)
+          , Syntactic val
+          , PrimTy (Internal val)
+          )
+       => scrut -- ^ Scrutinee.
+       -> [ Internal scrut :-> val ] -- ^ Cases.
+       -> val  -- ^ Default (fallthrough) case.
+       -> val
+switch scrut cases val = fromAST $ Switch (toAST scrut) (toAST val) (map ( \ (x :-> y) -> (x, toAST y) ) cases)
 
 -- * Bitwise operations
 --
