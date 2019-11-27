@@ -183,11 +183,14 @@ type family SumRoundedUpSizes (lay :: Layout) (ali :: Nat) (as :: [fld :-> Type]
     NextAligned (SizeOf lay a) ali + SumRoundedUpSizes lay ali as
 
 type family MaximumAlignment (lay :: Layout) (as :: [fld :-> Type]) :: Nat where
-  MaximumAlignment lay '[] = 1
-  MaximumAlignment Extended ( ( _ ':-> a ) ': as )
-    = Max (Alignment Extended a) (MaximumAlignment Extended as) `RoundUp` 16
-  MaximumAlignment lay ( ( _ ':-> a ) ': as )
-    = Max (Alignment lay a) (MaximumAlignment lay as)
+  MaximumAlignment _        '[]                    = 1
+  MaximumAlignment Extended ( ( _ ':-> a ) ': as ) = MaximumAlignmentHelper Extended a as `RoundUp` 16
+  MaximumAlignment lay      ( ( _ ':-> a ) ': as ) = MaximumAlignmentHelper lay      a as
+
+type family MaximumAlignmentHelper (lay :: Layout) (a :: Type) (as :: [fld :-> Type]) :: Nat where
+  MaximumAlignmentHelper lay a '[] = Alignment lay a
+  MaximumAlignmentHelper lay a ( (_ ':-> b ) ': bs )
+    = Max (Alignment lay a) (MaximumAlignmentHelper lay b bs)
 
 roundUp :: Integral a => a -> a -> a
 roundUp n r = (n + r) - ( 1 + ( (n + r - 1) `mod` r ) )

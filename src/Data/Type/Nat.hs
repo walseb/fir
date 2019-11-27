@@ -14,9 +14,8 @@ import GHC.TypeNats
 
 --------------------------------------------------------------------------
 
-type family RoundUp (n :: Nat) (r :: Nat) :: Nat where
-  RoundUp n r
-    = ( n + r ) - ( 1 + ( (n + r - 1) `Mod` r ) )
+type RoundUp n r
+  = ( n + r ) - ( 1 + ( (n + r - 1) `Mod` r ) )
 
 type family NextPositivePowerOf2 (n :: Nat) :: Nat where
   NextPositivePowerOf2 0 = 1
