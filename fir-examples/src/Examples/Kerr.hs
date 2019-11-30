@@ -13,7 +13,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Examples.Logo ( logo ) where
+module Examples.Kerr ( kerr ) where
 
 -- base
 import Control.Monad
@@ -27,7 +27,7 @@ import Data.Coerce
 import Data.Foldable
   ( for_ )
 import Data.Monoid
-  ( Sum(getSum) )
+  ( Sum(..) )
 import Data.String
   ( IsString )
 import Data.Traversable
@@ -82,20 +82,29 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 import FIR
   ( runCompilationsTH
   , Layout(Extended), Poke(poke)
-  , (:->)((:->)), Struct((:&),End)
+  , Struct((:&),End)
   , ModuleRequirements
   )
 import qualified FIR
 import Math.Linear
-  ( V, pattern V2, pattern V3
-  , (*^), (^+^)
-  , normalise
+  ( pattern V2, pattern V3, pattern V4
+  , (^+^), (^-^)
   )
 import Math.Quaternion
   ( rotate, axisAngle )
 
 -- fir-examples
-import Examples.Logo.Shaders
+import Examples.Kerr.Coordinates
+  ( boyerLindquistPosition, boyerLindquistTangent
+  , proj, normalise, gramSchmidt
+  )
+import Examples.Kerr.Shaders
+  ( compPath, compileComputeShader
+  , Camera
+  )
+import qualified Examples.Kerr.Shaders as Kerr
+import Examples.Kerr.Info
+  ( defaultKerrInfo, defaultDiskInfo )
 import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Buffer
@@ -114,10 +123,41 @@ shaderCompilationResult
      )
 
 appName :: IsString a => a
-appName = "fir-examples - Logo"
+appName = "fir-examples - Kerr space-time"
 
-logo :: IO ()
-logo = ( runManaged . ( `evalStateT` initialState ) ) do
+initialObserverKerr :: Observer
+initialObserverKerr = Observer
+      { position = V3 23 0 3.1
+      , angles   = V2 (pi/2) (-0.14)
+      , clock    = 0
+      }
+
+initialStateKerr :: RenderState
+initialStateKerr
+  = RenderState
+      { observer   = initialObserverKerr
+      , input      = nullInput
+      }
+
+boyerLindquistCamera :: Observer -> Camera
+boyerLindquistCamera Observer { position = pos, angles = V2 x y, clock = clockTime } =
+  case spacelike_vecs of
+    [fwd_bl, up_bl, right_bl] -> pos_bl :& time_bl :& right_bl :& up_bl :& fwd_bl :& clockTime :& End
+    _ -> error "impossible"
+  where
+    ori     = axisAngle (V3 0 0 1) x FIR.* axisAngle (V3 1 0 0) y
+    pos_bl  = boyerLindquistPosition defaultKerrInfo pos
+    time_bl = normalise defaultKerrInfo pos_bl (V4 1 0 0 0)
+    spacelike_vecs = gramSchmidt defaultKerrInfo pos_bl $
+      map
+        ( ( \v -> v ^-^ proj defaultKerrInfo pos_bl v time_bl )
+        . boyerLindquistTangent defaultKerrInfo pos_bl
+        . rotate ori
+        )
+        [ V3 0 1 0, V3 0 0 1, V3 1 0 0 ]
+
+kerr :: IO ()
+kerr = ( runManaged . ( `evalStateT` initialStateKerr ) ) do
 
   ( reqs :: ModuleRequirements ) <-
     case shaderCompilationResult of
@@ -126,7 +166,7 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow 1920 1080 appName
+  window           <- logMsg "Creating SDL window"           *> createWindow Kerr.width Kerr.height appName
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
@@ -140,6 +180,7 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
   features <- liftIO ( requiredFeatures reqs )
   device   <- logMsg "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex features
+
   surface  <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
 
   assertSurfacePresentable physicalDevice queueFamilyIndex surface
@@ -255,10 +296,23 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
     <- createUniformBuffer
           physicalDevice
           device
-          ( camera initialObserver Nothing )
+          ( boyerLindquistCamera initialObserverKerr )
+
+  (kerrInfoBuffer, _)
+    <- createUniformBuffer
+          physicalDevice
+          device
+          defaultKerrInfo
+
+  (diskInfoBuffer, _)
+    <- createUniformBuffer
+          physicalDevice
+          device
+          defaultDiskInfo
 
   for_ (zip images descriptorSets) \ ( ( (_, swapchainImageView) , _), descriptorSet) ->
-    updateDescriptorSet device descriptorSet cameraUniformBuffer swapchainImageView
+    updateDescriptorSets device descriptorSet
+      cameraUniformBuffer kerrInfoBuffer diskInfoBuffer swapchainImageView
 
   let
     mkCommandBuffer
@@ -301,7 +355,7 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
 
           Vulkan.vkCmdDispatch
             commandBuffer
-            120 135 1 -- local size 16 8 1
+            20 30 1 -- global sizes
 
         -- if taking a screenshot, copy swapchain image onto screenshot image
         case mbScreenshot of
@@ -356,8 +410,6 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
     for (zip images descriptorSets) $ \((swapImgAndView, screenshotImageAndMemory), descriptorSet) ->
       mkCommandBuffer descriptorSet swapImgAndView (Just screenshotImageAndMemory)
 
-  assign _observer ( Observer { position = V3 0 0 10, angles = V2 (5*pi/4) (pi/5), clock = 0 } )
-
   mainLoop do
 
     ----------------
@@ -367,41 +419,31 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
     prevInput <- use _input
     let newInput = foldl onSDLInput prevInput inputEvents
     let action = interpretInput newInput
-        angs   = fmap getSum ( look action )
     assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
 
     ----------------
     -- simulation
 
-    oldObserver <- use _observer
+    Observer { position = oldPos, angles = oldAngs, clock = oldClock } <- use _observer
     let
-      oldAngs = angles oldObserver
-      newAngs@(V2 x y) = oldAngs ^+^ angs
-      orientation = axisAngle (V3 0 (-1) 0) x FIR.* axisAngle (V3 1 0 0) y
+      newAngs@(V2 x y) = oldAngs ^+^ fmap getSum (look action)
+      mov = case fmap getSum (movement action) of
+        V3 mx mz my -> V3 mx my (-mz)
+      ori    = axisAngle (V3 0 0 1) x FIR.* axisAngle (V3 1 0 0) y
+      newPos = oldPos ^+^ rotate ori mov
+      newClock = oldClock + 1
+      newObs = Observer { position = newPos, angles = newAngs, clock = newClock }
 
-      pos, fwd, up, right :: V 3 Float
-      pos   = rotate orientation ( V3 0 0 10 )
-      fwd   = normalise ( (-1) *^ pos )
-      up    = rotate orientation ( V3 0 (-1) 0 )
-      right = rotate orientation ( V3 1   0  0 )
+    assign _observer newObs
+    let cam = boyerLindquistCamera newObs
 
-      cam :: Struct
-                '[ "position" ':-> V 3 Float
-                 , "right"    ':-> V 3 Float
-                 , "up"       ':-> V 3 Float
-                 , "forward"  ':-> V 3 Float
-                 ]
-      cam = pos :& right :& up :& fwd :& End
-
-      newObserver = oldObserver { angles = newAngs }
-
-    assign _observer newObserver
-
-    when ( locate action )
-      ( liftIO $ putStrLn ( show newObserver ) )
+    when ( locate action ) do
+      liftIO $ putStrLn ( show newObs )
+      liftIO $ putStrLn "Boyer-Lindquist coordinates follow"
+      liftIO $ putStrLn ( show cam )
 
     -- update camera
-    liftIO ( poke @_ @Extended camPtr cam )
+    liftIO ( poke @Camera @Extended camPtr cam )
 
     ----------------
     -- rendering
@@ -436,7 +478,7 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
                   >=> throwVkResult
                 )
 
-        let size = 4 * width * height
+        let size = 5 * width * height -- I don't know why "5" works right now, with 4 the images are missing rows at the bottom
 
             -- image data is stored in BGRA component order,
             -- whether R8G8B8A8 or B8G8R8A8 format is used
@@ -448,7 +490,7 @@ logo = ( runManaged . ( `evalStateT` initialState ) ) do
         imageData :: Image PixelRGBA8
           <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
-        writePng "screenshots/logo.png" imageData
+        writePng "screenshots/kerr.png" imageData
 
         Vulkan.vkUnmapMemory device screenshotImageMemory
 
@@ -474,9 +516,27 @@ createDescriptorSetLayout device = do
         &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
         )
 
-    imageBinding =
+    kerrInfoBinding =
       Vulkan.createVk
         (  Vulkan.set @"binding"            1
+        &* Vulkan.set @"descriptorType"     Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+        &* Vulkan.set @"descriptorCount"    1
+        &* Vulkan.set @"stageFlags"         Vulkan.VK_SHADER_STAGE_COMPUTE_BIT
+        &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
+        )
+
+    diskInfoBinding = 
+      Vulkan.createVk
+        (  Vulkan.set @"binding"            2
+        &* Vulkan.set @"descriptorType"     Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+        &* Vulkan.set @"descriptorCount"    1
+        &* Vulkan.set @"stageFlags"         Vulkan.VK_SHADER_STAGE_COMPUTE_BIT
+        &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
+        )
+
+    imageBinding =
+      Vulkan.createVk
+        (  Vulkan.set @"binding"            3
         &* Vulkan.set @"descriptorType"     Vulkan.VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
         &* Vulkan.set @"descriptorCount"    1
         &* Vulkan.set @"stageFlags"         Vulkan.VK_SHADER_STAGE_COMPUTE_BIT
@@ -488,7 +548,8 @@ createDescriptorSetLayout device = do
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.setListCountAndRef @"bindingCount" @"pBindings" [ uboBinding, imageBinding ]
+        &* Vulkan.setListCountAndRef @"bindingCount" @"pBindings"
+             [ uboBinding, kerrInfoBinding, diskInfoBinding, imageBinding ]
         )
 
   managedVulkanResource
@@ -508,7 +569,7 @@ createDescriptorPool device maxSets =
     poolSize0 =
       Vulkan.createVk
         (  Vulkan.set @"type" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-        &* Vulkan.set @"descriptorCount" 1
+        &* Vulkan.set @"descriptorCount" 3
         )
 
     poolSize1 =
@@ -566,14 +627,20 @@ allocateDescriptorSets dev descriptorPool layout0 count = do
     )
 
 
-updateDescriptorSet
+updateDescriptorSets
   :: MonadManaged m
-  => Vulkan.VkDevice -> Vulkan.VkDescriptorSet -> Vulkan.VkBuffer -> Vulkan.VkImageView -> m ()
-updateDescriptorSet device descriptorSet buffer imageView =
+  => Vulkan.VkDevice
+  -> Vulkan.VkDescriptorSet
+  -> Vulkan.VkBuffer
+  -> Vulkan.VkBuffer
+  -> Vulkan.VkBuffer
+  -> Vulkan.VkImageView
+  -> m ()
+updateDescriptorSets device descriptorSet buffer0 buffer1 buffer2 imageView =
   let
-    bufferInfo =
+    bufferInfo0 =
       Vulkan.createVk
-        (  Vulkan.set @"buffer" buffer
+        (  Vulkan.set @"buffer" buffer0
         &* Vulkan.set @"offset" 0
         &* Vulkan.set @"range" ( fromIntegral Vulkan.VK_WHOLE_SIZE )
         )
@@ -586,7 +653,45 @@ updateDescriptorSet device descriptorSet buffer imageView =
         &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
         &* Vulkan.set @"pTexelBufferView" Vulkan.VK_NULL
         &* Vulkan.set @"pImageInfo" Vulkan.VK_NULL
-        &* Vulkan.setListRef @"pBufferInfo" [ bufferInfo ]
+        &* Vulkan.setListRef @"pBufferInfo" [ bufferInfo0 ]
+        &* Vulkan.set @"descriptorCount" 1
+        &* Vulkan.set @"dstArrayElement" 0
+        )
+    bufferInfo1 =
+      Vulkan.createVk
+        (  Vulkan.set @"buffer" buffer1
+        &* Vulkan.set @"offset" 0
+        &* Vulkan.set @"range" ( fromIntegral Vulkan.VK_WHOLE_SIZE )
+        )
+    writeUpdate1 =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+        &* Vulkan.set @"pNext" Vulkan.VK_NULL
+        &* Vulkan.set @"dstSet" descriptorSet
+        &* Vulkan.set @"dstBinding" 1
+        &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+        &* Vulkan.set @"pTexelBufferView" Vulkan.VK_NULL
+        &* Vulkan.set @"pImageInfo" Vulkan.VK_NULL
+        &* Vulkan.setListRef @"pBufferInfo" [ bufferInfo1 ]
+        &* Vulkan.set @"descriptorCount" 1
+        &* Vulkan.set @"dstArrayElement" 0
+        )
+    bufferInfo2 =
+      Vulkan.createVk
+        (  Vulkan.set @"buffer" buffer2
+        &* Vulkan.set @"offset" 0
+        &* Vulkan.set @"range" ( fromIntegral Vulkan.VK_WHOLE_SIZE )
+        )
+    writeUpdate2 =
+      Vulkan.createVk
+        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+        &* Vulkan.set @"pNext" Vulkan.VK_NULL
+        &* Vulkan.set @"dstSet" descriptorSet
+        &* Vulkan.set @"dstBinding" 2
+        &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+        &* Vulkan.set @"pTexelBufferView" Vulkan.VK_NULL
+        &* Vulkan.set @"pImageInfo" Vulkan.VK_NULL
+        &* Vulkan.setListRef @"pBufferInfo" [ bufferInfo2 ]
         &* Vulkan.set @"descriptorCount" 1
         &* Vulkan.set @"dstArrayElement" 0
         )
@@ -596,12 +701,12 @@ updateDescriptorSet device descriptorSet buffer imageView =
         &* Vulkan.set @"imageView"   imageView
         &* Vulkan.set @"imageLayout" Vulkan.VK_IMAGE_LAYOUT_GENERAL
         )
-    writeUpdate1 =
+    writeUpdate3 =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
         &* Vulkan.set @"dstSet" descriptorSet
-        &* Vulkan.set @"dstBinding" 1
+        &* Vulkan.set @"dstBinding" 3
         &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
         &* Vulkan.set @"descriptorCount" 1
         &* Vulkan.set @"pTexelBufferView" Vulkan.VK_NULL
@@ -610,5 +715,6 @@ updateDescriptorSet device descriptorSet buffer imageView =
         &* Vulkan.setListRef @"pBufferInfo" [ ]
         )
   in liftIO $
-       Foreign.Marshal.withArray [ writeUpdate0, writeUpdate1 ] $ \writeUpdatesPtr ->
-         Vulkan.vkUpdateDescriptorSets device 2 writeUpdatesPtr 0 Vulkan.vkNullPtr
+       Foreign.Marshal.withArray
+         [ writeUpdate0, writeUpdate1, writeUpdate2, writeUpdate3 ] $ \writeUpdatesPtr ->
+           Vulkan.vkUpdateDescriptorSets device 4 writeUpdatesPtr 0 Vulkan.vkNullPtr

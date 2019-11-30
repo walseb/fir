@@ -121,7 +121,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
   enableSDLLogging
   initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow appName
+  window           <- logMsg "Creating SDL window"           *> createWindow 1920 1080 appName
   setWindowIcon window "assets/fir_logo.png"
 
   neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window

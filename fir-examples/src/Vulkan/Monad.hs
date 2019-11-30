@@ -61,15 +61,15 @@ mainLoop mb
 
 data RenderState
   = RenderState
-    { observer   :: Observer
-    , input      :: Input
+    { observer :: Observer
+    , input    :: Input
     }
 
 initialState :: RenderState
 initialState
   = RenderState
-      { observer   = initialObserver
-      , input      = nullInput
+      { observer = initialObserver
+      , input    = nullInput
       }
 
 _observer :: Lens' RenderState Observer
