@@ -478,11 +478,11 @@ codeGen (If :$ c :$ ( t :: AST a ) :$ f )
     where
       canUseSelection :: SPIRV.PrimTy -> SPIRV.Version -> Bool
       canUseSelection (SPIRV.Scalar    _) _ = True
-      canUseSelection (SPIRV.Vector  _ _) _ = True
       canUseSelection (SPIRV.Pointer _ _) _ = True
       canUseSelection ty ver
         | ver < SPIRV.Version 1 4 = False
         | SPIRV.Matrix {} <- ty   = True
+        | SPIRV.Vector {} <- ty   = True
         | SPIRV.Array  {} <- ty   = True
         | SPIRV.Struct {} <- ty   = True
         | otherwise               = False

@@ -297,9 +297,8 @@ data Arity a where
 class KnownArity a where
   arity :: Arity a
 
-instance {-# OVERLAPPABLE #-} PrimTy a => KnownArity a where
+instance {-# INCOHERENT #-} PrimTy a => KnownArity a where
   arity = ZeroArity
-
 instance {-# OVERLAPPING #-} KnownArity b => KnownArity (a -> b) where
   arity = SuccArity (arity @b)
 

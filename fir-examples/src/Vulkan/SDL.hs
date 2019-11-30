@@ -19,6 +19,7 @@ import Control.Monad.IO.Class
 import Data.String
   ( fromString )
 import qualified Foreign
+import qualified Foreign.C as Foreign
 import Foreign.Ptr
   ( castPtr )
 
@@ -67,14 +68,14 @@ initializeSDL mouseLocationMode = do
   void ( SDL.setMouseLocationMode mouseLocationMode )
 
 
-createWindow :: MonadManaged m => ShortText -> m SDL.Window
-createWindow title =
+createWindow :: MonadManaged m => Foreign.CInt -> Foreign.CInt -> ShortText -> m SDL.Window
+createWindow x y title =
   manageBracket
     ( SDL.createWindow
               ( fromString ( ShortText.unpack title ) )
               SDL.defaultWindow
                 { SDL.windowGraphicsContext = SDL.VulkanContext
-                , SDL.windowInitialSize = SDL.V2 1920 1080
+                , SDL.windowInitialSize = SDL.V2 x y
                 }
     )
     SDL.destroyWindow

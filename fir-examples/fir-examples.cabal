@@ -26,7 +26,8 @@ library
     src
 
   exposed-modules:
-      Examples.Bezier
+      Examples.Kerr
+    , Examples.Bezier
     , Examples.Bezier.Shaders
     , Examples.FullPipeline
     , Examples.FullPipeline.Shaders
@@ -35,6 +36,16 @@ library
     , Examples.Hopf.Villarceau
     , Examples.JuliaSet
     , Examples.JuliaSet.Shaders
+    --, Examples.Kerr
+    , Examples.Kerr.Colour
+    , Examples.Kerr.Coordinates
+    , Examples.Kerr.Doppler
+    , Examples.Kerr.Event
+    , Examples.Kerr.Info
+    , Examples.Kerr.Motion
+    , Examples.Kerr.Noise
+    , Examples.Kerr.RungeKutta
+    , Examples.Kerr.Shaders
     , Examples.Logo
     , Examples.Logo.Shaders
     , Examples.Offscreen
@@ -165,6 +176,24 @@ executable JuliaSet
 
   hs-source-dirs:
     app/JuliaSet
+
+  build-depends:
+      base
+    , fir-examples
+
+  default-language:
+    Haskell2010
+
+executable Kerr
+
+  main-is:
+    Main.hs
+
+  ghc-options:
+    -threaded -rtsopts
+
+  hs-source-dirs:
+    app/Kerr
 
   build-depends:
       base
