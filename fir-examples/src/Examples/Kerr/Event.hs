@@ -27,8 +27,8 @@ import FIR
 import Math.Linear
 
 -- fir-examples
-import Examples.Kerr.Coordinates
-  ( spatialMetric, normaliseSpatialComponents  )
+--import Examples.Kerr.Coordinates
+--  ( spatialMetric, normaliseSpatialComponents  )
 import Examples.Kerr.Colour
   ( blackbodyColour, wavelengthColour, starTemperature )
 import Examples.Kerr.Doppler
@@ -40,7 +40,9 @@ import Examples.Kerr.Motion
   , Canonical, pattern XP
   )
 import Examples.Kerr.Noise
-  ( hash, brownianNoise )
+  ( hash
+--, brownianNoise
+  )
 import qualified Examples.Kerr.RungeKutta as RK
   ( dormandPrince
   , Parameters(..), StepData(..), StepResult
@@ -65,8 +67,8 @@ black :: AST EventData
 black = Struct ( 0 :& 0 :& 1 :& End )
 temperature :: AST Float -> AST Float -> AST EventData
 temperature t i = Struct ( 1 :& t :& i :& End )
-wavelength :: AST Float -> AST Float -> AST EventData
-wavelength λ i = Struct ( 2 :& λ :& i :& End )
+--wavelength :: AST Float -> AST Float -> AST EventData
+--wavelength λ i = Struct ( 2 :& λ :& i :& End )
 noEvent :: Event
 noEvent = Event ( Lit (1 / 0), black )
 
@@ -251,7 +253,7 @@ crossedAccretionDisk
   constants
   RK.StepData
     { RK.stepOrigin = (  λ, XP ( x@(Vec4 _ r  cosθ  φ  )) _ )
-    , RK.stepSize   = ( dλ, XP (x'@(Vec4 _ r' cosθ' φ' )) _ )
+    , RK.stepSize   = ( dλ, XP (x'@(Vec4 _ r' cosθ' _  )) _ )
     }
   clock
   = purely do
@@ -393,8 +395,8 @@ rayEscaped _
 farField :: AST Float -> AST Float -> Program i i (AST EventData)
 farField cosθ φ_ = purely do
   φ <- def @"φ" @R $ φ_ `mod` (2 * pi)
-  cos²θ <- def @"cos²θ" @R $ cosθ * cosθ
-  sin²θ <- def @"sin²θ" @R $ 1 - cos²θ
+  --cos²θ <- def @"cos²θ" @R $ cosθ * cosθ
+  --sin²θ <- def @"sin²θ" @R $ 1 - cos²θ
 
   _ <- def @"farFieldData" @RW black
 

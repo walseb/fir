@@ -14,13 +14,16 @@ module Examples.Kerr.Colour
 
 -- base
 import qualified Prelude
+import Data.Maybe
+  ( fromJust )
 import Data.Proxy
   ( Proxy(Proxy) )
 import GHC.TypeNats
   ( KnownNat, natVal )
 
--- vector
-import qualified Data.Vector as Vector
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+  ( fromList )
 
 -- fir
 import FIR
@@ -46,7 +49,7 @@ wavelengthColour λ = purely do
 
 wavelengthTable :: Array 21 (V 4 Float)
 wavelengthTable
-  = mkArray . Vector.fromList
+  = MkArray . fromJust . Vector.fromList
   $ [ V4 0     0     0     1  -- 365 nm
     , V4 0.022 0     0.128 1  -- 385 nm
     , V4 0.141 0     0.432 1  -- 405 nm
@@ -72,7 +75,7 @@ wavelengthTable
 
 blackbodyTable :: Array 21 (V 4 Float)
 blackbodyTable
-  = mkArray . Vector.fromList
+  = MkArray . fromJust . Vector.fromList
   $ [ V4 0      0      0      0         --     0 K
     , V4 1.0000 0.0401 0.0000 2.525e+06 --  1000 K
     , V4 1.0000 0.2484 0.0061 4.431e+11 --  2000 K

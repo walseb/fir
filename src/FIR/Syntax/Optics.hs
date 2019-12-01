@@ -58,8 +58,8 @@ import GHC.TypeNats
   )
 
 -- vector
-import qualified Data.Vector as Vector
-  ( (!), (//) )
+import qualified Data.Vector.Sized as Vector
+  ( index, (//) )
 
 -- fir
 import Control.Monad.Indexed
@@ -443,28 +443,28 @@ instance ( KnownNat n, KnownNat i
          , empty ~ '[]
          )
       => Gettable (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
-instance ( KnownNat i         
+instance ( KnownNat n, KnownNat i
          , r ~ a
          , empty ~ '[]
          , PrimTy a
          , Gettable (Field_ (i :: Nat) :: Optic empty (Array n a) r)
          )
        => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
-  view (MkArray arr) = arr Vector.! (fromIntegral (natVal (Proxy @i)))
+  view (MkArray arr) = arr `Vector.index` fromIntegral (natVal (Proxy @i))
 
 instance ( KnownNat i
          , empty ~ '[]
          , r ~ a
          )
       => Gettable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
-instance ( KnownNat i
+instance ( KnownNat n, KnownNat i
          , empty ~ '[]
          , r ~ a
          , TypeError ( Text "Cannot use 'view' on runtime array." )
          )
        => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
   view = error "unreachable"
-  --view (MkRuntimeArray arr) = arr Vector.! (fromIntegral (natVal (Proxy @i)))
+  --view (MkRuntimeArray arr) = arr `Vector.index` fromIntegral (natVal (Proxy @i))
 
 
 instance ( IntegralTy ty
@@ -472,14 +472,15 @@ instance ( IntegralTy ty
          , r ~ a
          )
       => Gettable (RTOptic_ :: Optic ix (Array n a) r) where
-instance ( IntegralTy ty
+instance ( KnownNat n
+         , IntegralTy ty
          , ix ~ '[ty]
          , r ~ a
          , Gettable (RTOptic_ :: Optic ix (Array n a) r)
          , PrimTy a
          )
       => ReifiedGetter (RTOptic_ :: Optic ix (Array n a) r) where
-  view i (MkArray arr) = arr Vector.! fromIntegral i
+  view i (MkArray arr) = arr `Vector.index` fromIntegral i
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -491,7 +492,7 @@ instance ( IntegralTy ty, ix ~ '[ty], r ~ a
          )
       => ReifiedGetter (RTOptic_ :: Optic ix (RuntimeArray a) r) where
   view = error "unreachable"
-  --view i (MkRuntimeArray arr) = arr Vector.! fromIntegral i
+  --view i (MkRuntimeArray arr) = arr `Vector.index` fromIntegral i
 
 instance
     TypeError (    Text "get: attempt to access array element \
@@ -670,7 +671,7 @@ instance ( KnownNat n, KnownNat i
          , r ~ a
          )
       => Settable (Field_ (i :: Nat) :: Optic empty (Array n a) r) where
-instance ( KnownNat i         
+instance ( KnownNat n, KnownNat i
          , r ~ a
          , empty ~ '[]
          , Settable (Field_ (i :: Nat) :: Optic empty (Array n a) r)
@@ -695,7 +696,8 @@ instance ( IntegralTy ty
          , r ~ a
          )
       => Settable (RTOptic_ :: Optic ix (Array n a) r) where
-instance ( IntegralTy ty
+instance ( KnownNat n
+         , IntegralTy ty
          , r ~ a
          , ix ~ '[ty]
          , Settable (RTOptic_ :: Optic ix (Array n a) r)

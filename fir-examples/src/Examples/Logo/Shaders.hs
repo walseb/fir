@@ -16,11 +16,14 @@ module Examples.Logo.Shaders where
 import qualified Prelude
 import Prelude
   ( Functor, map )
+import Data.Maybe
+  ( fromJust )
 import GHC.TypeLits
   ( KnownNat )
 
--- vector
-import qualified Data.Vector as Array
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+  ( fromList )
 
 -- text-short
 import Data.Text.Short
@@ -171,7 +174,7 @@ gradient t colors
 
 cubeGradientStops :: Array 5 (V 4 Float)
 cubeGradientStops =
-  mkArray . Array.fromList . map ( ^* (1/255) ) $
+  MkArray . fromJust . Vector.fromList . map ( ^* (1/255) ) $
     [ V4 255 120  90 255
     , V4 240 180  80 255
     , V4 230 120 160 255

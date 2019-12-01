@@ -67,9 +67,9 @@ import Data.Text.Short
 import Data.Tree.View
   ( showTree )
 
--- vector
-import qualified Data.Vector as Vector
-  ( toList )
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+  ( knownLength', toList )
 
 -- fir
 import CodeGen.Instruction
@@ -591,9 +591,11 @@ toTreeArgs as mkArray@(Array (MkArray vec))
             let comps = Vector.toList vec
             trees <- traverse (toTreeArgs []) comps
             pure $
-              Node ( "Array @" ++ show (natVal (Proxy @n))
-                             ++ " @" ++ show (primTy @a)
+              Node ( "Array @" ++ lg ++ " @" ++ show (primTy @a)
                    ) (trees ++ as)
+  where
+    lg :: String
+    lg = Vector.knownLength' vec ( \px -> show ( natVal px ) )
 toTreeArgs as (MkID     (v,_)) = return (Node (show v) as)
 toTreeArgs as GradedMappend    = return (Node "GradedMappend" as)
 toTreeArgs as (MkVector   n _) = return (Node ("Vec"       ++ show (natVal n)) as)

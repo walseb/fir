@@ -81,6 +81,10 @@ import GHC.TypeNats
 import Numeric.Half
   ( Half )
 
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+  ( Vector, generate )
+
 -- fir
 import Control.Type.Optic
   ( Optic(..), Index
@@ -92,6 +96,8 @@ import Control.Type.Optic
   , ArePairwiseDisjoint
   , Container(FieldIndexFromName)
   )
+import Data.Finite.With
+  ( withFinite )
 import Data.Function.Variadic
   ( NatVariadic, ListVariadic )
 import Data.Product
@@ -119,7 +125,7 @@ import FIR.Syntax.Optics
   , ValidAnIndexOptic
   )
 import FIR.Prim.Array
-  ( Array, RuntimeArray )
+  ( Array(MkArray), RuntimeArray )
 import FIR.Prim.Op
   ( Vectorise(Vectorise) )
 import FIR.Prim.Singletons
@@ -1063,6 +1069,14 @@ instance ( KnownNat m, KnownNat n
   type Internal (M m n a) = M m n (Internal a)
   toAST (M m) = Mat :$ toAST m
   fromAST = M . fromAST . ( UnMat :$ )
+
+instance ( KnownNat n, Syntactic a, PrimTy (Internal a) ) => Syntactic (Array n a) where
+  type Internal (Array n a) = Array n (Internal a)
+  toAST arr = Array $ Prelude.fmap toAST arr
+  fromAST arr = MkArray vec
+    where
+      vec :: Vector.Vector n a
+      vec = Vector.generate ( withFinite ( \ ( _ :: Proxy i ) -> fromAST $ view @(Index i) arr ) )
 
 -----------------------------------------------
 -- * Vectors and matrices

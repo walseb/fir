@@ -20,9 +20,13 @@ import Control.Arrow
   ( second )
 import Data.Maybe
   ( fromMaybe )
+import Data.Word
+  ( Word32 )
 import Data.Proxy
   ( Proxy )
 import qualified GHC.Stack
+import GHC.TypeNats
+  ( natVal )
 
 -- bytestring
 import Data.ByteString.Lazy
@@ -45,9 +49,9 @@ import Data.Text.Short
 import qualified Data.Text.Short as ShortText
   ( pack )
 
--- vector
-import qualified Data.Vector as Vector
-  ( toList )
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+  ( toList, knownLength' )
 
 -- fir
 import CodeGen.Application
@@ -420,9 +424,17 @@ codeGen (Applied (MkVector (_ :: Proxy n) (_ :: Proxy ty)) as)
 codeGen (Struct struct :: AST a)
   = compositeConstruct (primTy @a)
         =<< traverseStructASTs (fmap fst . codeGen) struct
-codeGen (Array (MkArray vec) :: AST a)
-  = compositeConstruct (primTy @a)
-        =<< traverse     (fmap fst . codeGen) (Vector.toList vec)
+codeGen arr@(Array (MkArray vec))
+  = case arr of
+      ( _ :: AST (Array n a) ) ->
+        let
+          n :: Word32
+          n = Vector.knownLength' vec ( \px -> fromIntegral ( natVal px ) )
+          vecTy :: SPIRV.PrimTy
+          vecTy = SPIRV.Vector n ( primTy @a )
+        in
+        compositeConstruct vecTy
+          =<< traverse (fmap fst . codeGen) (Vector.toList vec)
 codeGen (GradedMappend :$ (a :: AST a) :$ (b :: AST b))
   = do
       (a_ID, a_ty) <- codeGen a

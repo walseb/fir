@@ -82,7 +82,7 @@ import FIR.Binding
   , Permission(Read,Write), Permissions
   )
 import FIR.Prim.Array
-  ( Array,RuntimeArray )
+  ( Array, RuntimeArray )
 import FIR.Prim.Struct
   ( Struct, FieldKind(NamedField), StructFieldKind(fieldKind) )
 import Math.Algebra.Class

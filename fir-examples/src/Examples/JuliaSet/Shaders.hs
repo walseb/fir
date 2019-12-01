@@ -13,6 +13,8 @@
 module Examples.JuliaSet.Shaders where
 
 -- base
+import Data.Maybe
+  ( fromJust )
 import GHC.TypeNats
   ( KnownNat )
 
@@ -20,8 +22,9 @@ import GHC.TypeNats
 import Data.Text.Short
   ( ShortText )
 
--- vector
-import qualified Data.Vector as Array
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+  ( fromList )
 
 -- fir
 import FIR
@@ -77,7 +80,7 @@ gradient t colors
 
 
 sunset :: Array 9 (V 4 Float)
-sunset = mkArray . Array.fromList $
+sunset = MkArray . fromJust . Vector.fromList $
        [ V4 0    0    0    0
        , V4 0.28 0.1  0.38 1
        , V4 0.58 0.2  0.38 1
