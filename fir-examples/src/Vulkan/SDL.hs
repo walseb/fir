@@ -14,12 +14,12 @@ module Vulkan.SDL where
 -- base
 import Control.Monad
   ( void )
-import Control.Monad.IO.Class
-  ( MonadIO, liftIO )
 import Data.String
   ( fromString )
 import qualified Foreign
 import qualified Foreign.C as Foreign
+import Foreign.C.String
+  ( CString )
 import Foreign.Ptr
   ( castPtr )
 
@@ -44,6 +44,10 @@ import Data.Text.Short
   ( ShortText )
 import qualified Data.Text.Short as ShortText
   ( unpack )
+
+-- transformers
+import Control.Monad.IO.Class
+  ( MonadIO, liftIO )
 
 -- vector
 import qualified Data.Vector.Storable as Vector
@@ -113,5 +117,5 @@ createSurface
 createSurface window vulkanInstance
   = SDL.Video.Vulkan.vkCreateSurface window $ Foreign.castPtr vulkanInstance
 
-getNeededExtensions :: MonadIO m => SDL.Window -> m [Vulkan.CString]
+getNeededExtensions :: MonadIO m => SDL.Window -> m [CString]
 getNeededExtensions = SDL.Video.Vulkan.vkGetInstanceExtensions

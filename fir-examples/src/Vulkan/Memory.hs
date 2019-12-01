@@ -14,17 +14,21 @@ module Vulkan.Memory where
 -- base
 import Control.Monad
   ( (>=>), guard )
-import Control.Monad.IO.Class
-  ( liftIO )
 import Data.Bits
 import Data.Foldable
   ( for_ )
+import Data.Word
+  ( Word32 )
 import qualified Foreign
 import qualified Foreign.Marshal
 
 -- managed
 import Control.Monad.Managed
   ( MonadManaged )
+
+-- transformers
+import Control.Monad.IO.Class
+  ( liftIO )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
@@ -52,7 +56,7 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
           ( Vulkan.vkGetPhysicalDeviceMemoryProperties physicalDevice )
 
     let
-      memoryTypeCount :: Vulkan.Word32
+      memoryTypeCount :: Word32
       memoryTypeCount = Vulkan.getField @"memoryTypeCount" memoryProperties
 
     memoryTypes :: [ Vulkan.VkMemoryType ]
@@ -65,7 +69,7 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
           )
 
     let
-      possibleMemoryTypeIndices :: [ Vulkan.Word32 ]
+      possibleMemoryTypeIndices :: [ Word32 ]
       possibleMemoryTypeIndices = do
 
         ( i, memoryType ) <- zip [ 0 .. ] memoryTypes
@@ -83,7 +87,7 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
 
         pure i
 
-    memoryTypeIndex :: Vulkan.Word32
+    memoryTypeIndex :: Word32
       <- case possibleMemoryTypeIndices of
               [] -> error $  "No available memory types with requirements:\n"
                           ++ show memReqs

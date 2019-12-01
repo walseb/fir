@@ -15,6 +15,8 @@ import Control.Monad
   ( (>=>) )
 import Data.Coerce
   ( coerce )
+import Foreign.Ptr
+  ( Ptr )
 
 -- managed
 import Control.Monad.Managed
@@ -38,28 +40,57 @@ import Vulkan.Monad
 -----------------------------------------------------------------------------------------------------
 
 createVertexBuffer
-  :: forall a m.
-     ( MonadManaged m, Poke a Locations )
+  :: forall a m
+  .  ( MonadManaged m, Poke a Locations )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
+  -> m (Vulkan.VkBuffer, [a] -> IO () )
 createVertexBuffer
   = createBufferFromList @a @Locations
       Vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
 
-
 createIndexBuffer
-  :: forall a m.
-     ( MonadManaged m, Poke a Base )
+  :: forall a m
+  .  ( MonadManaged m, Poke a Base )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
+  -> m (Vulkan.VkBuffer, [a] -> IO () )
 createIndexBuffer
   = createBufferFromList @a @Base
       Vulkan.VK_BUFFER_USAGE_INDEX_BUFFER_BIT
 
+createUniformBuffer
+  :: forall a m
+  .  ( MonadManaged m, Poke a Extended )
+  => Vulkan.VkPhysicalDevice
+  -> Vulkan.VkDevice
+  -> a
+  -> m (Vulkan.VkBuffer, a -> IO () )
+createUniformBuffer
+  = createBuffer @a @Extended
+      Vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+
+createBuffer
+  :: forall a ali m.
+     ( MonadManaged m, Poke a ali )
+  => Vulkan.VkBufferUsageFlags
+  -> Vulkan.VkPhysicalDevice
+  -> Vulkan.VkDevice
+  -> a
+  -> m (Vulkan.VkBuffer, a -> IO ())
+createBuffer usage physicalDevice device elems = do
+  ( buf, bufPtr ) <-
+    createBufferFromPoke
+      usage
+      physicalDevice
+      device
+      ( \memPtr -> pokeFunction memPtr elems )
+      ( fromIntegral (sizeOf @a @ali) )
+  pure ( buf, pokeFunction bufPtr )
+    where
+      pokeFunction = poke @a @ali
 
 createBufferFromList
   :: forall a ali m.
@@ -68,41 +99,28 @@ createBufferFromList
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createBufferFromList usage physicalDevice device elems =
-  createBuffer
-    device
-    physicalDevice
-    usage
-    ( \memPtr -> pokeArray @a @ali memPtr elems )
-    ( fromIntegral ( length elems ) * fromIntegral (sizeOf @a @ali) )
+  -> m (Vulkan.VkBuffer, [a] -> IO ())
+createBufferFromList usage physicalDevice device elems = do
+  ( buf, bufPtr ) <-
+    createBufferFromPoke
+      usage
+      physicalDevice
+      device
+      ( \memPtr -> pokeFunction memPtr elems )
+      ( fromIntegral ( length elems ) * fromIntegral (sizeOf @a @ali) )
+  pure ( buf, pokeFunction bufPtr )
+    where
+      pokeFunction = pokeArray @a @ali
 
-
-createUniformBuffer
-  :: forall a m.
-     ( MonadManaged m, Poke a Extended )
-  => Vulkan.VkPhysicalDevice
-  -> Vulkan.VkDevice
-  -> a
-  -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createUniformBuffer physicalDevice device bufferData =
-  createBuffer
-    device
-    physicalDevice
-    Vulkan.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
-    ( \memPtr -> poke @a @Extended memPtr bufferData )
-    ( fromIntegral ( sizeOf @a @Extended ) )
-
-
-createBuffer
+createBufferFromPoke
   :: MonadManaged m
-  => Vulkan.VkDevice
+  => Vulkan.VkBufferUsageFlags
   -> Vulkan.VkPhysicalDevice
-  -> Vulkan.VkBufferUsageFlags
-  -> (Vulkan.Ptr a -> IO ())
+  -> Vulkan.VkDevice
+  -> (Ptr a -> IO ())
   -> Vulkan.VkDeviceSize
-  -> m (Vulkan.VkBuffer, Vulkan.Ptr a)
-createBuffer device physicalDevice usage poking sizeInBytes =
+  -> m (Vulkan.VkBuffer, Ptr a)
+createBufferFromPoke usage physicalDevice device poking sizeInBytes =
   let
 
     roundedSize = sizeInBytes `roundUp` 64 -- nonCoherentAtomSize
@@ -142,7 +160,7 @@ createBuffer device physicalDevice usage poking sizeInBytes =
           Vulkan.vkBindBufferMemory device buffer memory 0
             >>= throwVkResult
 
-          memPtr :: Vulkan.Ptr a
+          memPtr :: Ptr a
              <- coerce <$> allocaAndPeek
                   ( Vulkan.vkMapMemory device memory 0 roundedSize Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult

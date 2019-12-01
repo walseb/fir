@@ -13,8 +13,6 @@
 module Vulkan.Pipeline where
 
 -- base
-import Control.Monad.IO.Class
-  ( liftIO )
 import Data.Bits
   ( (.|.) )
 import Data.Foldable
@@ -35,6 +33,10 @@ import qualified Data.ByteString
 -- managed
 import Control.Monad.Managed
   ( MonadManaged )
+
+-- transformers
+import Control.Monad.IO.Class
+  ( liftIO )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create

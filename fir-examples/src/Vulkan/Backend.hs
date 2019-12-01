@@ -18,8 +18,6 @@ import Control.Arrow
   ( (&&&) )
 import Control.Monad
   ( (>=>), guard, unless )
-import Control.Monad.IO.Class
-  ( MonadIO, liftIO )
 import Data.Bits
   ( Bits((.&.)) )
 import Data.Foldable
@@ -32,7 +30,11 @@ import Data.Ord
   ( Down(..) )
 import Data.Traversable
   ( for )
+import Data.Word
+  ( Word32 )
 import qualified Foreign
+import Foreign.C.String
+  ( CString )
 import qualified Foreign.Marshal
 
 -- managed
@@ -41,6 +43,10 @@ import Control.Monad.Managed
 
 -- sdl2
 import qualified SDL.Video.Vulkan
+
+-- transformers
+import Control.Monad.IO.Class
+  ( MonadIO, liftIO )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
@@ -57,7 +63,7 @@ import Vulkan.Monad
 
 -----------------------------------------------------------------------------------------------------
 
-createVulkanInstance :: MonadManaged m => String -> [ Vulkan.CString ] -> m Vulkan.VkInstance
+createVulkanInstance :: MonadManaged m => String -> [ CString ] -> m Vulkan.VkInstance
 createVulkanInstance appName neededExtensions =
   let
     appInfo :: Vulkan.VkApplicationInfo
@@ -269,7 +275,7 @@ createSwapchain physicalDevice device surface surfaceFormat imageUsage = do
       )
 
   let
-    minImageCount, maxImageCount, imageCount :: Vulkan.Word32
+    minImageCount, maxImageCount, imageCount :: Word32
     minImageCount = Vulkan.getField @"minImageCount" surfaceCapabilities
     maxImageCount = Vulkan.getField @"maxImageCount" surfaceCapabilities
     imageCount
@@ -363,8 +369,8 @@ data ImageInfo
   , imageExtent      :: Vulkan.VkExtent3D
   , imageFormat      :: Vulkan.VkFormat
   , imageLayout      :: Vulkan.VkImageLayout
-  , imageMipLevels   :: Vulkan.Word32
-  , imageArrayLayers :: Vulkan.Word32
+  , imageMipLevels   :: Word32
+  , imageArrayLayers :: Word32
   , imageSamples     :: Vulkan.VkSampleCountFlagBits
   , imageTiling      :: Vulkan.VkImageTiling
   , imageUsage       :: Vulkan.VkImageUsageFlags
@@ -600,7 +606,7 @@ allocateCommandBuffer dev commandPool =
               >=> throwVkResult
           )
       )
-      ( \a ->
+      ( \ a ->
           Foreign.Marshal.withArray [ a ]
             ( Vulkan.vkFreeCommandBuffers dev commandPool 1 )
       )

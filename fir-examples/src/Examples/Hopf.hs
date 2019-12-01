@@ -2,9 +2,10 @@
 {-# LANGUAGE BlockArguments             #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE PackageImports             #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -17,27 +18,21 @@ module Examples.Hopf ( hopf ) where
 
 -- base
 import Control.Monad
-  ( (>=>), when )
-import Control.Monad.IO.Class
-  ( liftIO )
+  ( when, replicateM )
 import Data.Bits
-import Data.Coerce
-  ( coerce )
+import Data.Proxy
+  ( Proxy )
 import Data.String
   ( IsString )
 import Data.Traversable
   ( for )
 import Data.Word
-  ( Word8, Word32 )
-import qualified Foreign
-import qualified Foreign.C
+  ( Word32 )
 import qualified Foreign.Marshal
-
--- JuicyPixels
-import Codec.Picture.Types
-  ( Image(..), PixelRGBA8(..) )
-import Codec.Picture.Png
-  ( writePng )
+import GHC.Generics
+  ( Generic )
+import GHC.TypeNats
+  ( SomeNat(SomeNat), someNatVal )
 
 -- lens
 import Control.Lens
@@ -58,26 +53,26 @@ import qualified Data.Text.Short as ShortText
   ( unpack )
 
 -- transformers
+import Control.Monad.IO.Class
+  ( liftIO )
 import Control.Monad.Trans.State.Lazy
   ( evalStateT )
 
--- vector
-import qualified Data.Vector.Storable as Vector
+-- vector-sized
+import qualified Data.Vector.Sized as V
+  ( unsafeIndex )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
   ( (&*) )
 import qualified Graphics.Vulkan as Vulkan
 import qualified Graphics.Vulkan.Core_1_0 as Vulkan
-import qualified Graphics.Vulkan.Ext.VK_KHR_surface as Vulkan
 import qualified Graphics.Vulkan.Ext.VK_KHR_swapchain as Vulkan
 import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
   ( runCompilationsTH
-  , Poke(poke)
-  , Layout(Extended)
   , Struct(..)
   , (:->)((:->))
   , ModuleRequirements
@@ -89,14 +84,15 @@ import Examples.Hopf.Shaders
 import Examples.Hopf.Villarceau
 import Simulation.Observer
 import Vulkan.Backend
-import Vulkan.Buffer
+import Vulkan.Context
 import Vulkan.Features
-  ( requiredFeatures )
 import Vulkan.Monad
 import Vulkan.Pipeline
-import Vulkan.SDL
+import Vulkan.Resource
+import Vulkan.Screenshot
 
 ----------------------------------------------------------------------------
+-- Shaders and resource types.
 
 shaderCompilationResult :: Either ShortText ModuleRequirements
 shaderCompilationResult
@@ -110,76 +106,104 @@ shaderCompilationResult
 
 appName :: IsString a => a
 appName = "fir-examples - Hopf fibration"
+shortName :: String
+shortName = "hopf" -- name for screenshots
+
+type UBO =
+  Struct
+    '[ "mvp"    ':-> M 4 4 Float
+     , "origin" ':-> V 4 Float
+     ]
+
+type VertexData = Struct VertexInput
+
+data ResourceSet i st
+  = ResourceSet
+    { uboResource  :: UniformBuffer UBO        i st
+    , vertexBuffer :: VertexBuffer  VertexData i st
+    , indexBuffer  :: IndexBuffer   Word32     i st
+    }
+  deriving Generic
+
+----------------------------------------------------------------------------
+-- Application.
 
 hopf :: IO ()
 hopf = ( runManaged . ( `evalStateT` initialState ) ) do
+
+  -------------------------------------------
+  -- Obtain requirements from shaders.
 
   ( reqs :: ModuleRequirements ) <-
     case shaderCompilationResult of
       Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
       Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
 
-  enableSDLLogging
-  initializeSDL SDL.RelativeLocation -- relative mouse location
-  window           <- logMsg "Creating SDL window"           *> createWindow 1920 1080 appName
-  setWindowIcon window "assets/fir_logo.png"
+  -------------------------------------------
+  -- Initialise window and Vulkan context.
 
-  neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
-  extensionNames <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
-  logMsg $ "Needed instance extensions are: " ++ show extensionNames
-
-  vulkanInstance   <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
-  physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vulkanInstance
-  queueFamilyIndex <- logMsg "Finding suitable queue family"
-      *> findQueueFamilyIndex physicalDevice [Vulkan.VK_QUEUE_GRAPHICS_BIT]
+  ( window, windowExtensions ) <-
+    initialiseWindow
+      WindowInfo
+        { width      = 1920
+        , height     = 1080
+        , windowName = appName
+        , mouseMode  = SDL.RelativeLocation
+        }
 
   features <- liftIO ( requiredFeatures reqs )
-  device   <- logMsg "Creating logical device" *> createLogicalDevice  physicalDevice queueFamilyIndex features
-  surface  <- logMsg "Creating SDL surface"    *> createSurface window vulkanInstance
+  let
+    surfaceInfo =
+      SurfaceInfo
+        { surfaceWindow = window
+        , preferredFormat =
+            VkSurfaceFormatKHR
+              Vulkan.VK_FORMAT_B8G8R8A8_UNORM
+              Vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+        , surfaceUsage =
+            [ Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+            , Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+            ]
+        }
 
-  assertSurfacePresentable physicalDevice queueFamilyIndex surface
-
-  let preferredSwapchainFormat :: Vulkan.VkSurfaceFormatKHR
-      preferredSwapchainFormat
-        = VkSurfaceFormatKHR
-            Vulkan.VK_FORMAT_B8G8R8A8_UNORM
-            Vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
-
-      depthFmt :: Vulkan.VkFormat
-      depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
-
-  surfaceFormat@(~(VkSurfaceFormatKHR colFmt _)) <-
-    logMsg "Choosing swapchain format & color space"
-      *> chooseSwapchainFormat preferredSwapchainFormat physicalDevice surface
-
-  ( swapchain, extent ) <-
-    logMsg "Creating swapchain"
-      *> createSwapchain
-            physicalDevice device
-            surface surfaceFormat
-            ( Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT .|. Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT )
-
-  let width, height :: Num a => a
-      width  = fromIntegral $ Vulkan.getField @"width"  extent
-      height = fromIntegral $ Vulkan.getField @"height" extent
-
-      extent3D :: Vulkan.VkExtent3D
-      extent3D
-        = Vulkan.createVk
-            (  Vulkan.set @"width"  width
-            &* Vulkan.set @"height" height
-            &* Vulkan.set @"depth"  1
-            )
-
-  swapchainImages <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
-  renderPass      <- logMsg "Creating a render pass"   *> createRenderPass   device colFmt depthFmt
+  VulkanContext{..} <-
+    initialiseContext @WithSwapchain appName windowExtensions
+      RenderInfo
+        { features
+        , queueType   = Vulkan.VK_QUEUE_GRAPHICS_BIT
+        , surfaceInfo = surfaceInfo
+        }
 
   let
-    screenshotImageInfo, msImageInfo, depthImageInfo :: ImageInfo
-    screenshotImageInfo =
-      ( Default2DImageInfo extent3D colFmt
-        Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
-      ) { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR } -- host visible image needs linear tiling
+
+    SwapchainInfo { .. } = swapchainInfo
+
+    width, height :: Num a => a
+    width  = fromIntegral $ Vulkan.getField @"width"  swapchainExtent
+    height = fromIntegral $ Vulkan.getField @"height" swapchainExtent
+
+    extent3D :: Vulkan.VkExtent3D
+    extent3D
+      = Vulkan.createVk
+          (  Vulkan.set @"width"  width
+          &* Vulkan.set @"height" height
+          &* Vulkan.set @"depth"  1
+          )
+
+    colFmt, depthFmt :: Vulkan.VkFormat
+    colFmt   = Vulkan.getField @"format" surfaceFormat
+    depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
+
+
+  -------------------------------------------
+  -- Create images.
+
+  let
+
+    numImages :: Int
+    numImages = length swapchainImages
+
+    msImageInfo, depthImageInfo :: ImageInfo
     msImageInfo =
       ( Default2DImageInfo extent3D colFmt
         Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
@@ -189,399 +213,278 @@ hopf = ( runManaged . ( `evalStateT` initialState ) ) do
         Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
       ) { imageSamples = Vulkan.VK_SAMPLE_COUNT_8_BIT }
 
-  framebuffersWithAttachments <- logMsg "Creating frame buffers"
-    *> ( for swapchainImages $ \swapchainImage -> do
 
-          colorImageView
-            <- createImageView
-                  device swapchainImage
-                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
-                  colFmt
-                  Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-          (msImage, _)
-            <- createImage physicalDevice device msImageInfo []
-          msImageView
-            <- createImageView device msImage
-                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
-                  colFmt
-                  Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-          (screenshotImage, screenshotImageMemory)
-            <- createImage physicalDevice device
-                  screenshotImageInfo
-                  [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-                  , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-                  ]
-          (depthImage, _)
-            <- createImage physicalDevice device
-                  depthImageInfo
-                  [ ]
-          depthImageView
-            <- createImageView device depthImage
-                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
-                  depthFmt
-                  Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
-          let attachments = [ (swapchainImage, colorImageView)
-                            , (depthImage    , depthImageView)
-                            , (msImage       , msImageView   )
-                            ]
-          framebuffer <- createFramebuffer device renderPass extent (map snd attachments)
-          pure (framebuffer, attachments, (screenshotImage, screenshotImageMemory))
-       )
+  renderPass <- logMsg "Creating a render pass" *> createRenderPass device colFmt depthFmt
 
-  let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
-      clearValues = [ blackClear
-                    , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
-                    , blackClear
-                    ]
-        where
-          black :: Vulkan.VkClearColorValue
-          black =
-            Vulkan.createVk
-              (  Vulkan.setAt @"float32" @0 0
-              &* Vulkan.setAt @"float32" @1 0
-              &* Vulkan.setAt @"float32" @2 0
-              &* Vulkan.setAt @"float32" @3 1
-              )
+  case someNatVal ( fromIntegral numImages ) of
+    SomeNat ( _ :: Proxy numImages ) -> do
 
-          blackClear :: Vulkan.VkClearValue
-          blackClear = Vulkan.createVk ( Vulkan.set @"color" black )
+      framebuffersWithAttachments <- logMsg "Creating frame buffers"
+        *> ( for swapchainImages $ \swapchainImage -> do
 
-          depthStencilClear :: Vulkan.VkClearDepthStencilValue
-          depthStencilClear = Vulkan.createVk
-            ( Vulkan.set @"depth" 1 &* Vulkan.set @"stencil" 0 )
+              colorImageView
+                <- createImageView
+                      device swapchainImage
+                      Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                      colFmt
+                      Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+              (msImage, _)
+                <- createImage physicalDevice device msImageInfo []
+              msImageView
+                <- createImageView device msImage
+                      Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                      colFmt
+                      Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+              (depthImage, _)
+                <- createImage physicalDevice device
+                      depthImageInfo
+                      [ ]
+              depthImageView
+                <- createImageView device depthImage
+                      Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                      depthFmt
+                      Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
+              let attachments = [ (swapchainImage, colorImageView)
+                                , (depthImage    , depthImageView)
+                                , (msImage       , msImageView   )
+                                ]
+              framebuffer <- createFramebuffer device renderPass swapchainExtent (map snd attachments)
+              pure (framebuffer, attachments)
+           )
 
-  commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
-  queue       <- getQueue device 0
+      screenshotImagesAndMemories <-
+        replicateM numImages $
+          createScreenshotImage physicalDevice device
+            ( screenshotImageInfo extent3D colFmt )
 
-  nextImageSem <- createSemaphore device
-  submitted    <- createSemaphore device
-
-  descriptorPool <- createDescriptorPool device
-
-  descriptorSetLayout <- createDescriptorSetLayout device
-  descriptorSet       <- allocateDescriptorSet device descriptorPool descriptorSetLayout
-
-  let pipelineInfo = VkPipelineInfo extent Vulkan.VK_SAMPLE_COUNT_8_BIT
-  ( graphicsPipeline, pipelineLayout )
-    <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
-
-  let
-
-    (a1, c1) = villarceauRadii 0.7
-    (a2, c2) = villarceauRadii 1.1
-    (a3, c3) = villarceauRadii 1.5
-
-    circleThickening :: Float
-    circleThickening = 0.025
-
-    nbCircles :: Int
-    nbCircles = 10
-
-    toriVerts :: [ Struct VertexInput ]
-    toriVerts
-      =  villarceauCircles c1 a1 circleThickening nbCircles blues  0
-      <> villarceauCircles c2 a2 circleThickening nbCircles greens ( 2 * pi / (3 * fromIntegral nbCircles) )
-      <> villarceauCircles c3 a3 circleThickening nbCircles sunset ( 4 * pi / (3 * fromIntegral nbCircles) )
-
-    toriIndices :: [ Word32 ]
-    toriIndices
-      = [ 0 .. fromIntegral (length toriVerts) - 1 ]
-
-  (vertexBuffer, _) <- createVertexBuffer physicalDevice device toriVerts
-
-  (indexBuffer, _) <- createIndexBuffer physicalDevice device toriIndices
-
-  let initialMVP = modelViewProjection initialObserver Nothing
-      initialOrig :: V 4 Float
-      initialOrig = V4 0 0 0 1 ^*! initialMVP
-
-  (ubo, uboPtr)
-    <- createUniformBuffer
-          physicalDevice
-          device
-          ( initialMVP :& initialOrig :& End
-              :: Struct '[ "mvp" ':-> M 4 4 Float, "origin" ':-> V 4 Float ]
-          )
-
-  updateDescriptorSet device descriptorSet ubo
-
-  let
-    mkCommandBuffer
-      :: MonadManaged m
-      => Vulkan.VkFramebuffer
-      -> [(Vulkan.VkImage, Vulkan.VkImageView)]
-      -> Maybe (Vulkan.VkImage, Vulkan.VkDeviceMemory)
-      -> m Vulkan.VkCommandBuffer
-    mkCommandBuffer framebuffer attachments mbScreenshot
-      = do
-
-        commandBuffer <-
-          allocateCommandBuffer device commandPool
-
-        beginCommandBuffer commandBuffer
-
-        cmdBeginRenderPass commandBuffer renderPass framebuffer clearValues extent
-
-        liftIO $
-          Foreign.Marshal.withArray [ vertexBuffer ] $ \buffers ->
-          Foreign.Marshal.withArray [ 0 ] $ \offsets ->
-          Vulkan.vkCmdBindVertexBuffers commandBuffer 0 1 buffers offsets
-
-        liftIO $
-          Vulkan.vkCmdBindIndexBuffer
-            commandBuffer
-            indexBuffer
-            0
-            Vulkan.VK_INDEX_TYPE_UINT32
-
-        liftIO $ do
-          Vulkan.vkCmdBindPipeline
-            commandBuffer
-            Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
-            graphicsPipeline
-
-          Foreign.Marshal.withArray [ descriptorSet ] $ \descriptorSetsPtr ->
-            Vulkan.vkCmdBindDescriptorSets
-              commandBuffer
-              Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
-              pipelineLayout
-              0
-              1
-              descriptorSetsPtr
-              0
-              Vulkan.vkNullPtr
-
-          Vulkan.vkCmdDrawIndexed
-            commandBuffer
-            ( fromIntegral ( length toriIndices ) )
-            1
-            0
-            0
-            0
-
-        cmdEndRenderPass commandBuffer
-
-        -- image copying
-        let noOffset :: Vulkan.VkOffset3D
-            noOffset
-              = Vulkan.createVk
-                  (  Vulkan.set @"x" 0
-                  &* Vulkan.set @"y" 0
-                  &* Vulkan.set @"z" 0
+      let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
+          clearValues = [ blackClear
+                        , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
+                        , blackClear
+                        ]
+            where
+              black :: Vulkan.VkClearColorValue
+              black =
+                Vulkan.createVk
+                  (  Vulkan.setAt @"float32" @0 0
+                  &* Vulkan.setAt @"float32" @1 0
+                  &* Vulkan.setAt @"float32" @2 0
+                  &* Vulkan.setAt @"float32" @3 1
                   )
 
-            layers :: Vulkan.VkImageSubresourceLayers
-            layers
-              = Vulkan.createVk
-                (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-                &* Vulkan.set @"mipLevel"       0
-                &* Vulkan.set @"baseArrayLayer" 0
-                &* Vulkan.set @"layerCount"     1
-                )
+              blackClear :: Vulkan.VkClearValue
+              blackClear = Vulkan.createVk ( Vulkan.set @"color" black )
 
-            imageCopy :: Vulkan.VkImageCopy
-            imageCopy
-              = Vulkan.createVk
-                (  Vulkan.set @"srcSubresource" layers
-                &* Vulkan.set @"srcOffset"      noOffset
-                &* Vulkan.set @"dstSubresource" layers
-                &* Vulkan.set @"dstOffset"      noOffset
-                &* Vulkan.set @"extent"         extent3D
-                )
+              depthStencilClear :: Vulkan.VkClearDepthStencilValue
+              depthStencilClear = Vulkan.createVk
+                ( Vulkan.set @"depth" 1 &* Vulkan.set @"stencil" 0 )
 
-            subresourceRange :: Vulkan.VkImageSubresourceRange
-            subresourceRange =
-              Vulkan.createVk
-                (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-                &* Vulkan.set @"baseMipLevel"   0
-                &* Vulkan.set @"levelCount"     1
-                &* Vulkan.set @"baseArrayLayer" 0
-                &* Vulkan.set @"layerCount"     1
-                )
+      -------------------------------------------
+      -- Manage resources.
 
-        -- if taking a screenshot, copy swapchain color image onto screenshot image
-        case mbScreenshot of
-          Nothing -> pure ()
-          Just ( screenshotImage, _)
-            -> liftIO do
-                -- transition screenshot image layout to TRANSFER_DST so that swapchain image can be copied onto it
-                let
-                  screenshotImageBarrier :: Vulkan.VkImageMemoryBarrier
-                  screenshotImageBarrier =
-                    Vulkan.createVk
-                      (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
-                      &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-                      &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                      &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
-                      &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-                      &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                      &* Vulkan.set @"image"               screenshotImage
-                      &* Vulkan.set @"subresourceRange"    subresourceRange
-                      &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-                      &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-                      )
-                cmdPipelineBarrier
+      let
+
+        (a1, c1) = villarceauRadii 0.7
+        (a2, c2) = villarceauRadii 1.1
+        (a3, c3) = villarceauRadii 1.5
+
+        circleThickening :: Float
+        circleThickening = 0.025
+
+        nbCircles :: Int
+        nbCircles = 10
+
+        toriVerts :: [ Struct VertexInput ]
+        toriVerts
+          =  villarceauCircles c1 a1 circleThickening nbCircles blues  0
+          <> villarceauCircles c2 a2 circleThickening nbCircles greens ( 2 * pi / (3 * fromIntegral nbCircles) )
+          <> villarceauCircles c3 a3 circleThickening nbCircles sunset ( 4 * pi / (3 * fromIntegral nbCircles) )
+
+        toriIndices :: [ Word32 ]
+        toriIndices
+          = [ 0 .. fromIntegral (length toriVerts) - 1 ]
+
+        initialMVP :: M 4 4 Float
+        initialMVP = modelViewProjection initialObserver Nothing
+        initialOrig :: V 4 Float
+        initialOrig = V4 0 0 0 1 ^*! initialMVP
+
+        resourceFlags :: ResourceSet numImages Named
+        resourceFlags = ResourceSet
+          ( StageFlags
+            (   Vulkan.VK_SHADER_STAGE_VERTEX_BIT
+            .|. Vulkan.VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
+            )
+          )
+          InputResource
+          InputResource
+
+        initialResourceSet :: ResourceSet numImages Pre
+        initialResourceSet = ResourceSet
+          ( UniformBuffer ( initialMVP :& initialOrig :& End ) )
+          ( VertexBuffer toriVerts   )
+          ( IndexBuffer  toriIndices )
+
+      ( descriptorSetLayout, descriptorSets, resources ) <-
+        initialiseResources physicalDevice device resourceFlags initialResourceSet
+
+      -------------------------------------------
+      -- Create a command buffer and record the commands into it.
+
+      commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
+      queue       <- getQueue device 0
+
+      nextImageSem <- createSemaphore device
+      submitted    <- createSemaphore device
+
+      let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_8_BIT
+
+      ( graphicsPipeline, pipelineLayout )
+        <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
+
+      let
+        mkCommandBuffer
+          :: MonadManaged m
+          => Vulkan.VkFramebuffer
+          -> Vulkan.VkImage
+          -> Vulkan.VkDescriptorSet
+          -> Maybe Vulkan.VkImage
+          -> m Vulkan.VkCommandBuffer
+        mkCommandBuffer framebuffer swapchainImage descriptorSet mbScreenshotImage
+          = do
+
+            commandBuffer <-
+              allocateCommandBuffer device commandPool
+
+            beginCommandBuffer commandBuffer
+
+            cmdBeginRenderPass commandBuffer renderPass framebuffer clearValues swapchainExtent
+
+            liftIO $
+              Foreign.Marshal.withArray [ inputBufferObject $ vertexBuffer resources ] $ \buffers ->
+              Foreign.Marshal.withArray [ 0 ] $ \offsets ->
+              Vulkan.vkCmdBindVertexBuffers commandBuffer 0 1 buffers offsets
+
+            liftIO $
+              Vulkan.vkCmdBindIndexBuffer
+                commandBuffer
+                ( inputBufferObject $ indexBuffer resources )
+                0
+                Vulkan.VK_INDEX_TYPE_UINT32
+
+            liftIO $ do
+              Vulkan.vkCmdBindPipeline
+                commandBuffer
+                Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
+                graphicsPipeline
+
+              Foreign.Marshal.withArray [ descriptorSet ] $ \descriptorSetsPtr ->
+                Vulkan.vkCmdBindDescriptorSets
                   commandBuffer
-                  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                  Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-                  []
-                  []
-                  [ screenshotImageBarrier ]
-                -- perform the copy
-                Vulkan.vkCmdCopyImage commandBuffer
-                  ( fst $ attachments !! 0 ) -- (swapchain) color attachment
-                  Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-                  screenshotImage
-                  Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                  1
-                  ( Vulkan.unsafePtr imageCopy )
+                  Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
+                  pipelineLayout
+                  0 -- no offset
+                  1 -- unique descriptor set
+                  descriptorSetsPtr
+                  0 -- no dynamic offset
+                  Vulkan.vkNullPtr
 
-        -- now change image layouts:
-        --   - make swapchain image available for presentation
-        --   - make screenshot image available for memory mapping (to write to disk)
+              Vulkan.vkCmdDrawIndexed
+                commandBuffer
+                ( fromIntegral ( length toriIndices ) )
+                1 -- instance count
+                0 -- offset into index buffer
+                0 -- offset into vertex buffer
+                0 -- first instance ID
+
+            cmdEndRenderPass commandBuffer
+
+            case mbScreenshotImage of
+              Just screenshotImage ->
+                cmdTakeScreenshot
+                  ( Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT )
+                  commandBuffer extent3D
+                  ( swapchainImage,
+                    ( Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                    , Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                    )
+                  )
+                  screenshotImage
+              Nothing -> pure () -- no image transitions to do manually, taken care of by the render pass
+
+            endCommandBuffer commandBuffer
+
+            pure commandBuffer
+
+
+      commandBuffers <-
+        for (zip [0..] framebuffersWithAttachments) $ \ ( i, (framebuffer, attachments ) ) ->
+          mkCommandBuffer framebuffer ( fst $ head attachments ) ( descriptorSets `V.unsafeIndex` i ) Nothing
+
+      screenshotCommandBuffers <-
+        for (zip3 [0..] framebuffersWithAttachments screenshotImagesAndMemories)
+          \ ( i, (framebuffer, attachments), (screenshotImage, _) ) ->
+        mkCommandBuffer framebuffer ( fst $ head attachments ) ( descriptorSets `V.unsafeIndex` i ) (Just screenshotImage)
+
+      mainLoop do
+
+        ----------------
+        -- input
+
+        inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
+        prevInput <- use _input
+        let newInput = foldl onSDLInput prevInput inputEvents
+        let action = interpretInput newInput
+        assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
+
+        ----------------
+        -- simulation
+
+        oldObserver <- use _observer
+        let (observer, orientation) = oldObserver `move` action
+        assign _observer observer
+
+        let mvp = modelViewProjection observer (Just orientation)
+            origin = mvp !*^ V4 0 0 0 1
+
+        when ( locate action )
+          ( liftIO $ putStrLn ( show observer ) )
+
+        -- update UBO
+        let
+          BufferResource _ updateUBO = uboResource resources
+
+        liftIO ( updateUBO ( mvp :& origin :& End ) )
+
+        ----------------
+        -- rendering
+
+        nextImageIndex <- acquireNextImage device swapchain nextImageSem
 
         let
-
-          swapchainImageBarrier :: Vulkan.VkImageMemoryBarrier
-          swapchainImageBarrier =
-            Vulkan.createVk
-              (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
-              &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-              &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-              &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
-              &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-              &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-              &* Vulkan.set @"image"         ( fst $ attachments !! 0 ) -- swapchain image
-              &* Vulkan.set @"subresourceRange"    subresourceRange
-              &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-              &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-              )
-
-          barriers = case mbScreenshot of
-            Nothing -> [ swapchainImageBarrier ]
-            Just ( screenshotImage, _ )
-              -> let
-                    screenshotImageBarrier :: Vulkan.VkImageMemoryBarrier
-                    screenshotImageBarrier =
-                      Vulkan.createVk
-                        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
-                        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-                        &* Vulkan.set @"srcAccessMask" Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                        &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
-                        &* Vulkan.set @"oldLayout"     Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-                        &* Vulkan.set @"newLayout"     Vulkan.VK_IMAGE_LAYOUT_GENERAL
-                        &* Vulkan.set @"image"               screenshotImage
-                        &* Vulkan.set @"subresourceRange"    subresourceRange
-                        &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-                        &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-                        )
-                  in [ swapchainImageBarrier, screenshotImageBarrier ]
-
-        cmdPipelineBarrier
           commandBuffer
-          Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-          Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-          []
-          []
-          barriers
+            | takeScreenshot action = screenshotCommandBuffers !! nextImageIndex
+            | otherwise             = commandBuffers           !! nextImageIndex
 
-        endCommandBuffer commandBuffer
+        submitCommandBuffer
+          queue
+          commandBuffer
+          [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
+          [submitted]
+          Nothing
 
-        pure commandBuffer
+        present queue swapchain nextImageIndex [submitted]
 
+        when ( takeScreenshot action ) $
+          writeScreenshotData shortName device swapchainExtent
+            ( snd ( screenshotImagesAndMemories !! nextImageIndex ) )
 
-  commandBuffers <-
-    for framebuffersWithAttachments $ \(framebuffer, attachments, _ ) ->
-      mkCommandBuffer framebuffer attachments Nothing
+        liftIO ( Vulkan.vkQueueWaitIdle queue )
+          >>= throwVkResult
 
-  screenshotCommandBuffers <-
-    for framebuffersWithAttachments $ \(framebuffer, attachments, screenshotImageAndMemory) ->
-      mkCommandBuffer framebuffer attachments (Just screenshotImageAndMemory)
+        ----------------
 
-
-  mainLoop do
-
-    ----------------
-    -- input
-
-    inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
-    prevInput <- use _input
-    let newInput = foldl onSDLInput prevInput inputEvents
-    let action = interpretInput newInput
-    assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
-
-    ----------------
-    -- simulation
-
-    oldObserver <- use _observer
-    let (observer, orientation) = oldObserver `move` action
-    assign _observer observer
-
-    let mvp = modelViewProjection observer (Just orientation)
-        origin = mvp !*^ V4 0 0 0 1
-
-    when ( locate action )
-      ( liftIO $ putStrLn ( show observer ) )
-
-    -- update MVP
-    liftIO ( poke @_ @Extended uboPtr (mvp :& origin :& End) )
-
-    ----------------
-    -- rendering
-
-    nextImageIndex <- acquireNextImage device swapchain nextImageSem
-
-    let
-      commandBuffer
-        | takeScreenshot action = screenshotCommandBuffers !! nextImageIndex
-        | otherwise             = commandBuffers           !! nextImageIndex
-
-    submitCommandBuffer
-      queue
-      commandBuffer
-      [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
-      [submitted]
-      Nothing
-
-    present queue swapchain nextImageIndex [submitted]
-
-    -- if taking a screenshot, map the image memory, read from it, and write to disk
-    when ( takeScreenshot action ) $ liftIO do
-
-        let screenshotImageMemory :: Vulkan.VkDeviceMemory
-            ( _, _, (_, screenshotImageMemory) )
-              = framebuffersWithAttachments !! nextImageIndex
-
-        memPtr :: Vulkan.Ptr Word8
-          <- coerce <$> allocaAndPeek
-                ( Vulkan.vkMapMemory device screenshotImageMemory 0 maxBound Vulkan.VK_ZERO_FLAGS
-                  >=> throwVkResult
-                )
-
-        let size = 4 * width * height
-
-            -- image data is stored in BGRA component order,
-            -- whether R8G8B8A8 or B8G8R8A8 format is used
-            bgraToRgba :: [a] -> [a]
-            bgraToRgba ( b : g : r : a : rest )
-              = r : g : b : a : bgraToRgba rest
-            bgraToRgba l = l
-
-        imageData :: Image PixelRGBA8
-          <- Image width height . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
-
-        writePng "screenshots/hopf.png" imageData
-
-        Vulkan.vkUnmapMemory device screenshotImageMemory
-
-    liftIO ( Vulkan.vkQueueWaitIdle queue )
-      >>= throwVkResult
-
-    ----------------
-
-    pure ( shouldQuit action )
-
-
+        pure ( shouldQuit action )
 
 
 
@@ -605,7 +508,7 @@ createRenderPass dev colorFormat depthFormat =
         &* Vulkan.set @"stencilLoadOp"  Vulkan.VK_ATTACHMENT_LOAD_OP_DONT_CARE
         &* Vulkan.set @"stencilStoreOp" Vulkan.VK_ATTACHMENT_STORE_OP_DONT_CARE
         &* Vulkan.set @"initialLayout"  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-        &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+        &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
         )
 
     colorResolveReference :: Vulkan.VkAttachmentReference
@@ -723,122 +626,3 @@ createRenderPass dev colorFormat depthFormat =
     managedVulkanResource
       ( Vulkan.vkCreateRenderPass  dev ( Vulkan.unsafePtr createInfo ) )
       ( Vulkan.vkDestroyRenderPass dev )
-
-
-createDescriptorSetLayout
-  :: MonadManaged m => Vulkan.VkDevice -> m Vulkan.VkDescriptorSetLayout
-createDescriptorSetLayout device = do
-  let
-    binding =
-      Vulkan.createVk
-        (  Vulkan.set @"binding" 0
-        &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-        &* Vulkan.set @"descriptorCount" 1
-        &* Vulkan.set @"stageFlags"
-              (   Vulkan.VK_SHADER_STAGE_VERTEX_BIT
-              .|. Vulkan.VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT
-              )
-        &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
-        )
-
-    createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.setListCountAndRef @"bindingCount" @"pBindings" [ binding ]
-        )
-
-  managedVulkanResource
-    ( Vulkan.vkCreateDescriptorSetLayout
-        device
-        ( Vulkan.unsafePtr createInfo )
-    )
-    ( Vulkan.vkDestroyDescriptorSetLayout device )
-
-
-createDescriptorPool
-  :: MonadManaged m
-  => Vulkan.VkDevice -> m Vulkan.VkDescriptorPool
-createDescriptorPool device =
-  let
-    poolSize0 =
-      Vulkan.createVk
-        (  Vulkan.set @"type" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-        &* Vulkan.set @"descriptorCount" 1
-        )
-
-    createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"flags" Vulkan.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
-        &* Vulkan.setListCountAndRef @"poolSizeCount" @"pPoolSizes" [ poolSize0 ]
-        &* Vulkan.set @"maxSets" 1
-        )
-
-  in
-  managedVulkanResource
-    ( Vulkan.vkCreateDescriptorPool device ( Vulkan.unsafePtr createInfo ) )
-    ( Vulkan.vkDestroyDescriptorPool device )
-
-
-allocateDescriptorSet
-  :: MonadManaged m
-  => Vulkan.VkDevice
-  -> Vulkan.VkDescriptorPool
-  -> Vulkan.VkDescriptorSetLayout
-  -> m Vulkan.VkDescriptorSet
-allocateDescriptorSet dev descriptorPool layout0 = do
-  let
-    allocateInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"descriptorPool" descriptorPool
-        &* Vulkan.set @"descriptorSetCount" 1
-        &* Vulkan.setListRef @"pSetLayouts" [ layout0 ]
-        )
-
-  manageBracket
-    ( allocaAndPeek
-        ( Vulkan.vkAllocateDescriptorSets
-            dev
-            ( Vulkan.unsafePtr allocateInfo )
-            >=> throwVkResult
-        )
-    )
-    ( \a ->
-        Foreign.Marshal.withArray [ a ]
-          ( Vulkan.vkFreeDescriptorSets dev descriptorPool 1 )
-    )
-
-
-updateDescriptorSet
-  :: MonadManaged m
-  => Vulkan.VkDevice -> Vulkan.VkDescriptorSet -> Vulkan.VkBuffer -> m ()
-updateDescriptorSet device descriptorSet buffer = do
-  let
-    bufferInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"buffer" buffer
-        &* Vulkan.set @"offset" 0
-        &* Vulkan.set @"range" ( fromIntegral Vulkan.VK_WHOLE_SIZE )
-        )
-    writeUpdate0 =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL
-        &* Vulkan.set @"dstSet" descriptorSet
-        &* Vulkan.set @"dstBinding" 0
-        &* Vulkan.set @"descriptorType" Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-        &* Vulkan.set @"pTexelBufferView" Vulkan.VK_NULL
-        &* Vulkan.set @"pImageInfo" Vulkan.VK_NULL
-        &* Vulkan.setListRef @"pBufferInfo" [ bufferInfo ]
-        &* Vulkan.set @"descriptorCount" 1
-        &* Vulkan.set @"dstArrayElement" 0
-        )
-
-  liftIO $
-    Foreign.Marshal.withArray [ writeUpdate0 ] $ \writeUpdatesPtr ->
-      Vulkan.vkUpdateDescriptorSets device 1 writeUpdatesPtr 0 Vulkan.vkNullPtr

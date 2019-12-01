@@ -8,6 +8,8 @@ module Vulkan.Features where
 -- base
 import Data.Foldable
   ( traverse_ )
+import Foreign.Ptr
+  ( Ptr )
 
 -- containers
 import Data.Set
@@ -32,10 +34,10 @@ requiredFeatures ModuleRequirements { .. }
       Vulkan.clearStorable ptr
       writeCapabilityFeatures requiredCapabilities ptr
 
-writeCapabilityFeatures :: Set SPIRV.Capability -> Vulkan.Ptr Vulkan.VkPhysicalDeviceFeatures -> IO ()
+writeCapabilityFeatures :: Set SPIRV.Capability -> Ptr Vulkan.VkPhysicalDeviceFeatures -> IO ()
 writeCapabilityFeatures caps ptr = traverse_ ( writeCapabilityFeature ptr ) ( Set.toList caps )
 
-writeCapabilityFeature :: Vulkan.Ptr Vulkan.VkPhysicalDeviceFeatures -> SPIRV.Capability -> IO ()
+writeCapabilityFeature :: Ptr Vulkan.VkPhysicalDeviceFeatures -> SPIRV.Capability -> IO ()
 writeCapabilityFeature ptr SPIRV.SampledCubeArray  = Vulkan.writeField @"imageCubeArray"     ptr Vulkan.VK_TRUE
 writeCapabilityFeature ptr SPIRV.ImageCubeArray    = Vulkan.writeField @"imageCubeArray"     ptr Vulkan.VK_TRUE
 writeCapabilityFeature ptr SPIRV.Geometry          = Vulkan.writeField @"geometryShader"     ptr Vulkan.VK_TRUE

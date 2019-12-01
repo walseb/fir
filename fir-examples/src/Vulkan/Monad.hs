@@ -10,10 +10,10 @@ import Control.Exception
   ( bracket )
 import Control.Monad
   ( (>=>) )
-import Control.Monad.IO.Class
-  ( MonadIO, liftIO )
 import qualified Foreign
 import qualified Foreign.Marshal
+import Foreign.Ptr
+  ( Ptr )
 
 -- lens
 import Control.Lens
@@ -23,6 +23,10 @@ import Control.Lens
 import Control.Monad.Managed
   ( MonadManaged )
 import qualified Control.Monad.Managed
+
+-- transformers
+import Control.Monad.IO.Class
+  ( MonadIO, liftIO )
 
 -- vulkan-api
 import qualified Graphics.Vulkan          as Vulkan
@@ -95,7 +99,7 @@ manageBracket create destroy = managed ( bracket create destroy )
 
 managedVulkanResource
   :: ( MonadManaged m, Foreign.Storable x, Vulkan.VulkanPtr ptr )
-  => ( ptr a -> Vulkan.Ptr x -> IO Vulkan.VkResult )
+  => ( ptr a -> Ptr x -> IO Vulkan.VkResult )
   -> ( x -> ptr a -> IO () )
   -> m x
 managedVulkanResource create destroy =
@@ -105,7 +109,7 @@ managedVulkanResource create destroy =
 
 allocaAndPeek
   :: ( Foreign.Storable a, MonadIO m )
-  => ( Vulkan.Ptr a -> IO () )
+  => ( Ptr a -> IO () )
   -> m a
 allocaAndPeek f = liftIO $
   Foreign.Marshal.alloca
@@ -114,7 +118,7 @@ allocaAndPeek f = liftIO $
 allocaAndPeekArray
   :: Foreign.Storable a
   => Int
-  -> ( Vulkan.Ptr a -> IO () )
+  -> ( Ptr a -> IO () )
   -> IO [ a ]
 allocaAndPeekArray n f =
   Foreign.Marshal.allocaArray n
@@ -122,7 +126,7 @@ allocaAndPeekArray n f =
 
 fetchAll
   :: ( Foreign.Storable a, Foreign.Storable b, Integral b )
-  => ( Vulkan.Ptr b -> Vulkan.Ptr a -> IO () )
+  => ( Ptr b -> Ptr a -> IO () )
   -> IO [a]
 fetchAll f =
   Foreign.Marshal.alloca \nPtr -> do
