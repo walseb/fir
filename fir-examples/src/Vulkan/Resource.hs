@@ -32,26 +32,26 @@ module Vulkan.Resource
 -- base
 import Control.Monad
   ( (>=>) )
+import Data.Coerce
+  ( coerce )
 import Data.Function
   ( (&) )
 import Data.Functor
   ( (<&>) )
+import Data.Functor.Const
+  ( Const(Const) )
 import Data.Kind
-  ( Type, Constraint )
+  ( Type )
 import Data.Maybe
   ( fromJust )
+import Data.Monoid
+  ( Endo(Endo) )
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Word
   ( Word32 )
 import qualified Foreign.Marshal
   ( withArray )
-import GHC.Generics
-  ( Generic(Rep, from)
-  , Rec0
-  , (:*:)((:*:)), (:+:)(L1,R1)
-  , K1(..), U1, V1, M1(..),
-  )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal )
 
@@ -65,7 +65,9 @@ import Data.Finite
 
 -- generic-lens
 import Data.Generics.Product.Constraints
-  ( HasConstraints(constraints) )
+  ( HasConstraints(constraints)
+  , HasConstraints'(constraints')
+  )
 
 -- managed
 import Control.Monad.Managed
@@ -178,11 +180,11 @@ initialiseResources
       ( resources :: Nat -> ResourceInfo -> Type )
   . ( KnownNat n
     , MonadManaged m
-    , FoldC HasDescriptorTypeAndFlags ( resources n Named )
+    , HasConstraints' HasDescriptorTypeAndFlags ( resources n Named )
     , HasConstraints CanInitialiseResource
          ( resources n Pre  )
          ( resources n Post )
-    , FoldC ( CanUpdateResource n ) ( resources n Post )
+    , HasConstraints' ( CanUpdateResource n ) ( resources n Post )
     )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
@@ -325,7 +327,7 @@ counts = Map.toList . foldr ( \ a -> Map.insertWith (+) a 1 ) Map.empty
 updateDescriptorSets
   :: forall m n resources
   .  ( MonadManaged m
-     , FoldC ( CanUpdateResource n ) ( resources n Post )
+     , HasConstraints' ( CanUpdateResource n ) ( resources n Post )
      )
   => Vulkan.VkDevice
   -> V.Vector n Vulkan.VkDescriptorSet
@@ -357,37 +359,12 @@ updateDescriptorSets device descriptorSets resourceSet =
 -------------------------------------------------------------------------------------------------
 -- Auxiliary classes defined for folds and traversals with generic-lens.
 
--- Folds.
-class FoldC ( c :: Type -> Constraint ) s where
-  foldrC :: ( forall a. c a => a -> b -> b ) -> s -> b -> b
-
-instance ( Generic s, GFoldC c (Rep s) ) => FoldC c s where
-  foldrC f s = gfoldrC @c f (from s)
-
-class GFoldC ( c :: Type -> Constraint ) s where
-  gfoldrC :: ( forall a. c a => a -> b -> b ) -> s x -> b -> b
-
-instance
-  ( GFoldC c l , GFoldC c r ) => GFoldC c (l :*: r) where
-  gfoldrC f (l :*: r) = gfoldrC @c f l . gfoldrC @c f r
-
-instance
-  ( GFoldC c l, GFoldC c r ) => GFoldC c (l :+: r) where
-  gfoldrC f (L1 l) = gfoldrC @c f l
-  gfoldrC f (R1 r) = gfoldrC @c f r
-
-instance GFoldC c s => GFoldC c (M1 i m s) where
-  gfoldrC f (M1 x) = gfoldrC @c f x
-
-instance GFoldC c U1 where
-  gfoldrC _ _ = id
-
-instance GFoldC c V1 where
-  gfoldrC _ _ = id
-
-instance c a => GFoldC c (Rec0 a) where
-  gfoldrC f (K1 a) b = f a b
-
+foldrC :: forall c b s. HasConstraints' c s
+       => ( forall a. c a => a -> b -> b ) -> s -> b -> b
+foldrC f s = coerce foldF
+    where
+      foldF :: Const (Endo b) s
+      foldF = constraints' @c ( \ a -> Const ( Endo ( f a ) ) ) s
 
 -- Constraints used with a generic fold to obtain the resource types and flags.
 class KnownResourceType (res :: ResourceType t) where
