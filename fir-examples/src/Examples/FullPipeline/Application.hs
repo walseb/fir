@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Examples.FullPipeline ( fullPipeline ) where
+module Examples.FullPipeline.Application ( fullPipeline ) where
 
 -- base
 import Control.Monad

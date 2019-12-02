@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Examples.Offscreen ( offscreen ) where
+module Examples.Offscreen.Application ( offscreen ) where
 
 -- base
 import Data.Bits
@@ -182,7 +182,7 @@ offscreen = runManaged do
   (screenshotImage, screenshotImageMemory) <-
     createScreenshotImage physicalDevice device
       ( screenshotImageInfo extent3D colFmt )
-  
+
   renderPass  <- logMsg "Creating a render pass" *> createRenderPass device colFmt depthFmt
   framebuffer <- createFramebuffer device renderPass extent [colorImageView, depthImageView]
 

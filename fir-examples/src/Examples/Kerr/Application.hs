@@ -17,7 +17,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Examples.Kerr ( kerr ) where
+module Examples.Application.Kerr ( kerr ) where
 
 -- base
 import Control.Monad

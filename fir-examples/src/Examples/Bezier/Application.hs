@@ -13,8 +13,9 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 
-module Examples.JuliaSet ( juliaSet ) where
+module Examples.Bezier.Application ( bezier ) where
 
 -- base
 import Control.Monad
@@ -45,7 +46,6 @@ import Control.Monad.Managed
 -- sdl2
 import qualified SDL
 import qualified SDL.Event
-import qualified SDL.Raw.Event as SDL
 
 -- text-short
 import Data.Text.Short
@@ -71,21 +71,17 @@ import qualified Graphics.Vulkan.Core_1_0 as Vulkan
 import qualified Graphics.Vulkan.Ext.VK_KHR_swapchain as Vulkan
 import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
-
 -- fir
 import FIR
   ( runCompilationsTH
-  , Struct((:&),End)
+  , Struct(..)
+  , (:->)((:->))
   , ModuleRequirements
   )
 import Math.Linear
-  ( V
-  , pattern V2, pattern V3
-  , (^+^), (*^)
-  )
 
 -- fir-examples
-import Examples.JuliaSet.Shaders
+import Examples.Bezier.Shaders
 import Simulation.Observer
 import Vulkan.Backend
 import Vulkan.Context
@@ -101,31 +97,41 @@ import Vulkan.Screenshot
 shaderCompilationResult :: Either ShortText ModuleRequirements
 shaderCompilationResult
   = $( runCompilationsTH
-        [ ("Vertex shader"  , compileVertexShader   )
-        , ("Fragment shader", compileFragmentShader )
+        [ ("Vertex shader"                 , compileVertexShader                 )
+        , ("Tessellation control shader"   , compileTessellationControlShader    )
+        , ("Tessellation evaluation shader", compileTessellationEvaluationShader )
+        , ("Geometry shader"               , compileGeometryShader               )
+        , ("Fragment shader"               , compileFragmentShader               )
         ]
      )
 
 appName :: IsString a => a
-appName = "fir-examples - Julia set"
+appName = "fir-examples - Bézier curves"
 shortName :: String
-shortName = "julia" -- name for screenshots
+shortName = "bezier" -- name for screenshots
+
+type UBO =
+  Struct
+    '[ "mvp"      ':-> M 4 4 Float
+     , "binormal" ':-> V 4 Float
+     , "widths"   ':-> V 3 Float
+     ]
 
 type VertexData = Struct VertexInput
 
 data ResourceSet i st
   = ResourceSet
-    { uboResource  :: UniformBuffer (V 2 Float) i st
-    , vertexBuffer :: VertexBuffer  VertexData  i st
-    , indexBuffer  :: IndexBuffer   Word32      i st
+    { uboResource  :: UniformBuffer UBO        i st
+    , vertexBuffer :: VertexBuffer  VertexData i st
+    , indexBuffer  :: IndexBuffer   Word32     i st
     }
   deriving Generic
 
 ----------------------------------------------------------------------------
 -- Application.
 
-juliaSet :: IO ()
-juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
+bezier :: IO ()
+bezier = ( runManaged . ( `evalStateT` initialState ) ) do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -144,7 +150,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
         { width      = 1920
         , height     = 1080
         , windowName = appName
-        , mouseMode  = SDL.AbsoluteLocation
+        , mouseMode  = SDL.RelativeLocation
         }
 
   features <- liftIO ( requiredFeatures reqs )
@@ -174,6 +180,9 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
     SwapchainInfo { .. } = swapchainInfo
 
+  -------------------------------------------
+  -- Create images.
+
     width, height :: Num a => a
     width  = fromIntegral $ Vulkan.getField @"width"  swapchainExtent
     height = fromIntegral $ Vulkan.getField @"height" swapchainExtent
@@ -186,18 +195,19 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
           &* Vulkan.set @"depth"  1
           )
 
-    colFmt :: Vulkan.VkFormat
-    colFmt = Vulkan.getField @"format" surfaceFormat
-
-  -------------------------------------------
-  -- Create images.
-
-  let
+    colFmt, depthFmt :: Vulkan.VkFormat
+    colFmt   = Vulkan.getField @"format" surfaceFormat
+    depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
 
     numImages :: Int
     numImages = length swapchainImages
 
-  renderPass <- logMsg "Creating a render pass" *> createRenderPass device colFmt
+    depthImageInfo :: ImageInfo
+    depthImageInfo =
+      Default2DImageInfo extent3D depthFmt
+        Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+
+  renderPass <- logMsg "Creating a render pass" *> createRenderPass device colFmt depthFmt
 
   case someNatVal ( fromIntegral numImages ) of
     SomeNat ( _ :: Proxy numImages ) -> do
@@ -211,7 +221,18 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
                       Vulkan.VK_IMAGE_VIEW_TYPE_2D
                       colFmt
                       Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-              let attachments = [ (swapchainImage, colorImageView) ]
+              (depthImage, _)
+                <- createImage physicalDevice device
+                      depthImageInfo
+                      [ ]
+              depthImageView
+                <- createImageView device depthImage
+                      Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                      depthFmt
+                      Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
+              let attachments = [ (swapchainImage, colorImageView)
+                                , (depthImage    , depthImageView)
+                                ]
               framebuffer <- createFramebuffer device renderPass swapchainExtent (map snd attachments)
               pure (framebuffer, attachments)
            )
@@ -221,52 +242,83 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
           createScreenshotImage physicalDevice device
             ( screenshotImageInfo extent3D colFmt )
 
-      let clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
-          clearValues = [ blackClear ]
-            where
-              black :: Vulkan.VkClearColorValue
-              black =
-                Vulkan.createVk
-                  (  Vulkan.setAt @"float32" @0 0
-                  &* Vulkan.setAt @"float32" @1 0
-                  &* Vulkan.setAt @"float32" @2 0
-                  &* Vulkan.setAt @"float32" @3 1
-                  )
+      let
+        clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
+        clearValues = [ tealClear
+                      , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
+                      ]
+          where
+            teal :: Vulkan.VkClearColorValue
+            teal =
+              Vulkan.createVk
+                (  Vulkan.setAt @"float32" @0 0.1
+                &* Vulkan.setAt @"float32" @1 0.5
+                &* Vulkan.setAt @"float32" @2 0.7
+                &* Vulkan.setAt @"float32" @3 1
+                )
 
-              blackClear :: Vulkan.VkClearValue
-              blackClear = Vulkan.createVk ( Vulkan.set @"color" black )
+            tealClear :: Vulkan.VkClearValue
+            tealClear = Vulkan.createVk ( Vulkan.set @"color"  teal )
+
+            depthStencilClear :: Vulkan.VkClearDepthStencilValue
+            depthStencilClear = Vulkan.createVk
+              ( Vulkan.set @"depth" 1 &* Vulkan.set @"stencil" 0 )
 
       -------------------------------------------
       -- Manage resources.
 
       let
-
-        viewportVertices :: [ Struct VertexInput ]
-        viewportVertices =
-          [ V3 (-1) (-1) 0 :& End
-          , V3 (-1)   1  0 :& End
-          , V3   1 (-1)  0 :& End
-          , V3   1   1   0 :& End
-          ]
-
-        viewportIndices :: [ Word32 ]
-        viewportIndices
-          = [ 0, 1, 2
-            , 2, 1, 3
-            ]
-
-
         resourceFlags :: ResourceSet numImages Named
         resourceFlags = ResourceSet
-          ( StageFlags Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT )
+          ( StageFlags
+            (   Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT
+            .|. Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT
+            )
+          )
           InputResource
           InputResource
+
+        initialObserver' = initialObserver { position = V3 0 (-3.5) (-6) }
+
+      assign _observer initialObserver'
+
+      let
+
+        initialMVP = modelViewProjection initialObserver' Nothing
+        binormal = V4 0 0 (-1) 0
+        lineWidths = V3 0.11 0.1 (recip 0.005)
+
+        letterT :: [ Struct VertexInput ]
+        letterT
+          = [ V3 (-3) (-6) 0 :& V3 1 0 0 :& End
+            , V3   0  (-8) 0 :& V3 1 0 0 :& End
+            , V3   3  (-6) 0 :& V3 1 0 0 :& End
+            , V3   3  (-5) 0 :& V3 1 0 0 :& End
+            , V3   3  (-4) 0 :& V3 1 0 1 :& End
+            , V3   2  (-4) 0 :& V3 1 0 1 :& End
+            , V3   1  (-4) 0 :& V3 1 0 1 :& End
+            , V3   1  (-2) 0 :& V3 1 0 1 :& End
+            , V3   1    0  0 :& V3 0 0 1 :& End
+            , V3   0    0  0 :& V3 0 0 1 :& End
+            , V3 (-1)   0  0 :& V3 0 0 1 :& End
+            , V3 (-1) (-2) 0 :& V3 0 0 1 :& End
+            , V3 (-1) (-4) 0 :& V3 0 0 0 :& End
+            , V3 (-2) (-4) 0 :& V3 0 0 0 :& End
+            , V3 (-3) (-4) 0 :& V3 0 0 0 :& End
+            , V3 (-3) (-5) 0 :& V3 0 0 0 :& End
+            ]
+
+        letterT_indices :: [ Word32 ]
+        letterT_indices
+          = concat do
+              i <- 15 : [1,3..13]
+              pure ( map (`mod` 16) [i..i+4] )
 
         initialResourceSet :: ResourceSet numImages Pre
         initialResourceSet = ResourceSet
-          ( UniformBuffer ( V2 0 0 ) )
-          ( VertexBuffer viewportVertices  )
-          ( IndexBuffer  viewportIndices   )
+          ( UniformBuffer ( initialMVP :& binormal :& lineWidths :& End ) )
+          ( VertexBuffer letterT )
+          ( IndexBuffer  letterT_indices )
 
       ( descriptorSetLayout, descriptorSets, resources ) <-
         initialiseResources physicalDevice device resourceFlags initialResourceSet
@@ -334,7 +386,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
               Vulkan.vkCmdDrawIndexed
                 commandBuffer
-                ( fromIntegral ( length viewportIndices ) )
+                ( fromIntegral ( length letterT_indices ) )
                 1 -- instance count
                 0 -- offset into index buffer
                 0 -- offset into vertex buffer
@@ -369,6 +421,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
           \ ( i, (framebuffer, attachments), (screenshotImage, _) ) ->
         mkCommandBuffer framebuffer ( fst $ head attachments ) ( descriptorSets `V.unsafeIndex` i ) (Just screenshotImage)
 
+
       mainLoop do
 
         ----------------
@@ -376,36 +429,27 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
         inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
         prevInput <- use _input
-        let
-          prevAction = interpretInput prevInput
-          newInput = foldl onSDLInput prevInput inputEvents
-          action   = interpretInput newInput
-
-        pos <-
-          if locate action
-          then do SDL.setMouseLocationMode SDL.RelativeLocation
-                  -- precision mode
-                  pure ( mousePos prevInput ^+^ ( 20 *^ mouseRel newInput ) )
-          else do SDL.setMouseLocationMode SDL.AbsoluteLocation
-                  -- smooth out mouse movement slightly
-                  let pos@(V2 px py) = 0.5 *^ ( mousePos prevInput ^+^ mousePos newInput )
-                  when (locate prevAction) do
-                    ( SDL.warpMouse SDL.WarpCurrentFocus (SDL.P (SDL.V2 (round px) (round py))) )
-                    _ <- SDL.captureMouse True
-                    pure ()
-
-                  pure pos
-        assign _input ( newInput { mousePos = pos, mouseRel = pure 0 } )
+        let newInput = foldl onSDLInput prevInput inputEvents
+        let action = interpretInput newInput
+        assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
 
         ----------------
         -- simulation
+
+        oldObserver <- use _observer
+        let (observer, orientation) = oldObserver `move` action
+        assign _observer observer
+
+        let mvp = modelViewProjection observer (Just orientation)
+
+        when ( locate action )
+          ( liftIO $ putStrLn ( show observer ) )
 
         -- update UBO
         let
           BufferResource _ updateUBO = uboResource resources
 
-        liftIO ( updateUBO pos )
-
+        liftIO ( updateUBO ( mvp :& V4 0 0 (-1) 0 :& lineWidths :& End ) )
 
         ----------------
         -- rendering
@@ -439,13 +483,13 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
 
 
-
 createRenderPass
   :: MonadManaged m
   => Vulkan.VkDevice
   -> Vulkan.VkFormat
+  -> Vulkan.VkFormat
   -> m Vulkan.VkRenderPass
-createRenderPass dev colorFormat =
+createRenderPass dev colorFormat depthFormat =
   let
 
     colorAttachmentDescription :: Vulkan.VkAttachmentDescription
@@ -469,6 +513,26 @@ createRenderPass dev colorFormat =
         &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
         )
 
+    depthAttachmentDescription :: Vulkan.VkAttachmentDescription
+    depthAttachmentDescription =
+      Vulkan.createVk
+        (  Vulkan.set @"flags"          Vulkan.VK_ZERO_FLAGS
+        &* Vulkan.set @"format"         depthFormat
+        &* Vulkan.set @"samples"        Vulkan.VK_SAMPLE_COUNT_1_BIT
+        &* Vulkan.set @"loadOp"         Vulkan.VK_ATTACHMENT_LOAD_OP_CLEAR
+        &* Vulkan.set @"storeOp"        Vulkan.VK_ATTACHMENT_STORE_OP_STORE
+        &* Vulkan.set @"stencilLoadOp"  Vulkan.VK_ATTACHMENT_LOAD_OP_DONT_CARE
+        &* Vulkan.set @"stencilStoreOp" Vulkan.VK_ATTACHMENT_STORE_OP_DONT_CARE
+        &* Vulkan.set @"initialLayout"  Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+        &* Vulkan.set @"finalLayout"    Vulkan.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        )
+
+    depthAttachmentReference :: Vulkan.VkAttachmentReference
+    depthAttachmentReference =
+      Vulkan.createVk
+        (  Vulkan.set @"attachment" 1
+        &* Vulkan.set @"layout"     Vulkan.VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        )
 
     subpass :: Vulkan.VkSubpassDescription
     subpass =
@@ -479,6 +543,7 @@ createRenderPass dev colorFormat =
               @"colorAttachmentCount"
               @"pColorAttachments"
               [ colorAttachmentReference ]
+        &* Vulkan.setVkRef @"pDepthStencilAttachment" depthAttachmentReference
         &* Vulkan.setListCountAndRef @"inputAttachmentCount"    @"pInputAttachments"    []
         &* Vulkan.setListCountAndRef @"preserveAttachmentCount" @"pPreserveAttachments" []
         &* Vulkan.set @"pResolveAttachments" Vulkan.vkNullPtr
@@ -522,7 +587,7 @@ createRenderPass dev colorFormat =
         &* Vulkan.setListCountAndRef
               @"attachmentCount"
               @"pAttachments"
-              [ colorAttachmentDescription ]
+              [ colorAttachmentDescription, depthAttachmentDescription ]
         &* Vulkan.setListCountAndRef
               @"subpassCount"
               @"pSubpasses"
@@ -536,4 +601,3 @@ createRenderPass dev colorFormat =
     managedVulkanResource
       ( Vulkan.vkCreateRenderPass  dev ( Vulkan.unsafePtr createInfo ) )
       ( Vulkan.vkDestroyRenderPass dev )
-
