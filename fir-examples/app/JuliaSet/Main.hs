@@ -1,6 +1,6 @@
 module Main where
 
-import Examples.JuliaSet
+import Examples.JuliaSet.Application
   ( juliaSet )
 
 main :: IO ()

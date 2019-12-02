@@ -1,6 +1,6 @@
 module Main where
 
-import Examples.Bezier
+import Examples.Bezier.Application
   ( bezier )
 
 main :: IO ()

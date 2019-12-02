@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -19,6 +20,8 @@ import Foreign.C.String
   ( CString )
 import Foreign.C.Types
   ( CInt )
+import GHC.TypeLits
+  ( KnownNat )
 
 -- managed
 import Control.Monad.Managed
@@ -34,6 +37,10 @@ import Data.Text.Short
 -- transformers
 import Control.Monad.IO.Class
   ( liftIO )
+
+-- vector-sized
+import qualified Data.Vector.Sized as V
+  ( withSizedList )
 
 -- vulkan-api
 import qualified Graphics.Vulkan                      as Vulkan
@@ -91,28 +98,27 @@ data SurfaceInfo
   , surfaceUsage    :: [ Vulkan.VkImageUsageFlags ]
   }
 
-type family ContextSwapchainInfo ( ctx :: RenderingContext ) :: Type where
-  ContextSwapchainInfo Headless      = ()
-  ContextSwapchainInfo WithSwapchain = SwapchainInfo
+data family ContextSwapchainInfo ( ctx :: RenderingContext ) :: Type
+data instance ContextSwapchainInfo Headless     = NoSwapchain
+data instance ContextSwapchainInfo WithSwapchain where
+  ASwapchainInfo :: KnownNat n => SwapchainInfo n -> ContextSwapchainInfo WithSwapchain
 
 data VulkanContext ( ctx :: RenderingContext )
   = VulkanContext
   { physicalDevice   :: Vulkan.VkPhysicalDevice
   , device           :: Vulkan.VkDevice
   , queueFamilyIndex :: Int
-  , swapchainInfo    :: ContextSwapchainInfo ctx
+  , aSwapchainInfo   :: ContextSwapchainInfo ctx
   }
 
 type VulkanSwapchainContext = VulkanContext WithSwapchain
 type VulkanHeadlessContext  = VulkanContext Headless
 
-data SwapchainInfo
-  = SwapchainInfo
-  { swapchain       :: Vulkan.VkSwapchainKHR
-  , swapchainImages :: [ Vulkan.VkImage ]
-  , swapchainExtent :: Vulkan.VkExtent2D
-  , surfaceFormat   :: Vulkan.VkSurfaceFormatKHR
-  }
+withSwapchainInfo
+  :: ContextSwapchainInfo WithSwapchain
+  -> ( forall n. KnownNat n => SwapchainInfo n -> r )
+  -> r
+withSwapchainInfo ( ASwapchainInfo swapchain ) f = f swapchain
 
 initialiseWindow :: MonadManaged m => WindowInfo -> m ( SDL.Window, [ CString ] )
 initialiseWindow WindowInfo { .. } = do
@@ -133,8 +139,8 @@ initialiseContext appName neededExtensions RenderInfo { .. } = do
   physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vkInstance
   queueFamilyIndex <- logMsg "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice [queueType]
   device   <- logMsg "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex features
-  swapchainInfo <- case renderingContext @ctx of
-    SHeadless      -> pure ()
+  aSwapchainInfo <- case renderingContext @ctx of
+    SHeadless      -> pure NoSwapchain
     SWithSwapchain -> do
       let SurfaceInfo {..} = surfaceInfo
       surface <- logMsg "Creating SDL surface" *> createSurface surfaceWindow vkInstance
@@ -147,6 +153,8 @@ initialiseContext appName neededExtensions RenderInfo { .. } = do
                 physicalDevice device
                 surface surfaceFormat
                 ( foldr (.|.) Vulkan.VK_ZERO_FLAGS surfaceUsage )
-      swapchainImages <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
-      pure ( SwapchainInfo {..} )
+      swapchainImageList <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
+      V.withSizedList swapchainImageList \ swapchainImages -> do
+        let swapchainInfo = SwapchainInfo {..}
+        pure ( ASwapchainInfo swapchainInfo )
   pure ( VulkanContext {..} )

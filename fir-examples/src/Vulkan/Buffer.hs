@@ -45,7 +45,7 @@ createVertexBuffer
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, [a] -> IO () )
+  -> m (Vulkan.VkBuffer, [a] -> IO (), Int )
 createVertexBuffer
   = createBufferFromList @a @Locations
       Vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
@@ -56,7 +56,7 @@ createIndexBuffer
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, [a] -> IO () )
+  -> m (Vulkan.VkBuffer, [a] -> IO (), Int )
 createIndexBuffer
   = createBufferFromList @a @Base
       Vulkan.VK_BUFFER_USAGE_INDEX_BUFFER_BIT
@@ -99,7 +99,7 @@ createBufferFromList
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, [a] -> IO ())
+  -> m (Vulkan.VkBuffer, [a] -> IO (), Int )
 createBufferFromList usage physicalDevice device elems = do
   ( buf, bufPtr ) <-
     createBufferFromPoke
@@ -107,9 +107,10 @@ createBufferFromList usage physicalDevice device elems = do
       physicalDevice
       device
       ( \memPtr -> pokeFunction memPtr elems )
-      ( fromIntegral ( length elems ) * fromIntegral (sizeOf @a @ali) )
-  pure ( buf, pokeFunction bufPtr )
+      ( fromIntegral nbElems * fromIntegral (sizeOf @a @ali) )
+  pure ( buf, pokeFunction bufPtr, nbElems )
     where
+      nbElems = length elems
       pokeFunction = pokeArray @a @ali
 
 createBufferFromPoke

@@ -1,6 +1,6 @@
 module Main where
 
-import Examples.Hopf
+import Examples.Hopf.Application
   ( hopf )
 
 main :: IO ()

@@ -26,17 +26,18 @@ library
     src
 
   exposed-modules:
-      Examples.Kerr
-    , Examples.Bezier
+      Data.Traversable.Indexed
+    , Examples.Bezier.Application
     , Examples.Bezier.Shaders
-    , Examples.FullPipeline
+    , Examples.Common
+    , Examples.FullPipeline.Application
     , Examples.FullPipeline.Shaders
-    , Examples.Hopf
+    , Examples.Hopf.Application
     , Examples.Hopf.Shaders
     , Examples.Hopf.Villarceau
-    , Examples.JuliaSet
+    , Examples.JuliaSet.Application
     , Examples.JuliaSet.Shaders
-    --, Examples.Kerr
+    , Examples.Kerr.Application
     , Examples.Kerr.Colour
     , Examples.Kerr.Coordinates
     , Examples.Kerr.Doppler
@@ -46,13 +47,14 @@ library
     , Examples.Kerr.Noise
     , Examples.Kerr.RungeKutta
     , Examples.Kerr.Shaders
-    , Examples.Logo
+    , Examples.Logo.Application
     , Examples.Logo.Shaders
-    , Examples.Offscreen
+    , Examples.Offscreen.Application
     , Examples.Offscreen.Shaders
-    , Examples.Texture
+    , Examples.Texture.Application
     , Examples.Texture.Shaders
     , Simulation.Observer
+    , Vulkan.Attachment
     , Vulkan.Backend
     , Vulkan.Buffer
     , Vulkan.Context

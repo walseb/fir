@@ -17,26 +17,21 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Examples.Application.Kerr ( kerr ) where
+module Examples.Kerr.Application ( kerr ) where
 
 -- base
 import Control.Monad
-  ( when, replicateM )
-import Data.Maybe
-  ( fromJust )
+  ( when )
 import Data.Monoid
   ( Sum(..) )
-import Data.Proxy
-  ( Proxy )
 import Data.String
   ( IsString )
 import Data.Traversable
   ( for )
-import qualified Foreign.Marshal
+import Data.Word
+  ( Word32 )
 import GHC.Generics
   ( Generic )
-import GHC.TypeNats
-  ( SomeNat(SomeNat), someNatVal )
 
 -- lens
 import Control.Lens
@@ -44,7 +39,7 @@ import Control.Lens
 
 -- managed
 import Control.Monad.Managed
-  ( MonadManaged, runManaged )
+  ( runManaged )
 
 -- sdl2
 import qualified SDL
@@ -64,14 +59,13 @@ import Control.Monad.Trans.State.Lazy
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
-  ( fromList, unsafeIndex )
+  ( zip, zip3, index )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
   ( (&*) )
-import qualified Graphics.Vulkan as Vulkan
-import qualified Graphics.Vulkan.Core_1_0 as Vulkan
-import qualified Graphics.Vulkan.Ext.VK_KHR_swapchain as Vulkan
+import qualified Graphics.Vulkan                as Vulkan
+import qualified Graphics.Vulkan.Core_1_0       as Vulkan
 import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
@@ -89,6 +83,7 @@ import Math.Quaternion
   ( rotate, axisAngle )
 
 -- fir-examples
+import Examples.Common
 import Examples.Kerr.Coordinates
   ( boyerLindquistPosition, boyerLindquistTangent
   , proj, normalise, gramSchmidt
@@ -166,6 +161,9 @@ data ResourceSet i st
     }
   deriving ( Generic )
 
+globalSizes :: ( Word32, Word32, Word32 )
+globalSizes = ( 20, 30, 1 )
+
 ----------------------------------------------------------------------------
 -- Application.
 
@@ -215,230 +213,178 @@ kerr = ( runManaged . ( `evalStateT` initialStateKerr ) ) do
         , queueType   = Vulkan.VK_QUEUE_COMPUTE_BIT
         , surfaceInfo = surfaceInfo
         }
-  let
 
-    SwapchainInfo { .. } = swapchainInfo
 
-    width, height :: Num a => a
-    width  = fromIntegral $ Vulkan.getField @"width"  swapchainExtent
-    height = fromIntegral $ Vulkan.getField @"height" swapchainExtent
-
-    extent3D :: Vulkan.VkExtent3D
-    extent3D
-      = Vulkan.createVk
-          (  Vulkan.set @"width"  width
-          &* Vulkan.set @"height" height
-          &* Vulkan.set @"depth"  1
-          )
-
-    colFmt :: Vulkan.VkFormat
-    colFmt = Vulkan.getField @"format" surfaceFormat
+  withSwapchainInfo aSwapchainInfo \ ( swapchainInfo@(SwapchainInfo {..}) :: SwapchainInfo numImages ) -> do
 
   -------------------------------------------
   -- Create images.
 
-  let
-    numImages :: Int
-    numImages = length swapchainImages
+    let
 
-  case someNatVal ( fromIntegral numImages ) of
-    SomeNat ( _ :: Proxy numImages ) -> do
+      width, height :: Num a => a
+      width  = fromIntegral $ Vulkan.getField @"width"  swapchainExtent
+      height = fromIntegral $ Vulkan.getField @"height" swapchainExtent
 
-      swapchainImagesAndViews <-
-        for swapchainImages \swapchainImage -> do
-          swapchainImageView
-            <- createImageView
-                  device swapchainImage
-                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
-                  colFmt
-                  Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-          pure ( swapchainImage, swapchainImageView )
+      extent3D :: Vulkan.VkExtent3D
+      extent3D
+        = Vulkan.createVk
+            (  Vulkan.set @"width"  width
+            &* Vulkan.set @"height" height
+            &* Vulkan.set @"depth"  1
+            )
 
-      screenshotImagesAndMemories <-
-        replicateM numImages $
-          createScreenshotImage physicalDevice device
-            ( screenshotImageInfo extent3D colFmt )
+      colFmt :: Vulkan.VkFormat
+      colFmt = Vulkan.getField @"format" surfaceFormat
+
+    swapchainImagesAndViews <-
+      for swapchainImages \swapchainImage -> do
+        swapchainImageView
+          <- createImageView
+                device swapchainImage
+                Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                colFmt
+                Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+        pure ( swapchainImage, swapchainImageView )
+
+    screenshotImagesAndMemories <-
+      for swapchainImages $ \ _ ->
+        createScreenshotImage physicalDevice device
+          ( screenshotImageInfo extent3D colFmt )
 
     -------------------------------------------
     -- Manage resources: uniform buffers, storage images.
 
-      let
+    let
 
-        resourceFlags :: ResourceSet numImages Named
-        resourceFlags = ResourceSet
-          ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
-          ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
-          ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
-          ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
+      resourceFlags :: ResourceSet numImages Named
+      resourceFlags = ResourceSet
+        ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
+        ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
+        ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
+        ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
 
-        initialCamera :: Camera
-        initialCamera = boyerLindquistCamera initialObserverKerr
+      initialCamera :: Camera
+      initialCamera = boyerLindquistCamera initialObserverKerr
 
-        initialResourceSet :: ResourceSet numImages Pre
-        initialResourceSet =
-          ResourceSet
-            { cameraResource   = UniformBuffer initialCamera
-            , kerrInfoResource = UniformBuffer defaultKerrInfo
-            , diskInfoResource = UniformBuffer defaultDiskInfo
-            , storageResources = Ixed . fromJust . V.fromList $
-                ( map ( StorageImage . snd ) swapchainImagesAndViews )
-            }
+      initialResourceSet :: ResourceSet numImages Pre
+      initialResourceSet =
+        ResourceSet
+          { cameraResource   = UniformBuffer initialCamera
+          , kerrInfoResource = UniformBuffer defaultKerrInfo
+          , diskInfoResource = UniformBuffer defaultDiskInfo
+          , storageResources = Ixed $
+              ( fmap ( StorageImage . snd ) swapchainImagesAndViews )
+          }
 
-      ( descriptorSetLayout, descriptorSets, resources ) <-
-        initialiseResources physicalDevice device resourceFlags initialResourceSet
+    PostInitialisationResult
+      descriptorSetLayout descriptorSets _ resources
+       <- initialiseResources physicalDevice device resourceFlags initialResourceSet
 
-      -------------------------------------------
-      -- Create a command buffer and record the commands into it.
 
-      ( computePipeline, pipelineLayout )
-        <- createComputePipeline device descriptorSetLayout compPath
+    -------------------------------------------
+    -- Create command buffers and record commands into them.
 
-      commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
-      queue       <- getQueue device 0
+    vkPipeline
+      <- createComputePipeline device descriptorSetLayout compPath
 
-      nextImageSem <- createSemaphore device
-      submitted    <- createSemaphore device
+    commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
+    queue       <- getQueue device 0
 
-      let
-        recordCommandBuffer
-          :: MonadManaged m
-          => Vulkan.VkDescriptorSet
-          -> Vulkan.VkImage
-          -> Maybe Vulkan.VkImage
-          -> m Vulkan.VkCommandBuffer
-        recordCommandBuffer descriptorSet swapchainImage mbScreenshotImage = do
-          commandBuffer <- allocateCommandBuffer device commandPool
+    nextImageSem <- createSemaphore device
+    submitted    <- createSemaphore device
 
-          beginCommandBuffer commandBuffer
-
-          cmdTransitionImageLayout commandBuffer swapchainImage
-            Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-            Vulkan.VK_IMAGE_LAYOUT_GENERAL
-            ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
-            ( Vulkan.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.VK_ACCESS_SHADER_WRITE_BIT )
-
-          liftIO do
-            Vulkan.vkCmdBindPipeline
-              commandBuffer
-              Vulkan.VK_PIPELINE_BIND_POINT_COMPUTE
-              computePipeline
-
-            Foreign.Marshal.withArray [ descriptorSet ] $ \descriptorSetsPtr ->
-              Vulkan.vkCmdBindDescriptorSets
-                commandBuffer
-                Vulkan.VK_PIPELINE_BIND_POINT_COMPUTE
-                pipelineLayout
-                0 -- no offset
-                1 -- unique descriptor set
-                descriptorSetsPtr
-                0 -- no dynamic offset
-                Vulkan.vkNullPtr
-
-            Vulkan.vkCmdDispatch
-              commandBuffer
-              20 30 1 -- global sizes
-
-          case mbScreenshotImage of
-            Just screenshotImage
-              -> cmdTakeScreenshot
-                    ( Vulkan.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.VK_ACCESS_SHADER_WRITE_BIT )
-                    commandBuffer extent3D
-                    ( swapchainImage,
-                      ( Vulkan.VK_IMAGE_LAYOUT_GENERAL
-                      , Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-                      )
-                    )
-                    screenshotImage
-            Nothing
-              -> cmdTransitionImageLayout commandBuffer swapchainImage
-                    Vulkan.VK_IMAGE_LAYOUT_GENERAL
-                    Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-                    ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
-                    ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.VK_ZERO_FLAGS )
-
-          endCommandBuffer commandBuffer
-
-          pure commandBuffer
-
-      commandBuffers <-
-        for (zip [0..] swapchainImagesAndViews) \ ( i, ( swapImg, _ ) ) ->
-          recordCommandBuffer ( descriptorSets `V.unsafeIndex` i ) swapImg Nothing
-
-      screenshotCommandBuffers <-
-        for (zip3 [0..] swapchainImagesAndViews screenshotImagesAndMemories)
-          \ ( i, ( swapImg, _ ), ( screenshotImg, _ ) ) ->
-              recordCommandBuffer ( descriptorSets `V.unsafeIndex` i )  swapImg (Just screenshotImg)
-
-      -------------------------------------------
-      -- Main loop:
-      --  * update game state,
-      --  * submit the command buffer,
-      --  * present result to the screen.
-
-      mainLoop do
-
-        ----------------
-        -- input
-
-        inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
-        prevInput <- use _input
-        let newInput = foldl onSDLInput prevInput inputEvents
-        let action = interpretInput newInput
-        assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
-
-        ----------------
-        -- simulation
-
-        Observer { position = oldPos, angles = oldAngs, clock = oldClock } <- use _observer
-        let
-          newAngs@(V2 x y) = oldAngs ^+^ fmap getSum (look action)
-          mov = case fmap getSum (movement action) of
-            V3 mx mz my -> V3 mx my (-mz)
-          ori    = axisAngle (V3 0 0 1) x FIR.* axisAngle (V3 1 0 0) y
-          newPos = oldPos ^+^ rotate ori mov
-          newClock = oldClock + 1
-          newObs = Observer { position = newPos, angles = newAngs, clock = newClock }
-
-        assign _observer newObs
-        let cam = boyerLindquistCamera newObs
-
-        when ( locate action ) do
-          liftIO $ putStrLn ( show newObs )
-          liftIO $ putStrLn "Boyer-Lindquist coordinates follow"
-          liftIO $ putStrLn ( show cam )
-
-       -- update camera
-        let
-          BufferResource _ updateCameraBuffer = cameraResource resources
-
-        liftIO (updateCameraBuffer cam)
-
-        ----------------
-        -- rendering
-
-        nextImageIndex <- acquireNextImage device swapchain nextImageSem
-
-        let
-          commandBuffer
-            | takeScreenshot action = screenshotCommandBuffers !! nextImageIndex
-            | otherwise             = commandBuffers           !! nextImageIndex
-
-        submitCommandBuffer
-          queue
-          commandBuffer
-          [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT)]
-          [submitted]
+    commandBuffers <-
+      for (V.zip descriptorSets swapchainImagesAndViews) $ \ ( descriptorSet, (swapchainImage, _ ) ) ->
+        recordSimpleDispatch
+          device commandPool
+          descriptorSet
+          ( swapchainImage, swapchainExtent )
           Nothing
+          globalSizes
+          vkPipeline
 
-        present queue swapchain nextImageIndex [submitted]
+    screenshotCommandBuffers <-
+      for (V.zip3 descriptorSets swapchainImagesAndViews screenshotImagesAndMemories)
+        \ ( descriptorSet, (swapchainImage, _ ), (screenshotImage, _) ) ->
+          recordSimpleDispatch
+            device commandPool
+            descriptorSet
+            ( swapchainImage, swapchainExtent )
+            ( Just ( screenshotImage, extent3D ) )
+            globalSizes
+            vkPipeline
 
-        when ( takeScreenshot action ) $
-          writeScreenshotData shortName device swapchainExtent
-            ( snd ( screenshotImagesAndMemories !! nextImageIndex ) )
+    -------------------------------------------
+    -- Main loop:
+    --  * update game state,
+    --  * submit the command buffer,
+    --  * present result to the screen.
 
-        liftIO ( Vulkan.vkQueueWaitIdle queue )
-          >>= throwVkResult
+    mainLoop do
 
-        ----------------
+      ----------------
+      -- input
 
-        pure ( shouldQuit action )
+      inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
+      prevInput <- use _input
+      let newInput = foldl onSDLInput prevInput inputEvents
+      let action = interpretInput newInput
+      assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
+
+      ----------------
+      -- simulation
+
+      Observer { position = oldPos, angles = oldAngs, clock = oldClock } <- use _observer
+      let
+        newAngs@(V2 x y) = oldAngs ^+^ fmap getSum (look action)
+        mov = case fmap getSum (movement action) of
+          V3 mx mz my -> V3 mx my (-mz)
+        ori    = axisAngle (V3 0 0 1) x FIR.* axisAngle (V3 1 0 0) y
+        newPos = oldPos ^+^ rotate ori mov
+        newClock = oldClock + 1
+        newObs = Observer { position = newPos, angles = newAngs, clock = newClock }
+
+      assign _observer newObs
+      let cam = boyerLindquistCamera newObs
+
+      when ( locate action ) do
+        liftIO $ putStrLn ( show newObs )
+        liftIO $ putStrLn "Boyer-Lindquist coordinates follow"
+        liftIO $ putStrLn ( show cam )
+
+     -- update camera
+      let
+        BufferResource _ updateCameraBuffer = cameraResource resources
+
+      liftIO (updateCameraBuffer cam)
+
+      ----------------
+      -- rendering
+
+      nextImageIndex <- acquireNextImage device swapchainInfo nextImageSem
+
+      let
+        commandBuffer
+          | takeScreenshot action = screenshotCommandBuffers `V.index` nextImageIndex
+          | otherwise             = commandBuffers           `V.index` nextImageIndex
+
+      submitCommandBuffer
+        queue
+        commandBuffer
+        [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
+        [submitted]
+        Nothing
+
+      present queue swapchain nextImageIndex [submitted]
+
+      when ( takeScreenshot action ) $
+        writeScreenshotData shortName device swapchainExtent
+          ( snd ( screenshotImagesAndMemories `V.index` nextImageIndex ) )
+
+      liftIO ( Vulkan.vkQueueWaitIdle queue )
+        >>= throwVkResult
+
+      ----------------
+
+      pure ( shouldQuit action )

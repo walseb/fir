@@ -16,7 +16,7 @@
 <a name="installation"></a>
 ## Installation instructions
 
-Start off by making sure the [library itself installs properly](../getting_started.md#installation).    
+Start off by making sure the [library itself installs properly](../getting_started.md#installation).
 
 To build the examples, the installation of two external dependencies is necessary: SDL2 (version 2.0.6 or greater), and the Vulkan SDK.
 Instructions for building these packages is provided below, for [Windows](#win) and [Linux](#linux).
@@ -71,7 +71,7 @@ for the Vulkan SDK on Linux.
 ### Full graphics pipeline
 <div align="center">
 ![FullPipeline](../img/full_pipeline.png) <br>
-[Application](src/Examples/FullPipeline.hs)   •   [Shaders](src/Examples/FullPipeline/Shaders.hs)
+[Application](src/Examples/FullPipeline/Application.hs)   •   [Shaders](src/Examples/FullPipeline/Shaders.hs)
 </div>
 
 A graphics pipeline containing all shader stages.
@@ -80,7 +80,7 @@ A graphics pipeline containing all shader stages.
 ### FIR logo
 <div align="center">
 ![Logo](../img/logo.png) <br>
-[Application](src/Examples/Logo.hs)   •   [Shaders](src/Examples/Logo/Shaders.hs)
+[Application](src/Examples/Logo/Application.hs)   •   [Shaders](src/Examples/Logo/Shaders.hs)
 </div>
 
 Rendering the FIR logo using simple ray tracing in a compute shader.
@@ -89,7 +89,7 @@ Rendering the FIR logo using simple ray tracing in a compute shader.
 ### Hopf fibration
 <div align="center">
 ![Hopf](../img/hopf.png) <br>
-[Application](src/Examples/Hopf.hs)   •   [Shaders](src/Examples/Hopf/Shaders.hs)
+[Application](src/Examples/Hopf/Application.hs)   •   [Shaders](src/Examples/Hopf/Shaders.hs)
 </div>
 
 Illustration of fibers in the Hopf fibration; each circle is thickened out to a torus using a tessellation shader.
@@ -101,7 +101,7 @@ Also illustrates how to specify location and component layout information in sha
 ### Texture sampling
 <div align="center">
 ![Texture](../img/texture.png) <br>
-[Application](src/Examples/Texture.hs)   •   [Shaders](src/Examples/Texture/Shaders.hs)
+[Application](src/Examples/Texture/Application.hs)   •   [Shaders](src/Examples/Texture/Shaders.hs)
 </div>
 
 Demonstrates how to sample a texture.
@@ -110,7 +110,7 @@ Demonstrates how to sample a texture.
 ### Julia set
 <div align="center">
 ![JuliaSet](../img/julia.png) <br>
-[Application](src/Examples/Julia.hs)   •   [Shaders](src/Examples/Julia/Shaders.hs)
+[Application](src/Examples/Julia/Application.hs)   •   [Shaders](src/Examples/Julia/Shaders.hs)
 </div>
 
 Interactive Julia set rendering, computed within a fragment shader.
@@ -119,7 +119,7 @@ Interactive Julia set rendering, computed within a fragment shader.
 ### Offscreen rendering
 <div align="center">
 ![Offscreen](../img/offscreen.png) <br>
-[Application](src/Examples/Offscreen.hs)   •   [Shaders](src/Examples/Offscreen/Shaders.hs)
+[Application](src/Examples/Offscreen/Application.hs)   •   [Shaders](src/Examples/Offscreen/Shaders.hs)
 </div>
 
 Offscreen rendering of a single frame.
@@ -128,7 +128,7 @@ Offscreen rendering of a single frame.
 ### Bézier curves
 <div align="center">
 ![Bezier](../img/bezier.png) <br>
-[Application](src/Examples/Bezier.hs)   •   [Shaders](src/Examples/Bezier/Shaders.hs)
+[Application](src/Examples/Bezier/Application.hs)   •   [Shaders](src/Examples/Bezier/Shaders.hs)
 </div>
 
 Work in progress: rendering Bézier curves using tessellation and geometry shaders.

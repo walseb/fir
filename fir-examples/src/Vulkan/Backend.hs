@@ -2,6 +2,7 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -21,7 +22,7 @@ import Control.Monad
 import Data.Bits
   ( Bits((.&.)) )
 import Data.Foldable
-  ( for_ )
+  ( toList, for_ )
 import Data.List
   hiding ( transpose )
 import Data.Maybe
@@ -36,6 +37,12 @@ import qualified Foreign
 import Foreign.C.String
   ( CString )
 import qualified Foreign.Marshal
+import GHC.TypeNats
+  ( Nat, KnownNat )
+
+-- finite-typelits
+import Data.Finite
+  ( Finite )
 
 -- managed
 import Control.Monad.Managed
@@ -47,6 +54,10 @@ import qualified SDL.Video.Vulkan
 -- transformers
 import Control.Monad.IO.Class
   ( MonadIO, liftIO )
+
+-- vector-sized
+import qualified Data.Vector.Sized as V
+  ( Vector  )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
@@ -60,6 +71,7 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 -- fir-examples
 import Vulkan.Memory
 import Vulkan.Monad
+import Vulkan.Pipeline
 
 -----------------------------------------------------------------------------------------------------
 
@@ -337,11 +349,11 @@ getSwapchainImages device swapchain
 
 
 createFramebuffer
-  :: MonadManaged m
+  :: ( MonadManaged m, Foldable f )
   => Vulkan.VkDevice
   -> Vulkan.VkRenderPass
   -> Vulkan.VkExtent2D
-  -> [Vulkan.VkImageView]
+  -> f Vulkan.VkImageView
   -> m Vulkan.VkFramebuffer
 createFramebuffer dev renderPass extent attachments =
   let
@@ -352,7 +364,7 @@ createFramebuffer dev renderPass extent attachments =
         &* Vulkan.set @"pNext" Vulkan.vkNullPtr
         &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         &* Vulkan.set @"renderPass" renderPass
-        &* Vulkan.setListCountAndRef @"attachmentCount" @"pAttachments" attachments
+        &* Vulkan.setListCountAndRef @"attachmentCount" @"pAttachments" ( toList attachments )
         &* Vulkan.set @"width"  ( Vulkan.getField @"width"  extent )
         &* Vulkan.set @"height" ( Vulkan.getField @"height" extent )
         &* Vulkan.set @"layers" 1
@@ -664,13 +676,21 @@ cmdNextSubpass commandBuffer =
 cmdEndRenderPass :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
 cmdEndRenderPass = liftIO . Vulkan.vkCmdEndRenderPass
 
+data SwapchainInfo (n :: Nat)
+  = SwapchainInfo
+      { swapchain       :: Vulkan.VkSwapchainKHR
+      , swapchainImages :: V.Vector n Vulkan.VkImage
+      , swapchainExtent :: Vulkan.VkExtent2D
+      , surfaceFormat   :: Vulkan.VkSurfaceFormatKHR
+      }
+
 acquireNextImage
-  :: MonadIO m
+  :: ( MonadIO m, KnownNat n )
   => Vulkan.VkDevice
-  -> Vulkan.VkSwapchainKHR
+  -> SwapchainInfo n
   -> Vulkan.VkSemaphore
-  -> m Int
-acquireNextImage device swapchain signal
+  -> m (Finite n)
+acquireNextImage device (SwapchainInfo { swapchain }) signal
   = liftIO . fmap fromIntegral
   $ allocaAndPeek
       ( Vulkan.vkAcquireNextImageKHR
@@ -683,10 +703,10 @@ acquireNextImage device swapchain signal
       )
 
 present
-  :: MonadIO m
+  :: ( MonadIO m, Integral i )
   => Vulkan.VkQueue
   -> Vulkan.VkSwapchainKHR
-  -> Int
+  -> i
   -> [Vulkan.VkSemaphore]
   -> m ()
 present queue swapchain imageIndex wait
@@ -769,6 +789,38 @@ waitForFences device fences = liftIO $
             = case fences of
                 WaitAll l -> ( Vulkan.VK_TRUE , l )
                 WaitAny l -> ( Vulkan.VK_FALSE, l )
+
+cmdBindPipeline :: MonadManaged m => Vulkan.VkCommandBuffer -> VkPipeline -> m ()
+cmdBindPipeline commandBuffer vkPipeline =
+  liftIO $
+    Vulkan.vkCmdBindPipeline
+      commandBuffer
+      ( bindPoint vkPipeline )
+      ( pipeline vkPipeline )
+
+cmdBindDescriptorSets
+  :: MonadManaged m
+  => Vulkan.VkCommandBuffer
+  -> VkPipeline
+  -> [ Vulkan.VkDescriptorSet ]
+  -> m ()
+cmdBindDescriptorSets commandBuffer vkPipeline descriptorSets =
+  liftIO $
+    Foreign.Marshal.withArray descriptorSets $ \descriptorSetsPtr ->
+      Vulkan.vkCmdBindDescriptorSets
+        commandBuffer
+        ( bindPoint vkPipeline )
+        ( pipelineLayout vkPipeline )
+        0 -- no offset
+        ( fromIntegral $ length descriptorSets )
+        descriptorSetsPtr
+        0 -- no dynamic offset
+        Vulkan.vkNullPtr
+
+bindPoint :: VkPipeline -> Vulkan.VkPipelineBindPoint
+bindPoint GraphicsPipeline {} = Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
+bindPoint ComputePipeline  {} = Vulkan.VK_PIPELINE_BIND_POINT_COMPUTE
+
 
 cmdPipelineBarrier
   :: MonadIO m

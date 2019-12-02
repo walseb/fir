@@ -1,6 +1,6 @@
 module Main where
 
-import Examples.FullPipeline
+import Examples.FullPipeline.Application
   ( fullPipeline )
 
 main :: IO ()

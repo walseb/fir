@@ -1,6 +1,6 @@
 module Main where
 
-import Examples.Kerr
+import Examples.Kerr.Application
   ( kerr )
 
 main :: IO ()
