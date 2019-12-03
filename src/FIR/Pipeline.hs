@@ -1,5 +1,8 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveFoldable        #-}
+{-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE DeriveTraversable     #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -7,6 +10,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
@@ -156,20 +160,21 @@ data PipelineInfo where
 -- > VertexInput @top @descs @strides :>-> (shader_1, filepath_1) :>-> ... (shader_n, filepath_n)
 --
 -- Keeps track of type-level information necessary for validation.
-data PipelineStages (info :: PipelineInfo) where
+data PipelineStages (info :: PipelineInfo) (stageData :: Type) where
   VertexInput
     :: forall
-          ( top     :: PrimitiveTopology Nat      )
-          ( descs   :: VertexLocationDescriptions )
-          ( strides :: BindingStrides             )
+          ( top       :: PrimitiveTopology Nat      )
+          ( descs     :: VertexLocationDescriptions )
+          ( strides   :: BindingStrides             )
+          ( stageData :: Type                       )
     .  ( Known (PrimitiveTopology Nat)    top
        , Known VertexLocationDescriptions descs
        , Known BindingStrides             strides
        )
-    => PipelineStages (VertexInputInfo top descs strides)
+    => PipelineStages (VertexInputInfo top descs strides) stageData
   (:>->) :: ( Known SPIRV.Shader shader )
-         => PipelineStages info
-         -> ( ShaderModule name shader defs endState, FilePath )
+         => PipelineStages info stageData
+         -> ( ShaderModule name shader defs endState, stageData )
          -> PipelineStages
               ( info `Into`
                 '( name
@@ -181,32 +186,42 @@ data PipelineStages (info :: PipelineInfo) where
                       'Defined
                  )
               )
+              stageData
+
+deriving stock instance Functor     (PipelineStages info)
+deriving stock instance Foldable    (PipelineStages info)
+deriving stock instance Traversable (PipelineStages info)
 
 -- | Smart wrapper for a shader pipeline,
 -- performing type-level validation on a sequence of pipeline stages.
-data ShaderPipeline where
+data ShaderPipeline (stageData :: Type) where
   ShaderPipeline
     :: forall
-        ( info    :: PipelineInfo               )
-        ( top     :: PrimitiveTopology Nat      )
-        ( descs   :: VertexLocationDescriptions )
-        ( strides :: BindingStrides             )
+        ( info      :: PipelineInfo               )
+        ( top       :: PrimitiveTopology Nat      )
+        ( descs     :: VertexLocationDescriptions )
+        ( strides   :: BindingStrides             )
+        ( stageData :: Type                       )
     . ( ValidPipelineInfo info
       , '(top, descs, strides) ~ GetVertexInputInfo info
       , Known (PrimitiveTopology Nat)    top
       , Known VertexLocationDescriptions descs
       , Known BindingStrides             strides
       )
-    => PipelineStages info
-    -> ShaderPipeline
+    => PipelineStages info stageData
+    -> ShaderPipeline stageData
 
-pipelineStages :: PipelineStages info -> [(SPIRV.Shader, String)]
+deriving stock instance Functor     ShaderPipeline
+deriving stock instance Foldable    ShaderPipeline
+deriving stock instance Traversable ShaderPipeline
+
+pipelineStages :: PipelineStages info stageData -> [(SPIRV.Shader, stageData)]
 pipelineStages = reverse . go []
   where
-    go :: [(SPIRV.Shader, String)] -> PipelineStages info2 -> [(SPIRV.Shader, String)]
-    go paths VertexInput = paths
-    go paths ( info :>-> ( (_ :: ShaderModule name shader defs endState) , path) )
-      = go ( (knownValue @shader, path) : paths) info
+    go :: [(SPIRV.Shader, stageData)] -> PipelineStages info2 stageData -> [(SPIRV.Shader, stageData)]
+    go shaders VertexInput = shaders
+    go shaders ( info :>-> ( (_ :: ShaderModule name shader defs endState) , stageData) )
+      = go ( (knownValue @shader, stageData) : shaders) info
 
-pipelineShaders :: ShaderPipeline -> [(SPIRV.Shader, String)]
+pipelineShaders :: ShaderPipeline stageData -> [(SPIRV.Shader, stageData)]
 pipelineShaders (ShaderPipeline stages) = pipelineStages stages

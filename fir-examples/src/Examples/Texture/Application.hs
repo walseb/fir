@@ -90,8 +90,8 @@ import Math.Linear
 
 -- fir-examples
 import Examples.Common
+import Examples.RenderState
 import Examples.Texture.Shaders
-import Simulation.Observer
 import Vulkan.Attachment
 import Vulkan.Backend
 import Vulkan.Context
@@ -192,7 +192,7 @@ clearValues =
 -- Application.
 
 texture :: IO ()
-texture = runVulkan initialState do
+texture = ( initialState >>= ) . runVulkan $ do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -467,9 +467,13 @@ texture = runVulkan initialState do
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
-    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT
+    pipelineLayout <- createPipelineLayout device descriptorSetLayout
+    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
 
-    (vkPipeline, _) <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
+    shaders <- traverse (loadShader device) shaderPipeline
+
+    ( _, pipeline )
+      <- createGraphicsPipeline device renderPass pipelineInfo (fmap snd shaders)
 
     commandBuffers <-
       for (V.zip descriptorSets framebuffersWithAttachments) $ \ ( descriptorSet, (framebuffer, attachments ) ) ->
@@ -479,7 +483,7 @@ texture = runVulkan initialState do
           ( fst $ V.head attachments, swapchainExtent )
           Nothing
           nbIndices
-          vkPipeline
+          pipelineLayout pipeline
 
     screenshotCommandBuffers <-
       for (V.zip3 descriptorSets framebuffersWithAttachments screenshotImagesAndMemories)
@@ -490,8 +494,7 @@ texture = runVulkan initialState do
             ( fst $ V.head attachments, swapchainExtent )
             ( Just ( screenshotImage, extent3D ) )
             nbIndices
-            vkPipeline
-
+            pipelineLayout pipeline
 
     mainLoop do
 

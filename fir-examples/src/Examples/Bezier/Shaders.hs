@@ -266,7 +266,7 @@ compileGeometryShader = compileTo geomPath [] geometry
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
 compileFragmentShader = compileTo fragPath [] fragment
 
-shaderPipeline :: ShaderPipeline
+shaderPipeline :: ShaderPipeline FilePath
 shaderPipeline
   = ShaderPipeline
   $    StructInput @VertexInput @(PatchesOfSize 5)

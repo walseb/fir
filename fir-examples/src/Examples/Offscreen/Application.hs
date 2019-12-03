@@ -20,6 +20,8 @@ module Examples.Offscreen.Application ( offscreen ) where
 -- base
 import Data.Bits
   ( (.|.) )
+import Data.Function
+  ( (&) )
 import Data.Word
   ( Word32 )
 import GHC.Generics
@@ -61,7 +63,7 @@ import Math.Linear
 -- fir-examples
 import Examples.Common
 import Examples.Offscreen.Shaders
-import Simulation.Observer
+import Examples.RenderState
 import Vulkan.Attachment
 import Vulkan.Backend
 import Vulkan.Context
@@ -158,7 +160,7 @@ initialResourceSet = ResourceSet
 -- Application.
 
 offscreen :: IO ()
-offscreen = runVulkan () do
+offscreen = () & runVulkan do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -292,10 +294,13 @@ offscreen = runVulkan () do
   commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
   queue       <- getQueue device 0
 
-  let pipelineInfo = VkPipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT
+  pipelineLayout <- createPipelineLayout device descriptorSetLayout
+  let pipelineInfo = VkPipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
 
-  ( vkPipeline, _ )
-    <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
+  shaders <- traverse (loadShader device) shaderPipeline
+
+  ( _, pipeline )
+    <- createGraphicsPipeline device renderPass pipelineInfo (fmap snd shaders)
 
   commandBuffer
     <- recordSimpleIndexedDrawCall
@@ -304,7 +309,7 @@ offscreen = runVulkan () do
           ( colorImage, extent )
           ( Just ( screenshotImage, extent3D ) )
           nbIndices
-          vkPipeline
+          pipelineLayout pipeline
 
   fence <- createFence device
 

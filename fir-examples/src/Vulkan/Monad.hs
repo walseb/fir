@@ -15,8 +15,6 @@
 module Vulkan.Monad where
 
 -- base
-import Control.Category
-  ( (>>>) )
 import Control.Monad
   ( (>=>) )
 import qualified Foreign
@@ -81,12 +79,13 @@ deriving newtype instance MonadIO             (VulkanMonad s)
 deriving via ( StateT s (ReaderT Handler (ResourceT IO) ) )
   instance MonadResource (VulkanMonad s)
 
-runVulkan :: s -> VulkanMonad s a -> IO a
-runVulkan s
-  =    runVulkanMonad
-  >>> ( `evalStateT` s )
-  >>> ( `runLoggingT` logHandler )
-  >>> runResourceT
+runVulkan :: VulkanMonad s a -> s -> IO a
+runVulkan m s
+  = runResourceT
+  . ( `runLoggingT` logHandler )
+  . ( `evalStateT` s )
+  . runVulkanMonad
+  $ m
 
 ----------------------------------------------------------------------------
 -- Logging.

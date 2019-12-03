@@ -76,7 +76,7 @@ import Math.Linear
 -- fir-examples
 import Examples.Bezier.Shaders
 import Examples.Common
-import Simulation.Observer
+import Examples.RenderState
 import Vulkan.Attachment
 import Vulkan.Backend
 import Vulkan.Context
@@ -154,6 +154,11 @@ nbIndices = fromIntegral ( length letterT_indices )
 bezierInitialObserver :: Observer
 bezierInitialObserver = initialObserver { position = V3 0 (-3.5) (-6) }
 
+bezierInitialState :: IO RenderState
+bezierInitialState = do
+  initial <- initialState
+  pure ( initial { observer = bezierInitialObserver } )
+
 binormal :: V 4 Float
 binormal = V4 0 0 (-1) 0
 
@@ -192,7 +197,7 @@ clearValues =
 -- Application.
 
 bezier :: IO ()
-bezier = runVulkan ( initialState { observer = bezierInitialObserver } ) do
+bezier = ( bezierInitialState >>= ) . runVulkan $ do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -333,10 +338,13 @@ bezier = runVulkan ( initialState { observer = bezierInitialObserver } ) do
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
-    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT
+    pipelineLayout <- createPipelineLayout device descriptorSetLayout
+    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
 
-    ( vkPipeline, _ )
-      <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
+    shaders <- traverse (loadShader device) shaderPipeline
+
+    ( _, pipeline )
+      <- createGraphicsPipeline device renderPass pipelineInfo (fmap snd shaders)
 
 
     commandBuffers <-
@@ -347,7 +355,7 @@ bezier = runVulkan ( initialState { observer = bezierInitialObserver } ) do
           ( fst $ V.head attachments, swapchainExtent )
           Nothing
           nbIndices
-          vkPipeline
+          pipelineLayout pipeline
 
     screenshotCommandBuffers <-
       for (V.zip3 descriptorSets framebuffersWithAttachments screenshotImagesAndMemories)
@@ -358,7 +366,7 @@ bezier = runVulkan ( initialState { observer = bezierInitialObserver } ) do
             ( fst $ V.head attachments, swapchainExtent )
             ( Just ( screenshotImage, extent3D ) )
             nbIndices
-            vkPipeline
+            pipelineLayout pipeline
 
     mainLoop do
 

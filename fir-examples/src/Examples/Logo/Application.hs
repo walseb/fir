@@ -82,7 +82,7 @@ import Math.Quaternion
 -- fir-examples
 import Examples.Common
 import Examples.Logo.Shaders
-import Simulation.Observer
+import Examples.RenderState
 import Vulkan.Backend
 import Vulkan.Context
 import Vulkan.Features
@@ -129,6 +129,11 @@ initialObserverLogo =
     , clock    = 0
     }
 
+initialStateLogo :: IO RenderState
+initialStateLogo = do
+  initial <- initialState
+  pure ( initial { observer = initialObserverLogo } )
+
 globalSizes :: ( Word32, Word32, Word32 )
 globalSizes = (120, 135, 1) -- local size 16 8 1
 
@@ -136,7 +141,7 @@ globalSizes = (120, 135, 1) -- local size 16 8 1
 -- Application.
 
 logo :: IO ()
-logo = runVulkan ( initialState { observer = initialObserverLogo } ) do
+logo = ( initialStateLogo >>= ) . runVulkan $ do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -219,8 +224,8 @@ logo = runVulkan ( initialState { observer = initialObserverLogo } ) do
         createScreenshotImage physicalDevice device
           ( screenshotImageInfo extent3D colFmt )
 
-      -------------------------------------------
-      -- Manage resources: uniform buffers, storage images.
+    -------------------------------------------
+    -- Manage resources: uniform buffers, storage images.
 
     let
 
@@ -244,11 +249,13 @@ logo = runVulkan ( initialState { observer = initialObserverLogo } ) do
       descriptorSetLayout descriptorSets _ resources
         <- initialiseResources physicalDevice device resourceFlags initialResourceSet
 
-      -------------------------------------------
-      -- Create a command buffer and record the commands into it.
+    -------------------------------------------
+    -- Create a command buffer and record the commands into it.
 
-    ( vkPipeline, _ )
-      <- createComputePipeline device descriptorSetLayout compPath
+    ( _, shader ) <- loadShader device compPath
+
+    pipelineLayout  <- createPipelineLayout  device descriptorSetLayout
+    ( _, pipeline ) <- createComputePipeline device pipelineLayout shader
 
     commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
     queue       <- getQueue device 0
@@ -264,7 +271,7 @@ logo = runVulkan ( initialState { observer = initialObserverLogo } ) do
           ( swapchainImage, swapchainExtent )
           Nothing
           globalSizes
-          vkPipeline
+          pipelineLayout pipeline
 
     screenshotCommandBuffers <-
       for (V.zip3 descriptorSets swapchainImagesAndViews screenshotImagesAndMemories)
@@ -275,7 +282,7 @@ logo = runVulkan ( initialState { observer = initialObserverLogo } ) do
             ( swapchainImage, swapchainExtent )
             ( Just ( screenshotImage, extent3D ) )
             globalSizes
-            vkPipeline
+            pipelineLayout pipeline
 
     mainLoop do
 

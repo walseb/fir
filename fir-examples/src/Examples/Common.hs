@@ -44,13 +44,14 @@ recordSimpleIndexedDrawCall
   -> ( Vulkan.VkImage, Vulkan.VkExtent2D)
   -> Maybe (Vulkan.VkImage, Vulkan.VkExtent3D)
   -> Word32
+  -> Vulkan.VkPipelineLayout
   -> VkPipeline
   -> m Vulkan.VkCommandBuffer
 recordSimpleIndexedDrawCall
   dev commandPool framebuffer (renderPass, clearValues)
   descriptorSet cmdBindBuffers
   (swapchainImage, extent2D) mbScreenshotImage
-  nbIndices vkPipeline
+  nbIndices pipelineLayout pipeline
   = do
 
     commandBuffer <- allocateCommandBuffer dev commandPool
@@ -60,8 +61,8 @@ recordSimpleIndexedDrawCall
     cmdBeginRenderPass commandBuffer renderPass framebuffer clearValues extent2D
 
     cmdBindBuffers commandBuffer
-    cmdBindPipeline commandBuffer vkPipeline
-    cmdBindDescriptorSets commandBuffer vkPipeline [ descriptorSet ]
+    cmdBindPipeline commandBuffer pipeline
+    cmdBindDescriptorSets commandBuffer pipelineLayout pipeline [ descriptorSet ]
 
     liftIO $
       Vulkan.vkCmdDrawIndexed
@@ -100,13 +101,15 @@ recordSimpleDispatch
   -> ( Vulkan.VkImage, Vulkan.VkExtent2D)
   -> Maybe (Vulkan.VkImage, Vulkan.VkExtent3D)
   -> (Word32, Word32, Word32)
+  -> Vulkan.VkPipelineLayout
   -> VkPipeline
   -> m Vulkan.VkCommandBuffer
 recordSimpleDispatch
   dev commandPool
   descriptorSet
   (swapchainImage, _) mbScreenshotImage
-  (globalSize_x, globalSize_y, globalSize_z) vkPipeline
+  (globalSize_x, globalSize_y, globalSize_z)
+  pipelineLayout pipeline
   = do
     commandBuffer <- allocateCommandBuffer dev commandPool
 
@@ -118,8 +121,8 @@ recordSimpleDispatch
       ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
       ( Vulkan.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.VK_ACCESS_SHADER_WRITE_BIT )
 
-    cmdBindPipeline commandBuffer vkPipeline
-    cmdBindDescriptorSets commandBuffer vkPipeline [ descriptorSet ]
+    cmdBindPipeline commandBuffer pipeline
+    cmdBindDescriptorSets commandBuffer pipelineLayout pipeline [ descriptorSet ]
 
     liftIO $
       Vulkan.vkCmdDispatch

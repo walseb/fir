@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeOperators              #-}
 
-module Simulation.Observer
+module Examples.RenderState
   ( Input(..), nullInput
   , Action(..)
   , Quit(Quit)
@@ -26,6 +26,8 @@ module Simulation.Observer
 -- base
 import Prelude
   hiding ( Num(..), Fractional(..), Floating(..) )
+import Control.Concurrent.STM.TMVar
+  ( TMVar, newEmptyTMVarIO )
 import Data.Coerce
   ( coerce )
 import Data.Maybe
@@ -62,6 +64,9 @@ import Math.Quaternion
   , rotate, axisAngle
   )
 
+-- fir-examples
+import Vulkan.Pipeline
+
 ----------------------------------------------------------------------------
 
 mainLoop :: Monad m => m Quit -> m ()
@@ -76,15 +81,19 @@ mainLoop mb
 
 data RenderState
   = RenderState
-    { observer :: Observer
-    , input    :: Input
+    { observer    :: Observer
+    , input       :: Input
+    , newPipeline :: TMVar VkPipeline
     }
 
-initialState :: RenderState
-initialState
-  = RenderState
-      { observer = initialObserver
-      , input    = nullInput
+initialState :: IO RenderState
+initialState = do
+  empty <- newEmptyTMVarIO
+  pure
+    RenderState
+      { observer    = initialObserver
+      , input       = nullInput
+      , newPipeline = empty
       }
 
 _observer :: Lens' RenderState Observer

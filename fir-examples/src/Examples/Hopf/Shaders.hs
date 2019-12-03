@@ -34,7 +34,7 @@ type VertexDefs =
    , "in_normal"    ':-> Input  '[ Location 1 ] (V 3 Float)
    , "in_r"         ':-> Input  '[ Location 1, Component 3 ] Float
    , "in_colour"    ':-> Input  '[ Location 2 ] (V 4 Float)
-   
+
    , "out_colour"   ':-> Output '[ Location 0 ] (V 4 Float)
    , "out_R"        ':-> Output '[ Location 1 ] Float
    , "out_normal"   ':-> Output '[ Location 2 ] (V 3 Float)
@@ -64,7 +64,7 @@ type TessellationControlDefs =
    , "in_R"       ':-> Input  '[ Location 1 ] (Array 1 Float)
    , "in_normal"  ':-> Input  '[ Location 2 ] (Array 1 (V 3 Float))
    , "in_r"       ':-> Input  '[ Location 2, Component 3 ] (Array 1 Float)
- 
+
    , "out_col"    ':-> Output '[ Location 0 ] (Array 1 (V 4 Float))
    , "out_R"      ':-> Output '[ Location 1 ] (Array 1 Float)
    , "out_normal" ':-> Output '[ Location 2 ] (Array 1 (V 3 Float))
@@ -75,7 +75,7 @@ type TessellationControlDefs =
 
 tessellationControl :: ShaderModule "main" TessellationControlShader TessellationControlDefs _
 tessellationControl = shader do
-    
+
   assign @(Name "gl_TessLevelInner" :.: Index 0) 64
   assign @(Name "gl_TessLevelInner" :.: Index 1) 64
   assign @(Name "gl_TessLevelOuter" :.: Index 0) 64
@@ -115,19 +115,19 @@ type TessellationEvaluationDefs =
 
 tessellationEvaluation :: ShaderModule "main" TessellationEvaluationShader TessellationEvaluationDefs _
 tessellationEvaluation = shader do
-  
+
   ~(Vec3 u0 v0 _) <- get @"gl_TessCoord"
   mvp <- use @(Name "ubo" :.: Name "mvp")
 
   u <- def @"u" @R ( u0 * 6.28318530718 )
   v <- def @"v" @R ( v0 * 6.28318530718 )
-  
+
   put @"out_col" =<< use @(Name "in_col" :.: Index 0)
 
   a <- use @(Name "in_r" :.: Index 0)
   c <- use @(Name "in_R" :.: Index 0)
   normal@(~(Vec3 nx ny _)) <- use @(Name "in_normal" :.: Index 0)
-  
+
   center <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position" )
 
   let
@@ -142,7 +142,7 @@ tessellationEvaluation = shader do
       ^+^ ( ( cos u * ( c + a * cos v ) ) *^ v1 )
       ^+^ ( ( sin u * ( c + a * cos v ) ) *^ v2 )
       ^+^ ( ( a * sin v ) *^ normal )
-  
+
   put @"gl_Position" ( mvp !*^ Vec4 px py pz 1 )
 
 ------------------------------------------------
@@ -179,7 +179,7 @@ compileTessellationEvaluationShader = compileTo tesePath [] tessellationEvaluati
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
 compileFragmentShader = compileTo fragPath [] fragment
 
-shaderPipeline :: ShaderPipeline
+shaderPipeline :: ShaderPipeline FilePath
 shaderPipeline
   = ShaderPipeline
   $    StructInput @VertexInput @(PatchesOfSize 1)

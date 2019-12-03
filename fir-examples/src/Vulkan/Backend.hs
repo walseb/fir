@@ -792,26 +792,27 @@ waitForFences device fences = liftIO $
                 WaitAny l -> ( Vulkan.VK_FALSE, l )
 
 cmdBindPipeline :: MonadVulkan m => Vulkan.VkCommandBuffer -> VkPipeline -> m ()
-cmdBindPipeline commandBuffer vkPipeline =
+cmdBindPipeline commandBuffer pipeline =
   liftIO $
     Vulkan.vkCmdBindPipeline
       commandBuffer
-      ( bindPoint vkPipeline )
-      ( pipeline vkPipeline )
+      ( bindPoint  pipeline )
+      ( vkPipeline pipeline )
 
 cmdBindDescriptorSets
   :: MonadVulkan m
   => Vulkan.VkCommandBuffer
+  -> Vulkan.VkPipelineLayout
   -> VkPipeline
   -> [ Vulkan.VkDescriptorSet ]
   -> m ()
-cmdBindDescriptorSets commandBuffer vkPipeline descriptorSets =
+cmdBindDescriptorSets commandBuffer pipelineLayout pipeline descriptorSets =
   liftIO $
     Foreign.Marshal.withArray descriptorSets $ \descriptorSetsPtr ->
       Vulkan.vkCmdBindDescriptorSets
         commandBuffer
-        ( bindPoint vkPipeline )
-        ( pipelineLayout vkPipeline )
+        ( bindPoint pipeline )
+        pipelineLayout
         0 -- no offset
         ( fromIntegral $ length descriptorSets )
         descriptorSetsPtr

@@ -266,11 +266,12 @@ type Slot (l :: Nat) (c :: Nat) = 'LocationSlot l c
 -- use a single array of structs to keep track of vertex data.
 pattern StructInput
   :: forall
-        ( as      :: [LocationSlot Nat :-> Type] )
-        ( top     :: PrimitiveTopology Nat       )
-        ( descs   :: VertexLocationDescriptions  )
-        ( stride  :: Nat                         )
-        ( strides :: BindingStrides              )
+        ( as        :: [LocationSlot Nat :-> Type] )
+        ( top       :: PrimitiveTopology Nat       )
+        ( descs     :: VertexLocationDescriptions  )
+        ( stride    :: Nat                         )
+        ( strides   :: BindingStrides              )
+        ( stageData :: Type                        )
   .  ( descs   ~ StructLocationDescriptions 0 as
      , stride  ~ SizeOf Locations (Struct as)
      , strides ~ '[ 0 ':-> stride ]
@@ -280,7 +281,7 @@ pattern StructInput
      , Known BindingStrides strides
      )
   => ()
-  => PipelineStages (VertexInputInfo top descs strides)
+  => PipelineStages (VertexInputInfo top descs strides) stageData
 pattern StructInput = VertexInput
 
 

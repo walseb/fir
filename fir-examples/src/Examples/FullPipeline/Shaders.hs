@@ -62,7 +62,7 @@ type TessellationControlDefs =
 
 tessellationControl :: ShaderModule "main" TessellationControlShader TessellationControlDefs _
 tessellationControl = shader do
-  
+
   i <- get @"gl_InvocationID"
   in_pos <- use @(Name "gl_in" :.: AnIndex Word32 :.: Name "gl_Position") i
   in_col <- use @(Name "in_col" :.: AnIndex Word32) i
@@ -94,7 +94,7 @@ type TessellationEvaluationDefs =
 tessellationEvaluation :: ShaderModule "main" TessellationEvaluationShader TessellationEvaluationDefs _
 tessellationEvaluation = shader do
   ~(Vec3 u v w) <- get @"gl_TessCoord"
-  
+
   in_cols <- get @"in_cols"
   put @"out_col" (     u *^ (view @(Index 0) in_cols)
                    ^+^ v *^ (view @(Index 1) in_cols)
@@ -197,7 +197,7 @@ compileGeometryShader = compileTo geomPath [] geometry
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
 compileFragmentShader = compileTo fragPath [] fragment
 
-shaderPipeline :: ShaderPipeline
+shaderPipeline :: ShaderPipeline FilePath
 shaderPipeline
   = ShaderPipeline
   $    StructInput @VertexInput @(PatchesOfSize 3)

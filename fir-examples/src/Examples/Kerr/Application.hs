@@ -95,7 +95,7 @@ import Examples.Kerr.Info
   ( KerrInfo, defaultKerrInfo
   , DiskInfo, defaultDiskInfo
   )
-import Simulation.Observer
+import Examples.RenderState
 import Vulkan.Backend
 import Vulkan.Context
 import Vulkan.Features
@@ -126,12 +126,10 @@ initialObserverKerr =
     , clock    = 0
     }
 
-initialStateKerr :: RenderState
-initialStateKerr =
-  RenderState
-    { observer   = initialObserverKerr
-    , input      = nullInput
-    }
+initialStateKerr :: IO RenderState
+initialStateKerr = do
+  initial <- initialState
+  pure ( initial { observer = initialObserverKerr } )
 
 boyerLindquistCamera :: Observer -> Camera
 boyerLindquistCamera Observer { position = pos, angles = V2 x y, clock = clockTime } =
@@ -166,7 +164,7 @@ globalSizes = ( 20, 30, 1 )
 -- Application.
 
 kerr :: IO ()
-kerr = runVulkan initialStateKerr do
+kerr = ( initialStateKerr >>= ) . runVulkan $ do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -283,8 +281,10 @@ kerr = runVulkan initialStateKerr do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    ( vkPipeline, _ )
-      <- createComputePipeline device descriptorSetLayout compPath
+    ( _, shader ) <- loadShader device compPath
+
+    pipelineLayout  <- createPipelineLayout  device descriptorSetLayout
+    ( _, pipeline ) <- createComputePipeline device pipelineLayout shader
 
     commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
     queue       <- getQueue device 0
@@ -300,7 +300,7 @@ kerr = runVulkan initialStateKerr do
           ( swapchainImage, swapchainExtent )
           Nothing
           globalSizes
-          vkPipeline
+          pipelineLayout pipeline
 
     screenshotCommandBuffers <-
       for (V.zip3 descriptorSets swapchainImagesAndViews screenshotImagesAndMemories)
@@ -311,7 +311,7 @@ kerr = runVulkan initialStateKerr do
             ( swapchainImage, swapchainExtent )
             ( Just ( screenshotImage, extent3D ) )
             globalSizes
-            vkPipeline
+            pipelineLayout pipeline
 
     -------------------------------------------
     -- Main loop:
