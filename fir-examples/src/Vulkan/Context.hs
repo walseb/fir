@@ -1,6 +1,8 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -15,7 +17,6 @@ import Data.Bits
   ( (.|.) )
 import Data.Kind
   ( Type )
-import qualified Foreign.C
 import Foreign.C.String
   ( CString )
 import Foreign.C.Types
@@ -23,12 +24,24 @@ import Foreign.C.Types
 import GHC.TypeLits
   ( KnownNat )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
+-- bytestring
+import qualified Data.ByteString.Unsafe as ByteString
+  ( unsafePackCString )
+
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug, logInfo )
 
 -- sdl2
 import qualified SDL
+
+-- text
+import Data.Text
+  ( Text )
+import qualified Data.Text          as Text
+  ( unwords )
+import qualified Data.Text.Encoding as Text
+  ( decodeUtf8 )
 
 -- text-short
 import Data.Text.Short
@@ -120,40 +133,43 @@ withSwapchainInfo
   -> r
 withSwapchainInfo ( ASwapchainInfo swapchain ) f = f swapchain
 
-initialiseWindow :: MonadManaged m => WindowInfo -> m ( SDL.Window, [ CString ] )
+initialiseWindow :: MonadVulkan m => WindowInfo -> m ( SDL.Window, [ CString ] )
 initialiseWindow WindowInfo { .. } = do
   enableSDLLogging
   initializeSDL mouseMode
-  window           <- logMsg "Creating SDL window"           *> createWindow width height windowName
+  window           <- logDebug "Creating SDL window"           *> createWindow width height windowName
   setWindowIcon window "assets/fir_logo.png"
-  neededExtensions <- logMsg "Loading needed extensions"     *> getNeededExtensions window
-  extensionNames   <- traverse ( liftIO . Foreign.C.peekCString ) neededExtensions
-  logMsg $ "Needed instance extensions are: " ++ show extensionNames
+  neededExtensions <- logDebug "Loading needed extensions"     *> getNeededExtensions window
+  extensionNames   <- traverse ( liftIO . peekCString ) neededExtensions
+  logInfo $ "Needed instance extensions are: " <> ( Text.unwords extensionNames )
   pure ( window, neededExtensions )
 
+peekCString :: CString -> IO Text
+peekCString = fmap Text.decodeUtf8 . ByteString.unsafePackCString
+
 initialiseContext
-  :: forall ctx m. ( KnownRenderingContext ctx, MonadManaged m )
+  :: forall ctx m. ( KnownRenderingContext ctx, MonadVulkan m )
   => String -> [ CString ] -> RenderInfo ctx -> m ( VulkanContext ctx )
 initialiseContext appName neededExtensions RenderInfo { .. } = do
-  vkInstance       <- logMsg "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
-  physicalDevice   <- logMsg "Creating physical device"      *> createPhysicalDevice vkInstance
-  queueFamilyIndex <- logMsg "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice [queueType]
-  device   <- logMsg "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex features
+  vkInstance       <- logDebug "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
+  physicalDevice   <- logDebug "Creating physical device"      *> createPhysicalDevice vkInstance
+  queueFamilyIndex <- logDebug "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice [queueType]
+  device   <- logDebug "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex features
   aSwapchainInfo <- case renderingContext @ctx of
     SHeadless      -> pure NoSwapchain
     SWithSwapchain -> do
       let SurfaceInfo {..} = surfaceInfo
-      surface <- logMsg "Creating SDL surface" *> createSurface surfaceWindow vkInstance
+      surface <- logDebug "Creating SDL surface" *> createSurface surfaceWindow vkInstance
       assertSurfacePresentable physicalDevice queueFamilyIndex surface
-      surfaceFormat <- logMsg "Choosing swapchain format & color space"
+      surfaceFormat <- logDebug "Choosing swapchain format & color space"
         *> chooseSwapchainFormat preferredFormat physicalDevice surface
       ( swapchain, swapchainExtent ) <-
-        logMsg "Creating swapchain"
+        logDebug "Creating swapchain"
           *> createSwapchain
                 physicalDevice device
                 surface surfaceFormat
                 ( foldr (.|.) Vulkan.VK_ZERO_FLAGS surfaceUsage )
-      swapchainImageList <- logMsg "Getting swapchain images" *> getSwapchainImages device swapchain
+      swapchainImageList <- logDebug "Getting swapchain images" *> getSwapchainImages device swapchain
       V.withSizedList swapchainImageList \ swapchainImages -> do
         let swapchainInfo = SwapchainInfo {..}
         pure ( ASwapchainInfo swapchainInfo )

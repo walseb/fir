@@ -18,9 +18,9 @@ import Data.Coerce
 import Foreign.Ptr
   ( Ptr )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( allocate )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
@@ -41,7 +41,7 @@ import Vulkan.Monad
 
 createVertexBuffer
   :: forall a m
-  .  ( MonadManaged m, Poke a Locations )
+  .  ( MonadVulkan m, Poke a Locations )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
@@ -52,7 +52,7 @@ createVertexBuffer
 
 createIndexBuffer
   :: forall a m
-  .  ( MonadManaged m, Poke a Base )
+  .  ( MonadVulkan m, Poke a Base )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
@@ -63,7 +63,7 @@ createIndexBuffer
 
 createUniformBuffer
   :: forall a m
-  .  ( MonadManaged m, Poke a Extended )
+  .  ( MonadVulkan m, Poke a Extended )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> a
@@ -74,7 +74,7 @@ createUniformBuffer
 
 createBuffer
   :: forall a ali m.
-     ( MonadManaged m, Poke a ali )
+     ( MonadVulkan m, Poke a ali )
   => Vulkan.VkBufferUsageFlags
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
@@ -94,7 +94,7 @@ createBuffer usage physicalDevice device elems = do
 
 createBufferFromList
   :: forall a ali m.
-     ( MonadManaged m, Poke a ali )
+     ( MonadVulkan m, Poke a ali )
   => Vulkan.VkBufferUsageFlags
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
@@ -114,7 +114,7 @@ createBufferFromList usage physicalDevice device elems = do
       pokeFunction = pokeArray @a @ali
 
 createBufferFromPoke
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkBufferUsageFlags
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
@@ -139,8 +139,8 @@ createBufferFromPoke usage physicalDevice device poking sizeInBytes =
         &* Vulkan.set @"pQueueFamilyIndices" Vulkan.VK_NULL
         )
   in do
-    buffer :: Vulkan.VkBuffer
-      <- managedVulkanResource
+    ( _, buffer :: Vulkan.VkBuffer )
+      <- allocateVulkanResource
           ( Vulkan.vkCreateBuffer device ( Vulkan.unsafePtr createInfo ) )
           ( Vulkan.vkDestroyBuffer device )
 
@@ -153,17 +153,17 @@ createBufferFromPoke usage physicalDevice device poking sizeInBytes =
                         , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                         ]
 
-    memory :: Vulkan.VkDeviceMemory
+    ( _, memory :: Vulkan.VkDeviceMemory )
       <- allocateMemory physicalDevice device memReqs requiredFlags
 
-    ptr <- manageBracket
+    (_, ptr) <- allocate
       ( do
           Vulkan.vkBindBufferMemory device buffer memory 0
             >>= throwVkResult
 
           memPtr :: Ptr a
              <- coerce <$> allocaAndPeek
-                  ( Vulkan.vkMapMemory device memory 0 roundedSize Vulkan.VK_ZERO_FLAGS
+                  (   Vulkan.vkMapMemory device memory 0 roundedSize Vulkan.VK_ZERO_FLAGS
                   >=> throwVkResult
                   )
 

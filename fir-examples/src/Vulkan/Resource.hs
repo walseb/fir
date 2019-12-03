@@ -71,9 +71,9 @@ import Data.Generics.Product.Constraints
   , HasConstraints'(constraints')
   )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( allocate )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -179,7 +179,7 @@ data PostInitialisationResult m resources n
   = PostInitialisationResult
       { resourceLayout       :: Vulkan.VkDescriptorSetLayout
       , resourceDescriptors  :: V.Vector n Vulkan.VkDescriptorSet
-      , bindBuffersCommand   :: MonadManaged m => Vulkan.VkCommandBuffer -> m ()
+      , bindBuffersCommand   :: MonadVulkan m => Vulkan.VkCommandBuffer -> m ()
       , initialisedResources :: resources n Post
       }
 
@@ -189,7 +189,7 @@ initialiseResources
       ( m  :: Type -> Type )
       ( resources :: Nat -> ResourceInfo -> Type )
   . ( KnownNat n
-    , MonadManaged m
+    , MonadVulkan m
     , HasConstraints' HasDescriptorTypeAndFlags ( resources n Named )
     , HasConstraints CanInitialiseResource
          ( resources n Pre  )
@@ -261,7 +261,7 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
 ----------------------------------------------------------------------------
 
 createDescriptorSetLayout
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> [ ( Vulkan.VkDescriptorType, Vulkan.VkShaderStageFlags ) ]
   -> m Vulkan.VkDescriptorSetLayout
@@ -293,7 +293,7 @@ createDescriptorSetLayout device descriptorTypes =
             )
 
 createDescriptorPool
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Int
   -> [ Vulkan.VkDescriptorType ]
@@ -322,35 +322,35 @@ createDescriptorPool device maxSets descTypes =
           )
 
 allocateDescriptorSets
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkDescriptorPool
   -> Vulkan.VkDescriptorSetLayout
   -> Int
   -> m [Vulkan.VkDescriptorSet]
 allocateDescriptorSets dev descriptorPool layout0 count =
-  manageBracket
-  ( allocaAndPeekArray count
-      ( Vulkan.vkAllocateDescriptorSets
-          dev
-          ( Vulkan.unsafePtr allocateInfo )
-          >=> throwVkResult
-      )
-  )
-  ( \descs ->
-      Foreign.Marshal.withArray descs
-        ( Vulkan.vkFreeDescriptorSets dev descriptorPool (fromIntegral count) )
-  )
-    where
-      allocateInfo :: Vulkan.VkDescriptorSetAllocateInfo
-      allocateInfo =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-          &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"descriptorPool" descriptorPool
-          &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts"
-               ( replicate count layout0 )
-          )
+  snd <$> allocate
+    ( allocaAndPeekArray count
+        ( Vulkan.vkAllocateDescriptorSets
+            dev
+            ( Vulkan.unsafePtr allocateInfo )
+            >=> throwVkResult
+        )
+    )
+    ( \descs ->
+        Foreign.Marshal.withArray descs
+          ( Vulkan.vkFreeDescriptorSets dev descriptorPool (fromIntegral count) >=> throwVkResult )
+    )
+      where
+        allocateInfo :: Vulkan.VkDescriptorSetAllocateInfo
+        allocateInfo =
+          Vulkan.createVk
+            (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+            &* Vulkan.set @"pNext" Vulkan.VK_NULL
+            &* Vulkan.set @"descriptorPool" descriptorPool
+            &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts"
+                 ( replicate count layout0 )
+            )
 
 counts :: (Ord a, Num i) => [ a ] -> [ (a, i) ]
 counts = Map.toList . foldr ( \ a -> Map.insertWith (+) a 1 ) Map.empty
@@ -358,7 +358,7 @@ counts = Map.toList . foldr ( \ a -> Map.insertWith (+) a 1 ) Map.empty
 
 updateDescriptorSets
   :: forall m n resources
-  .  ( MonadManaged m
+  .  ( MonadVulkan m
      , HasConstraints' ( CanUpdateResource n ) ( resources n Post )
      )
   => Vulkan.VkDevice
@@ -388,7 +388,7 @@ updateDescriptorSets device descriptorSets resourceSet =
         )
 
 bufferBindingCommand
-  :: MonadManaged m
+  :: MonadVulkan m
   => Maybe ( Vulkan.VkBuffer, Vulkan.VkIndexType )
   -> [ Vulkan.VkBuffer ]
   -> Vulkan.VkCommandBuffer
@@ -451,7 +451,7 @@ instance HasDescriptorTypeAndFlags ( Resource res InputUse Named ) where
 -- Constraint used to initialise a set of resources.
 class CanInitialiseResource a b | a -> b where
   initialiseResource
-    :: MonadManaged m
+    :: MonadVulkan m
     => Vulkan.VkPhysicalDevice
     -> Vulkan.VkDevice
     -> a

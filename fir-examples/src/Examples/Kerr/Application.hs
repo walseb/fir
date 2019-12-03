@@ -37,9 +37,9 @@ import GHC.Generics
 import Control.Lens
   ( use, assign )
 
--- managed
-import Control.Monad.Managed
-  ( runManaged )
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug, logInfo )
 
 -- sdl2
 import qualified SDL
@@ -54,8 +54,6 @@ import qualified Data.Text.Short as ShortText
 -- transformers
 import Control.Monad.IO.Class
   ( liftIO )
-import Control.Monad.Trans.State.Lazy
-  ( evalStateT )
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
@@ -168,7 +166,7 @@ globalSizes = ( 20, 30, 1 )
 -- Application.
 
 kerr :: IO ()
-kerr = ( runManaged . ( `evalStateT` initialStateKerr ) ) do
+kerr = runVulkan initialStateKerr do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -176,7 +174,7 @@ kerr = ( runManaged . ( `evalStateT` initialStateKerr ) ) do
   ( reqs :: ModuleRequirements ) <-
     case shaderCompilationResult of
       Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
-      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
+      Right reqs -> logInfo ( "Shaders were succesfully compiled." ) *> pure reqs
 
   -------------------------------------------
   -- Initialise window and Vulkan context.
@@ -285,10 +283,10 @@ kerr = ( runManaged . ( `evalStateT` initialStateKerr ) ) do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    vkPipeline
+    ( vkPipeline, _ )
       <- createComputePipeline device descriptorSetLayout compPath
 
-    commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
     queue       <- getQueue device 0
 
     nextImageSem <- createSemaphore device

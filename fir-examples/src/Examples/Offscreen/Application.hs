@@ -25,9 +25,9 @@ import Data.Word
 import GHC.Generics
   ( Generic )
 
--- managed
-import Control.Monad.Managed
-  ( runManaged )
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug, logInfo )
 
 -- text-short
 import Data.Text.Short
@@ -158,7 +158,7 @@ initialResourceSet = ResourceSet
 -- Application.
 
 offscreen :: IO ()
-offscreen = runManaged do
+offscreen = runVulkan () do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -166,7 +166,7 @@ offscreen = runManaged do
   ( reqs :: ModuleRequirements ) <-
     case shaderCompilationResult of
       Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
-      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
+      Right reqs -> logInfo ( "Shaders were succesfully compiled." ) *> pure reqs
 
   -------------------------------------------
   -- Initialise Vulkan context.
@@ -241,7 +241,7 @@ offscreen = runManaged do
     createScreenshotImage physicalDevice device
       ( screenshotImageInfo extent3D colFmt )
 
-  renderPass <- logMsg "Creating a render pass" *>
+  renderPass <- logDebug "Creating a render pass" *>
     simpleRenderPass device
       ( noAttachments
         { colorAttachments = [ presentableColorAttachmentDescription colFmt ]
@@ -289,12 +289,12 @@ offscreen = runManaged do
   -- Create command buffers and record commands into them.
 
 
-  commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
+  commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
   queue       <- getQueue device 0
 
   let pipelineInfo = VkPipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT
 
-  vkPipeline
+  ( vkPipeline, _ )
     <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
   commandBuffer

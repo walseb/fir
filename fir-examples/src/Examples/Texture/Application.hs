@@ -47,9 +47,9 @@ import Codec.Picture.Png
 import Control.Lens
   ( use, assign )
 
--- managed
-import Control.Monad.Managed
-  ( runManaged )
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug, logInfo )
 
 -- sdl2
 import qualified SDL
@@ -64,8 +64,6 @@ import qualified Data.Text.Short as ShortText
 -- transformers
 import Control.Monad.IO.Class
   ( liftIO )
-import Control.Monad.Trans.State.Lazy
-  ( evalStateT )
 
 -- vector
 import qualified Data.Vector.Storable as Vector
@@ -194,7 +192,7 @@ clearValues =
 -- Application.
 
 texture :: IO ()
-texture = ( runManaged . ( `evalStateT` initialState ) ) do
+texture = runVulkan initialState do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -202,7 +200,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
   ( reqs :: ModuleRequirements ) <-
     case shaderCompilationResult of
       Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
-      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
+      Right reqs -> logInfo ( "Shaders were succesfully compiled." ) *> pure reqs
 
   -------------------------------------------
   -- Initialise window and Vulkan context.
@@ -296,7 +294,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
         , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
         ]
 
-    logMsg "Loading logo."
+    logInfo "Loading logo."
 
     mbLogo <- liftIO $ decodePng <$> ByteString.readFile "assets/haskell_logo.png"
     let
@@ -331,7 +329,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
     logoSampler <- createSampler device
 
-    commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
     queue       <- getQueue device 0
 
     logoCopyCommandBuffer <- allocateCommandBuffer device commandPool
@@ -399,7 +397,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
     -- Create the framebuffer attachments.
 
-    renderPass <- logMsg "Creating a render pass" *>
+    renderPass <- logDebug "Creating a render pass" *>
       simpleRenderPass device
         ( noAttachments
           { colorAttachments = [ presentableColorAttachmentDescription colFmt ]
@@ -408,7 +406,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
         )
 
     framebuffersWithAttachments
-      <- logMsg "Creating frame buffers"
+      <- logDebug "Creating frame buffers"
         *> ( for swapchainImages $ \swapchainImage -> do
 
             colorImageView
@@ -471,7 +469,7 @@ texture = ( runManaged . ( `evalStateT` initialState ) ) do
 
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT
 
-    vkPipeline <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
+    (vkPipeline, _) <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
     commandBuffers <-
       for (V.zip descriptorSets framebuffersWithAttachments) $ \ ( descriptorSet, (framebuffer, attachments ) ) ->

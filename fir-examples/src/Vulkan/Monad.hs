@@ -1,13 +1,22 @@
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE BlockArguments             #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DerivingVia                #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 module Vulkan.Monad where
 
 -- base
-import Control.Exception
-  ( bracket )
+import Control.Category
+  ( (>>>) )
 import Control.Monad
   ( (>=>) )
 import qualified Foreign
@@ -15,95 +24,108 @@ import qualified Foreign.Marshal
 import Foreign.Ptr
   ( Ptr )
 
--- lens
-import Control.Lens
-  ( Lens', lens )
+-- logging-effect
+import Control.Monad.Log
+  ( MonadLog, LoggingT(..), runLoggingT
+  , Severity(..), WithSeverity(..)
+  )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
-import qualified Control.Monad.Managed
+-- mtl
+import Control.Monad.State.Class
+  ( MonadState )
+
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( MonadResource
+  , ResourceT, runResourceT
+  , ReleaseKey, allocate
+  )
+
+-- text
+import Data.Text
+  ( Text )
+import qualified Data.Text.IO as Text
+  ( putStrLn )
 
 -- transformers
 import Control.Monad.IO.Class
   ( MonadIO, liftIO )
+import Control.Monad.Trans.State.Strict
+  ( StateT(..), evalStateT )
+import Control.Monad.Trans.Reader
+  ( ReaderT(..) )
 
 -- vulkan-api
 import qualified Graphics.Vulkan          as Vulkan
 import qualified Graphics.Vulkan.Core_1_0 as Vulkan
 
--- fir
-import Math.Linear
-  ( V )
+----------------------------------------------------------------------------
+-- Combination of effects needed.
 
--- fir-example
-import Simulation.Observer
-  ( Observer(..), initialObserver
-  , Input(..), nullInput
-  , Quit(..)
-  )
+type MonadVulkan m = ( MonadLog LogMessage m, MonadIO m, MonadResource m )
 
------------------------------------------------------------------------------------------------------
+type LogMessage = WithSeverity Text
+type Handler    = LogMessage -> ResourceT IO ()
 
-logMsg :: MonadIO m => String -> m ()
-logMsg = liftIO . putStrLn
+newtype VulkanMonad s a =
+  VulkanMonad
+    { runVulkanMonad :: StateT s (LoggingT LogMessage (ResourceT IO)) a }
 
-throwVkResult :: MonadIO m => Vulkan.VkResult -> m ()
+deriving newtype instance Functor             (VulkanMonad s)
+deriving newtype instance Applicative         (VulkanMonad s)
+deriving newtype instance Monad               (VulkanMonad s)
+deriving newtype instance MonadFail           (VulkanMonad s)
+deriving newtype instance MonadState s        (VulkanMonad s)
+deriving newtype instance MonadLog LogMessage (VulkanMonad s)
+deriving newtype instance MonadIO             (VulkanMonad s)
+deriving via ( StateT s (ReaderT Handler (ResourceT IO) ) )
+  instance MonadResource (VulkanMonad s)
+
+runVulkan :: s -> VulkanMonad s a -> IO a
+runVulkan s
+  =    runVulkanMonad
+  >>> ( `evalStateT` s )
+  >>> ( `runLoggingT` logHandler )
+  >>> runResourceT
+
+----------------------------------------------------------------------------
+-- Logging.
+
+logHandler :: MonadIO m => LogMessage -> m ()
+logHandler ( WithSeverity sev mess )
+  = liftIO $ Text.putStrLn ( showSeverity sev <> "  " <> mess )
+
+showSeverity :: Severity -> Text
+showSeverity Emergency     = "[EMERGENCY]"
+showSeverity Alert         = "[ALERT]"
+showSeverity Critical      = "[CRIT]"
+showSeverity Error         = "[ERR]"
+showSeverity Warning       = "[WARN]"
+showSeverity Notice        = "(note)"
+showSeverity Informational = "(info)"
+showSeverity Debug         = "(debug)"
+
+----------------------------------------------------------------------------
+-- Resource management.
+
+throwVkResult :: MonadFail m => Vulkan.VkResult -> m ()
 throwVkResult Vulkan.VK_SUCCESS = pure ()
-throwVkResult res = error ( show res )
-
-mainLoop :: Monad m => m Quit -> m ()
-mainLoop mb
-  = do
-      b <- mb
-      case b of
-        Quit -> pure ()
-        _    -> mainLoop mb
-
-----------------------------------------------------------------------------
--- state
-
-data RenderState
-  = RenderState
-    { observer :: Observer
-    , input    :: Input
-    }
-
-initialState :: RenderState
-initialState
-  = RenderState
-      { observer = initialObserver
-      , input    = nullInput
-      }
-
-_observer :: Lens' RenderState Observer
-_observer = lens observer ( \s v -> s { observer = v } )
-
-_position :: Lens' Observer (V 3 Float)
-_position = lens position ( \s v -> s { position = v } )
-
-_angles :: Lens' Observer (V 2 Float)
-_angles = lens angles ( \s v -> s { angles = v } )
-
-_input :: Lens' RenderState Input
-_input = lens input ( \s v -> s { input = v } )
-
-----------------------------------------------------------------------------
--- resource management
-
-managed :: MonadManaged m => (forall r. (a -> IO r) -> IO r) -> m a
-managed f = Control.Monad.Managed.using ( Control.Monad.Managed.managed f )
-
-manageBracket :: MonadManaged m => IO a -> (a -> IO b) -> m a
-manageBracket create destroy = managed ( bracket create destroy )
+throwVkResult failure           = fail (show failure)
 
 managedVulkanResource
-  :: ( MonadManaged m, Foreign.Storable x, Vulkan.VulkanPtr ptr )
+  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanPtr ptr )
   => ( ptr a -> Ptr x -> IO Vulkan.VkResult )
   -> ( x -> ptr a -> IO () )
   -> m x
-managedVulkanResource create destroy =
-  manageBracket
+managedVulkanResource create destroy = snd <$> allocateVulkanResource create destroy
+
+allocateVulkanResource
+  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanPtr ptr )
+  => ( ptr a -> Ptr x -> IO Vulkan.VkResult )
+  -> ( x -> ptr a -> IO () )
+  -> m ( ReleaseKey, x )
+allocateVulkanResource create destroy =
+  allocate
     ( allocaAndPeek ( create Vulkan.vkNullPtr >=> throwVkResult ) )
     ( `destroy` Vulkan.vkNullPtr )
 

@@ -13,6 +13,9 @@ module Simulation.Observer
   , Action(..)
   , Quit(Quit)
   , Observer(..), initialObserver
+  , RenderState(..), initialState
+  , _observer, _position, _angles, _input
+  , mainLoop
   , onSDLInput
   , interpretInput
   , move
@@ -32,13 +35,20 @@ import Data.Monoid
 import GHC.TypeNats
   ( KnownNat )
 
+-- lens
+import Control.Lens
+  ( Lens', lens )
+
 -- sdl2
 import qualified SDL
 
 -- fir
 import FIR
   hiding
-    ( Input, Eq(..), Ord(..), Any, pure, view )
+    ( Input, Eq(..), Ord(..), Any
+    , view
+    , pure, (>>=), (>>)
+    )
 import Math.Linear
   ( V, M
   , pattern V2, pattern V3
@@ -51,6 +61,43 @@ import Math.Quaternion
   ( Quaternion
   , rotate, axisAngle
   )
+
+----------------------------------------------------------------------------
+
+mainLoop :: Monad m => m Quit -> m ()
+mainLoop mb
+  = do
+      b <- mb
+      case b of
+        Quit -> pure ()
+        _    -> mainLoop mb
+
+----------------------------------------------------------------------------
+
+data RenderState
+  = RenderState
+    { observer :: Observer
+    , input    :: Input
+    }
+
+initialState :: RenderState
+initialState
+  = RenderState
+      { observer = initialObserver
+      , input    = nullInput
+      }
+
+_observer :: Lens' RenderState Observer
+_observer = lens observer ( \s v -> s { observer = v } )
+
+_position :: Lens' Observer (V 3 Float)
+_position = lens position ( \s v -> s { position = v } )
+
+_angles :: Lens' Observer (V 2 Float)
+_angles = lens angles ( \s v -> s { angles = v } )
+
+_input :: Lens' RenderState Input
+_input = lens input ( \s v -> s { input = v } )
 
 ----------------------------------------------------------------------------
 
@@ -189,7 +236,7 @@ modelViewProjection Observer { angles = V2 x y, position } mbOrientation
         up      = rotate orientation ( V3 0 (-1) 0 )
         view    = lookAt ( position ^+^ forward ) position up
         projection = perspective ( pi / 2 ) ( 16 / 9 ) 0.1 100000
-                   
+
     in projection !*! view
 
 camera :: Observer

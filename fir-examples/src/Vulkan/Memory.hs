@@ -22,9 +22,9 @@ import Data.Word
 import qualified Foreign
 import qualified Foreign.Marshal
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( allocate, ReleaseKey )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -43,12 +43,12 @@ import Vulkan.Monad
 -----------------------------------------------------------------------------------------------------
 
 allocateMemory
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> Vulkan.VkMemoryRequirements
   -> [ Vulkan.VkMemoryPropertyFlags ]
-  -> m Vulkan.VkDeviceMemory
+  -> m ( ReleaseKey, Vulkan.VkDeviceMemory )
 allocateMemory physicalDevice device memReqs requiredFlags = do
 
     memoryProperties :: Vulkan.VkPhysicalDeviceMemoryProperties
@@ -105,7 +105,7 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
           &* Vulkan.set @"memoryTypeIndex" memoryTypeIndex
           )
 
-    manageBracket
+    allocate
       ( allocaAndPeek
         ( Vulkan.vkAllocateMemory
             device

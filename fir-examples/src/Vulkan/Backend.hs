@@ -44,9 +44,9 @@ import GHC.TypeNats
 import Data.Finite
   ( Finite )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( allocate )
 
 -- sdl2
 import qualified SDL.Video.Vulkan
@@ -75,7 +75,7 @@ import Vulkan.Pipeline
 
 -----------------------------------------------------------------------------------------------------
 
-createVulkanInstance :: MonadManaged m => String -> [ CString ] -> m Vulkan.VkInstance
+createVulkanInstance :: MonadVulkan m => String -> [ CString ] -> m Vulkan.VkInstance
 createVulkanInstance appName neededExtensions =
   let
     appInfo :: Vulkan.VkApplicationInfo
@@ -172,7 +172,7 @@ findQueueFamilyIndex physicalDevice requiredFlags = liftIO do
 
 
 createLogicalDevice
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkPhysicalDevice
   -> Int
   -> Vulkan.VkPhysicalDeviceFeatures
@@ -269,7 +269,7 @@ pattern VkSurfaceFormatKHR { format, colorSpace }
                 )
 
 createSwapchain
-  :: ( MonadIO m, MonadManaged m )
+  :: ( MonadIO m, MonadVulkan m )
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> SDL.Video.Vulkan.VkSurfaceKHR
@@ -349,7 +349,7 @@ getSwapchainImages device swapchain
 
 
 createFramebuffer
-  :: ( MonadManaged m, Foldable f )
+  :: ( MonadVulkan m, Foldable f )
   => Vulkan.VkDevice
   -> Vulkan.VkRenderPass
   -> Vulkan.VkExtent2D
@@ -403,7 +403,7 @@ pattern Default2DImageInfo extent3D fmt usage
   }
 
 createImage
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> ImageInfo
@@ -436,7 +436,7 @@ createImage physicalDevice device ImageInfo { .. } reqs
 
       memReqs <- allocaAndPeek ( Vulkan.vkGetImageMemoryRequirements device image )
 
-      memory <- allocateMemory physicalDevice device memReqs reqs
+      ( _, memory ) <- allocateMemory physicalDevice device memReqs reqs
 
       liftIO
         ( Vulkan.vkBindImageMemory device image memory 0
@@ -447,7 +447,7 @@ createImage physicalDevice device ImageInfo { .. } reqs
 
 
 createImageView
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkImage
   -> Vulkan.VkImageViewType
@@ -493,7 +493,7 @@ createImageView dev image viewType fmt aspect =
       ( Vulkan.vkDestroyImageView dev )
 
 cmdTransitionImageLayout
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkCommandBuffer
   -> Vulkan.VkImage
   -> Vulkan.VkImageLayout
@@ -541,7 +541,7 @@ cmdTransitionImageLayout
         [ imageBarrier ]
 
 createSampler
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> m Vulkan.VkSampler
 createSampler dev =
@@ -574,7 +574,7 @@ createSampler dev =
 
 
 createCommandPool
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Int
   -> m Vulkan.VkCommandPool
@@ -596,7 +596,7 @@ createCommandPool dev queueFamilyIndex =
 
 
 allocateCommandBuffer
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkCommandPool
   -> m Vulkan.VkCommandBuffer
@@ -612,16 +612,17 @@ allocateCommandBuffer dev commandPool =
         &* Vulkan.set @"commandBufferCount" 1
         )
   in
-    manageBracket
-      ( allocaAndPeek
-          ( Vulkan.vkAllocateCommandBuffers dev ( Vulkan.unsafePtr allocInfo )
-              >=> throwVkResult
-          )
-      )
-      ( \ a ->
-          Foreign.Marshal.withArray [ a ]
-            ( Vulkan.vkFreeCommandBuffers dev commandPool 1 )
-      )
+    snd <$>
+      allocate
+        ( allocaAndPeek
+            ( Vulkan.vkAllocateCommandBuffers dev ( Vulkan.unsafePtr allocInfo )
+                >=> throwVkResult
+            )
+        )
+        ( \ a ->
+            Foreign.Marshal.withArray [ a ]
+              ( Vulkan.vkFreeCommandBuffers dev commandPool 1 )
+        )
 
 
 cmdBeginRenderPass
@@ -737,7 +738,7 @@ getQueue device queueFamilyIndex
         )
 
 
-createSemaphore :: MonadManaged m => Vulkan.VkDevice -> m Vulkan.VkSemaphore
+createSemaphore :: MonadVulkan m => Vulkan.VkDevice -> m Vulkan.VkSemaphore
 createSemaphore device =
   let
     createInfo :: Vulkan.VkSemaphoreCreateInfo
@@ -753,7 +754,7 @@ createSemaphore device =
       ( Vulkan.vkDestroySemaphore device )
 
 
-createFence :: MonadManaged m => Vulkan.VkDevice -> m Vulkan.VkFence
+createFence :: MonadVulkan m => Vulkan.VkDevice -> m Vulkan.VkFence
 createFence device =
 
   let fenceCreateInfo :: Vulkan.VkFenceCreateInfo
@@ -790,7 +791,7 @@ waitForFences device fences = liftIO $
                 WaitAll l -> ( Vulkan.VK_TRUE , l )
                 WaitAny l -> ( Vulkan.VK_FALSE, l )
 
-cmdBindPipeline :: MonadManaged m => Vulkan.VkCommandBuffer -> VkPipeline -> m ()
+cmdBindPipeline :: MonadVulkan m => Vulkan.VkCommandBuffer -> VkPipeline -> m ()
 cmdBindPipeline commandBuffer vkPipeline =
   liftIO $
     Vulkan.vkCmdBindPipeline
@@ -799,7 +800,7 @@ cmdBindPipeline commandBuffer vkPipeline =
       ( pipeline vkPipeline )
 
 cmdBindDescriptorSets
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkCommandBuffer
   -> VkPipeline
   -> [ Vulkan.VkDescriptorSet ]
@@ -924,5 +925,5 @@ beginCommandBuffer commandBuffer =
           >>= throwVkResult
 
 
-endCommandBuffer :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
-endCommandBuffer = liftIO . Vulkan.vkEndCommandBuffer >=> throwVkResult
+endCommandBuffer :: MonadVulkan m => Vulkan.VkCommandBuffer -> m ()
+endCommandBuffer = liftIO . ( Vulkan.vkEndCommandBuffer >=> throwVkResult )

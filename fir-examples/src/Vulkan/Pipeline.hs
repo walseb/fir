@@ -16,7 +16,7 @@ module Vulkan.Pipeline where
 import Data.Bits
   ( (.|.) )
 import Data.Foldable
-  ( toList )
+  ( traverse_, toList, foldrM )
 import Data.Functor
   ( (<&>) )
 import Data.Maybe
@@ -30,9 +30,9 @@ import GHC.TypeNats
 -- bytestring
 import qualified Data.ByteString
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( MonadResource, ReleaseKey, release )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -184,13 +184,13 @@ shaderExtension GeometryShader               = "geom"
 shaderExtension FragmentShader               = "frag"
 shaderExtension ComputeShader                = "comp"
 
-loadShader :: MonadManaged m => Vulkan.VkDevice -> FilePath -> m Vulkan.VkShaderModule
+loadShader :: MonadVulkan m => Vulkan.VkDevice -> FilePath -> m ( ReleaseKey, Vulkan.VkShaderModule )
 loadShader device shaderPath = do
 
   bytes <-
     liftIO ( Data.ByteString.readFile shaderPath )
 
-  managedVulkanResource
+  allocateVulkanResource
     ( \a b ->
         Data.ByteString.useAsCStringLen bytes $ \( bytesPtr, len ) ->
           let
@@ -209,13 +209,13 @@ loadShader device shaderPath = do
     ( Vulkan.vkDestroyShaderModule device )
 
 createShaderInfo
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Shader
   -> FilePath
-  -> m Vulkan.VkPipelineShaderStageCreateInfo
+  -> m ( ReleaseKey, Vulkan.VkPipelineShaderStageCreateInfo )
 createShaderInfo device shaderStage shaderPath = do
-  shader <- loadShader device shaderPath
+  ( releaseKey, shader ) <- loadShader device shaderPath
   let shaderModule :: Vulkan.VkPipelineShaderStageCreateInfo
       shaderModule =
         Vulkan.createVk
@@ -226,15 +226,15 @@ createShaderInfo device shaderStage shaderPath = do
           &* Vulkan.set @"module"       shader
           &* Vulkan.set @"stage"        (stageFlag shaderStage)
           )
-  pure shaderModule
+  pure (releaseKey, shaderModule)
 
 createPipelineLayout
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkDescriptorSetLayout
-  -> m Vulkan.VkPipelineLayout
+  -> m ( ReleaseKey, Vulkan.VkPipelineLayout )
 createPipelineLayout device layout0 =
-  managedVulkanResource
+  allocateVulkanResource
     ( Vulkan.vkCreatePipelineLayout  device ( Vulkan.unsafePtr pipelineLayoutCreateInfo ) )
     ( Vulkan.vkDestroyPipelineLayout device )
 
@@ -266,13 +266,13 @@ data VkPipeline
   | ComputePipeline  { pipeline :: Vulkan.VkPipeline, pipelineLayout :: Vulkan.VkPipelineLayout }
 
 createGraphicsPipeline
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkRenderPass
   -> VkPipelineInfo
   -> Vulkan.VkDescriptorSetLayout
   -> ShaderPipeline
-  -> m VkPipeline
+  -> m ( VkPipeline, m () )
 createGraphicsPipeline device renderPass
   ( VkPipelineInfo extent sampleCount )
   layout0
@@ -280,15 +280,21 @@ createGraphicsPipeline device renderPass
       ( stages :: PipelineStages info )
   ) = do
 
-    layout <-
+    (layoutKey, layout) <-
       createPipelineLayout device layout0
 
     let
       shaderPaths :: [(Shader, String)]
       shaderPaths = pipelineStages stages
 
-    shaders :: [ Vulkan.VkPipelineShaderStageCreateInfo ]
-       <- traverse ( uncurry (createShaderInfo device) ) shaderPaths
+    (shaders, shaderKeys)
+       <- foldrM
+           ( \ (shader, path) ( infos, keys ) -> do
+              ( key, info ) <- createShaderInfo device shader path
+              pure ( info : infos, key : keys )
+           )
+           ( [], [] )
+           shaderPaths
 
     let
 
@@ -441,8 +447,8 @@ createGraphicsPipeline device renderPass
           &* Vulkan.setVkRef   @"pDepthStencilState"  depthStencilState
           )
 
-    pipe <-
-      managedVulkanResource
+    ( pipelineKey, pipe ) <-
+      allocateVulkanResource
         ( Vulkan.vkCreateGraphicsPipelines
             device
             Vulkan.vkNullPtr
@@ -451,20 +457,20 @@ createGraphicsPipeline device renderPass
         )
         ( Vulkan.vkDestroyPipeline device )
 
-    return ( GraphicsPipeline pipe layout )
+    return ( GraphicsPipeline pipe layout, releasePipeline layoutKey pipelineKey shaderKeys )
 
 createComputePipeline
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkDescriptorSetLayout
   -> FilePath
-  -> m VkPipeline
+  -> m ( VkPipeline, m () )
 createComputePipeline device layout0 shaderPath = do
 
-  layout <-
+  ( layoutKey, layout ) <-
     createPipelineLayout device layout0
 
-  computeShader <- createShaderInfo device ComputeShader shaderPath
+  ( shaderKey, computeShader ) <- createShaderInfo device ComputeShader shaderPath
 
   let
     createInfo :: Vulkan.VkComputePipelineCreateInfo
@@ -477,8 +483,8 @@ createComputePipeline device layout0 shaderPath = do
       &* Vulkan.set @"basePipelineIndex" 0
       )
 
-  pipe <-
-    managedVulkanResource
+  ( pipelineKey, pipe ) <-
+    allocateVulkanResource
       ( Vulkan.vkCreateComputePipelines
           device
           Vulkan.vkNullPtr
@@ -488,4 +494,10 @@ createComputePipeline device layout0 shaderPath = do
       )
       ( Vulkan.vkDestroyPipeline device )
 
-  return ( ComputePipeline pipe layout )
+  return ( ComputePipeline pipe layout, releasePipeline layoutKey pipelineKey [ shaderKey ] )
+
+releasePipeline :: MonadResource m => ReleaseKey -> ReleaseKey -> [ ReleaseKey ] -> m ()
+releasePipeline layoutKey pipelineKey shaderKeys = do
+  release pipelineKey
+  release layoutKey
+  traverse_ release shaderKeys

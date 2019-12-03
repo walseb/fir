@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Examples.Common where
@@ -9,9 +10,6 @@ import Data.Bits
 import Data.Word
   ( Word32 )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -36,7 +34,7 @@ import Vulkan.Screenshot
 -- A few simple routines shared by some examples.
 
 recordSimpleIndexedDrawCall
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkCommandPool
   -> Vulkan.VkFramebuffer
@@ -95,7 +93,7 @@ recordSimpleIndexedDrawCall
 
 
 recordSimpleDispatch
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkCommandPool
   -> Vulkan.VkDescriptorSet
@@ -153,7 +151,7 @@ recordSimpleDispatch
 
 
 simpleRenderPass
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkDevice
   -> SubpassAttachments (Vulkan.VkAttachmentDescription, AttachmentType)
   -> m Vulkan.VkRenderPass

@@ -35,9 +35,9 @@ import GHC.Generics
 import Control.Lens
   ( use, assign )
 
--- managed
-import Control.Monad.Managed
-  ( runManaged )
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug, logInfo )
 
 -- sdl2
 import qualified SDL
@@ -52,8 +52,6 @@ import qualified Data.Text.Short as ShortText
 -- transformers
 import Control.Monad.IO.Class
   ( liftIO )
-import Control.Monad.Trans.State.Lazy
-  ( evalStateT )
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
@@ -203,7 +201,7 @@ clearValues =
 -- Application.
 
 fullPipeline :: IO ()
-fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
+fullPipeline = runVulkan initialState do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -211,7 +209,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
   ( reqs :: ModuleRequirements ) <-
     case shaderCompilationResult of
       Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
-      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
+      Right reqs -> logInfo ( "Shaders were succesfully compiled." ) *> pure reqs
 
   -------------------------------------------
   -- Initialise window and Vulkan context.
@@ -276,7 +274,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
         Default2DImageInfo extent3D depthFmt
           Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 
-    renderPass <- logMsg "Creating a render pass" *>
+    renderPass <- logDebug "Creating a render pass" *>
       simpleRenderPass device
         ( noAttachments
           { colorAttachments = [ presentableColorAttachmentDescription colFmt ]
@@ -285,7 +283,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
         )
 
     framebuffersWithAttachments
-      <- logMsg "Creating frame buffers"
+      <- logDebug "Creating frame buffers"
         *> ( for swapchainImages $ \swapchainImage -> do
 
           colorImageView
@@ -338,7 +336,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
     queue       <- getQueue device 0
 
     nextImageSem <- createSemaphore device
@@ -346,7 +344,7 @@ fullPipeline = ( runManaged . ( `evalStateT` initialState ) ) do
 
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT
 
-    vkPipeline
+    ( vkPipeline, _ )
       <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
 

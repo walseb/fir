@@ -32,9 +32,9 @@ import GHC.Generics
 import Control.Lens
   ( use, assign )
 
--- managed
-import Control.Monad.Managed
-  ( runManaged )
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug, logInfo )
 
 -- sdl2
 import qualified SDL
@@ -50,8 +50,6 @@ import qualified Data.Text.Short as ShortText
 -- transformers
 import Control.Monad.IO.Class
   ( liftIO )
-import Control.Monad.Trans.State.Lazy
-  ( evalStateT )
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
@@ -154,7 +152,7 @@ clearValue = Vulkan.createVk ( Vulkan.set @"color" black )
 -- Application.
 
 juliaSet :: IO ()
-juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
+juliaSet = runVulkan initialState do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -162,7 +160,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
   ( reqs :: ModuleRequirements ) <-
     case shaderCompilationResult of
       Left  err  -> error $ "Shader compilation was unsuccessful:\n" <> ShortText.unpack err
-      Right reqs -> logMsg ( "Shaders were succesfully compiled." ) *> pure reqs
+      Right reqs -> logInfo ( "Shaders were succesfully compiled." ) *> pure reqs
 
   -------------------------------------------
   -- Initialise window and Vulkan context.
@@ -221,14 +219,14 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
       colFmt :: Vulkan.VkFormat
       colFmt = Vulkan.getField @"format" surfaceFormat
 
-    renderPass <- logMsg "Creating a render pass" *>
+    renderPass <- logDebug "Creating a render pass" *>
       simpleRenderPass device
         ( noAttachments
           { colorAttachments = [ presentableColorAttachmentDescription colFmt ] }
         )
 
     framebuffersWithAttachments
-      <- logMsg "Creating frame buffers"
+      <- logDebug "Creating frame buffers"
         *> ( for swapchainImages $ \swapchainImage -> do
 
             colorImageView
@@ -265,7 +263,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    commandPool <- logMsg "Creating command pool" *> createCommandPool device queueFamilyIndex
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
     queue       <- getQueue device 0
 
     nextImageSem <- createSemaphore device
@@ -273,7 +271,7 @@ juliaSet = ( runManaged . ( `evalStateT` initialState ) ) do
 
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT
 
-    vkPipeline
+    ( vkPipeline, _ )
       <- createGraphicsPipeline device renderPass pipelineInfo descriptorSetLayout shaderPipeline
 
 

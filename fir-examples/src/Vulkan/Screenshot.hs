@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -34,9 +35,9 @@ import Codec.Picture.Types
 import Codec.Picture.Png
   ( writePng )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged, liftIO )
+-- transformers
+import Control.Monad.IO.Class
+  ( liftIO )
 
 -- vector
 import qualified Data.Vector.Storable as Vector
@@ -51,12 +52,11 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 -- fir-examples
 import Vulkan.Backend
 import Vulkan.Monad
-  ( allocaAndPeek, throwVkResult )
 
 ----------------------------------------------------------------------------
 
 createScreenshotImage
-  :: MonadManaged m
+  :: MonadVulkan m
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> ImageInfo
@@ -75,7 +75,7 @@ screenshotImageInfo swapchainExtent3D colFmt =
     { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR } -- host visible image needs linear tiling
 
 cmdTakeScreenshot
-  :: MonadManaged m
+  :: MonadVulkan m
   => ( Vulkan.VkPipelineStageFlags, Vulkan.VkAccessFlags )
   -> Vulkan.VkCommandBuffer
   -> Vulkan.VkExtent3D
@@ -147,7 +147,7 @@ cmdTakeScreenshot screenshotAfterFlags commandBuffer swapchainExtent3D
               )
 
 writeScreenshotData
-  :: MonadManaged m
+  :: MonadVulkan m
   => FilePath
   -> Vulkan.VkDevice
   -> Vulkan.VkExtent2D

@@ -3,6 +3,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -29,15 +30,23 @@ import qualified Codec.Picture as JP
   , imageWidth, imageHeight, imageData
   )
 
--- managed
-import Control.Monad.Managed
-  ( MonadManaged )
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug, logError )
+
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( allocate )
 
 -- sdl2
 import qualified SDL
 import qualified SDL.Internal.Types as SDL
 import qualified SDL.Raw
 import qualified SDL.Video.Vulkan
+
+-- text
+import qualified Data.Text as Text
+  ( pack )
 
 -- text-short
 import Data.Text.Short
@@ -57,24 +66,23 @@ import qualified Graphics.Vulkan as Vulkan
 
 -- fir-examples
 import Vulkan.Monad
-  ( logMsg, manageBracket )
 
 -----------------------------------------------------------------------------------------------------
 
-enableSDLLogging :: MonadIO m => m ()
+enableSDLLogging :: MonadVulkan m => m ()
 enableSDLLogging =
   SDL.Raw.logSetAllPriority SDL.Raw.SDL_LOG_PRIORITY_VERBOSE
 
 
-initializeSDL :: MonadIO m => SDL.LocationMode -> m ()
+initializeSDL :: MonadVulkan m => SDL.LocationMode -> m ()
 initializeSDL mouseLocationMode = do
-  logMsg "Initializing SDL" *> SDL.initialize [ SDL.InitVideo ]
+  logDebug "Initializing SDL" *> SDL.initialize [ SDL.InitVideo ]
   void ( SDL.setMouseLocationMode mouseLocationMode )
 
 
-createWindow :: MonadManaged m => Foreign.CInt -> Foreign.CInt -> ShortText -> m SDL.Window
+createWindow :: MonadVulkan m => Foreign.CInt -> Foreign.CInt -> ShortText -> m SDL.Window
 createWindow x y title =
-  manageBracket
+  snd <$> allocate
     ( SDL.createWindow
               ( fromString ( ShortText.unpack title ) )
               SDL.defaultWindow
@@ -84,30 +92,31 @@ createWindow x y title =
     )
     SDL.destroyWindow
 
-setWindowIcon :: MonadIO m => SDL.Window -> FilePath -> m ()
-setWindowIcon (SDL.Window window) iconPath = liftIO $
-  fmap JP.convertRGBA8 <$> JP.readImage iconPath
-  >>= \case
+setWindowIcon :: MonadVulkan m => SDL.Window -> FilePath -> m ()
+setWindowIcon (SDL.Window window) iconPath = do
+  imgData <- liftIO $ fmap JP.convertRGBA8 <$> JP.readImage iconPath
+  case imgData of
     Left _
-      -> putStrLn $ "Could not load icon from filepath \"" <> iconPath <> "\"."
+      -> logError ( "Could not load icon from filepath \"" <> Text.pack iconPath <> "\"." )
     Right icon
-      -> let
-           iconWidth  = JP.imageWidth  icon
-           iconHeight = JP.imageHeight icon
-           iconData   = JP.imageData   icon
-         in do
-          SDL.Raw.setWindowIcon window
-            =<<
-            ( Vector.unsafeWith iconData \ iconDataPtr ->
-              SDL.Raw.createRGBSurfaceFrom
-                ( castPtr iconDataPtr )
-                ( fromIntegral iconWidth  )
-                ( fromIntegral iconHeight )
-                32
-                ( 4 * fromIntegral iconWidth )
-                0x000000ff 0x0000ff00 0x00ff0000 0xff000000
-            )
-          putStrLn $ "Set window icon using \"" <> iconPath <> "\"."
+      -> do
+            let
+              iconWidth  = JP.imageWidth  icon
+              iconHeight = JP.imageHeight icon
+              iconData   = JP.imageData   icon
+            iconSurface <-
+              liftIO
+                ( Vector.unsafeWith iconData \ iconDataPtr ->
+                  SDL.Raw.createRGBSurfaceFrom
+                    ( castPtr iconDataPtr )
+                    ( fromIntegral iconWidth  )
+                    ( fromIntegral iconHeight )
+                    32
+                    ( 4 * fromIntegral iconWidth )
+                    0x000000ff 0x0000ff00 0x00ff0000 0xff000000
+                )
+            liftIO $ SDL.Raw.setWindowIcon window iconSurface
+            logDebug ( "Set window icon using \"" <> Text.pack iconPath <> "\"." )
 
 createSurface
   :: MonadIO m
