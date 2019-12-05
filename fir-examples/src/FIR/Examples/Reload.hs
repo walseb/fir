@@ -29,7 +29,7 @@ import qualified Data.Set as Set
 
 -- filepath
 import System.FilePath
-  ( takeFileName )
+  ( takeFileName, equalFilePath )
 
 -- fsnotify
 import qualified System.FSNotify as FSNotify
@@ -217,7 +217,7 @@ loadNewShaders
 loadNewShaders device shaders modifiedPaths =
   ( `runStateT` [] ) $ for shaders \ oldShader@( path, ( oldKey, _ ) ) -> do
     let name = takeFileName path
-    if any ( ( == name ) . takeFileName ) modifiedPaths
+    if any ( equalFilePath path ) modifiedPaths
     then do
       ( newKey, newModule ) <- lift $ loadShader device path
       modify ( oldKey : )

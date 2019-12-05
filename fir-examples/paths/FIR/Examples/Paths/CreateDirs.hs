@@ -11,7 +11,7 @@ import Language.Haskell.TH.Syntax
 
 -- directory
 import System.Directory
-  ( createDirectoryIfMissing )
+  ( canonicalizePath, createDirectoryIfMissing )
 
 -- filepath
 import System.FilePath
@@ -31,4 +31,4 @@ createSubDir io_dir subdir = runIO do
   pure ( LitE ( StringL fulldir ) )
 
 createDataSubDir :: FilePath -> Q Exp
-createDataSubDir = createSubDir getDataDir
+createDataSubDir = createSubDir ( canonicalizePath =<< getDataDir )
