@@ -70,27 +70,28 @@ for the Vulkan SDK on Linux.
 
 The examples support shader hot reloading, detecting when any of the used SPIR-V files are modified on disk.    
 
-For interactive coding, `ghcid` can be useful. In the `fir-examples` folder, run:    
+For interactive coding, `ghcid` can be useful, e.g.:
 
 `ghcid -c "cabal repl ShaderFile" -WT "compileAction"`    
 
 This command watches the Haskell module `ShaderFile`, reloading it on changes,
 and runs the action `compileAction` each time the module successfully loads.  
 
-Use this with one of the examples as follows:
+To illustrate, consider interactively editing the fragment shader used in the Julia set example, as follows:   
+
   * Start the executable with `cabal run JuliaSet`.
     The executable will watch for shaders changing on disk.    
     Note: you might want to run the executable in the background:
       - `cabal run JuliaSet &` on Linux/macOS.
       - `start /b cabal run JuliaSet` on Windows.
-  * Enable live recompilation of the source:    
+  * Enable live recompilation of the fragment shader:    
     `ghcid -c "cabal repl FIR.Examples.JuliaSet.Shaders" -WT "compileFragmentShader"`    
-    This will save modifications to the fragment shader to disk.   
+    This will save changes to the fragment shader to disk.   
 
 Remarks:
 
   * The `-WT` flag to `ghcid` is used to specify an action to run upon loading,
-    even when there were warnings.
+    even when warnings were emitted.
   * The shader files used by the examples are, by default, located
     in the directory `fir/fir-examples/shaders`.
     These are the files that will be watched by the application to check when to reload.
