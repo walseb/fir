@@ -5,6 +5,7 @@
   - [Linux](#linux)
 * [Hot reloading](#hotreloading)
 * [Overview of examples](#overview)
+  - [Kerr space-time](#kerr)
   - [Full graphics pipeline](#fullpipeline)
   - [FIR logo](#logo)
   - [Hopf fibration](#hopf)
@@ -99,6 +100,15 @@ Remarks:
 
 <a name="overview"></a>
 ## Overview of examples
+
+<a name="kerr"></a>
+### Kerr space-time
+<div align="center">
+<a href="../img/kerr_large.png"><img src="../img/kerr_small.png" alt="Kerr"></a> <br>
+[Application](examples/apps/FIR/Examples/Kerr/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Kerr/Shaders.hs)
+</div>
+
+Render of a rotating black hole with a tilted accretion disk (relativistic ray-tracing in Kerr space time).
 
 <a name="fullpipeline"></a>
 ### Full graphics pipeline

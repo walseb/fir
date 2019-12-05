@@ -59,6 +59,7 @@ See also the library's [issue tracker](https://gitlab.com/sheaf/fir/issues) for 
 # Examples
 
 <div align="center">
+<a href="img/kerr_large.png"><img src="img/kerr.png" alt="Kerr space-time"></a> <br>
 <a href="fir-examples/readme.md#fullpipeline"><img src="img/full_pipeline_small.png" alt="Full graphics pipeline"></a> <a href="fir-examples/readme.md#logo"><img src="img/logo_small.png" alt="FIR logo (compute shader)"></a> <a href="fir-examples/readme.md#hopf"><img src="img/hopf_small.png" alt="Hopf fibration"></a> <a href="fir-examples/readme.md#texture"><img src="img/texture_small.png" alt="Texture sampling"></a> <a href="fir-examples/readme.md#julia"><img src="img/julia_small.png" alt="Julia set"></a> <a href="fir-examples/readme.md#offscreen"><img src="img/offscreen_small.png" alt="Offscreen rendering"></a> <a href="fir-examples/readme.md#bezier"><img src="img/bezier_small.png" alt="Bézier curves"></a> 
 </div>
 
