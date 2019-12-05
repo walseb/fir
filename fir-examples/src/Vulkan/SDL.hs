@@ -44,15 +44,11 @@ import qualified SDL.Internal.Types as SDL
 import qualified SDL.Raw
 import qualified SDL.Video.Vulkan
 
--- text
-import qualified Data.Text as Text
-  ( pack )
-
 -- text-short
 import Data.Text.Short
   ( ShortText )
 import qualified Data.Text.Short as ShortText
-  ( unpack )
+  ( pack, unpack )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -97,7 +93,7 @@ setWindowIcon (SDL.Window window) iconPath = do
   imgData <- liftIO $ fmap JP.convertRGBA8 <$> JP.readImage iconPath
   case imgData of
     Left _
-      -> logError ( "Could not load icon from filepath \"" <> Text.pack iconPath <> "\"." )
+      -> logError ( "Could not load icon from filepath \"" <> ShortText.pack iconPath <> "\"." )
     Right icon
       -> do
             let
@@ -116,7 +112,7 @@ setWindowIcon (SDL.Window window) iconPath = do
                     0x000000ff 0x0000ff00 0x00ff0000 0xff000000
                 )
             liftIO $ SDL.Raw.setWindowIcon window iconSurface
-            logDebug ( "Set window icon using \"" <> Text.pack iconPath <> "\"." )
+            logDebug ( "Set window icon using \"" <> ShortText.pack iconPath <> "\"." )
 
 createSurface
   :: MonadIO m

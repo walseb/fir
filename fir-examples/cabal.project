@@ -3,3 +3,10 @@ packages: .
 
 constraints:
   sdl2 +no-linear
+
+allow-newer:
+  unix-compat:time
+
+-- GHC package environment files needed to be able to load shaders in GHCi
+-- (using 'cabal repl' loads the whole project, which is not wanted when reloading shaders)
+write-ghc-environment-files: always

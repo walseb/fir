@@ -1,7 +1,6 @@
 .stack-work/
 dist/
 dist-newstyle/
-shaders/
 docs/
 .ghc.*
 *.html

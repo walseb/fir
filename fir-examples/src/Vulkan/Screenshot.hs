@@ -50,6 +50,8 @@ import qualified Graphics.Vulkan.Core_1_0       as Vulkan
 import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir-examples
+import FIR.Examples.Paths
+  ( screenshotDir )
 import Vulkan.Backend
 import Vulkan.Monad
 
@@ -179,7 +181,7 @@ writeScreenshotData screenshotPath device extent2D screenshotImageMemory = liftI
     <- Image imageWidth imageHeight . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
   writePng
-    ( "screenshots" </> screenshotPath <.> "png" )
+    ( screenshotDir </> screenshotPath <.> "png" )
     imageData
 
   Vulkan.vkUnmapMemory device screenshotImageMemory

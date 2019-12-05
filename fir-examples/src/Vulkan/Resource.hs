@@ -175,11 +175,11 @@ type SampledImages    i st = Descriptors ( Image Sample ) i st
 
 ----------------------------------------------------------------------------
 
-data PostInitialisationResult m resources n
+data PostInitialisationResult resources n
   = PostInitialisationResult
       { resourceLayout       :: Vulkan.VkDescriptorSetLayout
       , resourceDescriptors  :: V.Vector n Vulkan.VkDescriptorSet
-      , bindBuffersCommand   :: MonadVulkan m => Vulkan.VkCommandBuffer -> m ()
+      , bindBuffersCommand   :: forall v. MonadVulkan v => Vulkan.VkCommandBuffer -> v ()
       , initialisedResources :: resources n Post
       }
 
@@ -200,7 +200,7 @@ initialiseResources
   -> Vulkan.VkDevice
   -> resources n Named
   -> resources n Pre
-  -> m (PostInitialisationResult m resources n)
+  -> m (PostInitialisationResult resources n)
 initialiseResources physicalDevice device resourceFlags resourcesPre = do
   let
     descriptorTypesAndFlags :: [ (Vulkan.VkDescriptorType, Vulkan.VkShaderStageFlags) ]
@@ -247,7 +247,7 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
         resourcesPost
         ( [], [] )
 
-    bindingCommand :: Vulkan.VkCommandBuffer -> m ()
+    bindingCommand :: forall v. MonadVulkan v => Vulkan.VkCommandBuffer -> v ()
     bindingCommand = bufferBindingCommand ( listToMaybe indexBuffers ) vertexBuffers
 
   pure

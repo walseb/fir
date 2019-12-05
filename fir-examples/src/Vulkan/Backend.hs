@@ -46,7 +46,7 @@ import Data.Finite
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( allocate )
+  ( ReleaseKey, allocate )
 
 -- sdl2
 import qualified SDL.Video.Vulkan
@@ -599,7 +599,7 @@ allocateCommandBuffer
   :: MonadVulkan m
   => Vulkan.VkDevice
   -> Vulkan.VkCommandPool
-  -> m Vulkan.VkCommandBuffer
+  -> m ( ReleaseKey, Vulkan.VkCommandBuffer )
 allocateCommandBuffer dev commandPool =
   let
     allocInfo :: Vulkan.VkCommandBufferAllocateInfo
@@ -612,17 +612,16 @@ allocateCommandBuffer dev commandPool =
         &* Vulkan.set @"commandBufferCount" 1
         )
   in
-    snd <$>
-      allocate
-        ( allocaAndPeek
-            ( Vulkan.vkAllocateCommandBuffers dev ( Vulkan.unsafePtr allocInfo )
-                >=> throwVkResult
-            )
-        )
-        ( \ a ->
-            Foreign.Marshal.withArray [ a ]
-              ( Vulkan.vkFreeCommandBuffers dev commandPool 1 )
-        )
+    allocate
+      ( allocaAndPeek
+          ( Vulkan.vkAllocateCommandBuffers dev ( Vulkan.unsafePtr allocInfo )
+              >=> throwVkResult
+          )
+      )
+      ( \ a ->
+          Foreign.Marshal.withArray [ a ]
+            ( Vulkan.vkFreeCommandBuffers dev commandPool 1 )
+      )
 
 
 cmdBeginRenderPass

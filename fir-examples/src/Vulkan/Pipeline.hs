@@ -258,6 +258,7 @@ data VkPipelineInfo
   , vkPipelineLayout    :: Vulkan.VkPipelineLayout
   }
 
+
 data VkPipeline
   = GraphicsPipeline { vkPipeline :: Vulkan.VkPipeline }
   | ComputePipeline  { vkPipeline :: Vulkan.VkPipeline }

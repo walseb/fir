@@ -15,6 +15,8 @@ module Vulkan.Context where
 -- base
 import Data.Bits
   ( (.|.) )
+import Data.Maybe
+  ( fromMaybe )
 import Data.Kind
   ( Type )
 import Foreign.C.String
@@ -25,8 +27,12 @@ import GHC.TypeLits
   ( KnownNat )
 
 -- bytestring
-import qualified Data.ByteString.Unsafe as ByteString
-  ( unsafePackCString )
+import qualified Data.ByteString.Short as ShortByteString
+  ( packCString )
+
+-- filepath
+import System.FilePath
+  ( (</>) )
 
 -- logging-effect
 import Control.Monad.Log
@@ -35,17 +41,11 @@ import Control.Monad.Log
 -- sdl2
 import qualified SDL
 
--- text
-import Data.Text
-  ( Text )
-import qualified Data.Text          as Text
-  ( unwords )
-import qualified Data.Text.Encoding as Text
-  ( decodeUtf8 )
-
 -- text-short
 import Data.Text.Short
   ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( intercalate, fromShortByteString )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -61,6 +61,8 @@ import qualified Graphics.Vulkan.Core_1_0             as Vulkan
 import qualified Graphics.Vulkan.Ext.VK_KHR_surface   as Vulkan
 
 -- fir-examples
+import FIR.Examples.Paths
+  ( assetDir )
 import Vulkan.Backend
 import Vulkan.Monad
 import Vulkan.SDL
@@ -138,14 +140,14 @@ initialiseWindow WindowInfo { .. } = do
   enableSDLLogging
   initializeSDL mouseMode
   window           <- logDebug "Creating SDL window"           *> createWindow width height windowName
-  setWindowIcon window "assets/fir_logo.png"
+  setWindowIcon window ( assetDir </> "fir_logo.png" )
   neededExtensions <- logDebug "Loading needed extensions"     *> getNeededExtensions window
   extensionNames   <- traverse ( liftIO . peekCString ) neededExtensions
-  logInfo $ "Needed instance extensions are: " <> ( Text.unwords extensionNames )
+  logInfo $ "Needed instance extensions are: " <> ( ShortText.intercalate ", " extensionNames )
   pure ( window, neededExtensions )
 
-peekCString :: CString -> IO Text
-peekCString = fmap Text.decodeUtf8 . ByteString.unsafePackCString
+peekCString :: CString -> IO ShortText
+peekCString = fmap ( fromMaybe "???" . ShortText.fromShortByteString ) . ShortByteString.packCString
 
 initialiseContext
   :: forall ctx m. ( KnownRenderingContext ctx, MonadVulkan m )

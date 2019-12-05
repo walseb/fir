@@ -250,14 +250,23 @@ import GHC.Generics
 import qualified Language.Haskell.TH        as TH
 import qualified Language.Haskell.TH.Syntax as TH
 
+-- atomic-file-ops
+import System.IO.AtomicFileOps
+  ( atomicReplaceFile )
+
 -- bytestring
 import qualified Data.ByteString.Lazy as ByteString
+  ( writeFile )
 import Data.ByteString.Lazy
   ( ByteString )
 
 -- containers
 import Data.Set
   ( Set )
+
+-- directory
+import System.Directory
+  ( doesFileExist )
 
 -- generic-monoid
 import Data.Monoid.Generic
@@ -388,9 +397,15 @@ class CompilableProgram prog where
         -> Prelude.pure (Left err)
       Right (mbBin, reqs)
         | Just (ModuleBinary bytes) <- mbBin
-        -> ( ByteString.writeFile filePath bytes ) *> Prelude.pure ( Right reqs )
+        -> writeBytesAtomically bytes *> Prelude.pure ( Right reqs )
         | otherwise
         -> Prelude.pure ( Right reqs )
+    where
+      writeBytesAtomically :: ByteString -> IO ()
+      writeBytesAtomically bytes = 
+       doesFileExist filePath Prelude.>>= \case
+         False -> ByteString.writeFile      filePath bytes
+         True  -> atomicReplaceFile Nothing filePath bytes
 
 instance ( KnownDefinitions defs ) => CompilableProgram (Module defs) where
   compile flags (Module program)

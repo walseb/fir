@@ -10,11 +10,14 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
 module Vulkan.Monad where
 
 -- base
+import Control.Category
+  ( (>>>) )
 import Control.Monad
   ( (>=>) )
 import qualified Foreign
@@ -39,11 +42,11 @@ import Control.Monad.Trans.Resource
   , ReleaseKey, allocate
   )
 
--- text
-import Data.Text
-  ( Text )
-import qualified Data.Text.IO as Text
-  ( putStrLn )
+-- short-text
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( unpack )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -62,7 +65,7 @@ import qualified Graphics.Vulkan.Core_1_0 as Vulkan
 
 type MonadVulkan m = ( MonadLog LogMessage m, MonadIO m, MonadResource m )
 
-type LogMessage = WithSeverity Text
+type LogMessage = WithSeverity ShortText
 type Handler    = LogMessage -> ResourceT IO ()
 
 newtype VulkanMonad s a =
@@ -79,29 +82,34 @@ deriving newtype instance MonadIO             (VulkanMonad s)
 deriving via ( StateT s (ReaderT Handler (ResourceT IO) ) )
   instance MonadResource (VulkanMonad s)
 
-runVulkan :: VulkanMonad s a -> s -> IO a
-runVulkan m s
-  = runResourceT
-  . ( `runLoggingT` logHandler )
-  . ( `evalStateT` s )
-  . runVulkanMonad
-  $ m
+deriving via (ReaderT Handler (ResourceT IO) )
+  instance MonadResource (LoggingT LogMessage (ResourceT IO))
+
+runVulkan :: s -> VulkanMonad s a -> IO a
+runVulkan s
+  =    runVulkanMonad
+  >>> ( `evalStateT` s )
+  >>> ( `runLoggingT` logHandler )
+  >>> runResourceT
+
+statelessly :: LoggingT LogMessage (ResourceT IO) a -> VulkanMonad s a
+statelessly ma = VulkanMonad ( StateT \s -> ( , s ) <$> ma )
 
 ----------------------------------------------------------------------------
 -- Logging.
 
 logHandler :: MonadIO m => LogMessage -> m ()
 logHandler ( WithSeverity sev mess )
-  = liftIO $ Text.putStrLn ( showSeverity sev <> "  " <> mess )
+  = liftIO . putStrLn . ShortText.unpack $ showSeverity sev <> " " <> mess
 
-showSeverity :: Severity -> Text
-showSeverity Emergency     = "[EMERGENCY]"
-showSeverity Alert         = "[ALERT]"
-showSeverity Critical      = "[CRIT]"
-showSeverity Error         = "[ERR]"
-showSeverity Warning       = "[WARN]"
-showSeverity Notice        = "(note)"
-showSeverity Informational = "(info)"
+showSeverity :: Severity -> ShortText
+showSeverity Emergency     = "! PANIC !"
+showSeverity Alert         = "! ALERT !"
+showSeverity Critical      = "! CRIT !"
+showSeverity Error         = "[ERR]  "
+showSeverity Warning       = "[WARN] "
+showSeverity Notice        = "(note) "
+showSeverity Informational = "(info) "
 showSeverity Debug         = "(debug)"
 
 ----------------------------------------------------------------------------
