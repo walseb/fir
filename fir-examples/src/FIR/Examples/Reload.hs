@@ -39,11 +39,11 @@ import System.FSNotify
 
 -- logging-effect
 import Control.Monad.Log
-  ( LoggingT, logDebug, logInfo )
+  ( logDebug, logInfo )
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( ResourceT, ReleaseKey, allocate, release )
+  ( ReleaseKey, allocate, release )
 
 -- text-short
 import Data.Text.Short
@@ -71,7 +71,7 @@ import Control.Monad.Trans.State.Strict
 
 -- unliftio-core
 import Control.Monad.IO.Unlift
-  ( askRunInIO )
+  ( MonadUnliftIO, askRunInIO )
 
 -- vulkan-api
 import qualified Graphics.Vulkan as Vulkan
@@ -97,13 +97,13 @@ readTVarWithCleanup tvar = do
   pure x
 
 shaderReloadWatcher
-  :: forall t s m l r
-  . ( Traversable t, m ~ VulkanMonad s, l ~ LoggingT LogMessage (ResourceT IO) )
+  :: forall t l r
+  . ( Traversable t, MonadVulkan l, MonadUnliftIO l )
   => Vulkan.VkDevice
   -> t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) )
   -> ( t Vulkan.VkShaderModule -> l ( l (), r ) )
-  -> m ( TVar ( ( l () , r ), l () ) )
-shaderReloadWatcher device shaders createFromShaders = statelessly do
+  -> l ( TVar ( ( l () , r ), l () ) )
+shaderReloadWatcher device shaders createFromShaders = do
   logDebug "Starting shader reload watcher."
   originalResources  <- createFromShaders $ fmap ( snd . snd ) shaders
   resourcesTVar      <- liftIO $ newTVarIO ( originalResources, pure () )
@@ -209,14 +209,13 @@ resourceReloader device shaders createFromShaders modifiedFilesTMVar resourcesTV
             outerLoop newShaders
 
 loadNewShaders
-  :: ( MonadVulkan m, Traversable t )
+  :: ( MonadVulkan l, Traversable t )
   => Vulkan.VkDevice
   -> t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) )
   -> Set FilePath
-  -> m ( t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) ), [ ReleaseKey ] )
+  -> l ( t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) ), [ ReleaseKey ] )
 loadNewShaders device shaders modifiedPaths =
-  ( `runStateT` [] ) $ for shaders \ oldShader@( path, ( oldKey, _ ) ) -> do
-    let name = takeFileName path
+  ( `runStateT` [] ) $ for shaders \ oldShader@( path, ( oldKey, _ ) ) ->
     if any ( equalFilePath path ) modifiedPaths
     then do
       ( newKey, newModule ) <- lift $ loadShader device path

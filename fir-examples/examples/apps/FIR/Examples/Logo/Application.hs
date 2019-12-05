@@ -295,7 +295,7 @@ logo = runVulkan initialStateLogo do
 
     -- launch shader reload watcher, which writes command buffers to use to a TVar
     resourcesTVar <-
-      shaderReloadWatcher device
+      statelessly $ shaderReloadWatcher device
         ( Identity (compPath, shader) )
         recordAllCommandsFromShaders
 

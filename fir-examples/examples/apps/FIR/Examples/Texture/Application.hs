@@ -510,7 +510,7 @@ texture = runVulkan initialState do
         recordScreenshotCommandBuffers
 
     -- launch shader reload watcher, which writes command buffers to use to a TVar
-    resourcesTVar <- shaderReloadWatcher device shaders recordAllCommandsFromShaders
+    resourcesTVar <- statelessly $ shaderReloadWatcher device shaders recordAllCommandsFromShaders
 
     mainLoop do
 
