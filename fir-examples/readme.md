@@ -104,7 +104,7 @@ Remarks:
 ### Full graphics pipeline
 <div align="center">
 ![FullPipeline](../img/full_pipeline.png) <br>
-[Application](src/Examples/FullPipeline/Application.hs)   •   [Shaders](src/Examples/FullPipeline/Shaders.hs)
+[Application](examples/apps/FIR/Examples/FullPipeline/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/FullPipeline/Shaders.hs)
 </div>
 
 A graphics pipeline containing all shader stages.
@@ -113,7 +113,7 @@ A graphics pipeline containing all shader stages.
 ### FIR logo
 <div align="center">
 ![Logo](../img/logo.png) <br>
-[Application](src/Examples/Logo/Application.hs)   •   [Shaders](src/Examples/Logo/Shaders.hs)
+[Application](examples/apps/FIR/Examples/Logo/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Logo/Shaders.hs)
 </div>
 
 Rendering the FIR logo using simple ray tracing in a compute shader.
@@ -122,7 +122,7 @@ Rendering the FIR logo using simple ray tracing in a compute shader.
 ### Hopf fibration
 <div align="center">
 ![Hopf](../img/hopf.png) <br>
-[Application](src/Examples/Hopf/Application.hs)   •   [Shaders](src/Examples/Hopf/Shaders.hs)
+[Application](examples/apps/FIR/Examples/Hopf/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Hopf/Shaders.hs)
 </div>
 
 Illustration of fibers in the Hopf fibration; each circle is thickened out to a torus using a tessellation shader.
@@ -134,7 +134,7 @@ Also illustrates how to specify location and component layout information in sha
 ### Texture sampling
 <div align="center">
 ![Texture](../img/texture.png) <br>
-[Application](src/Examples/Texture/Application.hs)   •   [Shaders](src/Examples/Texture/Shaders.hs)
+[Application](examples/apps/FIR/Examples/Texture/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Texture/Shaders.hs)
 </div>
 
 Demonstrates how to sample a texture.
@@ -143,7 +143,7 @@ Demonstrates how to sample a texture.
 ### Julia set
 <div align="center">
 ![JuliaSet](../img/julia.png) <br>
-[Application](src/Examples/Julia/Application.hs)   •   [Shaders](src/Examples/Julia/Shaders.hs)
+[Application](examples/apps/FIR/Examples/JuliaSet/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/JuliaSet/Shaders.hs)
 </div>
 
 Interactive Julia set rendering, computed within a fragment shader.
@@ -152,7 +152,7 @@ Interactive Julia set rendering, computed within a fragment shader.
 ### Offscreen rendering
 <div align="center">
 ![Offscreen](../img/offscreen.png) <br>
-[Application](src/Examples/Offscreen/Application.hs)   •   [Shaders](src/Examples/Offscreen/Shaders.hs)
+[Application](examples/apps/FIR/Examples/Offscreen/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Offscreen/Shaders.hs)
 </div>
 
 Offscreen rendering of a single frame.
@@ -161,7 +161,7 @@ Offscreen rendering of a single frame.
 ### Bézier curves
 <div align="center">
 ![Bezier](../img/bezier.png) <br>
-[Application](src/Examples/Bezier/Application.hs)   •   [Shaders](src/Examples/Bezier/Shaders.hs)
+[Application](examples/apps/FIR/Examples/Bezier/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Bezier/Shaders.hs)
 </div>
 
 Work in progress: rendering Bézier curves using tessellation and geometry shaders.

@@ -71,7 +71,7 @@ Upon completion, the documentation can be found in `fir/dist-newstyle/build/{arc
 <a name="examples"></a>
 ### Installing the built-in examples
 
-Some [simple examples](fir-examples/readme.md) are included, which use the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings.
+Some [illustrative examples](fir-examples/readme.md) are included, which use the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings.
 Refer to the examples page for further information about the examples, including installation instructions.
 
 
@@ -489,7 +489,7 @@ which contains the following information:
     
     Note that we have to specify layout information using location and component slots, as explained in [FIR.Validation.Layout](src/FIR/Validation/Layout.hs).
     
-    See also the [shaders from the Hopf fibration example](fir-examples/src/Examples/Hopf/Shaders.hs), which illustrate the usage of this layout information.
+    See also the [shaders from the Hopf fibration example](fir-examples/examples/shaders/FIR/Examples/Hopf/Shaders.hs), which illustrate the usage of this layout information.
 
   * The shaders which make up the pipeline, with their associated filepaths.
 
