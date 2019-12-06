@@ -410,7 +410,7 @@ bufferBindingCommand mbIndexBuffer vertexBuffers commandBuffer = do
           offsets
 
   case mbIndexBuffer of
-    Nothing                 -> pure ()
+    Nothing               -> pure ()
     Just ( buff, ixType ) ->
       liftIO $
         Vulkan.vkCmdBindIndexBuffer
