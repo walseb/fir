@@ -63,14 +63,16 @@ See also the library's [issue tracker](https://gitlab.com/sheaf/fir/issues) for 
 <a href="fir-examples/readme.md#fullpipeline"><img src="img/full_pipeline_small.png" alt="Full graphics pipeline"></a> <a href="fir-examples/readme.md#logo"><img src="img/logo_small.png" alt="FIR logo (compute shader)"></a> <a href="fir-examples/readme.md#hopf"><img src="img/hopf_small.png" alt="Hopf fibration"></a> <a href="fir-examples/readme.md#texture"><img src="img/texture_small.png" alt="Texture sampling"></a> <a href="fir-examples/readme.md#julia"><img src="img/julia_small.png" alt="Julia set"></a> <a href="fir-examples/readme.md#offscreen"><img src="img/offscreen_small.png" alt="Offscreen rendering"></a> <a href="fir-examples/readme.md#bezier"><img src="img/bezier_small.png" alt="Bézier curves"></a> 
 </div>
 
-Some examples are included in the **fir-examples** subdirectory. Shaders can be hot-reloaded, so feel free to play around with them!
+Usage examples are included in the **fir-examples** subdirectory.     
+Shaders can be hot-reloaded, so feel free to play around with them!    
+
 See the [examples readme](fir-examples/readme.md) for installation instructions and further information.
 
 
 <a name="getting-started"></a>
 # Getting started
 
-See [getting started](getting_started.md) for help on getting started, including:
+See [getting started](getting_started.md) for help on getting started with this library, including:
   * installation instructions,
   * a simple vertex shader example,
   * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools,

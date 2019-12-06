@@ -27,7 +27,7 @@ Once these dependencies are installed, you should be able to run:
 
 ```
 > cd fir-examples
-> cabal build
+> cabal build Example
 > cabal run Example
 ```
 
@@ -108,7 +108,9 @@ Remarks:
 [Application](examples/apps/FIR/Examples/Kerr/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Kerr/Shaders.hs)
 </div>
 
-Render of a rotating black hole with a tilted accretion disk (relativistic ray-tracing in Kerr space time).
+Render of a rotating black hole with a tilted accretion disk.    
+
+Consists of a compute shader using a Runge–Kutta numerical integrator to solve the geodesic equations of Kerr space-time backwards in time (relativistic ray-tracing).
 
 <a name="fullpipeline"></a>
 ### Full graphics pipeline
