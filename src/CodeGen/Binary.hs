@@ -9,6 +9,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
+{-|
+Module: CodeGen.Binary
+
+Emitting SPIR-V binary data.
+-}
+
 module CodeGen.Binary
   ( putModule
   , instruction

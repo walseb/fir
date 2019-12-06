@@ -1,5 +1,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
+{-|
+Module: CodeGen.Phi
+
+Code generation for ϕ-functions, which enables definition of variables in branches when using an SSA form.
+
+See also "CodeGen.CFG" which does code generation for the control flow operation themselves.
+-}
+
 module CodeGen.Phi
   ( phiInstruction, phiInstructions )
   where

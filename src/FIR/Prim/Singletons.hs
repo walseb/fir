@@ -21,6 +21,9 @@ This module contains singletons machinery that is necessary for code generation.
 
 See for instance 'CodeGen.IDs.constID' for a crucial application of these singletons.
 
+For situations where we only need one-way reification, i.e. being able to turn type-level data into value-level data
+without the need to be able to go back the other way, see "Data.Type.Known".
+
 -}
 
 module FIR.Prim.Singletons where

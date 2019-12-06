@@ -8,6 +8,18 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 
+{-|
+Module: CodeGen.Instruction
+
+This module defines an 'Instruction' data type which collects the information associated to a SPIR-V instruction:
+  
+  * which instruction it is (essentially: the instruction's OpCode),
+  * the ID of the result returned by the instruction (if any),
+  * the ID of the return type of the instruction (if any),
+  * the arguments to the instruction (usually IDs, but can be other things such as string literals).
+-}
+
+
 module CodeGen.Instruction
   ( Args(..), foldrArgs, arity, toArgs, Pair(..)
   , ID(..), TyID(MkTyID, TyID, tyID)

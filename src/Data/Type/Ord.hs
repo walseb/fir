@@ -4,6 +4,12 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-|
+Module: Data.Type.Ord
+
+Promotion of the 'Ord' type class.
+-}
+
 module Data.Type.Ord where
 
 -- base

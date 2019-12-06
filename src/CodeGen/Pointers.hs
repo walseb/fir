@@ -5,6 +5,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
+{-|
+Module: CodeGen.Pointers
+
+Code generation for load/store instruction using pointers.
+-}
+
 module CodeGen.Pointers
   ( Safeness(Safe, Unsafe)
   , Indices(RTInds, CTInds)

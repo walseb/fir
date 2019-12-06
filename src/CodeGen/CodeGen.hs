@@ -9,6 +9,12 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 
+{-|
+Module: CodeGen.CodeGen
+
+Main code generation function: dispatches code generation on the constructors of the AST.
+-}
+
 module CodeGen.CodeGen
   ( codeGen, runCodeGen )
   where

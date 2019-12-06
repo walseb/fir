@@ -6,6 +6,14 @@
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeOperators         #-}
 
+{-|
+Module: Data.Constraint.All
+
+This module provides the ability to take a conjunction of a list of constraints.
+
+Includes a reflection mechanism to enable resolution of individual constraints.
+-}
+
 module Data.Constraint.All
   ( AllDict(NilDict, ConsDict)
   , All(allDict)

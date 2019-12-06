@@ -9,7 +9,7 @@
 {-|
 Module: FIR.Temp
 
-Functionality for creating new (temporary) variable names at the type level.
+Functionality for creating new (temporary) variable names at the type level. Currently unused.
 -}
 
 module FIR.Temp

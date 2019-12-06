@@ -1,6 +1,20 @@
 {-# LANGUAGE DerivingVia        #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
+{-|
+Module: Deriving.Base
+
+This module defines the newtype 'Base', used with `deriving via` to name instances coming from the Haskell prelude.
+
+For instance (pun intended):
+
+> deriving via Base Float  instance Floating Float
+> deriving via Base Double instance Floating Double
+
+See "Math.Algebra.Class" for illustration.
+
+-}
+
 module Deriving.Base
   ( Base(Base, runBase) )
   where

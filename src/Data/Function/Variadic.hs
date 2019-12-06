@@ -4,6 +4,12 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Data.Function.Variadic
+
+Type families for variadic functions.
+-}
+
 module Data.Function.Variadic where
 
 -- base

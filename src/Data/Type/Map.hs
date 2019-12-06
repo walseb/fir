@@ -6,6 +6,12 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Data.Type.Map
+
+Simple type-level maps (association lists).
+-}
+
 module Data.Type.Map where
 
 -- base 

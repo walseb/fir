@@ -63,7 +63,7 @@ unless b action
 --------------------------------------------------------------------------------------
 -- | The 'Choose' instances provide syntax for rebindable 'ifThenElse'.
 --
--- We uses a helper type-class 'Chooser' in an attempt to improve type inference.
+-- We uses a helper type class 'Chooser' in an attempt to improve type inference.
 instance {-# OVERLAPPABLE #-}
          ( b ~ Bool
          , Syntactic z

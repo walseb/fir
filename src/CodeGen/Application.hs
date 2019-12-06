@@ -9,6 +9,12 @@
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
 
+{-|
+Module: CodeGen.Application
+
+Functionality for keeping track of function arguments, such as patterns for the application of a function to several arguments.
+-}
+
 module CodeGen.Application
   ( UAST(UAST), UASTs(NilUAST, SnocUAST)
   , ASTs(NilAST, ConsAST)

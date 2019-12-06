@@ -11,6 +11,6 @@ import qualified SPIRV.PrimTy as SPIRV
 
 ----------------------------------------------------------------------------
 -- export the 'codeGen' function
--- this allows auxiliary code-generation code to recursively call 'codeGen'
+-- this allows auxiliary code generation code to recursively call 'codeGen'
 
 codeGen :: AST a -> CGMonad (ID, SPIRV.PrimTy)

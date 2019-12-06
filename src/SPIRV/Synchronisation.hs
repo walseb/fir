@@ -7,6 +7,12 @@
 Module: SPIRV.Synchronisation
 
 Defines synchronisation scopes and related memory lock semantics.
+
+See the SPIR-V specification:
+  
+  * §3.25 __Memory Semantics__,
+  * §3.27 __Scope__ (synchronisation scopes).
+
 -}
 
 module SPIRV.Synchronisation

@@ -1,3 +1,9 @@
+{-|
+Module: Control.Arrow.Strength
+
+Some useful functions relating arrows and functors via functor strength.
+-}
+
 module Control.Arrow.Strength where
 
 -- base
@@ -5,7 +11,7 @@ import Control.Arrow
   ( Arrow(first,second,(&&&)), (>>^) )
 
 ---------------------------------------------------
--- strengths
+-- Strengths.
 
 rightStrength :: Functor f => d -> f c -> f (d,c)
 rightStrength = fmap . (,)

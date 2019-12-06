@@ -4,6 +4,12 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-|
+Module: Data.Type.Error
+
+Helper functions to manage custom type-errors: throwing them, combining them, etc.
+-}
+
 module Data.Type.Error where
 
 -- base

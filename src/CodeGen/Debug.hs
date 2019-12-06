@@ -1,6 +1,13 @@
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{-|
+Module: CodeGen.Debug
+
+Functionality for including extra debugging information as comments in SPIR-V modules,
+such as including the line numbers of the Haskell source code.
+-}
+
 module CodeGen.Debug
   ( whenDebugging, whenAsserting
   , putSrcInfo

@@ -9,6 +9,12 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 
+{-|
+Module: CodeGen.Images
+
+Code generation for image sampling, reading and writing.
+-}
+
 module CodeGen.Images
   ( imageTexel, writeTexel )
   where

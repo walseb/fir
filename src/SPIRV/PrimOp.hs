@@ -13,6 +13,7 @@ For instance, instead of having to distinguish:
   * @UMin@, unsigned integer minimum,
   * @SMin@, signed integer minimum, and
   * @FMin@, floating point minimum,
+
 one can simply refer to the @Min@ operation defined in this module,
 and the functions within this module will dispatch the correct primitive
 operation depending on the types involved.

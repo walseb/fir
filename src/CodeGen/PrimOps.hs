@@ -1,3 +1,9 @@
+{-|
+Module: CodeGen.PrimOps
+
+Code generation for primitive operations (e.g. arithmetic operations).
+-}
+
 module CodeGen.PrimOps (primOp) where
 
 -- base

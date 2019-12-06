@@ -3,6 +3,12 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeOperators       #-}
 
+{-|
+Module: CodeGen.Functions
+
+Code generation for function and entry-point definitions, and function calls.
+-}
+
 module CodeGen.Functions
   ( declareFunction, declareFunctionCall, declareEntryPoint )
   where

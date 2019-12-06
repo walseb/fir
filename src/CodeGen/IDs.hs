@@ -8,6 +8,28 @@
 {-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE TypeApplications    #-}
 
+{-|
+Module: CodeGen.IDs
+
+This module defines operations to obtain instruction IDs from the code generator state, such as:
+  
+  * 'typeID', which obtains the ID of a type, recursively defining new IDs for types that have not yet been defined,
+  * 'constID', which obtains the ID of a constant value.
+
+Suppose for instance we need an ID for the type @M 4 3 Float@, a matrix with 4 rows and 3 columns.    
+In SPIR-V, matrices are represented in column-major order, so the (informal) process to obtain an ID for this matrix is as follows:
+
+  1. query whether this matrix type has already been defined. If so, use that ID: we're done. Otherwise:
+  2. query whether the column type @V 4 Float@ has already been defined.
+     If so, define a new ID with @OpTypeMatrix vec4FloatID 3@. Otherwise:
+  3. query whether the entry type @Float@ has already been defined.
+     If so, define a column vector ID @OpTypeVector floatID 4@ and then a matrix ID from that as in 2. Otherwise:
+  4. define a new ID for entry type, then one for the column type, then one for the matrix type.
+
+This process lends itself extremely well to a recursive traversal.
+
+-}
+
 module CodeGen.IDs
   ( extInstID
   , typeID

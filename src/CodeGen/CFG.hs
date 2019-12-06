@@ -3,6 +3,14 @@
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeOperators     #-}
 
+{-|
+Module: CodeGen.CFG
+
+Code generation for control flow operations: branching, selections, loops.
+
+See also "CodeGen.Phi" for ϕ-functions necessary for such constructs when using SSA form.
+-}
+
 module CodeGen.CFG
   ( newBlock
   , selection, ifM, switch, while, locally

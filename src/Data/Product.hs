@@ -10,6 +10,13 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Data.Product
+
+This module uses heterogeneous lists to define unbiased products needed by the type-level optics of this library.
+-}
+
+
 module Data.Product where
 
 -- base

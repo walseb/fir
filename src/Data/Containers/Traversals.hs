@@ -1,3 +1,9 @@
+{-|
+Module: Data.Containers.Traversals
+
+Defines some folds/traversals on 'Data.Map.Map' and 'Data.Set.Set' that are not provided by the containers library.
+-}
+
 module Data.Containers.Traversals where
 
 -- containers

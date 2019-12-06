@@ -4,10 +4,16 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Data.Type.Snoc
+
+Type-level snoc lists, providing injective type families 'Snoc' and 'Reverse'.
+
+(c) Artem Chirkin
+-}
+
 module Data.Type.Snoc where
 
--- type-level hacks for injective 'Snoc' and 'Reverse'
--- (c) Artem Chirkin
 
 type Snoc (ns :: [k]) (n :: k) = GetSnoc (DoSnoc ns n)
 type Reverse (xs :: [k]) = Reversed (DoReverse xs)

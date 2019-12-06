@@ -10,8 +10,8 @@ This module defines the structure of the state used by the code generation,
 in two parts:
 
   - 'CGContext', consisting of reified type-level data provided at the start
-  of code-generation (with a 'Control.Monad.Reader.ReaderT' transformer),
-  - 'CGState', consisting of state accumulated during code-generation,
+  of code generation (with a 'Control.Monad.Reader.ReaderT' transformer),
+  - 'CGState', consisting of state accumulated during code generation,
   recording which objects have been declared and their IDs.
 
 This module manually provides lenses for these. Most of these could be derived

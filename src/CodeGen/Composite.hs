@@ -4,6 +4,12 @@
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
 
+{-|
+Module: CodeGen.Composite
+
+Code generation for composite objects (vectors, matrices, arrays and structures): construction and extraction.
+-}
+
 module CodeGen.Composite
   ( compositeConstruct
   , compositeInsert, compositeExtract

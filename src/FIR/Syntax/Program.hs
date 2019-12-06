@@ -22,8 +22,9 @@ provides most of the user-facing syntax for constructing
 and manipulating values in the EDSL.
 
 This is done through type class overloading, here in the form of
-orphan instances for types of the form @Program i j a@,
-representing stateful values in the EDSL.
+orphan instances for types of the form @Program (i :: ProgramState) (j :: ProgramState) (a :: Type)@,
+representing stateful values in the EDSL.    
+See also "FIR.ProgramState".
 
 Recall that 'Program' is a wrapper for the internal representation
 using the indexed codensity transformation, see "FIR.Module".

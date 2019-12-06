@@ -2,6 +2,12 @@
 {-# LANGUAGE PolyKinds    #-}
 {-# LANGUAGE TypeFamilies #-}
 
+{-|
+Module: Data.Type.Maybe
+
+Type families for manipulating 'Maybe'.
+-}
+
 module Data.Type.Maybe
   ( FromMaybe, FromJust, IsJust, IsNothing
   , IfNothingThen, SequenceMaybe

@@ -15,7 +15,19 @@
 {-|
 Module: FIR.ProgramState
 
-State for the indexed monad used to construct programs.
+Defines the type-level data used for the state of the indexed monad used to construct programs:
+
+> program :: Program (i :: ProgramState) (j :: ProgramState) (a :: Type)
+
+See "FIR.Module.Program".
+
+The program state consists of:
+
+  * the bindings that are in scope (such as built-in variables or user-defined variables),
+  * the function context (whether the current code is contained within a function/entry-point, or is at the top-level),
+  * information associated to the functions and entry-points relevant to the program,
+    such as whether they have been defined yet or only declared.
+  * the data of which SPIR-V backend we are using: Vulkan or OpenCL.
 -}
 
 module FIR.ProgramState where

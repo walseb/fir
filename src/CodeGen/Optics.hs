@@ -15,6 +15,14 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE ViewPatterns           #-}
 
+{-|
+Module: CodeGen.Optics
+
+Code generation for operations involving the type-level optics used by this library,
+such as @view@, @set@, @use@, @assign@.
+
+-}
+
 module CodeGen.Optics
   ( IndexedOptic(AnIndexedOptic)
   , IndexedOptic'(AnIndexedOptic')

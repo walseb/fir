@@ -5,6 +5,12 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 
+{-|
+Module: CodeGen.Monad
+
+Defines the monad used by the code generator, including the monadic state required for code generation.
+-}
+
 module CodeGen.Monad
   ( MonadFresh(fresh), runFreshSuccT
   , CGMonad, putCG
@@ -72,7 +78,7 @@ type CGMonad
   = FreshSuccT CGState        -- supply of fresh variable IDs using CGState (see below)
       ( ReaderT CGContext     -- context for code generation
         ( StateT CGState      -- state (including for instance a map of which types have been defined)
-          ( ExceptT ShortText -- for errors during code-generation
+          ( ExceptT ShortText -- for errors during code generation
               Binary.PutM     -- to write instructions in binary form
           )
         )

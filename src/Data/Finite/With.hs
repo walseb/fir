@@ -5,6 +5,13 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
 
+{-|
+Module: Data.Finite.With
+
+Allows a function expecting a type-level natural to be passed a 'Data.Finite.Finite'.
+-}
+
+
 module Data.Finite.With
   ( withFinite )
   where
@@ -27,8 +34,8 @@ import Data.Finite
   ( Finite, getFinite )
 
 ----------------------------------------------------------------------
--- singletons
 
+-- | Pass a 'Finite' to a function expecting a type-level natural (passed via a 'Proxy').
 withFinite
   :: forall (n :: Nat) r
   .  ( forall i. ( KnownNat i, CmpNat i n ~ 'LT ) => Proxy i -> r )

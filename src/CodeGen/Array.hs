@@ -9,6 +9,14 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
+{-|
+Module: CodeGen.Array
+
+This module defines the AST for a loop creating an array, to be processed by the code generator to define loops over arrays.
+
+This is done here with the user-facing syntax of the library, instead of wiring in the definition.
+-}
+
 module CodeGen.Array
   ( createArray )
   where

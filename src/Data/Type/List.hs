@@ -8,6 +8,12 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
+{-|
+Module: Data.Type.List
+
+Operations on type-level lists, such as concatenation and length.
+-}
+
 module Data.Type.List
   ( type (:++:)
   , Elem, AtIndex

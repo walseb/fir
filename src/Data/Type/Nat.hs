@@ -4,6 +4,12 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-|
+Module: Data.Type.Maybe
+
+This module defines some arithmetic operations on type-level natural numbers.
+-}
+
 module Data.Type.Nat where
 
 -- base

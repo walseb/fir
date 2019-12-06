@@ -14,6 +14,17 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE ViewPatterns           #-}
 
+{-|
+Module: CodeGen.Applicative
+
+Code generation for (functor and) applicative operations:
+
+  * vectors use vectorised instructions (whenever possible),
+  * matrices use vectorised operations on their columns (whenever possible),
+  * arrays use loops.
+
+-}
+
 module CodeGen.Applicative
   ( idiomatic
   , pattern Idiomatic
