@@ -566,12 +566,12 @@ texture = runVulkan initialState do
 
       present queue swapchain nextImageIndex [submitted]
 
+      liftIO ( Vulkan.vkQueueWaitIdle queue )
+        >>= throwVkResult
+
       when ( takeScreenshot action ) $
         writeScreenshotData shortName device swapchainExtent
           ( snd ( screenshotImagesAndMemories `V.index` nextImageIndex ) )
-
-      liftIO ( Vulkan.vkQueueWaitIdle queue )
-        >>= throwVkResult
 
       ----------------
 

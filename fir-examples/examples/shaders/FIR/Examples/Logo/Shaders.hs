@@ -291,9 +291,9 @@ computeShader = Module $ entryPoint @"main" @Compute do
           let
             cubeCol :: AST (V 4 Float)
             cubeCol =
-              if (  ( abs outx > Lit 0.9 && abs outy > Lit 0.9 )
-                 || ( abs outx > Lit 0.9 && abs outz > Lit 0.9 )
-                 || ( abs outy > Lit 0.9 && abs outz > Lit 0.9 )
+              if (  ( abs outx > Lit 0.995 && abs outy > Lit 0.995 )
+                 || ( abs outx > Lit 0.995 && abs outz > Lit 0.995 )
+                 || ( abs outy > Lit 0.995 && abs outz > Lit 0.995 )
                  )
               then edgeCol
               else cubeColor cubeOut
