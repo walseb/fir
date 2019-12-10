@@ -226,8 +226,8 @@ simpleRenderPass dev attachments =
               [ dependency1, dependency2 ]
         )
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateRenderPass  dev ( Vulkan.unsafePtr createInfo ) )
+    managedVulkanResource createInfo
+      ( Vulkan.vkCreateRenderPass  dev )
       ( Vulkan.vkDestroyRenderPass dev )
 
 

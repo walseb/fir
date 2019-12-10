@@ -46,7 +46,7 @@ import Data.Finite
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( ReleaseKey, allocate )
+  ( ReleaseKey )
 
 -- sdl2
 import qualified SDL.Video.Vulkan
@@ -105,8 +105,8 @@ createVulkanInstance appName neededExtensions =
               neededExtensions
         )
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateInstance ( Vulkan.unsafePtr createInfo ) )
+    managedVulkanResource createInfo
+      Vulkan.vkCreateInstance
       Vulkan.vkDestroyInstance
 
 
@@ -210,8 +210,8 @@ createLogicalDevice physicalDevice queueFamilyIndex features =
         )
 
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateDevice physicalDevice ( Vulkan.unsafePtr deviceCreateInfo ) )
+    managedVulkanResource deviceCreateInfo
+      ( Vulkan.vkCreateDevice physicalDevice )
       Vulkan.vkDestroyDevice
 
 
@@ -323,8 +323,8 @@ createSwapchain physicalDevice device surface surfaceFormat imageUsage = do
         )
 
   swapchain <-
-    managedVulkanResource
-      ( Vulkan.vkCreateSwapchainKHR  device ( Vulkan.unsafePtr swapchainCreateInfo ) )
+    managedVulkanResource swapchainCreateInfo
+      ( Vulkan.vkCreateSwapchainKHR  device )
       ( Vulkan.vkDestroySwapchainKHR device )
 
   pure ( swapchain, currentExtent )
@@ -370,8 +370,8 @@ createFramebuffer dev renderPass extent attachments =
         &* Vulkan.set @"layers" 1
         )
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateFramebuffer  dev ( Vulkan.unsafePtr createInfo ) )
+    managedVulkanResource createInfo
+      ( Vulkan.vkCreateFramebuffer  dev )
       ( Vulkan.vkDestroyFramebuffer dev )
 
 
@@ -430,8 +430,8 @@ createImage physicalDevice device ImageInfo { .. } reqs
             &* Vulkan.set @"initialLayout"         imageLayout
             )
     in do
-      image <- managedVulkanResource
-                  ( Vulkan.vkCreateImage  device ( Vulkan.unsafePtr createInfo ) )
+      image <- managedVulkanResource createInfo
+                  ( Vulkan.vkCreateImage  device )
                   ( Vulkan.vkDestroyImage device )
 
       memReqs <- allocaAndPeek ( Vulkan.vkGetImageMemoryRequirements device image )
@@ -488,8 +488,8 @@ createImageView dev image viewType fmt aspect =
         &* Vulkan.set @"subresourceRange" subResourceRange
         )
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateImageView  dev ( Vulkan.unsafePtr createInfo ) )
+    managedVulkanResource createInfo
+      ( Vulkan.vkCreateImageView  dev )
       ( Vulkan.vkDestroyImageView dev )
 
 cmdTransitionImageLayout
@@ -568,8 +568,8 @@ createSampler dev =
         &* Vulkan.set @"borderColor" Vulkan.VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
         )
 
-  in managedVulkanResource
-       ( Vulkan.vkCreateSampler  dev ( Vulkan.unsafePtr createInfo ) )
+  in managedVulkanResource createInfo
+       ( Vulkan.vkCreateSampler  dev )
        ( Vulkan.vkDestroySampler dev )
 
 
@@ -590,8 +590,8 @@ createCommandPool dev queueFamilyIndex =
         )
 
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateCommandPool dev ( Vulkan.unsafePtr createInfo ) )
+    managedVulkanResource createInfo
+      ( Vulkan.vkCreateCommandPool  dev )
       ( Vulkan.vkDestroyCommandPool dev )
 
 
@@ -612,13 +612,9 @@ allocateCommandBuffer dev commandPool =
         &* Vulkan.set @"commandBufferCount" 1
         )
   in
-    allocate
-      ( allocaAndPeek
-          ( Vulkan.vkAllocateCommandBuffers dev ( Vulkan.unsafePtr allocInfo )
-              >=> throwVkResult
-          )
-      )
-      ( \ a ->
+    allocateVulkanResource allocInfo
+      ( \ ptr _ -> Vulkan.vkAllocateCommandBuffers dev ptr )
+      ( \ a _ ->
           Foreign.Marshal.withArray [ a ]
             ( Vulkan.vkFreeCommandBuffers dev commandPool 1 )
       )
@@ -748,8 +744,8 @@ createSemaphore device =
         &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
         )
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateSemaphore  device ( Vulkan.unsafePtr createInfo ) )
+    managedVulkanResource createInfo
+      ( Vulkan.vkCreateSemaphore  device )
       ( Vulkan.vkDestroySemaphore device )
 
 
@@ -765,8 +761,8 @@ createFence device =
           )
 
   in
-    managedVulkanResource
-      ( Vulkan.vkCreateFence  device ( Vulkan.unsafePtr fenceCreateInfo ) )
+    managedVulkanResource fenceCreateInfo
+      ( Vulkan.vkCreateFence  device )
       ( Vulkan.vkDestroyFence device )
 
 

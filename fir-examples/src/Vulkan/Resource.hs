@@ -32,8 +32,6 @@ module Vulkan.Resource
   ) where
 
 -- base
-import Control.Monad
-  ( (>=>) )
 import Data.Coerce
   ( coerce )
 import Data.Function
@@ -70,10 +68,6 @@ import Data.Generics.Product.Constraints
   ( HasConstraints(constraints)
   , HasConstraints'(constraints')
   )
-
--- resourcet
-import Control.Monad.Trans.Resource
-  ( allocate )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -266,11 +260,8 @@ createDescriptorSetLayout
   -> [ ( Vulkan.VkDescriptorType, Vulkan.VkShaderStageFlags ) ]
   -> m Vulkan.VkDescriptorSetLayout
 createDescriptorSetLayout device descriptorTypes =
-  managedVulkanResource
-    ( Vulkan.vkCreateDescriptorSetLayout
-        device
-        ( Vulkan.unsafePtr createInfo )
-    )
+  managedVulkanResource createInfo
+    ( Vulkan.vkCreateDescriptorSetLayout  device )
     ( Vulkan.vkDestroyDescriptorSetLayout device )
 
       where
@@ -299,8 +290,8 @@ createDescriptorPool
   -> [ Vulkan.VkDescriptorType ]
   -> m Vulkan.VkDescriptorPool
 createDescriptorPool device maxSets descTypes =
-  managedVulkanResource
-  ( Vulkan.vkCreateDescriptorPool device ( Vulkan.unsafePtr createInfo ) )
+  managedVulkanResource createInfo
+  ( Vulkan.vkCreateDescriptorPool  device )
   ( Vulkan.vkDestroyDescriptorPool device )
 
     where
@@ -329,18 +320,10 @@ allocateDescriptorSets
   -> Int
   -> m [Vulkan.VkDescriptorSet]
 allocateDescriptorSets dev descriptorPool layout0 count =
-  snd <$> allocate
-    ( allocaAndPeekArray count
-        ( Vulkan.vkAllocateDescriptorSets
-            dev
-            ( Vulkan.unsafePtr allocateInfo )
-            >=> throwVkResult
-        )
-    )
-    ( \descs ->
-        Foreign.Marshal.withArray descs
-          ( Vulkan.vkFreeDescriptorSets dev descriptorPool (fromIntegral count) >=> throwVkResult )
-    )
+  managedVulkanResources count allocateInfo
+    ( Vulkan.vkAllocateDescriptorSets dev )
+    ( Vulkan.vkFreeDescriptorSets     dev descriptorPool )
+
       where
         allocateInfo :: Vulkan.VkDescriptorSetAllocateInfo
         allocateInfo =

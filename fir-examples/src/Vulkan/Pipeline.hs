@@ -192,22 +192,19 @@ loadShader device shaderPath = do
   bytes <-
     liftIO ( Data.ByteString.readFile shaderPath )
 
-  allocateVulkanResource
-    ( \a b ->
-        Data.ByteString.useAsCStringLen bytes $ \( bytesPtr, len ) ->
-          let
-            createInfo =
-              Vulkan.createVk
-                (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO
-                &* Vulkan.set @"pNext" Vulkan.VK_NULL
-                &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-                &* Vulkan.set @"pCode"    ( Foreign.castPtr bytesPtr )
-                &* Vulkan.set @"codeSize" ( fromIntegral len )
-                )
+  shaderCreateInfo
+    <- liftIO $ Data.ByteString.useAsCStringLen bytes $ \( bytesPtr, len ) ->
+      pure $
+        Vulkan.createVk
+          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO
+          &* Vulkan.set @"pNext" Vulkan.VK_NULL
+          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
+          &* Vulkan.set @"pCode"    ( Foreign.castPtr bytesPtr )
+          &* Vulkan.set @"codeSize" ( fromIntegral len )
+          )
 
-          in
-          Vulkan.vkCreateShaderModule device ( Vulkan.unsafePtr createInfo ) a b
-    )
+  allocateVulkanResource shaderCreateInfo
+    ( Vulkan.vkCreateShaderModule  device )
     ( Vulkan.vkDestroyShaderModule device )
 
 shaderInfo
@@ -230,8 +227,8 @@ createPipelineLayout
   -> Vulkan.VkDescriptorSetLayout
   -> m Vulkan.VkPipelineLayout
 createPipelineLayout device layout0 =
-  managedVulkanResource
-    ( Vulkan.vkCreatePipelineLayout  device ( Vulkan.unsafePtr pipelineLayoutCreateInfo ) )
+  managedVulkanResource pipelineLayoutCreateInfo
+    ( Vulkan.vkCreatePipelineLayout  device )
     ( Vulkan.vkDestroyPipelineLayout device )
 
     where
@@ -276,12 +273,11 @@ createGraphicsPipeline device renderPass
       ( shaderModules :: PipelineStages info Vulkan.VkShaderModule )
   ) =
 
-    second GraphicsPipeline <$> allocateVulkanResource
+    second GraphicsPipeline <$> allocateVulkanResource createInfo
       ( Vulkan.vkCreateGraphicsPipelines
           device
           Vulkan.vkNullPtr
           1
-          ( Vulkan.unsafePtr createInfo )
       )
       ( Vulkan.vkDestroyPipeline device )
 
@@ -446,12 +442,11 @@ createComputePipeline
   -> Vulkan.VkShaderModule
   -> m ( ReleaseKey, VkPipeline )
 createComputePipeline device pipelineLayout shaderModule =
-  second ComputePipeline <$> allocateVulkanResource
+  second ComputePipeline <$> allocateVulkanResource createInfo
     ( Vulkan.vkCreateComputePipelines
         device
         Vulkan.vkNullPtr
         1
-        ( Vulkan.unsafePtr createInfo )
     )
     ( Vulkan.vkDestroyPipeline device )
   where

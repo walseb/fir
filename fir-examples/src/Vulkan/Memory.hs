@@ -13,7 +13,7 @@ module Vulkan.Memory where
 
 -- base
 import Control.Monad
-  ( (>=>), guard )
+  ( guard )
 import Data.Bits
 import Data.Foldable
   ( for_ )
@@ -24,7 +24,7 @@ import qualified Foreign.Marshal
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( allocate, ReleaseKey )
+  ( ReleaseKey )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -105,13 +105,6 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
           &* Vulkan.set @"memoryTypeIndex" memoryTypeIndex
           )
 
-    allocate
-      ( allocaAndPeek
-        ( Vulkan.vkAllocateMemory
-            device
-            ( Vulkan.unsafePtr allocateInfo )
-            Vulkan.VK_NULL_HANDLE
-            >=> throwVkResult
-        )
-      )
-      ( \mem -> Vulkan.vkFreeMemory device mem Vulkan.VK_NULL_HANDLE )
+    allocateVulkanResource allocateInfo
+      ( Vulkan.vkAllocateMemory device )
+      ( Vulkan.vkFreeMemory device )

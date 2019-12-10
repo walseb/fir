@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 {-# LANGUAGE BlockArguments             #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
@@ -20,6 +22,8 @@ import Control.Category
   ( (>>>) )
 import Control.Monad
   ( (>=>) )
+import Data.Word
+  ( Word32 )
 import qualified Foreign
 import qualified Foreign.Marshal
 import Foreign.Ptr
@@ -120,21 +124,23 @@ throwVkResult Vulkan.VK_SUCCESS = pure ()
 throwVkResult failure           = fail (show failure)
 
 managedVulkanResource
-  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanPtr ptr )
-  => ( ptr a -> Ptr x -> IO Vulkan.VkResult )
-  -> ( x -> ptr a -> IO () )
+  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
+  => info
+  -> ( Ptr info -> Ptr Vulkan.VkAllocationCallbacks -> Ptr x -> IO Vulkan.VkResult )
+  -> ( x -> Ptr Vulkan.VkAllocationCallbacks -> IO () )
   -> m x
-managedVulkanResource create destroy = snd <$> allocateVulkanResource create destroy
+managedVulkanResource info create destroy = snd <$> allocateVulkanResource info create destroy
 
 allocateVulkanResource
-  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanPtr ptr )
-  => ( ptr a -> Ptr x -> IO Vulkan.VkResult )
-  -> ( x -> ptr a -> IO () )
+  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
+  => info
+  -> ( Ptr info -> Ptr Vulkan.VkAllocationCallbacks -> Ptr x -> IO Vulkan.VkResult )
+  -> ( x -> Ptr Vulkan.VkAllocationCallbacks -> IO () )
   -> m ( ReleaseKey, x )
-allocateVulkanResource create destroy =
+allocateVulkanResource info create destroy =
   allocate
-    ( allocaAndPeek ( create Vulkan.vkNullPtr >=> throwVkResult ) )
-    ( `destroy` Vulkan.vkNullPtr )
+    ( allocaAndPeek ( create ( Vulkan.unsafePtr info ) Vulkan.VK_NULL_HANDLE >=> throwVkResult ) )
+    ( \ x -> destroy x Vulkan.VK_NULL_HANDLE *> Vulkan.touchVkData info )
 
 allocaAndPeek
   :: ( Foreign.Storable a, MonadIO m )
@@ -144,6 +150,29 @@ allocaAndPeek f = liftIO $
   Foreign.Marshal.alloca
     ( \ptr -> f ptr *> Foreign.peek ptr )
 
+managedVulkanResources
+  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
+  => Int
+  -> info
+  -> ( Ptr info -> Ptr x -> IO Vulkan.VkResult )
+  -> ( Word32 -> Ptr x -> IO Vulkan.VkResult )
+  -> m [x]
+managedVulkanResources count info create destroy = snd <$> allocateVulkanResources count info create destroy
+
+allocateVulkanResources
+  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
+  => Int
+  -> info
+  -> ( Ptr info -> Ptr x -> IO Vulkan.VkResult )
+  -> ( Word32 -> Ptr x -> IO Vulkan.VkResult )
+  -> m (ReleaseKey, [x])
+allocateVulkanResources count info create destroy =
+  allocate
+    ( allocaAndPeekArray count ( create ( Vulkan.unsafePtr info ) >=> throwVkResult ) )
+    ( \xs -> Foreign.Marshal.withArray xs
+      ( \x -> ( destroy ( fromIntegral count ) x >>= throwVkResult ) *> Vulkan.touchVkData info )
+    )
+    
 allocaAndPeekArray
   :: Foreign.Storable a
   => Int

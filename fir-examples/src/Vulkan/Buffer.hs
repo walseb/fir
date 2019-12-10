@@ -126,8 +126,8 @@ createBufferFromPoke usage physicalDevice device poking sizeInBytes =
 
     roundedSize = sizeInBytes `roundUp` 64 -- nonCoherentAtomSize
 
-    createInfo :: Vulkan.VkBufferCreateInfo
-    createInfo =
+    bufferCreateInfo :: Vulkan.VkBufferCreateInfo
+    bufferCreateInfo =
       Vulkan.createVk
         (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
         &* Vulkan.set @"pNext" Vulkan.VK_NULL
@@ -140,8 +140,8 @@ createBufferFromPoke usage physicalDevice device poking sizeInBytes =
         )
   in do
     ( _, buffer :: Vulkan.VkBuffer )
-      <- allocateVulkanResource
-          ( Vulkan.vkCreateBuffer device ( Vulkan.unsafePtr createInfo ) )
+      <- allocateVulkanResource bufferCreateInfo
+          ( Vulkan.vkCreateBuffer  device )
           ( Vulkan.vkDestroyBuffer device )
 
     memReqs :: Vulkan.VkMemoryRequirements
