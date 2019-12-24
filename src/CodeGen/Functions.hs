@@ -143,7 +143,7 @@ instance CodeGen AST => CodeGen (FunDefF AST) where
       pure ( funID , SPIRV.Function (map (fst . snd) as) retTy )
 
 instance CodeGen AST => CodeGen (FunCallF AST) where
-  codeGenArgs (Applied (FunCallF (_ :: Proxy name) ( _ :: Proxy as ) ( _ :: Proxy b )) as) = do
+  codeGenArgs (Applied (FunCallF (_ :: Proxy name) ( _ :: Proxy as ) ( _ :: Proxy b )) (_ `ConsAST` as)) = do
     let
       funName = knownValue @name
       retTy   = primTy @b

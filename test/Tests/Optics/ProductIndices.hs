@@ -14,9 +14,15 @@ module Tests.Optics.ProductIndices where
 -- prelude
 import qualified Prelude
   ( Functor(fmap) )
+import Data.Maybe
+  ( fromJust )
 
--- vector
-import qualified Data.Vector as Array
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+
+-- fir
+import FIR
+import Math.Linear
 
 -- fir
 import FIR
@@ -25,7 +31,7 @@ import FIR
 -- testing product runtime indices
 
 arr1 :: Array 12 Float
-arr1 = mkArray ( Array.fromList [10..21] )
+arr1 = MkArray ( fromJust $ Vector.fromList [10..21] )
 
 test1 :: (Float, Float, Float)
 test1 = view @( Prod (AnIndex Word32 :*: AnIndex Word32 :*: AnIndex Word32 :*: EndProd) )
@@ -45,7 +51,7 @@ test2 = view @( Prod (AnIndex Word32 :*: AnIndex Word32 :*: AnIndex Word32 :*: E
 
 
 arr2 :: Array 2 ( Array 12 Float )
-arr2 = mkArray ( Array.fromList [ Prelude.fmap (+10) arr1, arr1 ] )
+arr2 = MkArray ( fromJust $ Vector.fromList [ Prelude.fmap (+10) arr1, arr1 ] )
 
 test3 :: ( Float, Float )
 test3 = view @( AnIndex Word32 :.: ( Prod (AnIndex Word32 :*: AnIndex Word32 :*: EndProd) ) )

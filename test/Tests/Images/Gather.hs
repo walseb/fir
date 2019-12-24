@@ -12,12 +12,16 @@
 
 module Tests.Images.Gather where
 
+-- base
+import Data.Maybe
+  ( fromJust )
+
 -- fir
 import FIR
 import Math.Linear
 
--- vector
-import qualified Data.Vector as Array
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
 
 ------------------------------------------------
 -- program
@@ -34,6 +38,6 @@ program =
   Module $ entryPoint @"main" @Fragment do
     pos   <- get @"in_pos"
     let offsetArray :: Array 4 (V 2 Int32)
-        offsetArray = mkArray (Array.fromList [V2 0 0, V2 0 1, V2 1 0, V2 1 1])
+        offsetArray = MkArray (fromJust $ Vector.fromList [V2 0 0, V2 0 1, V2 1 0, V2 1 1])
     col <- use @(ImageTexel "image") (Gather (ComponentWithOffsets 0 offsetArray) NilOps) pos
     put @"out_col" col

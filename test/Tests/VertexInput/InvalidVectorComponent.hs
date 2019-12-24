@@ -55,7 +55,7 @@ fragment = shader do
 ------------------------------------------------
 -- pipeline
 
-shaderPipeline :: ShaderPipeline
+shaderPipeline :: ShaderPipeline FilePath
 shaderPipeline
   = ShaderPipeline
   $    StructInput @VertexInput @(Triangle List)

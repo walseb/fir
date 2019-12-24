@@ -12,8 +12,12 @@
 
 module Tests.Optics.Various where
 
--- vector
-import qualified Data.Vector as Array
+-- base
+import Data.Maybe
+  ( fromJust )
+
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
 
 -- fir
 import FIR
@@ -79,6 +83,6 @@ program = Module do
     rtTest1 <- use @(Name "arr2" :.: Name "rt" :.: AnIndex Word32) 6
     rtTest2 <- use @(Name "arr2" :.: Name "rt" :.: Index 6)
 
-    #array @(Array 10 Float) #= (Lit $ mkArray (Array.fromList [1,17,23,4,5,90,88,17,22,21]))
+    #array @(Array 10 Float) #= (Lit $ MkArray (fromJust $ Vector.fromList [1,17,23,4,5,90,88,17,22,21]))
     #gl_Position .=  (rtTest1 * rtTest2 + abs lensTest) *^ ( mvp !*^ diagonal )
     #out_col .= vertexDataColour ^+^ row
