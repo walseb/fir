@@ -45,8 +45,8 @@ Current __limitations__ of the library include:
   * Lack of validation involving device limits. This should be addressed in the future.
   * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be mitigated (rather tediously) as explained in the ["getting started" guide](getting_started.md#inlining).
   * Support for writing programs that can run both on the CPU (with Haskell) and on the GPU (with SPIRV) is limited.
-  Resolving this limitation would only require the implementation of an indexed state monad in Haskell that supports the same operations as the 'Program' monad,
-  but a design has yet to be found for a syntax that allows this overloading.
+  This should be addressed in the near future, with the implementation of an evaluator for the AST.
+  * SPIR-V atomic operations are currently unsupported, as a convincing interface to these operations has yet to be found.
   * Meta-programming is difficult. This is due to the type-level information that is carried around, which can hardly cope being made polymorphic.
   It is possible that a GHC type-checking plugin could address this limitation.    
   Instead of attempting meta-programming involving manipulation of indexed monadic states,
