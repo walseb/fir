@@ -11,6 +11,7 @@
 * [Using SPIR-V tools](#spirv)
 * [Type-level optics](#optics)
 * [Creating a shader pipeline](#pipeline)
+* [Manipulating custom data types](#syntactic)
 
 <a name="installation"></a>
 ## Installation instructions
@@ -505,3 +506,71 @@ Much better to get a compile-time type error that a black screen at runtime!
 
 
 Convenience functionality to create Vulkan graphics pipelines from such information is also provided, using the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings (see [`Vulkan.Pipeline.createGraphicsPipeline`](fir-examples/src/Vulkan/Pipeline.hs)).
+
+<a name="syntactic"></a>
+## Manipulating custom data types
+
+To allow user-defined types to be internalised and compiled to *SPIR-V*, one needs to implement an instance of the `Syntactic` typeclass:
+
+```haskell
+class Syntactic a where
+  type Internal a :: AugType
+  toAST :: a -> AST (Internal a)
+  fromAST :: AST (Internal a) -> a
+```
+
+Here `AugType` is the kind of types used internally. Such an augmented type is either:
+  
+  * a value `Val ty` for some type `ty`,
+  * a partially applied function symbol `ty1 :--> ty2` for some augmented types `ty1`, `ty2`,
+  * an effectful computation `Eff i j ty`.
+
+Note also the definition `Code a = AST (Val a)`.
+
+Some helpers are provided for types which are known to internalise to values:
+
+```haskell
+type family UnderlyingType ( t :: AugType ) :: Type where
+  UnderlyingType (Val ty) = ty
+  UnderlyingType (Eff i j a) = (a := j) i -- McBride's AtKey representation of stateful computations
+  UnderlyingType (s :--> t) = UnderlyingType s -> UnderlyingType t
+
+type InternalType a = UnderlyingType (Internal a)
+type family SyntacticVal a :: Constraint where
+  SyntacticVal a = ( Syntactic a, Internal a ~ Val (InternalType a) )
+```
+
+With this information in hand, here's how to internalise a simple product type:
+
+```haskell
+data AB a b = AB (Code a) b
+
+instance ( PrimTy a, SyntacticVal b, PrimTy (InternalType b) )
+       => Syntactic (AB a b) where
+  type Internal (AB a b) = Val ( Struct '[ "a" ':-> a, "b" ':-> InternalType b ] )
+  toAST (AB a b) = Struct ( a :& toAST b :& End )
+  fromAST struct = AB ( view @(Field "a") struct ) ( fromAST ( view @(Field "b") struct ) )
+```
+
+This will then allow the library to handle values of type `AB a b`, by converting them under the hood to the associated internal type (a structure).
+
+For sum types, it can be slightly more difficult, as the tag has to be an internal value instead of a Haskell-level constant. For instance, here's how this library defines its own option type:
+
+```haskell
+data Option a = Option { isSome :: Code Bool, fromSome :: a }
+
+instance ( SyntacticVal a, PrimTy (InternalType a) ) => Syntactic (Option a) where
+  type Internal (Option a) =
+    Val (Struct '[ "isSome" ':-> Bool, "fromSome" ':-> InternalType a ])
+  toAST (Option { isSome = c, fromSome = a })
+    = if c
+      then ( Struct ( Lit True  :& toAST a   :& End ) )
+      else ( Struct ( Lit False :& Undefined :& End ) )
+  fromAST struct
+    = Option
+      { isSome   =          view @(Name "isSome"  ) struct
+      , fromSome = fromAST (view @(Name "fromSome") struct)
+      }
+```
+
+Note that the Boolean discriminator needs to be internal, as the whole point of such a datatype is that we don't know at compile-time whether the option type holds a value or not.

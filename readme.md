@@ -91,8 +91,10 @@ An overview of the library, from a developer's perspective, is available [here](
 # Acknowledgements
 
 I extend my thanks to:
-* **Baldur Blöndal**, for helping me get started with this project, indulging my silly questions, and pointing me to the paper [*Combining Deep and Shallow Embedding for EDSL*](http://www.cse.chalmers.se/~josefs/publications/TFP12.pdf) by Josef Svenningsson and Emil Axelsson, which was used in the design of the AST.
+* **Baldur Blöndal**, for helping me get started with this project, indulging my silly questions, and pointing me to the paper [*Combining Deep and Shallow Embedding for EDSL*](http://www.cse.chalmers.se/~josefs/publications/TFP12.pdf) by Josef Svenningsson and Emil Axelsson, which provided the foundational design of this library.
 * **Callan McGill**, for encouraging me, spending long hours helping to debug the library (and getting it working on Linux), and generally keeping me sane.
+* **Li-yao Xia**, for his assistance in improving the typing of the AST, and his always excellent answers on StackOverflow.
+* **Sylvain Henry**, for his help and suggestions regarding extensible syntax trees as well as the nicely thought-out [variants](https://hackage.haskell.org/package/haskus-utils-variant) library (among other things).
 * **Oliver Charles**, for inspiring me to take on this project by streaming his efforts at [porting Quake 3 to Haskell using Vulkan](https://github.com/ocharles/zero-to-quake-3). This was invaluable in helping me get started with using Vulkan in Haskell.
 * **Artem Chirkin**, for his well-designed [vulkan-api](https://github.com/achirkin/vulkan) library.
 * **Schell Scivally**, for patiently explaining his [ixshader library](https://hackage.haskell.org/package/ixshader).
