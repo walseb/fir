@@ -198,14 +198,14 @@ data MkVectorF ( ast :: AugType -> Type ) ( t :: AugType ) where
     => V n (ast (Val a))
     -> MkVectorF ast (Val (V n a))
 
-data MatF ( ast :: AugType -> Type ) ( t :: AugType ) where
 -- | Newtype wrapping for matrices.
+data MatF ( ast :: AugType -> Type ) ( t :: AugType ) where
   MatF
     :: forall m n a ast
     .  ( KnownNat m, KnownNat n )
     => MatF ast ( Val (V n (V m a)) :--> Val (M m n a) )
-data UnMatF ( ast :: AugType -> Type ) ( t :: AugType ) where
 -- | Newtype unwrapping for matrices.
+data UnMatF ( ast :: AugType -> Type ) ( t :: AugType ) where
   UnMatF
     :: forall m n a ast
     .  ( KnownNat n, KnownNat m )
