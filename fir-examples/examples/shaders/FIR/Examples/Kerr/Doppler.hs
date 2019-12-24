@@ -33,10 +33,10 @@ import FIR.Examples.Kerr.Motion
 --   - "The gravitational light shift and the Sachs–Wolfe effect" (p. 5, eq. 3.8)
 --       -- Cesar Merlín, Marcelo Salgado
 localGravitationalDopplerFactor
-  :: AST KerrInfo
-  -> AST MotionConstants
-  -> AST (V 4 Float) -- position
-  -> Program s s (AST Float)
+  :: Code KerrInfo
+  -> Code MotionConstants
+  -> Code (V 4 Float) -- position
+  -> Program s s (Code Float)
 localGravitationalDopplerFactor kerrInfo constants (Vec4 _ r cosθ _)
   = purely do
     -- black hole info
@@ -74,11 +74,11 @@ localGravitationalDopplerFactor kerrInfo constants (Vec4 _ r cosθ _)
 -- Compute the Doppler factor due to special relativistic effects,
 -- i.e. due to motion of the observer/emitter.
 specialDopplerFactor
-  :: AST KerrInfo
-  -> AST (V 4 Float) -- position
-  -> AST (V 4 Float) -- particle velocity
-  -> AST (V 4 Float) -- observer velocity
-  -> Program i i (AST Float)
+  :: Code KerrInfo
+  -> Code (V 4 Float) -- position
+  -> Code (V 4 Float) -- particle velocity
+  -> Code (V 4 Float) -- observer velocity
+  -> Program i i (Code Float)
 specialDopplerFactor kerrInfo pos v v_obs = purely do
   num    <- ( def @"num"    @R . (1-) ) =<< spatialMetric kerrInfo pos v_obs v
   denom² <- ( def @"denom²" @R . (1-) ) =<< spatialNorm   kerrInfo pos v_obs

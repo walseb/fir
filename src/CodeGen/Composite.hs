@@ -1,8 +1,16 @@
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE BlockArguments      #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections       #-}
+{-# LANGUAGE TypeApplications    #-}
 
 {-|
 Module: CodeGen.Composite
@@ -20,9 +28,15 @@ module CodeGen.Composite
   where
 
 -- base
+import Data.Foldable
+  ( toList )
 import Data.Word
   ( Word32 )
+import GHC.TypeNats
+  ( natVal )
 
+-- containers
+import qualified Data.Set as Set
 
 -- mtl
 import Control.Monad.Except
@@ -36,9 +50,20 @@ import Data.List.Split
 import qualified Data.Text.Short as ShortText
   ( pack )
 
+-- vector-sized
+import qualified Data.Vector.Sized as Vector
+  ( toList, knownLength' )
+
 -- fir
+import CodeGen.Application
+  ( Application(Applied)
+  , pattern Nullary
+  , ASTs(NilAST, ConsAST)
+  )
 import CodeGen.Binary
   ( instruction )
+import {-# SOURCE #-} CodeGen.CodeGen
+  ( CodeGen(codeGenArgs), codeGen )
 import CodeGen.IDs
   ( typeID, undefID )
 import CodeGen.Instruction
@@ -47,13 +72,113 @@ import CodeGen.Instruction
   )
 import CodeGen.Monad
   ( CGMonad, MonadFresh(fresh), note )
+import Data.Type.Known
+  ( knownValue )
+import FIR.AST
+  ( AST
+  , MkVectorF(..), GradedMappendF(..)
+  , MatF(..), UnMatF(..)
+  , StructF(..), ArrayF(..)
+  )
+import FIR.AST.Type
+  ( AugType(Val) )
+import FIR.Prim.Array
+  ( Array(MkArray) )
+import FIR.Prim.Struct
+  ( traverseStructASTs )
+import FIR.Prim.Singletons
+  ( primTy )
+import Math.Linear
+  ( V )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 import           SPIRV.PrimTy
   ( PrimTy(..) )
 
 ----------------------------------------------------------------------------
--- composite structures
+-- Code generation for constructing composite objects.
+
+class    NoConstraint (a :: AugType) where
+instance NoConstraint (a :: AugType) where
+
+instance CodeGen AST => CodeGen (MkVectorF AST) where
+  codeGenArgs ( Applied (MkVectorF (vec :: V n (AST (Val a))) ) NilAST ) = do
+    let n = knownValue @n
+    compositeTy <- case primTy @a of
+      SPIRV.Scalar s ->
+        pure $ SPIRV.Vector n (SPIRV.Scalar s)
+      SPIRV.Vector m (SPIRV.Scalar s) ->
+        pure $ SPIRV.Matrix m n s
+      x ->
+        throwError
+          ( "codeGen: unexpected vector constituent "
+          <> ShortText.pack ( show x )
+          )
+    ( compositeConstruct compositeTy . map fst . toList )
+      =<< traverse codeGen vec
+
+instance CodeGen AST => CodeGen (MatF AST) where
+  codeGenArgs ( Applied MatF (a `ConsAST` NilAST) ) = codeGenArgs ( Nullary a )
+instance CodeGen AST => CodeGen (UnMatF AST) where
+  codeGenArgs ( Applied UnMatF (a `ConsAST` NilAST) ) = codeGenArgs ( Nullary a )
+
+instance CodeGen AST => CodeGen (StructF AST) where
+  codeGenArgs ( Applied structF@(StructF struct) NilAST ) = case structF of
+    ( _ :: StructF AST (Val struct) ) ->
+      compositeConstruct (primTy @struct)
+        =<< traverseStructASTs @AST (fmap fst . codeGen) struct
+
+instance CodeGen AST => CodeGen (ArrayF AST) where
+  codeGenArgs ( Applied arrF@(ArrayF (MkArray vec)) NilAST ) = case arrF of
+    ( _ :: ArrayF AST (Val (Array n a)) ) ->
+      let
+        n :: Word32
+        n = Vector.knownLength' vec ( \px -> fromIntegral ( natVal px ) )
+        vecTy :: SPIRV.PrimTy
+        vecTy = SPIRV.Vector n ( primTy @a )
+      in
+        compositeConstruct vecTy
+          =<< traverse (fmap fst . codeGen) (Vector.toList vec)
+
+instance CodeGen AST => CodeGen (GradedMappendF AST) where
+  codeGenArgs ( Applied GradedMappendF ( a `ConsAST` b `ConsAST` NilAST ) ) = do
+    (a_ID, a_ty) <- codeGen a
+    (b_ID, b_ty) <- codeGen b
+    case (a_ty, b_ty) of
+      ( SPIRV.Vector i (SPIRV.Scalar s), SPIRV.Vector j (SPIRV.Scalar t)) ->
+        if s /= t
+        then throwError "codeGen: graded semigroup operation on incompatible vectors"
+        else compositeConstruct (SPIRV.Vector (i+j) (SPIRV.Scalar s)) [a_ID, b_ID]
+      ( SPIRV.Matrix m n s, SPIRV.Matrix m' n' s' ) ->
+        if m /= m' || s /= s'
+        then throwError "codeGen: graded semigroup operation on incompatible matrices"
+        else do
+          cols1 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..n -1]
+          cols2 <- traverse ( \i -> fst <$> compositeExtract (b_ID, b_ty) [i] ) [0..n'-1]
+          compositeConstruct (SPIRV.Matrix m (n+n') s) (cols1 ++ cols2)
+      ( SPIRV.Struct as _ _, SPIRV.Struct bs _ _ ) ->
+        do
+          let lg  = fromIntegral (length as)
+              lg' = fromIntegral (length bs)
+          elts1 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg -1]
+          elts2 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg'-1]
+          compositeConstruct
+            ( SPIRV.Struct (as ++ bs) Set.empty SPIRV.NotForBuiltins )
+            ( elts1 ++ elts2 )
+      ( SPIRV.Array lg eltTy _ _, SPIRV.Array lg' eltTy' _ _ ) ->
+        if eltTy /= eltTy'
+        then throwError "codeGen: graded semigroup operation on incompatible arrays"
+        else do
+          -- should probably use a loop instead of this, but nevermind
+          elts1 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg -1]
+          elts2 <- traverse ( \i -> fst <$> compositeExtract (a_ID, a_ty) [i] ) [0..lg'-1]
+          compositeConstruct
+            ( SPIRV.Array (lg + lg') eltTy Set.empty SPIRV.NotForBuiltins )
+            ( elts1 ++ elts2 )
+      _ -> throwError "codeGen: unsupported graded semigroup operation"
+
+----------------------------------------------------------------------------
+-- SPIR-V instructions.
 
 compositeConstruct :: SPIRV.PrimTy -> [ ID ] -> CGMonad (ID, SPIRV.PrimTy)
 compositeConstruct compositeType constituents

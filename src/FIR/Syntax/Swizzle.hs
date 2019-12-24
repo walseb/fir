@@ -59,7 +59,7 @@ import Data.Type.String
   , LookupChars
   )
 import FIR.AST
-  ( AST )
+  ( Code )
 import Math.Linear
   ( V )
 
@@ -143,15 +143,15 @@ type Swizzle (string :: Symbol)
 type family SwizzleRes (vec :: Type) (ks :: [Symbol]) :: Type where
   SwizzleRes _   '[ ] = TypeError ( Text "Empty swizzle." )
   SwizzleRes vec '[k] = SwizzleComponent vec
-  SwizzleRes (V _ a) ks = V (Length ks) a
-  SwizzleRes (AST (V _ a)) ks = AST (V (Length ks) a)
+  SwizzleRes        (V _ a) ks =       V (Length ks) a
+  SwizzleRes (Code (V _ a)) ks = Code (V (Length ks) a)
   SwizzleRes ty _ =
     TypeError
         ( Text "Cannot use swizzle on non-vector of type " :<>: ShowType ty :<>: Text "." )
 
 type family SwizzleComponent (vec :: Type) :: Type where
-  SwizzleComponent (V _ a)       = a
-  SwizzleComponent (AST (V _ a)) = AST a
+  SwizzleComponent       (V _ a)  =      a
+  SwizzleComponent (Code (V _ a)) = Code a
   SwizzleComponent ty =
     TypeError
         ( Text "Cannot use swizzle on non-vector of type " :<>: ShowType ty :<>: Text "." )

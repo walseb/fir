@@ -1,7 +1,14 @@
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE BlockArguments       #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {-|
 Module: CodeGen.CFG
@@ -12,14 +19,12 @@ See also "CodeGen.Phi" for ϕ-functions necessary for such constructs when using
 -}
 
 module CodeGen.CFG
-  ( newBlock
-  , selection, ifM, switch, while, locally
-  )
+  ( newBlock )
   where
 
 -- base
 import Control.Arrow
-  ( first )
+  ( first, second )
 import Control.Monad
   ( when, unless, forM )
 import Data.Word
@@ -36,7 +41,7 @@ import qualified Data.Map.Strict as Map
 
 -- lens
 import Control.Lens
-  ( use, assign, modifying )
+  ( view, use, assign, modifying )
 
 -- mtl
 import Control.Monad.Except
@@ -54,11 +59,13 @@ import qualified Data.Text.Short as ShortText
 
 -- fir
 import CodeGen.Application
-  ( UAST(UAST) )
+  ( ASTs(NilAST, ConsAST), UCode(UCode)
+  , Application(Applied)
+  )
 import CodeGen.Binary
   ( instruction )
 import {-# SOURCE #-} CodeGen.CodeGen
-  ( codeGen )
+  ( CodeGen(codeGenArgs), codeGen )
 import CodeGen.Debug
   ( whenAsserting )
 import CodeGen.IDs
@@ -79,15 +86,27 @@ import CodeGen.State
   ( CGState(currentBlock, localBindings)
   , _currentBlock
   , _localBindings, _localBinding
+  , _spirvVersion
   )
 import FIR.AST
-  ( AST )
+  ( AST, Code
+  , IfF(..), IfMF(..), SwitchF(..), SwitchMF(..)
+  , WhileF(..), LocallyF(..), EmbedF(..)
+  , pattern (:$), pattern Return
+  )
+import FIR.AST.Type
+  ( Nullary )
 import FIR.Prim.Singletons
-  ( IntegralTy )
+  ( IntegralTy, primTy )
 import qualified SPIRV.Control   as SPIRV
+  ( SelectionControl, pattern NoSelectionControl
+  , LoopControl, pattern NoLoopControl
+  )
 import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
-  ( PrimTy(Unit, Boolean) )
+  ( PrimTy(..) )
+import qualified SPIRV.Version as SPIRV
+  ( Version(..) )
 
 ----------------------------------------------------------------------------
 -- blocks and branching
@@ -190,7 +209,38 @@ multiWaySwitch scrut defBlock ids
 ----------------------------------------------------------------------------
 -- code generation for selections (pure or branching)
 
-selection :: AST Bool -> AST a -> AST a -> CGMonad (ID, SPIRV.PrimTy)
+instance CodeGen AST => CodeGen (IfF AST) where
+  codeGenArgs (Applied IfF (c `ConsAST` (t :: Code a) `ConsAST ` f `ConsAST` NilAST)) = do
+    ver <- view _spirvVersion
+    if canUseSelection (primTy @a) ver
+    then selection c        t         f
+    else ifM       c (UCode t) (UCode f)
+      where
+        canUseSelection :: SPIRV.PrimTy -> SPIRV.Version -> Bool
+        canUseSelection (SPIRV.Scalar    _) _ = True
+        canUseSelection (SPIRV.Pointer _ _) _ = True
+        canUseSelection ty ver
+          | ver < SPIRV.Version 1 4 = False
+          | SPIRV.Matrix {} <- ty   = True
+          | SPIRV.Vector {} <- ty   = True
+          | SPIRV.Array  {} <- ty   = True
+          | SPIRV.Struct {} <- ty   = True
+          | otherwise               = False
+instance CodeGen AST => CodeGen (IfMF AST) where
+  codeGenArgs (Applied IfMF (c `ConsAST` t `ConsAST ` f `ConsAST` NilAST)) = ifM c (UCode t) (UCode f)
+instance CodeGen (SwitchMF AST) => CodeGen (SwitchF AST) where
+  codeGenArgs (Applied (SwitchF scrut def cases) NilAST) =
+    codeGen
+      ( SwitchMF
+       ( Return :$ scrut )
+       ( Return :$ def   )
+       ( map (second (Return :$)) cases )
+      )
+instance CodeGen AST => CodeGen (SwitchMF AST) where
+  codeGenArgs (Applied (SwitchMF scrut def cases) NilAST) = switch scrut def (map (second UCode) cases)
+
+
+selection :: ( CodeGen AST, Nullary a ) => Code Bool -> AST a -> AST a -> CGMonad (ID, SPIRV.PrimTy)
 selection cond x y = do
   (condID, condTy) <- codeGen cond
   ( whenAsserting . unless ( condTy == SPIRV.Boolean) )
@@ -202,9 +252,9 @@ selection cond x y = do
   o2 <- codeGen y
   select condID o1 o2
 
-ifM :: AST b -> AST t -> AST f -> CGMonad (ID, SPIRV.PrimTy)
+ifM :: ( CodeGen AST, Nullary b ) => AST b -> UCode -> UCode -> CGMonad (ID, SPIRV.PrimTy)
 ifM cond bodyTrue bodyFalse
-  = branchingSelection conditionalHeader [UAST bodyTrue, UAST bodyFalse]
+  = branchingSelection conditionalHeader [bodyTrue, bodyFalse]
       where
         conditionalHeader :: [ID] -> ID -> CGMonad ()
         conditionalHeader [trueBlockID, falseBlockID] mergeBlockID = do
@@ -223,9 +273,10 @@ ifM cond bodyTrue bodyFalse
             <> " branches"
             )
 
-switch :: IntegralTy t => AST s -> AST a -> [(t, UAST)] -> CGMonad (ID, SPIRV.PrimTy)
+switch :: ( CodeGen AST, IntegralTy t, Nullary s, Nullary a)
+       => AST s -> AST a -> [(t, UCode)] -> CGMonad (ID, SPIRV.PrimTy)
 switch scrut def cases
-  = branchingSelection switchHeader (UAST def : map snd cases)
+  = branchingSelection switchHeader (UCode def : map snd cases)
       where
         switchHeader :: [ID] -> ID -> CGMonad ()
         switchHeader [] _ = whenAsserting (throwError "codeGen: 'switch' statement missing default case")
@@ -235,7 +286,7 @@ switch scrut def cases
           multiWaySwitch scrutID defaultBlockID
             (zipWith ( \(t,_) i -> Pair (t,i) ) cases caseBlockIDs)
 
-branchingSelection :: ( [ID] -> ID -> CGMonad () ) -> [ UAST ] -> CGMonad (ID, SPIRV.PrimTy)
+branchingSelection :: CodeGen AST => ( [ID] -> ID -> CGMonad () ) -> [ UCode ] -> CGMonad (ID, SPIRV.PrimTy)
 branchingSelection mkHeader cases = do
   headerBlockID  <- fresh
   caseBlockIDs   <- traverse (\x -> (,x) <$> fresh) cases
@@ -249,7 +300,7 @@ branchingSelection mkHeader cases = do
 
   -- case blocks
   (bodies, endBlocks, endBindings) <- unzip3 <$>
-    forM caseBlockIDs \ (caseBlockID, UAST caseBody) -> do
+    forM caseBlockIDs \ (caseBlockID, UCode caseBody) -> do
       block caseBlockID
       assign _localBindings bindingsBefore
       bodyRes <- codeGen caseBody
@@ -289,7 +340,10 @@ branchingSelection mkHeader cases = do
 ----------------------------------------------------------------------------
 -- code generation for "while" loop
 
-while :: AST c -> AST b -> CGMonad (ID, SPIRV.PrimTy)
+instance CodeGen AST => CodeGen (WhileF AST) where
+  codeGenArgs ( Applied WhileF ( c `ConsAST` body `ConsAST` NilAST ) ) = while c body
+
+while :: ( CodeGen AST, Nullary c, Nullary b ) => AST c -> AST b -> CGMonad (ID, SPIRV.PrimTy)
 while cond loopBody = do
   beforeBlockID <- note ( "codeGen: while loop outside of a block" )
                    =<< use _currentBlock
@@ -377,7 +431,12 @@ while cond loopBody = do
   pure (ID 0, SPIRV.Unit) -- ID should never be used
 
 ----------------------------------------------------------------------------
--- helper for resetting local bindings
+-- code-generation for locally / embed
+
+instance CodeGen AST => CodeGen (LocallyF AST) where
+  codeGenArgs (Applied LocallyF (a `ConsAST` NilAST)) = locally (codeGen a)
+instance CodeGen AST => CodeGen (EmbedF AST) where
+  codeGenArgs (Applied EmbedF   (a `ConsAST` NilAST)) = codeGen a
 
 locally :: CGMonad a -> CGMonad a
 locally action = do

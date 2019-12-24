@@ -57,26 +57,26 @@ type EventData
    , "value"     ':-> Float
    , "intensity" ':-> Float
    ]
-newtype Event = Event ( AST Float, AST EventData )
+newtype Event = Event ( Code Float, Code EventData )
   deriving newtype Syntactic
 
 
 
-black :: AST EventData
+black :: Code EventData
 black = Struct ( 0 :& 0 :& 1 :& End )
-temperature :: AST Float -> AST Float -> AST EventData
+temperature :: Code Float -> Code Float -> Code EventData
 temperature t i = Struct ( 1 :& t :& i :& End )
---wavelength :: AST Float -> AST Float -> AST EventData
+--wavelength :: Code Float -> Code Float -> Code EventData
 --wavelength λ i = Struct ( 2 :& λ :& i :& End )
 noEvent :: Event
 noEvent = Event ( Lit (1 / 0), black )
 
 eventColour
-  :: AST KerrInfo
-  -> AST MotionConstants
-  -> AST (V 4 Float)
-  -> AST EventData
-  -> Program i i (AST (V 4 Float))
+  :: Code KerrInfo
+  -> Code MotionConstants
+  -> Code (V 4 Float)
+  -> Code EventData
+  -> Program i i (Code (V 4 Float))
 eventColour kerrInfo constants x₀ evtData
   = purely do
       flag <- def @"flag" @R $ view @(Field "flag") evtData
@@ -111,12 +111,12 @@ type CanonicalStep = RK.StepData Float Canonical
 -- passing it a stepping function which asks integration to stop
 -- when an event occurs.
 rayTraceUntilEvent
-  :: AST KerrInfo
-  -> AST DiskInfo
-  -> AST MotionConstants
-  -> AST Canonical
-  -> AST Float
-  -> Program i i (AST EventData)
+  :: Code KerrInfo
+  -> Code DiskInfo
+  -> Code MotionConstants
+  -> Code Canonical
+  -> Code Float
+  -> Program i i (Code EventData)
 rayTraceUntilEvent kerrInfo diskInfo constants x₀p₀ clock =
   RK.dormandPrince
     RK.Parameters
@@ -132,8 +132,8 @@ rayTraceUntilEvent kerrInfo diskInfo constants x₀p₀ clock =
     where
       checkStepEvent
         :: CanonicalStep
-        -> AST EventData
-        -> Program i i (AST (RK.StepResult EventData))
+        -> Code EventData
+        -> Program i i (Code (RK.StepResult EventData))
       checkStepEvent stepData _
       -- TODO: for the moment this ignores the past,
       -- and simply outputs the colour associated to a discrete event.
@@ -143,7 +143,7 @@ rayTraceUntilEvent kerrInfo diskInfo constants x₀p₀ clock =
             Event (dλₑ, dat) <- earliestStepEvent kerrInfo diskInfo constants stepData clock
             pure . Struct $ (dλₑ < 0 || dλₑ > dλ) :& dat :& End
 
-      tolerances :: AST Float -> AST Canonical -> Program s s (AST Canonical)
+      tolerances :: Code Float -> Code Canonical -> Program s s (Code Canonical)
       tolerances _ (XP (Vec4 _ r₀ cosθ₀ _) _ ) = purely do
         a²    <- def @"a²"    @R $ view @(Field "a²" ) kerrInfo
         r     <- def @"r"     @R $ r₀
@@ -154,7 +154,7 @@ rayTraceUntilEvent kerrInfo diskInfo constants x₀p₀ clock =
           ( Vec4 1 ( 1e-3 * δ ) 1e-4 ( 1e-3 + 1e0 * cos²θ ) )
           ( Vec2 ( 1e-3 * δ ) ( 1e-3 + 1e0 * cos²θ ) )
 
-      maxStepSize :: AST Float -> AST Canonical -> Program s s (AST Float)
+      maxStepSize :: Code Float -> Code Canonical -> Program s s (Code Float)
       maxStepSize _ (XP (Vec4 _ r₀ _ _) _ )
         = pure $
             if r₀ < 20
@@ -164,11 +164,11 @@ rayTraceUntilEvent kerrInfo diskInfo constants x₀p₀ clock =
 -- Compute the first event that occurs (if any)
 -- within the step (λ = geodesic affine parameter).
 earliestStepEvent
-  :: AST KerrInfo
-  -> AST DiskInfo
-  -> AST MotionConstants
+  :: Code KerrInfo
+  -> Code DiskInfo
+  -> Code MotionConstants
   -> CanonicalStep
-  -> AST Float
+  -> Code Float
   -> Program i i Event
 earliestStepEvent kerrInfo diskInfo constants stepData clock = do
   dλ_eh  <- crossedEventHorizon  kerrInfo                    stepData
@@ -194,7 +194,7 @@ earliestEvent ( Event (dλ₁, v₁) ) ( Event (dλ₂,v₂) : evs )
 -- Hence we stop the simulation early when
 -- the adaptive Runge–Kutta step size becomes too small.
 crossedEventHorizon
-  :: AST KerrInfo -> CanonicalStep -> Program i i Event
+  :: Code KerrInfo -> CanonicalStep -> Program i i Event
 crossedEventHorizon
   kerrInfo
   RK.StepData
@@ -225,15 +225,15 @@ crossedEventHorizon
         else
           pure noEvent
 
-eventHorizon :: AST (V 4 Float) -> Program i i (AST EventData)
+eventHorizon :: Code (V 4 Float) -> Program i i (Code EventData)
 eventHorizon _ = pure black
 
 crossedAccretionDisk
-  :: AST KerrInfo
-  -> AST DiskInfo
-  -> AST MotionConstants
+  :: Code KerrInfo
+  -> Code DiskInfo
+  -> Code MotionConstants
   -> CanonicalStep
-  -> AST Float
+  -> Code Float
   -> Program i i Event
 crossedAccretionDisk
   kerrInfo
@@ -263,19 +263,19 @@ crossedAccretionDisk
       τ_max <- def @"τ_max" @R =<< tilt diskInfo r_max
 
       -- AABB intersection test
-      invDir <- def @"invDir" @R $ recip @(AST Float) <$$> Vec2 r' ( - cosθ' / sinθ )
+      invDir <- def @"invDir" @R $ recip @(Code Float) <$$> Vec2 r' ( - cosθ' / sinθ )
       t1 <- def @"t1" @R
-        $ ( \ s p i -> ( s - p ) * i :: AST Float )
+        $ ( \ s p i -> ( s - p ) * i :: Code Float )
             <$$> Vec2 r_min ( cosψ * τ_min - θ_disk )
             <**> Vec2 r σ
             <**> invDir
       t2 <- def @"t2" @R
-        $ ( \ s p i -> ( s - p ) * i :: AST Float )
+        $ ( \ s p i -> ( s - p ) * i :: Code Float )
             <$$> Vec2 r_max ( cosψ * τ_max + θ_disk )
             <**> Vec2 r σ
             <**> invDir
-      tMin <- def @"tMin" @R $ maxV2 ( min @(AST Float) <$$> t1 <**> t2 )
-      tMax <- def @"tMax" @R $ minV2 ( max @(AST Float) <$$> t1 <**> t2 )
+      tMin <- def @"tMin" @R $ maxV2 ( min @(Code Float) <$$> t1 <**> t2 )
+      tMax <- def @"tMax" @R $ minV2 ( max @(Code Float) <$$> t1 <**> t2 )
 
       if   ( tMin > tMax || tMax < 0 )
       then pure noEvent
@@ -286,20 +286,20 @@ crossedAccretionDisk
         evData <- accretionDisk kerrInfo diskInfo τ constants xₑ x'
         pure ( Event ( dλₑ, evData ) )
 
-minV2 :: AST (V 2 Float) -> AST Float
+minV2 :: Code (V 2 Float) -> Code Float
 minV2 (Vec2 x y) = min x y
 
-maxV2 :: AST (V 2 Float) -> AST Float
+maxV2 :: Code (V 2 Float) -> Code Float
 maxV2 (Vec2 x y) = max x y
 
 accretionDisk
-  :: AST KerrInfo
-  -> AST DiskInfo
-  -> AST Float
-  -> AST MotionConstants
-  -> AST (V 4 Float)
-  -> AST (V 4 Float)
-  -> Program i i (AST EventData)
+  :: Code KerrInfo
+  -> Code DiskInfo
+  -> Code Float
+  -> Code MotionConstants
+  -> Code (V 4 Float)
+  -> Code (V 4 Float)
+  -> Program i i (Code EventData)
 accretionDisk kerrInfo diskInfo τ constants x@(Vec4 _ r cosθ _) v = purely do
   a <- def @"a" @R $ view @(Field "a") kerrInfo
   energy <- def @"energy" @R $ view @(Field "energy"     ) diskInfo
@@ -334,7 +334,7 @@ accretionDisk kerrInfo diskInfo τ constants x@(Vec4 _ r cosθ _) v = purely do
 -- | Arbitrary disk tilt function, used to interpolate from 0 (within the Bardeen–Petterson radius)
 -- to the outer inclination angle, with a small dip in the opposite direction.
 -- Not physically accurate, but I don't want to involve Novikov–Thorne thin disk theory.
-tilt :: AST DiskInfo -> AST Float -> Program i i (AST Float)
+tilt :: Code DiskInfo -> Code Float -> Program i i (Code Float)
 tilt diskInfo r = purely do
   dip    <- def @"dip"    @R $ 0.58
   τ      <- def @"τ"      @R $ view @(Field "inclination") diskInfo
@@ -348,7 +348,7 @@ tilt diskInfo r = purely do
              / ( ( exp 1 - 1 ) * ( 1 - dip ) )
   pure res
 
-rayEscaped :: AST KerrInfo -> CanonicalStep -> Program i i Event
+rayEscaped :: Code KerrInfo -> CanonicalStep -> Program i i Event
 rayEscaped _
   RK.StepData
     { RK.stepOrigin = (  λ, XP (Vec4 _ r  cosθ  φ ) _ )
@@ -380,7 +380,7 @@ rayEscaped _
         else pure noEvent
 
 -- Far field image.
-farField :: AST Float -> AST Float -> Program i i (AST EventData)
+farField :: Code Float -> Code Float -> Program i i (Code EventData)
 farField cosθ φ_ = purely do
   φ <- def @"φ" @R $ φ_ `mod` (2 * pi)
   --cos²θ <- def @"cos²θ" @R $ cosθ * cosθ

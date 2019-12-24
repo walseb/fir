@@ -55,6 +55,8 @@ class ( PrimTy ty
     => ScalarTy ty where
   scalarTySing :: SScalarTy ty
 
+class (ScalarTy ty, Integral ty) => IntegralTy ty
+
 scalarTy :: forall ty. ScalarTy ty => SPIRV.ScalarTy
 primTy   :: forall ty. PrimTy   ty => SPIRV.PrimTy
 

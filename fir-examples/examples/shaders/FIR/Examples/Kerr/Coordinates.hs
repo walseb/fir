@@ -40,14 +40,14 @@ type Canonical =
      , "p" ':-> V 2 Float
      ]
 {-# COMPLETE XP #-}
-pattern XP :: AST (V 4 Float) -> AST (V 2 Float) -> AST Canonical
+pattern XP :: Code (V 4 Float) -> Code (V 2 Float) -> Code Canonical
 pattern XP x p <- ( ( \xp -> ( view @(Name "x") xp, view @(Name "p") xp ) ) -> (x,p) )
   where XP x p = Struct ( x :& p :& End )
 
 instance RK.Integrable Float Canonical where
   (XP x₁ p₁) ^+^ (XP x₂ p₂) = XP ( x₁ ^+^ x₂ ) ( p₁ ^+^ p₂ )
   s *^ (XP x p) = XP ( s *^ x ) ( s *^ p )
-  absV (XP x p) = XP ( abs @(AST Float) <$$> x ) ( abs @(AST Float) <$$> p )
+  absV (XP x p) = XP ( abs @(Code Float) <$$> x ) ( abs @(Code Float) <$$> p )
   maxAdaptiveStepFactor (XP εx εp) (XP tol_x tol_p) δ
     = let
         ~(Vec4 δt δr δχ δφ) = δ <$$> εx <**> tol_x
@@ -147,13 +147,13 @@ proj kerrInfo pos u v
         projC = metric kerrInfo pos u v
 
 -- Normalise a vector with zero "t" component.
-normaliseSpatialComponents :: AST KerrInfo -> AST ( V 4 Float ) -> AST ( V 4 Float ) -> Program i i ( AST (V 4 Float ) )
+normaliseSpatialComponents :: Code KerrInfo -> Code ( V 4 Float ) -> Code ( V 4 Float ) -> Program i i ( Code (V 4 Float ) )
 normaliseSpatialComponents kerrInfo pos v = purely do
   nm <- def @"nm" @R =<< spatialNorm kerrInfo pos v
   pure $ invSqrt (abs nm) *^ v
 
 -- Compute the spatial part of the metric (3+1 formalism).
-spatialMetric :: AST KerrInfo -> AST (V 4 Float) -> AST (V 4 Float) -> AST (V 4 Float) -> Program i i (AST Float)
+spatialMetric :: Code KerrInfo -> Code (V 4 Float) -> Code (V 4 Float) -> Code (V 4 Float) -> Program i i (Code Float)
 spatialMetric kerrInfo (Vec4 _ r cosθ _) (Vec4 _ dr₁ dθ₁ dφ₁) (Vec4 _ dr₂ dθ₂ dφ₂) = purely do
   -- black hole info
   a  <- def @"a"  @R $ view @(Field "a" ) kerrInfo
@@ -175,13 +175,13 @@ spatialMetric kerrInfo (Vec4 _ r cosθ _) (Vec4 _ dr₁ dθ₁ dφ₁) (Vec4 _ d
 
   def @"spatialMetric" @R $ dr² + dθ² + dφ²
 
-spatialNorm :: AST KerrInfo -> AST (V 4 Float) -> AST (V 4 Float) -> Program i i (AST Float)
+spatialNorm :: Code KerrInfo -> Code (V 4 Float) -> Code (V 4 Float) -> Program i i (Code Float)
 spatialNorm kerrInfo pos v = spatialMetric kerrInfo pos v v
   
 {-
 -- Squared norm of a tangent vector with respect to the Kerr metric,
 -- in Boyer–Lindquist coordinates.
-ds² :: AST KerrInfo -> AST (V 4 Float) -> AST (V 4 Float) -> Program i i (AST Float)
+ds² :: Code KerrInfo -> Code (V 4 Float) -> Code (V 4 Float) -> Program i i (Code Float)
 ds² kerrInfo (Vec4 _ r₀ cosθ₀ _) (Vec4 dt dr dθ dφ) = purely do
 
   -- black hole info

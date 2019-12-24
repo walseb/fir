@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor        #-}
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -31,7 +32,13 @@ import Control.Type.Optic
 import Data.Type.Map
   ( (:->)((:->)) )
 import FIR.AST
-  ( AST(Lit, Undefined, Struct), Syntactic(..) )
+  ( Code
+  , Syntactic(..)
+  , SyntacticVal, InternalType
+  , pattern Lit, pattern Undefined, pattern Struct
+  )
+import FIR.AST.Type
+  ( AugType(Val) )
 import FIR.Prim.Singletons
   ( PrimTy )
 import FIR.Prim.Struct
@@ -48,7 +55,7 @@ import Math.Logic.Class
 --------------------------------------------------------------------------------------
 
 -- | 'Option' type like in Axelsson–Svenningsson.
-data Option a = Option { isSome :: AST Bool, fromSome :: a }
+data Option a = Option { isSome :: Code Bool, fromSome :: a }
   deriving stock Functor
 instance Applicative Option where
   pure = some
@@ -60,9 +67,9 @@ instance Monad Option where
     = Option { isSome = c && d, fromSome = b }
 
 
-instance ( Syntactic a, PrimTy (Internal a) ) => Syntactic (Option a) where
+instance ( SyntacticVal a, PrimTy (InternalType a) ) => Syntactic (Option a) where
   type Internal (Option a) =
-    Struct '[ "isSome" ':-> Bool, "fromSome" ':-> Internal a ]
+    Val (Struct '[ "isSome" ':-> Bool, "fromSome" ':-> InternalType a ])
   toAST (Option { isSome = c, fromSome = a })
     = choose c
         ( Struct ( Lit True  :& toAST a   :& End ) )
@@ -74,17 +81,17 @@ instance ( Syntactic a, PrimTy (Internal a) ) => Syntactic (Option a) where
       }
 some :: a -> Option a
 some a = Option { isSome = Lit True, fromSome = a }
-none :: ( Syntactic a, PrimTy (Internal a) ) => Option a
+none :: ( SyntacticVal a, PrimTy (InternalType a) ) => Option a
 none = Option { isSome = Lit False, fromSome = fromAST Undefined }
 option
-  :: ( Syntactic a
-     , PrimTy (Internal a)
-     , Choose (AST Bool) '(b,b,b)
+  :: ( SyntacticVal a
+     , PrimTy (InternalType a)
+     , Choose (Code Bool) '(b,b,b)
      )
   => b -> (a -> b) -> Option a -> b
 option b f a_opt =
   choose ( isSome a_opt ) ( f ( fromSome a_opt ) ) b
 
-fromOption :: ( Syntactic a, PrimTy (Internal a), Choose (AST Bool) '(a,a,a) )
+fromOption :: ( SyntacticVal a, PrimTy (InternalType a), Choose (Code Bool) '(a,a,a) )
            => a -> Option a -> a
 fromOption a = option a id

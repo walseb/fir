@@ -43,7 +43,7 @@ vertex = shader do
   y <- get @"in_y"
   z <- get @"in_z"
   w <- get @"in_w"
-  put @"out" ( ( convert :: AST Double -> AST Float ) <$$> Vec4 x y z w )
+  put @"out" ( ( convert :: Code Double -> Code Float ) <$$> Vec4 x y z w )
 
 ------------------------------------------------
 -- fragment shader

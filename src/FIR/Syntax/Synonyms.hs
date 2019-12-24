@@ -79,8 +79,6 @@ import Data.Int
   ( Int8, Int16, Int32 )
 import Data.Kind
   ( Type )
-import Data.Proxy
-  ( Proxy(Proxy) )
 import Data.Word
   ( Word8, Word16, Word32 )
 import GHC.TypeLits
@@ -106,8 +104,11 @@ import Data.Type.Known
 import Data.Type.Map
   ( (:->)((:->)), InsertionSort, Value )
 import FIR.AST
-  ( AST((:$), MkVector, Mat, UnMat, Gather)
+  ( Code
   , Syntactic(fromAST)
+  , pattern (:$)
+  , pattern MkVector, pattern Mat, pattern UnMat
+  , pattern Gather
   )
 import FIR.Definition
   ( Definition(Global) )
@@ -314,39 +315,39 @@ type LocationDescriptionsOfStruct
 
 type family FieldRes ( k :: Symbol ) ( struct :: Type ) :: Type where
   FieldRes k (Struct as)  = Value (StructIndexFromName k as)
-  FieldRes k (AST (Struct as)) = AST (Value (StructIndexFromName k as))
+  FieldRes k (Code (Struct as)) = Code (Value (StructIndexFromName k as))
 
 type family Field ( k :: Symbol ) :: Optic '[] struct (FieldRes k struct) where
   Field k = ( Field_ (k :: Symbol)
               :: Optic '[] (Struct as) (FieldRes k (Struct as))
             )
   Field k = ( Field_ (k :: Symbol)
-              :: Optic '[] (AST (Struct as)) (FieldRes k (AST (Struct as)))
+              :: Optic '[] (Code (Struct as)) (FieldRes k (Code (Struct as)))
             )
 
 -- internal synonyms to help inference in subsequent definitions
 type Col_  (i :: Nat) = ( Index i :: Optic '[] (M m n a) (V m a) )
-type Col__ (i :: Nat) = ( Index i :: Optic '[] (AST (M m n a)) (AST (V m a)) )
+type Col__ (i :: Nat) = ( Index i :: Optic '[] (Code (M m n a)) (Code (V m a)) )
 type Ix_   (i :: Nat) = ( Index i :: Optic '[] (V n a) a )
-type Ix__  (i :: Nat) = ( Index i :: Optic '[] (AST (V n a)) (AST a) )
+type Ix__  (i :: Nat) = ( Index i :: Optic '[] (Code (V n a)) (Code a) )
 
 type family EltRes (t :: Type) :: Type where
   EltRes (V m a) = a
   EltRes (M m n a) = a
   EltRes (Array n a) = a
-  EltRes (AST (V m a)) = AST a
-  EltRes (AST (M m n a)) = AST a
-  EltRes (AST (Array n a)) = AST a
+  EltRes (Code (V m a)) = Code a
+  EltRes (Code (M m n a)) = Code a
+  EltRes (Code (Array n a)) = Code a
 
 type family Elts = ( optic :: Optic '[] t (EltRes t) ) where
   Elts = ( OfType (EltRes t) :: Optic '[] t (EltRes t) )
 
 type family ColRes (mat :: Type) :: Type where
-  ColRes (AST (M m n a)) = AST (V m a)
+  ColRes (Code (M m n a)) = Code (V m a)
   ColRes (M m n a) = V m a
 
 type family Col (i :: Nat) = ( optic :: Optic '[] mat (ColRes mat) ) | optic -> i where
-  Col i = ( Col__ i :: Optic '[] (AST (M m n a)) (AST (V m a)) )
+  Col i = ( Col__ i :: Optic '[] (Code (M m n a)) (Code (V m a)) )
   Col i = ( Col_ i :: Optic '[] (M m n a) (V m a) )
 
 type family Cols = ( optic :: Optic '[] mat (ColRes mat) ) where
@@ -354,7 +355,7 @@ type family Cols = ( optic :: Optic '[] mat (ColRes mat) ) where
 
 type family RowRes (mat :: Type) :: Type where
   RowRes (M m n a) = V n a
-  RowRes (AST (M m n a)) = AST (V n a)
+  RowRes (Code (M m n a)) = Code (V n a)
 
 type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
   Row i = ( Prod_
@@ -362,7 +363,7 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
               :*: (Col__ 1 :.: Ix__ i)
               :*: EndProd
               )
-            :: Optic '[] (AST (M m 2 a)) (AST (V 2 a))
+            :: Optic '[] (Code (M m 2 a)) (Code (V 2 a))
           )
   Row i = ( Prod_
               (   (Col__ 0 :.: Ix__ i)
@@ -370,7 +371,7 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
               :*: (Col__ 2 :.: Ix__ i)
               :*: EndProd
               )
-            :: Optic '[] (AST (M m 3 a)) (AST (V 3 a))
+            :: Optic '[] (Code (M m 3 a)) (Code (V 3 a))
           )
   Row i = ( Prod_
               (   (Col__ 0 :.: Ix__ i)
@@ -379,7 +380,7 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
               :*: (Col__ 3 :.: Ix__ i)
               :*: EndProd
               )
-            :: Optic '[] (AST (M m 4 a)) (AST (V 4 a))
+            :: Optic '[] (Code (M m 4 a)) (Code (V 4 a))
           )
   Row i = ( Prod_
               (   (Col_ 0 :.: Ix_ i)
@@ -423,32 +424,32 @@ type family Rows = ( optic :: Optic '[] mat (RowRes mat) ) where
            ) :: Optic '[] (M 4 n a) (V n a)
          )
   Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: EndProd )
-                :: Optic '[] (AST (M 2 n a)) (Struct '[ "row0" ':-> AST (V n a), "row1" ':-> AST (V n a)]) )
-           :.: OfType (AST (V n a))
-           ) :: Optic '[] (AST (M 2 n a)) (AST (V n a))
+                :: Optic '[] (Code (M 2 n a)) (Struct '[ "row0" ':-> Code (V n a), "row1" ':-> Code (V n a)]) )
+           :.: OfType (Code (V n a))
+           ) :: Optic '[] (Code (M 2 n a)) (Code (V n a))
          )
   Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: EndProd )
-                :: Optic '[] (AST (M 3 n a)) (Struct '[ "row0" ':-> AST (V n a), "row1" ':-> AST (V n a), "row2" ':-> AST (V n a)]) )
-           :.: OfType (AST (V n a))
-           ) :: Optic '[] (AST (M 3 n a)) (AST (V n a))
+                :: Optic '[] (Code (M 3 n a)) (Struct '[ "row0" ':-> Code (V n a), "row1" ':-> Code (V n a), "row2" ':-> Code (V n a)]) )
+           :.: OfType (Code (V n a))
+           ) :: Optic '[] (Code (M 3 n a)) (Code (V n a))
          )
   Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: Row 3 :*: EndProd )
-                :: Optic '[] (AST (M 4 n a)) (Struct '[ "row0" ':-> AST (V n a), "row1" ':-> AST (V n a), "row2" ':-> AST (V n a), "row3" ':-> AST (V n a)]) )
-           :.: OfType (AST (V n a))
-           ) :: Optic '[] (AST (M 4 n a)) (AST (V n a))
+                :: Optic '[] (Code (M 4 n a)) (Struct '[ "row0" ':-> Code (V n a), "row1" ':-> Code (V n a), "row2" ':-> Code (V n a), "row3" ':-> Code (V n a)]) )
+           :.: OfType (Code (V n a))
+           ) :: Optic '[] (Code (M 4 n a)) (Code (V n a))
          )
 
 type family EntryRes (mat :: Type) :: Type where
   EntryRes (M m n a) = a
-  EntryRes (AST (M m n a)) = AST a
+  EntryRes (Code (M m n a)) = Code a
 
 type family Entry (i :: Nat) (j :: Nat) = ( optic :: Optic '[] mat (EntryRes mat)) where
   Entry i j = ( ( Col_  j :.: Ix_  i ) :: Optic '[] (M m n a) a )
-  Entry i j = ( ( Col__ j :.: Ix__ i ) :: Optic '[] (AST (M m n a)) (AST a) )
+  Entry i j = ( ( Col__ j :.: Ix__ i ) :: Optic '[] (Code (M m n a)) (Code a) )
 
 type family DiagRes (mat :: Type) :: Type where
   DiagRes (M n n a) = V n a
-  DiagRes (AST (M n n a)) = AST (V n a)
+  DiagRes (Code (M n n a)) = Code (V n a)
 
 type family Diag :: Optic '[] mat (DiagRes mat) where
   Diag = ( Prod_
@@ -480,7 +481,7 @@ type family Diag :: Optic '[] mat (DiagRes mat) where
               :*: (Col__ 1 :.: Ix__ 1)
               :*: EndProd
               )
-            :: Optic '[] (AST (M 2 2 a)) (AST (V 2 a))
+            :: Optic '[] (Code (M 2 2 a)) (Code (V 2 a))
          )
   Diag = ( Prod_
               (   (Col__ 0 :.: Ix__ 0)
@@ -488,7 +489,7 @@ type family Diag :: Optic '[] mat (DiagRes mat) where
               :*: (Col__ 2 :.: Ix__ 2)
               :*: EndProd
               )
-            :: Optic '[] (AST (M 3 3 a)) (AST (V 3 a))
+            :: Optic '[] (Code (M 3 3 a)) (Code (V 3 a))
          )
   Diag = ( Prod_
               (   (Col__ 0 :.: Ix__ 0)
@@ -497,7 +498,7 @@ type family Diag :: Optic '[] mat (DiagRes mat) where
               :*: (Col__ 3 :.: Ix__ 3)
               :*: EndProd
               )
-            :: Optic '[] (AST (M 4 4 a)) (AST (V 4 a))
+            :: Optic '[] (Code (M 4 4 a)) (Code (V 4 a))
          )
 
 type family Center :: Optic '[] mat (EntryRes mat) where
@@ -512,30 +513,30 @@ type family Center :: Optic '[] mat (EntryRes mat) where
 
 -- these patterns could be generalised to have types such as:
 -- Vec2 :: forall a. (Syntactic a, PrimTy (Internal a))
---      => a -> a -> AST ( V 2 (Internal a) )
+--      => a -> a -> Code ( V 2 (Internal a) )
 -- but this leads to poor type-inference
 
 {-# COMPLETE Vec2 #-}
-pattern Vec2 :: forall a. PrimTy a => AST a -> AST a -> AST ( V 2 a )
+pattern Vec2 :: forall a. PrimTy a => Code a -> Code a -> Code ( V 2 a )
 pattern Vec2 x y <- (fromAST -> V2 x y)
-  where Vec2 = fromAST $ MkVector @2 @a Proxy Proxy
+  where Vec2 x y = MkVector ( V2 x y )
 
 {-# COMPLETE Vec3 #-}
-pattern Vec3 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST ( V 3 a )
+pattern Vec3 :: forall a. PrimTy a => Code a -> Code a -> Code a -> Code ( V 3 a )
 pattern Vec3 x y z <- (fromAST -> V3 x y z)
-  where Vec3 = fromAST $ MkVector @3 @a Proxy Proxy
+  where Vec3 x y z = MkVector ( V3 x y z )
 
 {-# COMPLETE Vec4 #-}
-pattern Vec4 :: forall a. PrimTy a => AST a -> AST a -> AST a -> AST a -> AST ( V 4 a )
+pattern Vec4 :: forall a. PrimTy a => Code a -> Code a -> Code a -> Code a -> Code ( V 4 a )
 pattern Vec4 x y z w <- (fromAST -> V4 x y z w)
-  where Vec4 = fromAST $ MkVector @4 @a Proxy Proxy
+  where Vec4 x y z w = MkVector ( V4 x y z w )
 
 {-# COMPLETE Mat22 #-}
 pattern Mat22
   :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 2 2 a )
+  => Code a -> Code a
+  -> Code a -> Code a
+  -> Code ( M 2 2 a )
 pattern Mat22 a11 a12
               a21 a22
   <- ( fromAST . ( UnMat :$ )
@@ -552,9 +553,9 @@ pattern Mat22 a11 a12
 {-# COMPLETE Mat23 #-}
 pattern Mat23
   :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 2 3 a )
+  => Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a
+  -> Code ( M 2 3 a )
 pattern Mat23 a11 a12 a13
               a21 a22 a23
    <- ( fromAST . ( UnMat :$ )
@@ -573,9 +574,9 @@ pattern Mat23 a11 a12 a13
 {-# COMPLETE Mat24 #-}
 pattern Mat24
   :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 2 4 a )
+  => Code a -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a -> Code a
+  -> Code ( M 2 4 a )
 pattern Mat24 a11 a12 a13 a14
               a21 a22 a23 a24
    <- ( fromAST . ( UnMat :$ )
@@ -596,10 +597,10 @@ pattern Mat24 a11 a12 a13 a14
 {-# COMPLETE Mat32 #-}
 pattern Mat32
   :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 3 2 a )
+  => Code a -> Code a
+  -> Code a -> Code a
+  -> Code a -> Code a
+  -> Code ( M 3 2 a )
 pattern Mat32 a11 a12
               a21 a22
               a31 a32
@@ -618,10 +619,10 @@ pattern Mat32 a11 a12
 {-# COMPLETE Mat33 #-}
 pattern Mat33
   :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 3 3 a )
+  => Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a
+  -> Code ( M 3 3 a )
 pattern Mat33 a11 a12 a13
               a21 a22 a23
               a31 a32 a33
@@ -642,10 +643,10 @@ pattern Mat33 a11 a12 a13
 {-# COMPLETE Mat34 #-}
 pattern Mat34
   :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 3 4 a )
+  => Code a -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a -> Code a
+  -> Code ( M 3 4 a )
 pattern Mat34 a11 a12 a13 a14
               a21 a22 a23 a24
               a31 a32 a33 a34
@@ -668,11 +669,11 @@ pattern Mat34 a11 a12 a13 a14
 {-# COMPLETE Mat42 #-}
 pattern Mat42
   :: ScalarTy a
-  => AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST a -> AST a
-  -> AST ( M 4 2 a )
+  => Code a -> Code a
+  -> Code a -> Code a
+  -> Code a -> Code a
+  -> Code a -> Code a
+  -> Code ( M 4 2 a )
 pattern Mat42 a11 a12
               a21 a22
               a31 a32
@@ -693,11 +694,11 @@ pattern Mat42 a11 a12
 {-# COMPLETE Mat43 #-}
 pattern Mat43
   :: ScalarTy a
-  => AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a
-  -> AST ( M 4 3 a )
+  => Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a
+  -> Code ( M 4 3 a )
 pattern Mat43 a11 a12 a13
               a21 a22 a23
               a31 a32 a33
@@ -720,11 +721,11 @@ pattern Mat43 a11 a12 a13
 {-# COMPLETE Mat44 #-}
 pattern Mat44
   :: ScalarTy a
-  => AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST a -> AST a -> AST a -> AST a
-  -> AST ( M 4 4 a )
+  => Code a -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a -> Code a
+  -> Code a -> Code a -> Code a -> Code a
+  -> Code ( M 4 4 a )
 pattern Mat44 a11 a12 a13 a14
               a21 a22 a23 a24
               a31 a32 a33 a34

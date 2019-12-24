@@ -80,6 +80,8 @@ import Data.Type.Map
   ( (:->)((:->)) )
 import {-# SOURCE #-} FIR.AST
   ( Syntactic(Internal) )
+import FIR.AST.Type
+  ( AugType(Val) )
 import FIR.Binding
   ( Binding, BindingsMap, Var
   , Permission(Read,Write), Permissions
@@ -291,25 +293,10 @@ type family MapPrimTySing (as :: [fld :-> Type]) :: SKPrimTyMap as where
     = SKCons (PrimTySing a) (MapPrimTySing as)
 
 ------------------------------------------------
--- function arity
-
-data Arity a where
-  ZeroArity :: PrimTy a => Arity a
-  SuccArity :: Arity b -> Arity (a -> b)
-
-class KnownArity a where
-  arity :: Arity a
-
-instance {-# INCOHERENT #-} PrimTy a => KnownArity a where
-  arity = ZeroArity
-instance {-# OVERLAPPING #-} KnownArity b => KnownArity (a -> b) where
-  arity = SuccArity (arity @b)
-
-------------------------------------------------
 
 class ( Show ty                    -- for convenience
       , Eq ty, Ord ty, Typeable ty -- to keep track of lists of constants
-      , ty ~ ListVariadic '[] ty   -- ty is not a function type... useful for optics
+      , ty ~ ListVariadic '[] ty   -- ty is not a function type
       )
     => PrimTy ty where
   -- associated type used for computing overlap with "OfType" optic
@@ -656,33 +643,36 @@ data SPrimFunc :: (Type -> Type) -> Type where
 -- (see (GHC issue #17226)[https://gitlab.haskell.org/ghc/ghc/issues/17226])
 data DistDict f a where
   DistDict
-    :: ( Syntactic (f a), Internal (f a) ~ f (Internal a) )
+    :: ( Syntactic a, Internal a ~ Val va
+       , Syntactic (f a), Internal (f a) ~ Val (f va)
+       )
     => DistDict f a
 
 class ( Applicative f
-    --, forall a. (Syntactic a, PrimTy (Internal a)) => Syntactic (f a)
+    --, forall a. (Syntactic a, Internal a ~ Val va, PrimTy va) => Syntactic (f a)
       ) => PrimFunc f where
   primFuncSing :: SPrimFunc f
-  distDict     :: ( Syntactic a, PrimTy (Internal a) )
+  distDict     :: ( Syntactic a, Internal a ~ Val va, PrimTy va )
                => DistDict f a
 
 primFuncName :: forall f. PrimFunc f => String
-primFuncName
-  = case primFuncSing @f of
-      sFuncVector@SFuncVector
-        -> case sFuncVector of
-            ( _ :: SPrimFunc (V n) )
-              -> "V " ++ show (natVal (Proxy @n))
-      sFuncMatrix@SFuncMatrix
-        -> case sFuncMatrix of
-            ( _ :: SPrimFunc (M m n) )
-              -> "M " ++ show (natVal (Proxy @m))
-                      ++ " "
-                      ++ show (natVal (Proxy @n))
-      sFuncArray@SFuncArray
-        -> case sFuncArray of
-            ( _ :: SPrimFunc (Array n) )
-              -> "Array " ++ show (natVal (Proxy @n))
+primFuncName = case primFuncSing @f of
+
+  sFuncVector@SFuncVector ->
+    case sFuncVector of
+      ( _ :: SPrimFunc (V n) ) ->
+        "V " ++ show (natVal (Proxy @n))
+
+  sFuncMatrix@SFuncMatrix ->
+    case sFuncMatrix of
+      ( _ :: SPrimFunc (M m n) ) ->
+        "M " ++ show (natVal (Proxy @m))
+             ++ " "
+             ++ show (natVal (Proxy @n))
+  sFuncArray@SFuncArray ->
+    case sFuncArray of
+      ( _ :: SPrimFunc (Array n) ) ->
+        "Array " ++ show (natVal (Proxy @n))
 
 ------------------------------------------------------------
 -- dependent pair

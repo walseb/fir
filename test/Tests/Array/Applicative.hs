@@ -30,9 +30,9 @@ program = Module do
 
     arr <- get @"arr"
 
-    let f :: AST Float -> AST Float -> AST Float
+    let f :: Code Float -> Code Float -> Code Float
         f x y = x - abs y
-        arr' :: AST (Array 17 Float)
+        arr' :: Code (Array 17 Float)
         arr' = f <$$> arr <**> arr
         out = view @(Index 0) arr' + view @(Index 6) arr
 

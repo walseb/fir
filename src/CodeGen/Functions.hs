@@ -1,7 +1,14 @@
-{-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE BlockArguments       #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {-|
 Module: CodeGen.Functions
@@ -9,15 +16,19 @@ Module: CodeGen.Functions
 Code generation for function and entry-point definitions, and function calls.
 -}
 
-module CodeGen.Functions
-  ( declareFunction, declareFunctionCall, declareEntryPoint )
-  where
+module CodeGen.Functions ( ) where
 
 -- base
 import Data.Foldable
   ( traverse_ )
+import Data.Maybe
+  ( fromMaybe )
+import Data.Proxy
+  ( Proxy )
 import Data.Word
   ( Word32 )
+import qualified GHC.Stack
+  ( callStack )
 
 -- binary
 import qualified Data.Binary.Put as Binary
@@ -31,7 +42,7 @@ import qualified Data.Map.Strict as Map
 
 -- lens
 import Control.Lens
-  ( use, assign )
+  ( view, use, assign )
 
 -- mtl
 import Control.Monad.Except
@@ -46,10 +57,19 @@ import Data.Text.Short
   ( ShortText )
 
 -- fir
+import CodeGen.Application
+  ( ASTs(NilAST, ConsAST)
+  , Application(Applied)
+  , traverseASTs
+  )
 import CodeGen.Binary
   ( instruction )
+import {-# SOURCE #-} CodeGen.CodeGen
+  ( CodeGen(codeGenArgs), codeGen )
 import CodeGen.CFG
   ( newBlock )
+import CodeGen.Debug
+  ( whenDebugging, putSrcInfo )
 import CodeGen.IDs
   ( typeID )
 import CodeGen.Instruction
@@ -60,6 +80,7 @@ import CodeGen.Instruction
 import CodeGen.Monad
   ( CGMonad, runCGMonad
   , MonadFresh(fresh)
+  , note
   , liftPut
   , createIDRec
   )
@@ -73,12 +94,23 @@ import CodeGen.State
   , _localVariables
   , _interface
   , _entryPoint
+  , _userFunction
   , requireCapabilities
   )
 import Data.Containers.Traversals
   ( traverseWithKey_ )
+import Data.Type.Known
+  ( knownValue )
+import FIR.AST
+  ( AST
+  , FunDefF(..), FunCallF(..), DefEntryPointF(..)
+  )
+import FIR.AST.Type
+  ( Nullary )
 import FIR.Binding
   ( Permissions )
+import FIR.Prim.Singletons
+  ( primTy, knownVars )
 import FIR.ProgramState
   ( FunctionContext(..)
   , VLFunctionContext
@@ -95,6 +127,48 @@ import qualified SPIRV.Stage        as SPIRV
   ( ExecutionModel, ExecutionInfo
   , modelOf
   )
+
+----------------------------------
+-- code-generation for functions and entry points
+
+instance CodeGen AST => CodeGen (FunDefF AST) where
+  codeGenArgs (Applied (FunDefF (_ :: Proxy name) (_ :: Proxy as) (_ :: Proxy b)) (body `ConsAST` NilAST)) =
+    let as     = knownVars  @as
+        retTy  = primTy     @b
+        name   = knownValue @name
+    in do
+      whenDebugging ( putSrcInfo GHC.Stack.callStack )
+      control <- fromMaybe SPIRV.NoFunctionControl <$> view ( _userFunction name )
+      funID   <- declareFunction name control as retTy (codeGen body)
+      pure ( funID , SPIRV.Function (map (fst . snd) as) retTy )
+
+instance CodeGen AST => CodeGen (FunCallF AST) where
+  codeGenArgs (Applied (FunCallF (_ :: Proxy name) ( _ :: Proxy as ) ( _ :: Proxy b )) as) = do
+    let
+      funName = knownValue @name
+      retTy   = primTy @b
+    retTyID <- typeID retTy
+    mbFunc <-  use ( _knownBinding funName )
+    func <- note
+              (  "codeGen: function " <> funName
+              <> "\" not bound to any ID."
+              )
+              mbFunc
+    retID <-
+      declareFunctionCall
+        ( retTyID, retTy )
+        func
+        =<< traverseASTs @Nullary codeGen as
+    pure ( retID, retTy )
+
+instance CodeGen AST => CodeGen (DefEntryPointF AST) where
+  codeGenArgs (Applied (DefEntryPointF (_ :: Proxy name) (_ :: Proxy stageInfo)) (body `ConsAST` NilAST))
+    = let name      = knownValue @name
+          stageInfo = knownValue @stageInfo
+      in do
+        whenDebugging ( putSrcInfo GHC.Stack.callStack )
+        entryPointID <- declareEntryPoint name stageInfo Nothing (codeGen body) -- TODO
+        pure ( entryPointID, SPIRV.Function [] SPIRV.Unit )
 
 ----------------------------------
 -- dealing with function context
@@ -149,7 +223,7 @@ inContext context as body
 -- declaring function instructions
 
 declareFunctionCall :: (TyID, SPIRV.PrimTy)
-                    -> (ID, SPIRV.PrimTy)
+                    ->   (ID, SPIRV.PrimTy)
                     -> [ (ID, SPIRV.PrimTy) ]
                     -> CGMonad ID
 declareFunctionCall res func argIDs

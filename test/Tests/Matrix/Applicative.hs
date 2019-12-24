@@ -35,9 +35,9 @@ program = Module do
     mvp2   <- get @"mvp2"
     in_pos <- get @"in_pos"
 
-    let adjustment :: AST Float -> AST Float -> AST Float
+    let adjustment :: Code Float -> Code Float -> Code Float
         adjustment x y = 0.5 * abs (x - y)
-        adjusted_mvp :: AST (M 3 3 Float)
+        adjusted_mvp :: Code (M 3 3 Float)
         adjusted_mvp = adjustment <$$> mvp1 <**> mvp2
     
 

@@ -52,13 +52,13 @@ program = Module $ entryPoint @"main" @Vertex do
   assign @(Name "out1" :.: AnIndex Word32) 0 (r + f)
 
   let
-    mat :: AST (M 3 4 Float)
+    mat :: Code (M 3 4 Float)
     mat = Mat34
       0 1  2  3
       4 5  6  7
       8 9 10 11
 
-    mat' :: AST (M 3 2 Float)
+    mat' :: Code (M 3 2 Float)
     mat' = view @( Prod ( Col 1 :*: Col 3 :*: EndProd ) ) mat
 
   assign @(Name "out2") mat'

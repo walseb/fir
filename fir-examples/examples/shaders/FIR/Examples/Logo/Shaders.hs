@@ -69,42 +69,42 @@ data Ray a
   }
 
 
-minV3 :: AST (V 3 Float) -> AST Float
+minV3 :: Code (V 3 Float) -> Code Float
 minV3 (Vec3 x y z) = min x (min y z)
 
-maxV3 :: AST (V 3 Float) -> AST Float
+maxV3 :: Code (V 3 Float) -> Code Float
 maxV3 (Vec3 x y z) = max x (max y z)
 
 
 intersectAABB
   :: forall (s :: ProgramState). ( _ )
-  => Ray (AST (V 3 Float))
-  -> AABB (AST (V 3 Float))
-  -> Program s s ( AST Float, AST Float )
+  => Ray (Code (V 3 Float))
+  -> AABB (Code (V 3 Float))
+  -> Program s s ( Code Float, Code Float )
 intersectAABB
   Ray  { pos, invDir }
   AABB { low, high   }
     = locally do
-        t1 :: AST (V 3 Float)
+        t1 :: Code (V 3 Float)
           <- def @"t1" @R
-             $ ( \ s p i -> ( s - p ) * i :: AST Float ) <$$> low  <**> pos <**> invDir
-        t2 :: AST (V 3 Float)
+             $ ( \ s p i -> ( s - p ) * i :: Code Float ) <$$> low  <**> pos <**> invDir
+        t2 :: Code (V 3 Float)
           <- def @"t2" @R
-             $ ( \ s p i -> ( s - p ) * i :: AST Float ) <$$> high <**> pos <**> invDir
+             $ ( \ s p i -> ( s - p ) * i :: Code Float ) <$$> high <**> pos <**> invDir
 
         let
-          tMin, tMax :: AST Float
-          tMin = maxV3 ( min @(AST Float) <$$> t1 <**> t2 )
-          tMax = minV3 ( max @(AST Float) <$$> t1 <**> t2 )
+          tMin, tMax :: Code Float
+          tMin = maxV3 ( min @(Code Float) <$$> t1 <**> t2 )
+          tMax = minV3 ( max @(Code Float) <$$> t1 <**> t2 )
 
         pure ( tMin, tMax )
 
 
 intersectTriangle
   :: forall (s :: ProgramState). ( _ )
-  => Ray (AST (V 3 Float))
-  -> Triangle (AST (V 3 Float))
-  -> Program s s ( AST Float, AST (V 2 Float) )
+  => Ray (Code (V 3 Float))
+  -> Triangle (Code (V 3 Float))
+  -> Program s s ( Code Float, Code (V 2 Float) )
 intersectTriangle
   Ray { pos, dir }
   Triangle { v0, v1, v2 }
@@ -125,14 +125,14 @@ intersectTriangle
         pure (t, Vec2 u v)
 
 
-onTriangle :: AST (V 2 Float) -> AST Bool
+onTriangle :: Code (V 2 Float) -> Code Bool
 onTriangle (Vec2 u v) =
   u > 0 && v > 0 && u + v < 1
 
 ------------------------------------------------
 -- scene
 
-cube :: AABB (AST (V 3 Float))
+cube :: AABB (Code (V 3 Float))
 cube = AABB
   ( Lit (Prelude.pure (-1)) )
   ( Lit (Prelude.pure   1 ) )
@@ -142,7 +142,7 @@ w = 0.75
 bary = (2*w-1)/3
 equi = bary + sqrt ( 1 + 6 * bary * (2 * bary - 1) )
 
-tree, trunk :: Triangle (AST (V 3 Float))
+tree, trunk :: Triangle (Code (V 3 Float))
 tree = Triangle
          ( Lit $ V3 (-w)   w  (-1) )
          ( Lit $ V3   1    w    w  )
@@ -152,31 +152,31 @@ trunk = Triangle
          ( Lit $ V3 equi    1       0     )
          ( Lit $ V3 (-bary) (2*w-1) bary  )
 
-green, red, bgCol, edgeCol :: AST (V 4 Float)
+green, red, bgCol, edgeCol :: Code (V 4 Float)
 green   = Lit (V4 0.05 0.5  0.2  1)
 red     = Lit (V4 0.65 0.1  0.1  1)
 bgCol   = Lit (V4 0.95 0.93 0.88 0)
 edgeCol = bgCol -- Lit (V4 0    0    0    1)
 
 sceneTriangles
-  :: [ ( Triangle (AST (V 3 Float)), AST (V 4 Float) ) ]
+  :: [ ( Triangle (Code (V 3 Float)), Code (V 4 Float) ) ]
 sceneTriangles =
   [ (tree , green)
   , (trunk, red  )
   ]
 
 gradient :: forall n. KnownNat n
-         => AST Float
-         -> AST (Array n (V 4 Float))
-         -> AST (V 4 Float)
+         => Code Float
+         -> Code (Array n (V 4 Float))
+         -> Code (V 4 Float)
 gradient t colors
   =   ( (1-s) *^ ( view @(AnIndex _)  i    colors ) )
   ^+^ (    s  *^ ( view @(AnIndex _) (i+1) colors ) )
-  where n :: AST Float
+  where n :: Code Float
         n = Lit . fromIntegral $ knownValue @n
-        i :: AST Word32
+        i :: Code Word32
         i = floor ( (n-1) * t )
-        s :: AST Float
+        s :: Code Float
         s = (n-1) * t - fromIntegral i
 
 
@@ -190,7 +190,7 @@ cubeGradientStops =
     , V4 190 240 230 255
     ]
 
-cubeColor :: AST (V 3 Float) -> AST (V 4 Float)
+cubeColor :: Code (V 3 Float) -> Code (V 4 Float)
 cubeColor pt = gradient (1-t) (Lit cubeGradientStops)
   where
     c = 0.57735026 -- 1 / sqrt 3
@@ -201,7 +201,7 @@ xSamples = 4
 ySamples = 4
 samples = xSamples * ySamples
 
-weight :: AST Float
+weight :: Code Float
 weight = Lit (1 / samples)
 
 ------------------------------------------------
@@ -229,7 +229,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
     ~(Vec3 i_x i_y _) <- get @"gl_GlobalInvocationID"
 
     let
-      x,y :: AST Float
+      x,y :: Code Float
       x = ( fromIntegral i_x - 960 ) / 960
       y = ( fromIntegral i_y - 540 ) / 960
 
@@ -245,7 +245,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
 
     _ <- def @"col" @RW bgCol
 
-    invDir <- def @"invDir" @R ( recip @(AST Float) <$$> dir )
+    invDir <- def @"invDir" @R ( recip @(Code Float) <$$> dir )
 
     -- anti-aliasing
     _ <- def @"i" @RW @Float 0
@@ -257,12 +257,12 @@ computeShader = Module $ entryPoint @"main" @Compute do
         j <- get @"j"
 
         let
-          dx, dy :: AST Float
+          dx, dy :: Code Float
           dx = ( ( i + 0.5 ) / xSamples - 0.5 ) / 960
           dy = ( ( j + 0.5 ) / ySamples - 0.5 ) / 960
 
         --dir    <- def @"dir"    @R $ normalise ( fwd ^+^ (x+dx) *^ right ^-^ (y+dy) *^ up )
-        --invDir <- def @"invDir" @R ( recip @(AST Float) <$$> dir )
+        --invDir <- def @"invDir" @R ( recip @(Code Float) <$$> dir )
         pos <- def @"pos" @R ( pos0 ^+^ 5 *^ ( (x+dx) *^ right ^-^ (y+dy) *^ up ) )
 
         let ray = Ray { pos, dir, invDir }
@@ -270,7 +270,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
         (tMin, tMax) <- ray `intersectAABB` cube
 
         let
-          cubeOut :: AST (V 3 Float)
+          cubeOut :: Code (V 3 Float)
           cubeOut@(Vec3 outx outy outz) = pos ^+^ tMax *^ dir
           (Vec3 inx iny inz ) = pos ^+^ tMin *^ dir
 
@@ -289,7 +289,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
         else do
           -- ray interacts with cube, perform ray-tracing inside the cube
           let
-            cubeCol :: AST (V 4 Float)
+            cubeCol :: Code (V 4 Float)
             cubeCol =
               if (  ( abs outx > Lit 0.995 && abs outy > Lit 0.995 )
                  || ( abs outx > Lit 0.995 && abs outz > Lit 0.995 )

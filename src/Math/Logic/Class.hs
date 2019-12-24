@@ -41,6 +41,7 @@ import Data.Word
   ( Word8,Word16,Word32,Word64 )
 import Foreign.C.Types
 import qualified GHC.Stack
+  ( HasCallStack )
 
 -- half
 import Numeric.Half

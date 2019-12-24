@@ -31,6 +31,8 @@ import {-# SOURCE #-} Data.Product
   ( HList )
 import {-# SOURCE #-} FIR.AST
   ( AST )
+import FIR.AST.Type
+  ( AugType(Val, (:-->)) )
 import FIR.Prim.Array
   ( Array,RuntimeArray )
 import {-# SOURCE #-} FIR.Prim.Struct
@@ -44,22 +46,26 @@ type NatVariadic
       ( n :: Nat  )
       ( a :: Type )
       ( b :: Type )
-  = ( NatVariadic' n a b (1 <=? n) :: Type )
+  = ( NatVariadic' n a b (1 <=? n) :: AugType )
 
 type family NatVariadic'
               ( n    :: Nat  )
               ( a    :: Type )
               ( b    :: Type )
               ( geq1 :: Bool )
-            = ( r    :: Type )
+            = ( r    :: AugType )
+            | r -> b
             where
-  NatVariadic' _ _ b 'False = b
-  NatVariadic' n a b 'True  = a -> NatVariadic (n-1) a b
+  NatVariadic' n _ b 'False = Val b
+  NatVariadic' n a b 'True  = Val a :--> NatVariadic (n-1) a b
 
 ------------------------------------------------------------
 
--- explicitly list all primitive types, to allow injectivity annotation
+type family AugListVariadic (as :: [AugType]) (b :: Type) = ( r :: AugType ) | r -> as b where
+  AugListVariadic '[]       b = Val b
+  AugListVariadic (a ': as) b = a :--> AugListVariadic as b
 
+-- explicitly list all primitive types, to allow injectivity annotation
 type family ListVariadic (as :: [Type]) (b :: Type) = (r :: Type) | r -> as b where  
   ListVariadic (a ': as) b = a -> ListVariadic as b
   ListVariadic '[] ()     = ()

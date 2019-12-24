@@ -19,7 +19,7 @@ import FIR
 -- program
 
 type N = ( 128 :: Nat )
-n :: AST Int32
+n :: Code Int32
 n = Lit $ fromIntegral ( knownValue @N )
 
 type Defs = '[ "arr"  ':-> CrossWorkgroup '[] ( Array (N * N) Float )
@@ -30,18 +30,18 @@ program :: Module Defs
 program = Module $ entryPoint @"main" @Kernel do
   
   -- 0 ≤ diag < 2 * n - 1
-  ( diag :: AST Int32 )
+  ( diag :: Code Int32 )
     <- convert <<$>> get @"cl_GlobalLinearID"
 
   _ <- def @"entry" @RW @Int32 0
   let
-    diagSize :: AST Int32
+    diagSize :: Code Int32
     diagSize = n - abs ( n - diag - 1 )
   while ( get @"entry" < pure diagSize ) do
     entry <- get @"entry"
 
     let
-      row, col :: AST Int32
+      row, col :: Code Int32
       row = min ( n - 1 )   diag           - entry
       col = max   0       ( diag - n + 1 ) + entry
 

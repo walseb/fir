@@ -1,11 +1,15 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
 
@@ -16,30 +20,32 @@ Functionality for keeping track of function arguments, such as patterns for the 
 -}
 
 module CodeGen.Application
-  ( UAST(UAST), UASTs(NilUAST, SnocUAST)
-  , ASTs(NilAST, ConsAST)
-  , traverseASTs, astsLength
-  , pattern UApplied
-  , unsafeRetypeUASTs
-  , pattern Applied
-  )
-  where
+  ( UAST(..), UCode(..)
+  , ASTs(..), pattern SnocAST
+  , Codes, pattern ConsCode
+  , Application(..), pattern Nullary
+  , traverseASTs
+  ) where
 
 -- base
 import Data.Kind
   ( Type )
+import Data.Type.Equality
+  ( (:~:)(Refl) )
 import Unsafe.Coerce
   ( unsafeCoerce )
 
 -- fir
-import Data.Function.Variadic
-  ( ListVariadic )
-import Data.Type.List
-  ( SLength(SZero,SSucc)
-  , Snoc
+import Data.Constraint.All
+  ( All(allDict)
+  , AllDict(ConsDict)
   )
+import Data.Type.List
+  ( Head, Tail, Snoc )
 import FIR.AST
-  ( AST((:$)) )
+  ( AST, Code )
+import FIR.AST.Type
+  ( AugType, FunTys, Nullary, MapVal )
 
 ----------------------------------------------------------------------------
 -- existential data types to emulate untyped AST
@@ -49,14 +55,9 @@ data UAST where
   UAST :: AST a -> UAST
 deriving stock instance Show UAST
 
-infixl 5 `SnocUAST`
-
--- snoc list of untyped ASTs
--- this representation matches up with the 'function application' pattern synonym
-data UASTs where
-  NilUAST  :: UASTs
-  SnocUAST :: UASTs -> AST a -> UASTs
-deriving stock instance Show UASTs
+data UCode where
+  UCode :: Nullary a => AST a -> UCode
+deriving stock instance Show UCode
 
 ----------------------------------------------------------------------------
 -- typed list of ASTs
@@ -64,7 +65,7 @@ deriving stock instance Show UASTs
 infixr 5 `ConsAST`
 infixl 5 `SnocAST`
 
-data ASTs (is :: [Type]) :: Type where
+data ASTs (is :: [AugType]) :: Type where
   NilAST  :: ASTs '[]
   ConsAST :: AST i -> ASTs is -> ASTs (i ': is)
 
@@ -84,55 +85,42 @@ unsnocAST (b `ConsAST` bs    ) =
   case unsnocAST ( unsafeCoerce bs ) of
     ( cs, c ) -> ( unsafeCoerce (b `ConsAST` cs), c )
 
-foldrASTs :: (forall a. AST a -> b -> b) -> b -> ASTs as -> b
-foldrASTs _ b0 NilAST           = b0
-foldrASTs f b0 (a `ConsAST` as) = f a ( foldrASTs f b0 as )
+type Codes as = ASTs (MapVal as)
 
-astsLength :: ASTs is -> Int
-astsLength = foldrASTs (const succ) 0
+data Application (ast :: AugType -> Type) (f :: AugType) (r :: AugType) where
+  Applied :: FunTys f as r => ast f -> ASTs as -> Application ast f r
 
-traverseASTs :: Applicative f => (forall a. AST a -> f b) -> ASTs as -> f [b]
-traverseASTs _ NilAST           = pure []
-traverseASTs f (a `ConsAST` as) = (:) <$> f a <*> traverseASTs f as
+pattern Nullary :: FunTys f '[] r => ast f -> Application ast f r
+pattern Nullary v = Applied v NilAST
 
-
--- unfortunate workaround to obtain optic indices using untyped machinery
-unsafeRetypeUASTs :: forall as. SLength as -> UASTs -> Maybe (ASTs as)
-unsafeRetypeUASTs lg as
-  | correctLength lg as = Just ( unsafeRetypeAcc as NilAST )
-  | otherwise = Nothing
-  where unsafeRetypeAcc :: UASTs -> ASTs bs -> ASTs as
-        unsafeRetypeAcc NilUAST bs = unsafeCoerce bs
-        unsafeRetypeAcc (xs `SnocUAST` x) bs = unsafeRetypeAcc xs (x `ConsAST` bs)
-        correctLength :: SLength xs -> UASTs -> Bool
-        correctLength SZero NilUAST = True
-        correctLength (SSucc l) (xs `SnocUAST` _) = correctLength l xs
-        correctLength _ _ = False
+traverseASTs
+  :: forall c f as b
+  .  ( Applicative f, All c as )
+  => ( forall a. c a => AST a -> f b )
+  -> ASTs as
+  -> f [b]
+traverseASTs f as = go allDict as
+  where
+    go :: AllDict c xs -> ASTs xs -> f [b]
+    go _        NilAST           = pure []
+    go ConsDict (x `ConsAST` xs) = (:) <$> f x <*> go allDict xs
 
 ----------------------------------------------------------------------------
--- pattern for applied function with any number of arguments (untyped)
+-- Workaround for pattern matching not correctly propagating type family injectivity annotations
+-- (See [GHC trac #16436](https://gitlab.haskell.org/ghc/ghc/issues/16436).)
 
-pattern UApplied :: AST a -> UASTs -> AST b
-pattern UApplied f as <- (unapplyU . UAST -> (UAST f,as))
+infixr 5 `ConsCode`
 
-unapplyU :: UAST -> (UAST, UASTs)
-unapplyU (UAST (f :$ a))
-  = case unapplyU (UAST f) of
-        (UAST g, as) -> (UAST g, as `SnocUAST` a)
-unapplyU (UAST f) = (UAST f, NilUAST)
+pattern ConsCode :: () => ( as ~ ( Head as ': Tail as ) )
+                 => Code (Head as) -> Codes (Tail as) -> Codes as
+pattern ConsCode b bs <- ( getConsCode -> Just (GetConsCode b bs) )
+  where
+    ConsCode b bs = ConsAST b bs
 
-----------------------------------------------------------------------------
--- typed version
+data GetConsCode as where
+  GetConsCode :: ( as ~ (Head as ': Tail as) ) => Code (Head as) -> Codes (Tail as) -> GetConsCode as
 
-pattern Applied :: AST (ListVariadic as b) -> ASTs as -> AST b
-pattern Applied f as <- (unapply -> AnApplication f as)
-
-data AnApplication b where
-  AnApplication :: AST (ListVariadic as b) -> ASTs as -> AnApplication b
-
-unapply :: AST b -> AnApplication b
-unapply (f :$ a)
-  = case unapply f of
-        AnApplication (g :: AST (ListVariadic as (a ->b))) as
-          -> AnApplication (unsafeCoerce g :: AST (ListVariadic (as `Snoc` a) b)) (as `SnocAST` a)
-unapply f = AnApplication (unsafeCoerce f :: ListVariadic '[] b) NilAST
+getConsCode :: forall as. Codes as -> Maybe (GetConsCode as)
+getConsCode NilAST         = Nothing
+getConsCode (ConsAST a as) = case unsafeCoerce Refl :: ( as :~: (Head as ': Tail as) ) of
+  Refl -> Just (GetConsCode a as)

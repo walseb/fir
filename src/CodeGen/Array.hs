@@ -3,6 +3,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RebindableSyntax    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -33,7 +34,7 @@ import GHC.TypeNats
 
 -- fir
 import Control.Monad.Indexed
-  ( (:=), pure, (>>), (>>=) )
+  ( pure, (>>), (>>=) )
 import Control.Type.Optic
   ( Name, AnIndex, (:.:) )
 import Data.Type.Known
@@ -45,7 +46,12 @@ import Math.Algebra.Class
 import Math.Logic.Class
   ( Ord((<)) )
 import FIR.AST
-  ( AST(Lit), Syntactic(toAST) )
+  ( AST, Code
+  , Syntactic(toAST)
+  , pattern Lit
+  )
+import FIR.AST.Type
+  ( Eff )
 import FIR.Binding
   ( Var, RW )
 import FIR.Prim.Array
@@ -88,8 +94,8 @@ createArray :: forall n arrName ixName a i j ctx funs eps bkend.
              , CanPut arrName j
              , ValidDef ixName i
              )
-          => ( AST Word32 -> AST a ) 
-          -> AST ( (Array n a := i) i )
+          => ( Code Word32 -> Code a )
+          -> AST ( Eff i i (Array n a) )
 createArray arrayFunction = toAST $ locally @i @j do
   def @ixName @RW @Word32 @i 0
   while ( get @ixName < pure (Lit arrayLg) ) do

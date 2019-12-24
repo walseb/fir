@@ -111,7 +111,10 @@ import Data.Maybe
   ( fromMaybe )
 import Data.Proxy
   ( Proxy(Proxy) )
+import Data.Word
+  ( Word32 )
 import qualified GHC.Stack
+  ( HasCallStack )
 import GHC.TypeLits
   ( Symbol, KnownSymbol
   , TypeError, ErrorMessage(..)
@@ -130,6 +133,8 @@ import Control.Type.Optic
   ( Optic, Name, Gettable, Settable
   , Part, Whole, Indices
   )
+import Data.Constraint.All
+  ( All )
 import Data.Type.Known
   ( Known )
 import Data.Type.List
@@ -137,15 +142,26 @@ import Data.Type.List
 import Data.Type.Map
   ( (:->)((:->)) )
 import FIR.AST
-  ( AST(..)
+  ( AST, Code
   , Syntactic(Internal,toAST,fromAST)
+  , SyntacticVal, InternalType
   , primOp
   , HasUndefined(undefined)
+  , AugUser, AugAssigner
+  , FunctionHandle
+  , pattern Lam, pattern (:$), pattern Lit
+  , pattern Locally, pattern Embed
+  , pattern While, pattern SwitchM
+  , pattern Return, pattern Bind
+  , pattern Def, pattern FunDef, pattern FunCall, pattern DefEntryPoint
+  , pattern Use, pattern Assign
+  , pattern NilOps
   )
+import FIR.AST.Type
+  ( AugType(Val), Eff, FunArgs, Nullary )
 import FIR.Binding
-  ( BindingsMap
-  , FunctionType, Var
-  , Permissions
+  ( BindingsMap, Var, Permissions
+  , FunctionAugType
   )
 import FIR.Definition
   ( Definition, KnownDefinitions
@@ -177,7 +193,7 @@ import FIR.Syntax.AST
 import FIR.Syntax.Images
   ( ImageTexel )
 import FIR.Syntax.Optics
-  ( User, Assigner, KnownOptic, opticSing
+  ( KnownOptic, opticSing
   , StatefulOptic
   )
 import FIR.Validation.Bindings
@@ -224,15 +240,15 @@ import qualified SPIRV.Synchronisation as SPIRV
 --------------------------------------------------------------------------
 -- * Monadic control operations
 
-locally :: forall i j r. Syntactic r => Program i j r -> Program i i r
-locally = fromAST Locally
+locally :: forall i j r. (SyntacticVal r) => Program i j r -> Program i i r
+locally p = fromAST ( Locally :$ toAST p )
 
-embed :: forall i j r. (Embeddable i j, Syntactic r)
+embed :: forall i j r. (Embeddable i j, SyntacticVal r)
       => Program i i r -> Program j j r
-embed = fromAST Embed
+embed p = fromAST ( Embed :$ toAST p )
 
 purely
-  :: ( Syntactic r
+  :: ( SyntacticVal r
      , i ~ 'ProgramState '[] 'TopLevel '[] '[] bkend
      , Embeddable i k
      )
@@ -240,18 +256,18 @@ purely
 purely = embed . locally
 
 while :: ( GHC.Stack.HasCallStack )
-      => Program i i (AST Bool)
-      -> Program i j (AST ())
-      -> Program i i (AST ())
-while = fromAST While
+      => Program i i (Code Bool)
+      -> Program i j (Code ())
+      -> Program i i (Code ())
+while c p = fromAST ( While :$ toAST c :$ toAST p )
 
-switchM :: ( Syntactic scrut
-           , IntegralTy (Internal scrut)
-           , Syntactic val
-           , PrimTy (Internal val)
+switchM :: ( Syntactic scrut, Internal scrut ~ Val vscrut
+           , IntegralTy vscrut
+           , Syntactic val, Internal val ~ Val vval
+           , PrimTy vval
            )
         => Program i i scrut -- ^ Scrutinee.
-        -> [ Internal scrut :-> Program i i val ] -- ^ Cases.
+        -> [ InternalType scrut :-> Program i i val ] -- ^ Cases.
         -> Program i i val   -- ^ Default (fallthrough) case.
         -> Program i i val
 switchM scrut cases val = fromAST $ SwitchM (toAST scrut) (toAST val) (map ( \ (x :-> y) -> (x, toAST y) ) cases)
@@ -261,15 +277,16 @@ switchM scrut cases val = fromAST $ SwitchM (toAST scrut) (toAST val) (map ( \ (
 
 -- $syntactic
 -- Instance for the 'Syntactic' type class.
+-- Recall that @Program i j a@ is a type synonym for @Codensity AST (a := j) i@.
 
-instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
-  type Internal (Codensity AST (a := j) i) = (Internal a := j) i
+instance SyntacticVal a => Syntactic (Program i j a) where
+  type Internal (Codensity AST (a := j) i) = Eff i j (InternalType a)
 
-  toAST :: Codensity AST (a := j) i -> AST ( (Internal a := j) i )
+  toAST :: Codensity AST (a := j) i -> AST ( Eff i j (InternalType a) )
   toAST (Codensity k) = k ( \(AtKey a) -> Return :$ toAST a )
 
-  fromAST :: AST ( (Internal a := j) i) -> Codensity AST (a := j) i
-  fromAST a = Codensity ( \k -> fromAST Bind a (k . AtKey) )
+  fromAST :: AST ( Eff i j (InternalType a) ) -> Codensity AST (a := j) i
+  fromAST a = Codensity ( \k -> Bind :$ toAST a :$ toAST (k . AtKey) )
 
 --------------------------------------------------------------------------
 -- Undefined
@@ -282,7 +299,7 @@ instance Syntactic a => Syntactic (Codensity AST (a := j) i) where
 -- in an arbitrary state.
 -- This does mean that the user cannot use 'undefined' to stand-in for an
 -- arbitrary state-changing computation.
-instance ( PrimTy a, j ~ i ) => HasUndefined (Program i j (AST a)) where
+instance ( PrimTy a, j ~ i ) => HasUndefined (Program i j (Code a)) where
   undefined = ixPure undefined
 
 instance {-# OVERLAPPABLE #-} ( j ~ i ) => HasUndefined (Program i j a) where
@@ -312,9 +329,9 @@ def :: forall
        , PrimTy a
        , ValidDef k i
        )
-    => AST a -- ^ Initial value.
-    -> Program i (AddBinding k (Var ps a) i) (AST a)
-def = fromAST ( Def @k @ps @a @i Proxy Proxy )
+    => Code a -- ^ Initial value.
+    -> Program i (AddBinding k (Var ps a) i) (Code a)
+def = fromAST ( Def (Proxy @k) (Proxy @ps) )
 
 -- | Define a new function.
 --
@@ -333,9 +350,9 @@ fundef :: forall
             ( j_bds :: BindingsMap  )
             ( i     :: ProgramState )
             ( r     :: Type         )
-       .   ( GHC.Stack.HasCallStack
+        .  ( GHC.Stack.HasCallStack
            , Syntactic r
-           , Internal r ~ FunctionType as b
+           , Internal r ~ FunctionAugType as b, All Nullary (FunArgs (FunctionAugType as b))
            , KnownSymbol name
            , KnownVars as
            , PrimTy b
@@ -345,10 +362,14 @@ fundef :: forall
         => Program
               ( FunctionDefinitionStartState name as i )
               ( FunctionDefinitionEndState name as j_bds i )
-              ( AST b ) -- ^ Function body code.
+              ( Code b ) -- ^ Function body code.
         -> Program i (AddFunBinding name as b i) r
-fundef = fromAST ( FunDef @name @as @b @j_bds @i Proxy Proxy Proxy ) . toAST
-
+fundef f = ixFmap ( \g -> fromAST ( FunCall (Proxy @name) ( Proxy @as ) ( Proxy @b ) :$ g ) ) cod
+  where
+    fun :: AST (Eff i (AddFunBinding name as b i) (FunctionHandle name as b)) 
+    fun = FunDef (Proxy @name) (Proxy @as) (Proxy @b) :$ toAST f
+    cod :: Program i (AddFunBinding name as b i) (AST (Val (FunctionHandle name as b)))
+    cod = Codensity ( \k -> Bind :$ fun :$ Lam (k . AtKey) )
 
 -- | Define a new entry point.
 --
@@ -369,7 +390,7 @@ entryPoint :: forall
                ( j_bds     :: BindingsMap  )
                ( j_iface   :: TLInterface  )
                ( i         :: ProgramState )
-             .
+           .
              ( GHC.Stack.HasCallStack
              , KnownSymbol name
              , Known SPIRV.ExecutionModel stage
@@ -380,14 +401,12 @@ entryPoint :: forall
            => Program
                 ( EntryPointStartState name stageInfo i )
                 ( EntryPointEndState name stageInfo j_bds j_iface i )
-                ( AST () )
+                ( Code () )
            -> Program
                 i
                 ( SetInterface name stageInfo j_iface i )
-                ( AST () )
-entryPoint = fromAST
-                ( Entry @name @stage @stageInfo @j_bds @j_iface @i Proxy Proxy )
-           . toAST
+                ( Code () )
+entryPoint ep = fromAST ( DefEntryPoint (Proxy @name) (Proxy @stageInfo) :$ toAST ep )
 
 -- | Define a new shader stage.
 --
@@ -431,7 +450,7 @@ shader :: forall
        => Program
             ( EntryPointStartState name stageInfo i )
             ( EntryPointEndState name stageInfo j_bds j_iface i )
-            ( AST () )
+            ( Code () )
        -> ShaderModule name shader defs (SetInterface name stageInfo j_iface i)
 shader
   = ShaderModule
@@ -447,10 +466,10 @@ use :: forall optic.
              , KnownOptic optic, StatefulOptic optic
              , Gettable optic
              , Syntactic (ProgUser optic)
-             , Internal (ProgUser optic) ~ User optic
+             , Internal (ProgUser optic) ~ AugUser optic
              )
            => ProgUser optic
-use = fromAST ( Use @optic sLength opticSing )
+use = fromAST ( Use sLength ( opticSing @optic ) )
 
 -- | Assign a new value with an optic.
 --
@@ -460,10 +479,10 @@ assign :: forall optic.
              , KnownOptic optic, StatefulOptic optic
              , Settable optic
              , Syntactic (ProgAssigner optic)
-             , Internal (ProgAssigner optic) ~ Assigner optic
+             , Internal (ProgAssigner optic) ~ AugAssigner optic
              )
            => ProgAssigner optic
-assign = fromAST ( Assign @optic sLength opticSing )
+assign = fromAST ( Assign sLength ( opticSing @optic ) )
 
 -- *** Get, put, modify.
 
@@ -475,8 +494,9 @@ get :: forall (k :: Symbol) (a :: Type) (i :: ProgramState).
        ( KnownSymbol k
        , Gettable (Name k :: Optic '[] i a)
        , a ~ Has k i
+       , PrimTy a
        )
-    => Program i i (AST a)
+    => Program i i (Code a)
 get = use @(Name k :: Optic '[] i a)
 
 -- | Set the value of a variable.
@@ -487,8 +507,9 @@ put :: forall (k :: Symbol) (a :: Type) (i :: ProgramState).
        ( KnownSymbol k
        , Settable (Name k :: Optic '[] i a)
        , a ~ Has k i
+       , PrimTy a
        )
-    => AST a -> Program i i (AST ())
+    => Code a -> Program i i (Code ())
 put = assign @(Name k :: Optic '[] i a)
 
 -- | Modify the value of a variable.
@@ -500,8 +521,9 @@ modify :: forall (k :: Symbol) (a :: Type) (i :: ProgramState).
           , Gettable (Name k :: Optic '[] i a)
           , Settable (Name k :: Optic '[] i a)
           , a ~ Has k i
+          , PrimTy a
           )
-       => (AST a -> AST a) -> Program i i (AST ())
+       => (Code a -> Code a) -> Program i i (Code ())
 modify = modifying @(Name k :: Optic '[] i a)
 
 --------------------------------------------------------------------------
@@ -534,8 +556,8 @@ imageRead :: forall
             , Known ImageProperties props
             , ValidImageRead props '[]
             )
-          => AST (ImageCoordinates props '[])
-          -> Program i i (AST (ImageData props '[]))
+          => Code (ImageCoordinates props '[])
+          -> Program i i (Code (ImageData props '[]))
 imageRead = use
           @( ImageTexel imgName
               :: Optic
@@ -572,9 +594,9 @@ imageWrite :: forall
              , Known ImageProperties props
              , ValidImageWrite props '[]
              )
-           => AST (ImageCoordinates props '[])
-           -> AST (ImageData props '[])
-           -> Program i i ( AST () )
+           => Code (ImageCoordinates props '[])
+           -> Code (ImageData props '[])
+           -> Program i i ( Code () )
 imageWrite = assign
            @( ImageTexel imgName
                 :: Optic
@@ -590,13 +612,13 @@ imageWrite = assign
 -- | Geometry shader: write the current output values at the current vertex index.
 emitVertex :: forall (i :: ProgramState)
            . ( ExecutionContext i ~ Just SPIRV.Geometry )
-           => Program i i ( AST () )
+           => Program i i ( Code () )
 emitVertex = primOp @i @SPIRV.EmitGeometryVertex
 
 -- | Geometry shader: end the current primitive and pass to the next one.
 endPrimitive :: forall (i :: ProgramState)
              .  ( ExecutionContext i ~ Just SPIRV.Geometry )
-             => Program i i ( AST () )
+             => Program i i ( Code () )
 endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
 
 --------------------------------------------------------------------------
@@ -608,22 +630,22 @@ endPrimitive = primOp @i @SPIRV.EndGeometryPrimitive
 controlBarrier :: forall (i :: ProgramState)
                .  SPIRV.SynchronisationScope
                -> Maybe ( SPIRV.SynchronisationScope, SPIRV.MemorySemantics )
-               -> Program i i ( AST () )
+               -> Program i i ( Code () )
 controlBarrier controlScope memScope
   = primOp @i @SPIRV.ControlSync
-      ( Lit $ SPIRV.synchronisationScope controlScope )
-      ( Lit $ fromMaybe 0 $ SPIRV.synchronisationScope   . fst <$> memScope )
-      ( Lit $ fromMaybe 0 $ SPIRV.memorySemanticsBitmask . snd <$> memScope )
+      ( Lit $ SPIRV.synchronisationScope controlScope :: Code Word32 )
+      ( Lit $ fromMaybe 0 $ SPIRV.synchronisationScope   . fst <$> memScope :: Code Word32 )
+      ( Lit $ fromMaybe 0 $ SPIRV.memorySemanticsBitmask . snd <$> memScope :: Code Word32 )
 
 -- | Memory barrier: ensure ordering on memory accesses.
 memoryBarrier :: forall (i :: ProgramState)
                .  SPIRV.SynchronisationScope
                -> SPIRV.MemorySemantics
-               -> Program i i ( AST () )
+               -> Program i i ( Code () )
 memoryBarrier memScope memSem
   = primOp @i @SPIRV.MemorySync
-      ( Lit $ SPIRV.synchronisationScope   memScope )
-      ( Lit $ SPIRV.memorySemanticsBitmask memSem   )
+      ( Lit $ SPIRV.synchronisationScope   memScope :: Code Word32 )
+      ( Lit $ SPIRV.memorySemanticsBitmask memSem   :: Code Word32 )
 
 --------------------------------------------------------------------------
 -- type synonyms for use/assign
@@ -634,8 +656,8 @@ type family ProgListVariadic
               ( a  :: Type  )
             = ( r  :: Type  )
             | r -> is s a where
-  ProgListVariadic '[]         s a = Program s s (AST a)
-  ProgListVariadic ( i ': is ) s a = AST i -> ProgListVariadic is s a
+  ProgListVariadic '[]         s a = Program s s (Code a)
+  ProgListVariadic ( i ': is ) s a = Code i -> ProgListVariadic is s a
 
 
 -- recall (defined in FIR.Syntax.Optics):
@@ -655,8 +677,8 @@ type family ProgVariadicModifier
             = ( r  :: Type )
             | r -> is s a
             where
-  ProgVariadicModifier '[]       s a = (AST a -> AST a) -> Program s s (AST ())
-  ProgVariadicModifier (i ': is) s a = AST i -> ProgVariadicModifier is s a
+  ProgVariadicModifier '[]       s a = (Code a -> Code a) -> Program s s (Code ())
+  ProgVariadicModifier (i ': is) s a = Code i -> ProgVariadicModifier is s a
 
 type ProgModifier (optic :: Optic is s a) = ProgVariadicModifier is s a
 
@@ -671,9 +693,9 @@ modifying
        , Settable optic
        , Gettable optic
        , Syntactic (ProgUser optic)
-       , Internal (ProgUser optic) ~ User optic
+       , Internal (ProgUser optic) ~ AugUser optic
        , Syntactic (ProgAssigner optic)
-       , Internal (ProgAssigner optic) ~ Assigner optic
+       , Internal (ProgAssigner optic) ~ AugAssigner optic
        , Modifier (Indices optic) (Whole optic) (Part optic)
        )
     => ProgModifier optic
@@ -715,16 +737,16 @@ instance Boolean b => Boolean (Program i i b) where
 
 instance ( PrimTy a, Eq a, Logic a ~ Bool
          , i ~ j
-         , r ~ AST a
+         , r ~ Code a
          )
   => Eq (Program i j r) where
-  type Logic (Program i j r) = Program i i (AST Bool)
+  type Logic (Program i j r) = Program i i (Code Bool)
   (==) = ixLiftA2 (==)
   (/=) = ixLiftA2 (/=)
 
 instance ( ScalarTy a, Ord a, Logic a ~ Bool
          , i ~ j
-         , r ~ AST a
+         , r ~ Code a
          )
   => Ord (Program i j r) where
   (<=) = ixLiftA2 (<=)
@@ -742,7 +764,7 @@ instance ( ScalarTy a, Ord a, Logic a ~ Bool
 -- 'Bits', 'BitShift' (note: not 'Data.Bits.Bits').
 
 instance ( ScalarTy a
-         , r ~ AST a
+         , r ~ Code a
          , j ~ i
          , Bits a
          ) => Bits (Program i j r) where
@@ -754,8 +776,8 @@ instance ( ScalarTy a
 
 instance ( ScalarTy a, ScalarTy s
          , BitShift '(a,s)
-         , x ~ AST a
-         , t ~ AST s
+         , x ~ Code a
+         , t ~ Code s
          , j ~ i, i' ~ i, j' ~ i
          )
   => BitShift '(Program i j x, Program i' j' t) where
@@ -764,12 +786,12 @@ instance ( ScalarTy a, ScalarTy s
 
 instance ( ScalarTy a, ScalarTy s
          , BitShift '(a,s)
-         , x ~ AST a
+         , x ~ Code a
          , i ~ j
          )
-  => BitShift '(Program i j x, AST s) where
-  shiftL a s = shiftL @'(Program i j x, Program i i (AST s)) a (ixPure s)
-  shiftR a s = shiftR @'(Program i j x, Program i i (AST s)) a (ixPure s)
+  => BitShift '(Program i j x, Code s) where
+  shiftL a s = shiftL @'(Program i j x, Program i i (Code s)) a (ixPure s)
+  shiftR a s = shiftR @'(Program i j x, Program i i (Code s)) a (ixPure s)
 
 
 -- Numeric operations
@@ -784,32 +806,32 @@ instance ( ScalarTy a, ScalarTy s
 -- 'DivisionRing', 'Archimedean' (Archimedean ordered group),
 --
 -- 'Floating', 'RealFloat' (note: not the "Prelude" type classes).
-instance (ScalarTy a, AdditiveMonoid a, j ~ i) => AdditiveMonoid (Program i j (AST a)) where
+instance (ScalarTy a, AdditiveMonoid a, j ~ i) => AdditiveMonoid (Program i j (Code a)) where
   (+)    = ixLiftA2 (+)
   zero   = ixPure zero
   fromInteger = ixPure . fromInteger
-instance (ScalarTy a, Semiring a, j ~ i) => Semiring (Program i j (AST a)) where
+instance (ScalarTy a, Semiring a, j ~ i) => Semiring (Program i j (Code a)) where
   (*)    = ixLiftA2 (*)
-instance (ScalarTy a, AdditiveGroup a, j ~ i) => AdditiveGroup (Program i j (AST a)) where
+instance (ScalarTy a, AdditiveGroup a, j ~ i) => AdditiveGroup (Program i j (Code a)) where
   (-)    = ixLiftA2 (-)
   negate = ixFmap negate
-instance (ScalarTy a, Signed a, j ~ i) => Signed (Program i j (AST a)) where
+instance (ScalarTy a, Signed a, j ~ i) => Signed (Program i j (Code a)) where
   abs    = ixFmap abs
   signum = ixFmap signum
-instance (ScalarTy a, DivisionRing a, j ~ i) => DivisionRing (Program i j (AST a)) where
+instance (ScalarTy a, DivisionRing a, j ~ i) => DivisionRing (Program i j (Code a)) where
   (/)    = ixLiftA2 (/)
   fromRational = ixPure . fromRational
 instance ( ScalarTy a
          , Archimedean a
-         , Archimedean (AST a)
+         , Archimedean (Code a)
          , Logic a ~ Bool
          , j ~ i
-         ) => Archimedean (Program i j (AST a)) where
+         ) => Archimedean (Program i j (Code a)) where
   mod    = ixLiftA2 mod
   rem    = ixLiftA2 rem
   div    = ixLiftA2 div
 
-instance (ScalarTy a, Floating a, j ~ i) => Floating (Program i j (AST a)) where
+instance (ScalarTy a, Floating a, j ~ i) => Floating (Program i j (Code a)) where
   pi      = ixPure pi
   exp     = ixFmap exp
   log     = ixFmap log
@@ -829,7 +851,7 @@ instance (ScalarTy a, Floating a, j ~ i) => Floating (Program i j (AST a)) where
   atanh   = ixFmap atanh
   (**)    = ixLiftA2 (**)
 
-instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Program i j (AST a)) where
+instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Program i j (Code a)) where
   atan2 = ixLiftA2 atan2
 
 -- Numeric conversions
@@ -837,19 +859,19 @@ instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Program i j (AST a)) whe
 -- $conversions
 -- Instance for 'Convert', 'Rounding'.
 instance ( ScalarTy a, ScalarTy b
-         , Convert '(AST a, AST b)
+         , Convert '(Code a, Code b)
          , j ~ i, k ~ i, l ~ i
          )
-         => Convert '( Program i j (AST a)
-                     , Program k l (AST b)
+         => Convert '( Program i j (Code a)
+                     , Program k l (Code b)
                      ) where
-  convert = ixFmap ( convert @'(AST a, AST b) )
+  convert = ixFmap ( convert @'(Code a, Code b) )
 
-instance ( ScalarTy a, ScalarTy b, Rounding '(AST a, AST b)
+instance ( ScalarTy a, ScalarTy b, Rounding '(Code a, Code b)
          , j ~ i, k ~ i, l ~ i
          )
-         => Rounding '( Program i j (AST a)
-                      , Program k l (AST b)
+         => Rounding '( Program i j (Code a)
+                      , Program k l (Code b)
                       ) where
   truncate = ixFmap truncate
   round    = ixFmap round
@@ -862,23 +884,23 @@ instance ( ScalarTy a, ScalarTy b, Rounding '(AST a, AST b)
 -- Instances for:
 --
 -- 'Semimodule', 'LinearModule', 'Inner', 'Cross'.
-instance (ScalarTy a, Semiring a, j ~ i) => Semimodule Nat (Program i j (AST (V 0 a))) where
-  type Scalar   (Program i j (AST (V 0 a)))       = Program i j (AST a)
-  type OfDim    (Program i j (AST (V 0 a))) Nat n = Program i j (AST (V n a))
-  type ValidDim (Program i j (AST (V 0 a))) Nat n = KnownNat n
+instance (ScalarTy a, Semiring a, j ~ i) => Semimodule Nat (Program i j (Code (V 0 a))) where
+  type Scalar   (Program i j (Code (V 0 a)))       = Program i j (Code a)
+  type OfDim    (Program i j (Code (V 0 a))) Nat n = Program i j (Code (V n a))
+  type ValidDim (Program i j (Code (V 0 a))) Nat n = KnownNat n
 
   (^+^) = ixLiftA2 (^+^)
   (^*)  = ixLiftA2 (^*)
 
-instance (ScalarTy a, Ring a, j ~ i) => LinearModule Nat (Program i j (AST (V 0 a))) where
+instance (ScalarTy a, Ring a, j ~ i) => LinearModule Nat (Program i j (Code (V 0 a))) where
   (^-^) = ixLiftA2 (^-^)
 
-instance (ScalarTy a, Floating a, j ~ i) => Inner Nat (Program i j (AST (V 0 a))) where
+instance (ScalarTy a, Floating a, j ~ i) => Inner Nat (Program i j (Code (V 0 a))) where
   (^.^) = ixLiftA2 (^.^)
   normalise = ixFmap normalise
 
-instance (ScalarTy a, Floating a, j ~ i) => Cross Nat (Program i j (AST (V 0 a))) where
-  type CrossDim (Program i j (AST (V 0 a))) Nat n = ( n ~ 3 )
+instance (ScalarTy a, Floating a, j ~ i) => Cross Nat (Program i j (Code (V 0 a))) where
+  type CrossDim (Program i j (Code (V 0 a))) Nat n = ( n ~ 3 )
   cross = ixLiftA2 cross
 
 -- Matrices
@@ -886,10 +908,10 @@ instance (ScalarTy a, Floating a, j ~ i) => Cross Nat (Program i j (AST (V 0 a))
 -- $matrices
 -- Instance for 'Matrix'.
 
-type instance VectorOf (Program i j (AST (M 0 0 a))) = Program i j (AST (V 0 a))
+type instance VectorOf (Program i j (Code (M 0 0 a))) = Program i j (Code (V 0 a))
 
-instance (ScalarTy a, Floating a, j ~ i) => Matrix Nat (Program i j (AST (M 0 0 a))) where
-  type OfDims (Program i j (AST (M 0 0 a))) Nat '(m,n) = Program i j (AST (M m n a))
+instance (ScalarTy a, Floating a, j ~ i) => Matrix Nat (Program i j (Code (M 0 0 a))) where
+  type OfDims (Program i j (Code (M 0 0 a))) Nat '(m,n) = Program i j (Code (M m n a))
 
   diag  = ixFmap diag
   konst = ixFmap konst

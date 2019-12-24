@@ -142,7 +142,7 @@ tessellationEvaluation = shader do
   center <- use @(Name "gl_in" :.: Index 0 :.: Name "gl_Position" )
 
   let
-    v1, v2 :: AST (V 3 Float)
+    v1, v2 :: Code (V 3 Float)
     v1 = if nx == 0
          then Vec3 1 0 0
          else normalise $ Vec3 (-ny) nx 0

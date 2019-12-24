@@ -82,10 +82,10 @@ Additional functionality is provided by the modules `Math.Linear` (vectors and m
 `Math.Quaternion` (quaternions) and `FIR.Syntax.Labels` (optional imperative-like syntax using *OverloadedLabels*).
 
 The important types are:
-* __`AST a`__: code for a pure value of type `a`, represented internally as an abstract syntax tree.
+* __`Code a`__: code for a pure value of type `a`, represented internally as an abstract syntax tree.
 Type class overloading allows for simple construction of values of this type, e.g. one has:
 ```haskell
-( \ t -> exp ( - tan t ** 2 ) / ( cos t ** 4 ) ) :: AST Float -> AST Float
+( \ t -> exp ( - tan t ** 2 ) / ( cos t ** 4 ) ) :: Code Float -> Code Float
 ```
 * __`Module defs`__: a program that can be compiled to a SPIR-V module. `defs` is a type-level map which specifies the program inputs/outputs, top-level functions and entry-points; this is the mechanism by which the user specifies shader interfaces and execution modes.
 * __`Program i j a`__: an *indexed* monadic expression, starting in state `i` and ending in state `j`. Can be thought of as stateful GPU code producing a value of type `a`. The additional type-level information (the indices) allows the library to enforce program correctness.
@@ -254,7 +254,7 @@ On Windows, this can be achieved with the command `chcp.com 65001`.
 When working with this library, one needs to be careful with inlining. Consider the following example:
 
 ```haskell
-inlined :: AST Float -> AST (V 3 Float)
+inlined :: Code Float -> Code (V 3 Float)
 inlined t
   let u = cos ( 2 * pi * t )
   in  Vec3 u u u
@@ -277,7 +277,7 @@ This effect can compound rapidly with successive inlinings, so it is best to be 
 To circumvent this problem, we define variables that record the result of intermediate computations, as follows:
 
 ```haskell
-shared :: AST Float -> Program _i _j (AST (V 3 Float))
+shared :: Code Float -> Program _i _j (Code (V 3 Float))
 shared t = do
   u <- def @"u" @R $ cos ( 2 * pi * t )
   pure (Vec3 u u u)

@@ -99,7 +99,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
   -- Compute pixel coordinates.
   ~(Vec3 i_x i_y _) <- get @"gl_GlobalInvocationID"
   let
-    x,y :: AST Float
+    x,y :: Code Float
     x = ( fromIntegral i_x - ( width  / 2 ) ) / ( width / 2 )
     y = ( fromIntegral i_y - ( height / 2 ) ) / ( width / 2 )
 
@@ -156,7 +156,7 @@ xSamples = 1
 ySamples = 1
 samples = xSamples * ySamples
 
-weight :: AST Float
+weight :: Code Float
 weight = Lit (1 / samples)
 
 ------------------------------------------------

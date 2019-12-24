@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 {-|
 Module: FIR.Binding
@@ -19,7 +20,7 @@ module FIR.Binding
   , Binding(Variable, Function)
   , Var, Fun
   , BindingsMap
-  , FunctionType
+  , FunctionType, FunctionAugType, FunArgTypes
   , StoragePermissions
   )
   where
@@ -35,6 +36,8 @@ import Data.Type.Known
   ( Demotable(Demote), Known(known) )
 import Data.Type.Map
   ( (:->)((:->)), Map )
+import FIR.AST.Type
+  ( AugType(Val,(:-->)), UnderlyingType )
 import qualified SPIRV.Storage as SPIRV
 
 ------------------------------------------------------------------------------------------------
@@ -69,15 +72,21 @@ type Fun as b = 'Function as b
 
 type BindingsMap = Map Symbol Binding
 
-type family FunctionType (as :: BindingsMap) (b :: Type) where
-  FunctionType  '[]                b = b
-  FunctionType  ((_ ':-> a) ': as) b = BindingType a -> FunctionType as b
+type FunctionType as b = UnderlyingType (FunctionAugType as b)
+
+type family FunArgTypes (as :: BindingsMap) :: [Type] where
+  FunArgTypes '[] = '[]
+  FunArgTypes ((_ ':-> a) ': as) = UnderlyingType (BindingAugType a) ': FunArgTypes as
+
+type family FunctionAugType (as :: BindingsMap) (b :: Type) :: AugType where
+  FunctionAugType '[]                b = Val b
+  FunctionAugType ((_ ':-> a) ': as) b = BindingAugType a :--> FunctionAugType as b
 
 -- auxiliary type family (non-exported),
 -- used only in the above 'FunctionType' type family
-type family BindingType (bd :: Binding) :: Type where
-  BindingType (Var  _ a) = a
-  BindingType (Fun as b) = FunctionType as b
+type family BindingAugType (bd :: Binding) :: AugType where
+  BindingAugType (Var  _ a) = Val a
+  BindingAugType (Fun as b) = FunctionAugType as b
 
 ------------------------------------------------------------------------------------------------
 -- relation to SPIRV storage classes

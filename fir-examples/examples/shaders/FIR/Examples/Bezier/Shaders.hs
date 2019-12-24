@@ -91,7 +91,7 @@ type TessellationEvaluationDefs =
    , "main"    ':-> EntryPoint '[ Isolines ] TessellationEvaluation
    ]
 
-bezier2 :: AST Float -> AST (V 4 Float) -> AST (V 4 Float) -> AST (V 4 Float) -> AST (V 4 Float)
+bezier2 :: Code Float -> Code (V 4 Float) -> Code (V 4 Float) -> Code (V 4 Float) -> Code (V 4 Float)
 bezier2 t u v w -- could use applicative here
   =   (            (1 - t)**2 ) *^ u
   ^+^ ( 2 * t    * (1 - t)    ) *^ v
@@ -133,10 +133,10 @@ tessellationEvaluation = shader do
 -- geometry shader
 
 {-
-miterConstant :: AST Float
+miterConstant :: Code Float
 miterConstant = Lit 0.8660255 -- sqrt 3 / 2, rounded up slightly
 
-miter :: AST (V 4 Float) -> AST (V 4 Float) -> Program i i (AST (V 4 Float))
+miter :: Code (V 4 Float) -> Code (V 4 Float) -> Program i i (Code (V 4 Float))
 miter u v = do
   #w   #= view @(Swizzle "xyz") u `cross` view @(Swizzle "xyz") v
   #sec #= invSqrt (w `dot` w)
@@ -222,7 +222,7 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
-coverage :: AST Float -> AST Float
+coverage :: Code Float -> Code Float
 coverage d =
   if d > 0.649519
   then 0

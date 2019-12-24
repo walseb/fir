@@ -105,17 +105,18 @@ module FIR
   , module Data.Product
   , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
-  , FIR.AST.AST
-    ( (:$), Lit, Struct, Array
-    -- image operands
-    , NilOps, Proj, Dref, Bias
-    , LOD, MinLOD, Grad
-    , ConstOffsetBy, OffsetBy
-    , Gather, SampleNo
-    -- internal hlist
-    , NilHList, ConsHList
-    )
+  , AST, FIR.AST.Code, EGADT
+  , module FIR.AST.Type
+  , pattern (:$), pattern Lit, pattern Struct, pattern Array
+  -- image operands
+  , pattern NilOps, pattern Proj, pattern Dref, pattern Bias
+  , pattern LOD, pattern MinLOD, pattern Grad
+  , pattern ConstOffsetBy, pattern OffsetBy
+  , pattern Gather, pattern SampleNo
+  -- internal hlist
+  , pattern NilHList, pattern ConsHList
   , FIR.AST.Syntactic(..)
+  , FIR.AST.SyntacticVal, FIR.AST.InternalType
   , FIR.AST.HasUndefined(undefined)
   , FIR.Binding.BindingsMap
   , FIR.Binding.Var, FIR.Binding.Fun
@@ -268,6 +269,10 @@ import Data.Set
 import System.Directory
   ( doesFileExist )
 
+-- haskus-utils-variant
+import Haskus.Utils.EGADT
+  ( EGADT )
+
 -- generic-monoid
 import Data.Monoid.Generic
   ( GenericSemigroup(..), GenericMonoid(..) )
@@ -295,6 +300,7 @@ import Data.Type.Known
 import Data.Type.List
 import Data.Type.Map
 import FIR.AST
+import FIR.AST.Type
 import FIR.Binding
 import FIR.Definition
 import FIR.Layout
@@ -326,7 +332,7 @@ import SPIRV.Decoration
 import SPIRV.ExecutionMode
 import SPIRV.Extension
 import qualified SPIRV.Extension  as SPIRV
-import SPIRV.Image
+import SPIRV.Image hiding ( LODOperand(..), Operand(..) )
 import SPIRV.Stage
 import SPIRV.Version
 import qualified SPIRV.Version    as SPIRV
@@ -344,7 +350,7 @@ class DrawableProgramAST prog where
 
 instance DrawableProgramAST (AST a) where
   showAST = showTree . toTree
-instance Syntactic a => DrawableProgramAST (Codensity AST (a := j) i) where
+instance Syntactic a => DrawableProgramAST (Program i j (Code a)) where
   showAST = showTree . toTree . toAST
 instance DrawableProgramAST (Module def) where
   showAST (Module prog) = showAST prog

@@ -30,9 +30,9 @@ program = Module $ entryPoint @"main" @Vertex do
   row <- use @(Name "ubo" :.: Name "mvp" :.: Row 0)
   col <- use @(Name "ubo" :.: Name "mvp" :.: Col 2)
   dia <- use @(Name "ubo" :.: Name "mvp" :.: Diag)
-  ( mid :: AST (M 2 2 Float) )
+  ( mid :: Code (M 2 2 Float) )
     <- use @(Name "ubo" :.: Name "mvp" :.: Prod (Entry 1 1 :*: Entry 1 2 :*: Entry 2 1 :*: Entry 2 2 :*: EndProd))
-  ( flatMid :: AST (V 4 Float) )
+  ( flatMid :: Code (V 4 Float) )
     <- use @(Name "ubo" :.: Name "mvp" :.: Prod (Entry 1 1 :*: Entry 1 2 :*: Entry 2 1 :*: Entry 2 2 :*: EndProd))
 
   assign @(Name "out") identity

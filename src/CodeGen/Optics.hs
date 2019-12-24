@@ -2,6 +2,7 @@
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE MultiWayIf             #-}
 {-# LANGUAGE OverloadedStrings      #-}
@@ -23,22 +24,7 @@ such as @view@, @set@, @use@, @assign@.
 
 -}
 
-module CodeGen.Optics
-  ( IndexedOptic(AnIndexedOptic)
-  , IndexedOptic'(AnIndexedOptic')
-  , IndexedTypedOptic(AnIndexedTypedOptic)
-  , IndexedAssignment(AnIndexedAssignment)
-  , pattern OpticUse
-  , pattern OpticAssign
-  , pattern OpticView
-  , pattern OpticSet
-  , loadThroughAccessChain
-  , storeThroughAccessChain
-  , extractUsingGetter
-  , setUsingSetter
-  , insertUsingSetter
-  , ASTs(NilAST, ConsAST)
-  ) where
+module CodeGen.Optics ( ) where
 
 -- base
 import Control.Arrow
@@ -74,13 +60,12 @@ import qualified Data.Text.Short as ShortText
 
 -- fir
 import CodeGen.Application
-  ( UAST(UAST)
-  , ASTs(NilAST, ConsAST)
-  , pattern UApplied
-  , unsafeRetypeUASTs
+  ( ASTs(NilAST, ConsAST), pattern SnocAST
+  , Codes, pattern ConsCode
+  , Application(..)
   )
 import {-# SOURCE #-} CodeGen.CodeGen
-  ( codeGen )
+  ( CodeGen(codeGenArgs), codeGen )
 import CodeGen.Composite
   ( compositeConstruct
   , compositeExtract
@@ -91,15 +76,18 @@ import CodeGen.Composite
 import CodeGen.Debug
   ( whenAsserting )
 import CodeGen.IDs
-  ( constID )
+  ( constID, bindingID )
+import CodeGen.Images
+  ( imageTexel, writeTexel )
 import CodeGen.Instruction
-  ( ID )
+  ( ID(ID) )
 import CodeGen.Monad
   ( CGMonad )
 import CodeGen.Pointers
   ( Safeness(Safe, Unsafe)
   , Indices(RTInds, CTInds)
   , temporaryVariable, accessChain
+  , load, store
   , loadInstruction, storeInstruction
   )
 import CodeGen.State
@@ -122,119 +110,225 @@ import Data.Product
   , Distribute
   , distributeZipConsLemma1
   )
+import Data.Type.Known
+  ( knownValue )
 import Data.Type.List
   ( type (:++:), ZipCons
   , KnownLength(sLength)
   , SLength(SZero, SSucc)
   , SameLength(sSameLength)
   , SSameLength(SSameZero, SSameSucc)
+  , Snoc
   )
 import FIR.AST
-  ( AST
-    ( (:$), Lit
-    , MkID
-    , Use, Assign, View, Set
-    , NilHList, ConsHList
-    )
+  ( AST, Code
+  , pattern (:$), pattern Lit
+  , pattern MkID
+  , pattern NilHList, pattern ConsHList
+  , UseF(..), AssignF(..), ViewF(..), SetF(..)
   )
+import FIR.AST.Type
+  ( AugType(Val), MapVal )
 import FIR.Prim.Singletons
   ( PrimTy, primTy, primTys
   , SPrimTy(..), sPrimTy
   )
 import FIR.Syntax.Optics
-  ( SOptic(..), SProductComponents(..) )
+  ( SOptic(..), showSOptic
+  , SProductComponents(..)
+  )
 import qualified SPIRV.PrimTy  as SPIRV
 import qualified SPIRV.PrimTy
   ( almostEqual )
 import qualified SPIRV.Storage as Storage
 
 ----------------------------------------------------------------------------
--- pattern synonyms for optics
+-- Code generation for optics.
 
--- existential types for an optic with all its run-time indices specified
--- several variants keeping track of various amounts of type-level information
+-- View.
 
-data IndexedOptic where
-  AnIndexedOptic
-    :: forall (k :: Type) (is :: [Type]) (s :: k) (a :: Type) (optic :: Optic is s a)
-    .  SOptic optic -> ASTs is -> IndexedOptic
+data OpticView where
+  OpticView :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code s -> OpticView
 
-data IndexedOptic' where
-  AnIndexedOptic'
-    :: forall (is :: [Type]) (s :: Type) (a :: Type) (optic :: Optic is s a)
-    .  SOptic optic -> ASTs is -> IndexedOptic'
+viewed :: Application (ViewF AST) f r -> OpticView
+viewed ( Applied ( ViewF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_s ) =
+  case unsafeCoerce is_s :: ( ASTs (MapVal is `Snoc` Val s) ) of
+    ( is `SnocAST` s ) -> OpticView sOptic is s
 
-data IndexedTypedOptic (s :: Type) (a :: Type) where
-  AnIndexedTypedOptic
-    :: forall (is :: [Type]) (s :: Type) (a :: Type) (optic :: Optic is s a)
-    .  SOptic optic -> ASTs is -> IndexedTypedOptic s a
+instance CodeGen AST => CodeGen (ViewF AST) where
+  codeGenArgs ( viewed -> OpticView sOptic is s ) = do
+    base <- codeGen s
+    extractUsingGetter base sOptic is
 
-data IndexedAssignment where
-  AnIndexedAssignment
-    :: forall (k :: Type) (is :: [Type]) (s :: k) (a :: Type) (optic :: Optic is s a)
-    .  SOptic optic -> ASTs is -> AST a -> IndexedAssignment
+-- Set.
 
-pattern OpticUse :: IndexedOptic -> AST t
-pattern OpticUse indexedOptic <- ( used -> Just indexedOptic )
+data OpticSet where
+  OpticSet :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code a -> Code s -> OpticSet
 
-used :: AST t -> Maybe IndexedOptic
-used ( UApplied (Use lg sOptic) is )
-  = case unsafeRetypeUASTs lg is of
-      Nothing  -> Nothing
-      Just is' -> Just ( AnIndexedOptic sOptic is' )
-used _ = Nothing
+setted :: Application (SetF AST) f r -> OpticSet
+setted ( Applied ( SetF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_a_s ) =
+  case unsafeCoerce is_a_s :: ( ASTs ( MapVal is `Snoc` Val a `Snoc` Val s ) ) of
+    ( is `SnocAST` a `SnocAST` s ) -> OpticSet sOptic is a s
 
-pattern OpticAssign :: IndexedAssignment -> AST t
-pattern OpticAssign indexedAssignment <- ( assigned -> Just indexedAssignment )
+instance CodeGen AST => CodeGen (SetF AST) where
+  codeGenArgs ( setted -> OpticSet sOptic is a s ) =
+    setUsingSetter s a sOptic is
 
-assigned :: AST t -> Maybe IndexedAssignment
-assigned ( UApplied (Assign lg sOptic) is :$ a )
-  = case unsafeRetypeUASTs lg is of
-      Nothing  -> Nothing
-      Just is' -> Just ( AnIndexedAssignment sOptic is' ( unsafeCoerce a ) )
-assigned _ = Nothing
+-- Use.
 
-pattern OpticView :: IndexedOptic' -> UAST -> AST t
-pattern OpticView indexedOptic s <- ( viewed -> Just ( indexedOptic, s ) )
+data OpticUse where
+  OpticUse :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> OpticUse
 
-viewed :: AST t -> Maybe (IndexedOptic', UAST)
-viewed ( UApplied ( View lg sOptic ) is :$ s )
-  = case unsafeRetypeUASTs lg is of
-      Nothing  -> Nothing
-      Just is' -> Just ( AnIndexedOptic' sOptic is', UAST s )
-viewed _ = Nothing
+used :: Application (UseF AST) f r -> OpticUse
+used ( Applied ( UseF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is ) =
+  case unsafeCoerce is :: ASTs ( MapVal is ) of
+    js -> OpticUse sOptic js
 
-pattern OpticSet :: IndexedTypedOptic s a -> AST a -> AST s -> AST t
-pattern OpticSet indexedOptic a s <- ( setted -> Just ( indexedOptic, a, s ) )
+instance CodeGen AST => CodeGen (UseF AST) where
+  codeGenArgs ( used -> OpticUse sOptic is ) = case sOptic of
 
-setted :: AST s -> Maybe (IndexedTypedOptic s a, AST a, AST s)
-setted ( UApplied ( Set lg sOptic ) is :$ a :$ s )
-  = case unsafeRetypeUASTs lg is of
-      Nothing  -> Nothing
-      Just is' -> Just ( unsafeCoerce $ AnIndexedTypedOptic sOptic is', unsafeCoerce a, unsafeCoerce s )
-setted _ = Nothing
+    SBinding (_ :: Proxy name) ->
+      do  let varName = knownValue @name
+          bd@(bdID, bdTy) <- bindingID varName
+          case bdTy of
+            SPIRV.Pointer storage eltTy
+              -> load (varName, bdID) (SPIRV.PointerTy storage eltTy)
+            _ -> pure bd
+
+    -- image
+    SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
+      -> case is of 
+          ( ops `ConsAST` coords `ConsAST` NilAST )
+            -> do
+                  let imgName = knownValue @name
+                  bd@(bdID, bdTy) <- bindingID imgName
+                  img <- case bdTy of
+                            SPIRV.Pointer storage imgTy
+                              -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                            _ -> pure bd
+                  (cdID, _) <- codeGen coords
+                  imageTexel img ops cdID
+
+    SComposeO _ (SBinding (_ :: Proxy name )) getter ->
+      do  let varName = knownValue @name
+          bd@(bdID, bdTy) <- bindingID varName
+
+          case bdTy of
+            SPIRV.Pointer storage eltTy
+              -> loadThroughAccessChain (bdID, SPIRV.PointerTy storage eltTy) getter is
+            _ -> extractUsingGetter     bd                                    getter is
+
+    SComposeO
+      (SSucc (SSucc _))
+      (SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props ))
+      getter
+       -> case is of
+            ( ops `ConsAST` coords `ConsAST` nextindices )
+              ->
+                do 
+                  -- copy-pasted from above
+                  let imgName = knownValue @name
+                  bd@(bdID, bdTy) <- bindingID imgName
+                  img <- case bdTy of
+                            SPIRV.Pointer storage imgTy
+                              -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                            _ -> pure bd
+                  (cdID, _) <- codeGen coords
+                  -- end of copy-paste
+                  texel <- imageTexel img ops cdID
+                  extractUsingGetter texel getter nextindices
+
+    _ -> throwError (   "codeGen: cannot 'use', unsupported optic:\n"
+                     <> ShortText.pack (showSOptic sOptic) <> "\n"
+                     <> "Optic does not start by accessing a binding (or image texel).\n"
+                    )
+
+-- Assign.
+
+data OpticAssign where
+  OpticAssign :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code a -> OpticAssign
+
+assigned :: Application (AssignF AST) f r -> OpticAssign
+assigned ( Applied ( AssignF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_a ) =
+  case unsafeCoerce is_a :: ( ASTs ( MapVal is `Snoc` Val a ) ) of
+    ( is `SnocAST` a ) -> OpticAssign sOptic is a
+
+instance CodeGen AST => CodeGen (AssignF AST) where
+  codeGenArgs ( assigned -> OpticAssign sOptic is a ) = case sOptic of
+
+   SBinding (_ :: Proxy name) ->
+     do  let varName = knownValue @name
+         a_IDTy@(a_ID, _) <- codeGen a
+         (bdID, bdTy)     <- bindingID varName
+
+         case bdTy of
+           SPIRV.Pointer storage eltTy
+             -> store (varName, a_ID) bdID (SPIRV.PointerTy storage eltTy)
+           _ -> assign ( _localBinding varName ) (Just a_IDTy)
+
+         pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+   -- image
+   SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
+     -> case is of 
+         ( ops `ConsAST` coords `ConsAST` NilAST )
+           -> do
+                 let imgName = knownValue @name
+                 bd@(bdID, bdTy) <- bindingID imgName
+                 img <- case bdTy of
+                           SPIRV.Pointer storage imgTy
+                             -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+                           _ -> pure bd
+                 (cdID , _) <- codeGen coords
+                 (texID, _) <- codeGen a
+                 writeTexel img ops cdID texID
+                 pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+   SComposeO _ (SBinding (_ :: Proxy name)) setter ->
+     do  let varName = knownValue @name
+         bd@(bdID, bdTy) <- bindingID varName
+
+         case bdTy of
+           SPIRV.Pointer storage eltTy
+             -> storeThroughAccessChain   (bdID, SPIRV.PointerTy storage eltTy) a setter is
+           _ -> insertUsingSetter varName bd                                    a setter is
+
+         pure (ID 0, SPIRV.Unit) -- ID should never be used
+
+   SComposeO _ SImageTexel {} _
+     -> throwError ( "codeGen: writing to individual components \
+                     \of an image texel currently unsupported"
+                   )
+
+   _ -> throwError (   "codeGen: cannot 'assign', unsupported optic:\n"
+                    <> ShortText.pack (showSOptic sOptic) <> "\n"
+                    <> "Optic does not start by accessing a binding."
+                   )
 
 ----------------------------------------------------------------------------
--- exported optic code generation functions
+-- Perform code-generation by computing associated optical trees.
 
 -- | Load through a pointer with the supplied getter.
 loadThroughAccessChain
   :: forall is s a (optic :: Optic is s a)
-  .  (ID, SPIRV.PointerTy) -> SOptic optic -> ASTs is -> CGMonad (ID, SPIRV.PrimTy)
+  .  CodeGen AST
+  => (ID, SPIRV.PointerTy) -> SOptic optic -> Codes is -> CGMonad (ID, SPIRV.PrimTy)
 loadThroughAccessChain basePtr sOptic is
   = loadThroughAccessChain' basePtr =<< operationTree is sOptic
 
 -- | Use a getter to @view@ a part of the provided object.
 extractUsingGetter
   :: forall is s a (optic :: Optic is s a)
-  .  (ID, SPIRV.PrimTy) -> SOptic optic -> ASTs is -> CGMonad (ID, SPIRV.PrimTy)
+  .  CodeGen AST
+  => (ID, SPIRV.PrimTy) -> SOptic optic -> Codes is -> CGMonad (ID, SPIRV.PrimTy)
 extractUsingGetter base sOptic is
   = extractUsingGetter' base =<< operationTree is sOptic
 
 -- | Store into a pointer with the supplied setter.
 storeThroughAccessChain
   :: forall is s a (optic :: Optic is s a)
-  .  (ID, SPIRV.PointerTy) -> AST a -> SOptic optic -> ASTs is -> CGMonad ()
+  .  CodeGen AST
+  => (ID, SPIRV.PointerTy) -> Code a -> SOptic optic -> Codes is -> CGMonad ()
 storeThroughAccessChain basePtr val sOptic is
   = storeThroughAccessChain' basePtr val =<< operationTree is sOptic
 
@@ -243,10 +337,11 @@ storeThroughAccessChain basePtr val sOptic is
 -- Returns the updated object.
 setUsingSetter
   :: forall is s a (optic :: Optic is s a)
-  .  AST s
-  -> AST a
+  .  CodeGen AST
+  => Code s
+  -> Code a
   -> SOptic optic
-  -> ASTs is
+  -> Codes is
   -> CGMonad (ID, SPIRV.PrimTy)
 setUsingSetter base val sOptic is = do
   baseID <- codeGen base
@@ -258,13 +353,14 @@ setUsingSetter base val sOptic is = do
 -- Doesn't return anything: updates the state of the provided binding.
 insertUsingSetter
   :: forall is s a (optic :: Optic is s a)
-  .  ShortText -> (ID, SPIRV.PrimTy) -> AST a -> SOptic optic -> ASTs is -> CGMonad ()
+  .  CodeGen AST
+  => ShortText -> (ID, SPIRV.PrimTy) -> Code a -> SOptic optic -> Codes is -> CGMonad ()
 insertUsingSetter varName base val sOptic is = do
   tree   <- operationTree is sOptic
   insertUsingSetter' varName base val tree
 
 ----------------------------------------------------------------------------
--- optical trees
+-- Optical trees.
 
 data OpticalNode where
   Access   :: Safeness -> Indices -> OpticalNode
@@ -281,8 +377,10 @@ instance Show OpticalNode where
 
 type OpticalOperationTree = [ OpticalNode ]
 
-operationTree :: forall k is (s :: k) a (optic :: Optic is s a)
-              .  ASTs is -> SOptic optic -> CGMonad OpticalOperationTree
+operationTree
+  :: forall k is (s :: k) a (optic :: Optic is s a)
+  .  CodeGen AST
+  => Codes is -> SOptic optic -> CGMonad OpticalOperationTree
 operationTree _ (SOfType s a) = pure [OfTypeOp s a]
 operationTree (i `ConsAST` _) SAnIndex {}
   = (:[]) . Access Unsafe . RTInds . (:[]) . fst <$> codeGen i
@@ -337,9 +435,10 @@ componentsTrees
   :: forall
       (k :: Type) (iss :: [[Type]]) (s :: k)
       (as :: [Type]) (os :: ProductComponents iss s as)
-  .  SSameLength (Distribute iss as) as
+  .  CodeGen AST
+  => SSameLength (Distribute iss as) as
   -> SProductComponents os
-  -> ASTs (MapHList (Distribute iss as))
+  -> Codes (MapHList (Distribute iss as))
   -> CGMonad [OpticalOperationTree]
 componentsTrees _ SEndProd  _
   = pure []
@@ -354,18 +453,18 @@ componentsTrees sameSucc@(SSameSucc lg) (so `SProductO` sos) (is `ConsAST` iss) 
               (Refl, Refl) ->
                 (:) <$> operationTree (astsFromHList is) so <*> componentsTrees lg sos iss
 
-composedIndices :: SLength is -> ASTs (is :++: js) -> (ASTs is, ASTs js)
+composedIndices :: SLength is -> Codes (is :++: js) -> (Codes is, Codes js)
 composedIndices SZero           js               = ( NilAST, js )
 composedIndices (SSucc tail_is) (k `ConsAST` ks)
   = first ( k `ConsAST` ) ( composedIndices tail_is ks )
 
 combinedIndices
   :: forall (jss :: [[Type]]) (is :: [Type]) (as :: [Type])
-  .  AreProducts is jss as
+  .  ( CodeGen AST, AreProducts is jss as )
   => SSameLength is jss
   -> SLength as
-  -> ASTs is
-  -> CGMonad (ASTs (MapHList (Distribute jss as)))
+  -> Codes is
+  -> CGMonad (Codes (MapHList (Distribute jss as)))
 combinedIndices SSameZero SZero      NilAST
   = pure $ NilAST
 combinedIndices SSameZero (SSucc lg) NilAST
@@ -382,17 +481,17 @@ combinedIndices sSame@(SSameSucc sm) lg (i `ConsAST` is) =
 zipIndices
   :: AllDict PrimTy is
   -> SSameLength is jss
-  -> ASTs is
-  -> ASTs (MapHList jss)
-  -> ASTs (MapHList (ZipCons is jss))
+  -> Codes is
+  -> Codes (MapHList jss)
+  -> Codes (MapHList (ZipCons is jss))
 zipIndices NilDict  SSameZero      NilAST           NilAST             = NilAST
 zipIndices ConsDict (SSameSucc lg) (i `ConsAST` is) (js `ConsAST` jss) =
   (ConsHList :$ i :$ js) `ConsAST` zipIndices allDict lg is jss
 
 deconstruct
   :: forall (p :: Type) (as :: [Type])
-  .  IsProduct p as
-  => AllDict PrimTy as -> AST p -> CGMonad (ASTs as)
+  .  ( CodeGen AST, IsProduct p as )
+  => AllDict PrimTy as -> Code p -> CGMonad (Codes as)
 deconstruct NilDict    _       = pure NilAST
 deconstruct dict       (Lit x) = pure $ hListToASTs dict (toHList @p @as x)
 deconstruct dict       p
@@ -404,18 +503,18 @@ deconstruct ConsDict p = do
     compositeExtractAll composite allDict 0
 
 
-recogniseHList :: AllDict PrimTy as -> AST p -> Maybe (ASTs as)
+recogniseHList :: AllDict PrimTy as -> Code p -> Maybe (Codes as)
 recogniseHList NilDict           _   = Just NilAST
 recogniseHList consDict@ConsDict ast
   = case consDict of
       ( _ :: AllDict PrimTy (b ': bs) ) ->
         case ast of
-          ( ConsHList :$ (c :: AST c) :$ cs )
+          ( ConsHList :$ (c :: Code c) :$ cs )
             | Just Refl <- eqT @b @c
             -> (c `ConsAST`) <$> recogniseHList allDict cs
           _ -> Nothing
 
-astsFromHList :: AST (HList as) -> ASTs as
+astsFromHList :: Code (HList as) -> Codes as
 astsFromHList NilHList
   = NilAST
 astsFromHList (ConsHList :$ a :$ as)
@@ -423,16 +522,17 @@ astsFromHList (ConsHList :$ a :$ as)
 astsFromHList _
   = error "'operationTree': indexing heterogenous list AST not of the expected form (TODO?)"
 
-hListToASTs :: AllDict PrimTy as -> HList as -> ASTs as
+hListToASTs :: AllDict PrimTy as -> HList as -> Codes as
 hListToASTs _        HNil      = NilAST
 hListToASTs ConsDict (a :> as) = Lit a `ConsAST` hListToASTs allDict as
 
 compositeExtractAll
   :: forall (as :: [Type])
-  .  (ID, SPIRV.PrimTy)
+  .  CodeGen AST
+  => (ID, SPIRV.PrimTy)
   -> AllDict PrimTy as
   -> Word32
-  -> CGMonad (ASTs as)
+  -> CGMonad (Codes as)
 compositeExtractAll _                    NilDict  _ = pure NilAST
 -- special case for matrix entries:
 -- product for matrices can use individual components (rather than just columns)
@@ -453,7 +553,7 @@ compositeExtractAll comp@(_,compTy) dict@ConsDict i
             :: Word32
             -> AllDict PrimTy ts
             -> [(ID, SPIRV.PrimTy)]
-            -> CGMonad (ASTs ts)
+            -> CGMonad (Codes ts)
           makeIDsAndContinue _        NilDict  _   = pure NilAST
           makeIDsAndContinue nxt dict'          []  = compositeExtractAll comp dict' nxt
           makeIDsAndContinue nxt dict'@ConsDict
@@ -478,7 +578,7 @@ compositeExtractAll comp ConsDict i =
     pure $ MkID extracted `ConsAST` next
 
 ----------------------------------------------------------------------------
--- code generation for optics
+-- Generate code for a tree of optical operations.
 
 -- check whether a vector swizzle operation can be used
 swizzleIndices :: SPIRV.PrimTy -> [OpticalOperationTree] -> Maybe [Word32]
@@ -490,7 +590,8 @@ swizzleIndices (SPIRV.Vector _ _) = traverse simpleIndex
 swizzleIndices _ = const Nothing
 
 loadThroughAccessChain'
-  :: (ID, SPIRV.PointerTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
+  :: CodeGen AST
+  => (ID, SPIRV.PointerTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 loadThroughAccessChain' (basePtrID, SPIRV.PointerTy _ eltTy) []
   = loadInstruction eltTy basePtrID
 loadThroughAccessChain' basePtr ( Access safe is : ops )
@@ -514,7 +615,8 @@ loadThroughAccessChain' _ ( OfTypeOp _ _ : _ )
 
 
 extractUsingGetter'
-  :: (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
+  :: CodeGen AST
+  => (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 extractUsingGetter' base []
   = pure base
 extractUsingGetter' base ( Access _ (CTInds is) : ops )
@@ -549,7 +651,8 @@ extractUsingGetter' _ ( OfTypeOp _ _ : _ )
 
 
 storeThroughAccessChain'
-  :: (ID, SPIRV.PointerTy) -> AST a -> OpticalOperationTree -> CGMonad ()
+  :: CodeGen AST
+  => (ID, SPIRV.PointerTy) -> Code a -> OpticalOperationTree -> CGMonad ()
 -- Base case: identity.
 storeThroughAccessChain' (basePtrID, _) val []
   = storeInstruction basePtrID =<< fst <$> codeGen val
@@ -604,7 +707,13 @@ storeThroughAccessChain' _ _ ( Combine {} : Combine {} : _ )
 
 
 storeAtTypeThroughAccessChain
-  :: (ID, SPIRV.PointerTy) -> AST a -> OpticalOperationTree -> SPIRV.PrimTy -> SPIRV.PrimTy -> CGMonad ()
+  :: CodeGen AST
+  => (ID, SPIRV.PointerTy)
+  -> Code a
+  -> OpticalOperationTree
+  -> SPIRV.PrimTy
+  -> SPIRV.PrimTy
+  -> CGMonad ()
 storeAtTypeThroughAccessChain _       _   _   SPIRV.Unit    _
   = pure ()
 storeAtTypeThroughAccessChain basePtr val ops SPIRV.Boolean a
@@ -686,18 +795,22 @@ storeAtTypeThroughAccessChain _ _ _ SPIRV.Sampler           _
 storeAtTypeThroughAccessChain _ _ _ (SPIRV.SampledImage {}) _
   = throwError "storeAtTypeThroughAccessChain: unexpected sampled image type"
 
-
-successiveStores :: (ID, SPIRV.PointerTy) -> [OpticalOperationTree] -> ASTs as -> CGMonad ()
-successiveStores basePtr ( tree : trees ) (a `ConsAST` as)
-  = do
-      storeThroughAccessChain' basePtr a tree
-      successiveStores basePtr trees as
+successiveStores
+  :: CodeGen AST
+  => (ID, SPIRV.PointerTy)
+  -> [OpticalOperationTree]
+  -> Codes as
+  -> CGMonad ()
+successiveStores basePtr ( tree : trees ) (ConsCode a as) = do
+  storeThroughAccessChain' basePtr a  tree
+  successiveStores basePtr trees   as
 successiveStores _       _                _
   = pure ()
 
 setUsingSetter'
-  :: (ID, SPIRV.PrimTy)
-  -> AST a
+  :: CodeGen AST
+  => (ID, SPIRV.PrimTy)
+  -> Code a
   -> OpticalOperationTree
   -> CGMonad (ID, SPIRV.PrimTy)
 setUsingSetter' _ val [] = codeGen val
@@ -721,6 +834,11 @@ setUsingSetter' (baseID, baseTy) val ops
       loadInstruction baseTy basePtrID
 
 insertUsingSetter'
-  :: ShortText -> (ID, SPIRV.PrimTy) -> AST a -> OpticalOperationTree -> CGMonad ()
+  :: CodeGen AST
+  => ShortText
+  -> (ID, SPIRV.PrimTy)
+  -> Code a
+  -> OpticalOperationTree
+  -> CGMonad ()
 insertUsingSetter' varName base val ops =
   assign ( _localBinding varName ) . Just =<< setUsingSetter' base val ops

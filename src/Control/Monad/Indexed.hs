@@ -96,11 +96,11 @@ instance MonadIx Id where
 -- @Codensity f@ is guaranteed to be an indexed monad.
 -- 
 -- This is especially useful for manipulating ASTs.
-newtype Codensity f p i where
+newtype Codensity (f :: t -> Type) (p :: ix -> Type) (i :: ix) where
   Codensity
     :: { runCodensity
-          :: forall (q :: k -> Type)
-          . ( ( forall (j :: k). p j -> f (q j) ) -> f (q i) )
+          :: forall (q :: ix -> t)
+          .  ( ( forall (j :: ix). p j -> f (q j) ) -> f (q i) )
        }
     -> Codensity f p i
 

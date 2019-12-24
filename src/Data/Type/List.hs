@@ -17,7 +17,9 @@ Operations on type-level lists, such as concatenation and length.
 module Data.Type.List
   ( type (:++:)
   , Elem, AtIndex
-  , Tail, MapTail
+  , Head, Tail, MapTail
+  , Init, Last
+  , Join
   , MapSingleton
   , Zip, ExactZip, ZipCons
   , Replicate
@@ -62,12 +64,27 @@ type family AtIndex (i :: Nat) (as :: [k]) :: Maybe k where
   AtIndex 0 (k ': _ ) = Just k
   AtIndex i (_ ': ks) = AtIndex (i-1) ks
 
+type family Head (x :: [k]) :: k where
+  Head (x ': _) = x
+
 type family Tail (x :: [k]) :: [k] where
-  Tail (x ': xs) = xs
+  Tail (_ ': xs) = xs
+
+type family Last (x :: [k]) :: k where
+  Last '[x] = x
+  Last (x ': xs) = Last xs
+
+type family Init (x :: [k]) :: [k] where
+  Init '[x] = '[]
+  Init (x ': xs) = x ': Init xs
 
 type family MapTail (x :: [[k]]) :: [[k]] where
   MapTail '[] = '[]
   MapTail (xs ': xss) = Tail xs ': MapTail xss
+
+type family Join (xss :: [[k]]) :: [k] where
+  Join '[]         = '[]
+  Join (xs ': xss) = xs :++: Join xss
 
 type family MapSingleton (as :: [k]) :: [[k]] where
   MapSingleton '[] = '[]

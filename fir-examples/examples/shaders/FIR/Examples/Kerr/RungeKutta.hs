@@ -20,7 +20,7 @@ import FIR
 
 ------------------------------------------------
 
-a₂₁, a₃₁, a₃₂, a₄₁, a₄₂, a₄₃, a₅₁, a₅₂, a₅₃, a₅₄ :: ( PrimTy a, DivisionRing a ) => AST a
+a₂₁, a₃₁, a₃₂, a₄₁, a₄₂, a₄₃, a₅₁, a₅₂, a₅₃, a₅₄ :: ( PrimTy a, DivisionRing a ) => Code a
 a₂₁ = Lit $ 1/5
 a₃₁ = Lit $ 3/40
 a₃₂ = Lit $ 9/40
@@ -32,7 +32,7 @@ a₅₂ = Lit $ -25360/2187
 a₅₃ = Lit $ 64448/6561
 a₅₄ = Lit $ -212/729
 
-a₆₁, a₆₂, a₆₃, a₆₄, a₆₅, a₇₁, a₇₃, a₇₄, a₇₅, a₇₆ :: ( PrimTy a, DivisionRing a ) => AST a
+a₆₁, a₆₂, a₆₃, a₆₄, a₆₅, a₇₁, a₇₃, a₇₄, a₇₅, a₇₆ :: ( PrimTy a, DivisionRing a ) => Code a
 a₆₁ = Lit $ 9017/3168
 a₆₂ = Lit $ -355/33
 a₆₃ = Lit $ 46732/5247
@@ -45,7 +45,7 @@ a₇₄ = Lit $ 125/192
 a₇₅ = Lit $ -2187/6784
 a₇₆ = Lit $ 11/84
 
-c₂, c₃, c₄, c₅ :: ( PrimTy a, DivisionRing a ) => AST a
+c₂, c₃, c₄, c₅ :: ( PrimTy a, DivisionRing a ) => Code a
 c₂  = Lit $ 1 / 5
 c₃  = Lit $ 3 / 10
 c₄  = Lit $ 4 / 5
@@ -53,7 +53,7 @@ c₅  = Lit $ 8 / 9
 -- c₆  = Lit $ 1
 -- c₇  = Lit $ 1
 
-b₁, b₃, b₄, b₅, b₆ :: ( PrimTy a, DivisionRing a ) => AST a
+b₁, b₃, b₄, b₅, b₆ :: ( PrimTy a, DivisionRing a ) => Code a
 b₁  = Lit $ 35/384
 --b₂  = Lit $ 0
 b₃  = Lit $ 500/1113
@@ -62,7 +62,7 @@ b₅  = Lit $ -2187/6784
 b₆  = Lit $ 11/84
 --b₇  = Lit $ 0
 
-d₁, d₃, d₄, d₅, d₆, d₇ :: ( PrimTy a, DivisionRing a ) => AST a
+d₁, d₃, d₄, d₅, d₆, d₇ :: ( PrimTy a, DivisionRing a ) => Code a
 d₁ = Lit $ (35/384    ) - (5179/57600   )
 -- d₂ = Lit $ (0         ) - (0            )
 d₃ = Lit $ (500/1113  ) - (7571/16695   )
@@ -79,17 +79,19 @@ type StepResult a
 
 data StepData t y
   = StepData
-  { stepOrigin :: ( AST t, AST y )
-  , stepSize   :: ( AST t, AST y )
+  { stepOrigin :: ( Code t, Code y )
+  , stepSize   :: ( Code t, Code y )
   }
 
 -- defining a 'Syntactic" instance by hand, hopefully this can be automated using deriving via in the future
-instance ( Syntactic t, Syntactic y, Integrable t y ) => Syntactic (StepData t y) where
+instance ( Integrable t y ) => Syntactic (StepData t y) where
   type Internal (StepData t y) =
-    Struct
-      '[ "origin" ':-> Internal ( AST t, AST y )
-       , "step"   ':-> Internal ( AST t, AST y )
-       ]
+    Val
+      ( Struct
+        '[ "origin" ':-> InternalType ( Code t, Code y )
+         , "step"   ':-> InternalType ( Code t, Code y )
+         ]
+      )
   toAST (StepData origin size) = Struct ( toAST origin :& toAST size :& End )
   fromAST struct =
     StepData
@@ -104,30 +106,30 @@ class ( Semiring t, DivisionRing t, Floating t
       , Eq t, Logic t ~ Bool, Ord t
       , PrimTy y
       ) => Integrable t y | y -> t where
-  (^+^) :: AST y -> AST y -> AST y
-  (*^)  :: AST t -> AST y -> AST y
-  absV  :: AST y -> AST y
+  (^+^) :: Code y -> Code y -> Code y
+  (*^)  :: Code t -> Code y -> Code y
+  absV  :: Code y -> Code y
   maxAdaptiveStepFactor
-     :: AST y -> AST y
-     -> ( AST t -> AST t -> AST t )
-     -> AST t
+     :: Code y -> Code y
+     -> ( Code t -> Code t -> Code t )
+     -> Code t
 
 
 data Parameters t y a
   = Parameters
-  { start         :: ( AST t, AST y, AST a )
-  , function      :: forall st. AST t -> AST y -> Program st st (AST y)
-  , tolerances    :: forall st. AST t -> AST y -> Program st st (AST y)
-  , stepper       :: forall st. StepData t y -> AST a -> Program st st (AST (StepResult a))
-  , startStepSize :: AST t
-  , minStepSize   :: forall st. AST t -> AST y -> Program st st (AST t)
-  , maxStepSize   :: forall st. AST t -> AST y -> Program st st (AST t)
-  , maxIterations :: AST Word32
+  { start         :: ( Code t, Code y, Code a )
+  , function      :: forall st. Code t -> Code y -> Program st st (Code y)
+  , tolerances    :: forall st. Code t -> Code y -> Program st st (Code y)
+  , stepper       :: forall st. StepData t y -> Code a -> Program st st (Code (StepResult a))
+  , startStepSize :: Code t
+  , minStepSize   :: forall st. Code t -> Code y -> Program st st (Code t)
+  , maxStepSize   :: forall st. Code t -> Code y -> Program st st (Code t)
+  , maxIterations :: Code Word32
   }
 
 dormandPrince :: forall t y a s
               .  ( PrimTy a, Integrable t y )
-              => Parameters t y a -> Program s s (AST a)
+              => Parameters t y a -> Program s s (Code a)
 dormandPrince
   Parameters
     { start         = ( t₀, y₀, a₀ )
@@ -142,7 +144,7 @@ dormandPrince
   = purely do
 
     -- initialisations...
-    _ <- def @"iter"     @RW ( 0 :: AST Word32 )
+    _ <- def @"iter"     @RW ( 0 :: Code Word32 )
     _ <- def @"t"        @RW t₀
     _ <- def @"h"        @RW hInit
     _ <- def @"y"        @RW y₀

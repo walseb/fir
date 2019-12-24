@@ -35,9 +35,9 @@ program = Module do
     in_col2 <- get @"in_col2"
     in_col3 <- get @"in_col3"
 
-    let func :: AST Float -> AST Float -> AST Float -> AST Float
+    let func :: Code Float -> Code Float -> Code Float -> Code Float
         func x y z = 2 * z - y + abs x
-        out_col :: AST (V 3 Float)
+        out_col :: Code (V 3 Float)
         out_col = func <$$> in_col1 <**> in_col2 <**> in_col3
 
     put @"out_col" out_col

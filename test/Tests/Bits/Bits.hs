@@ -30,4 +30,4 @@ program = Module $ entryPoint @"main" @Vertex do
     
     b <- def @"b" @R =<< (get @"z" .|. get @"w")
 
-    put @"out" $ (a `shiftL` (3 :: AST Word32)) `xor` (a `shiftR` b) `xor` (complement b)
+    put @"out" $ (a `shiftL` (3 :: Code Word32)) `xor` (a `shiftR` b) `xor` (complement b)

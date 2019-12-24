@@ -32,17 +32,17 @@ import Math.Linear
 ------------------------------------------------------------------------
 
 -- Really basic logarithmic tone mapping.
-toneMap :: AST (V 4 Float) -> AST (V 4 Float)
+toneMap :: Code (V 4 Float) -> Code (V 4 Float)
 toneMap (Vec4 r g b i) =
   let l = max 0 . min 1 $ ( log i - 25 ) / 10
   in Vec4 (r * l) (g * l) (b * l) 1
 
-blackbodyColour :: AST Float -> Program s s (AST (V 4 Float))
+blackbodyColour :: Code Float -> Program s s (Code (V 4 Float))
 blackbodyColour t = purely do
   t' <- def @"t'" @R $ ( max 0 . min 20000 $ t ) / 20000
   pure (gradient t' (Lit blackbodyTable))
 
-wavelengthColour :: AST Float -> Program s s (AST (V 4 Float))
+wavelengthColour :: Code Float -> Program s s (Code (V 4 Float))
 wavelengthColour λ = purely do
   t <- def @"t" @R $ ( λ - 365 ) / 400
   pure ( gradient t (Lit wavelengthTable) )
@@ -100,21 +100,21 @@ blackbodyTable
     ]
 
 gradient :: forall n. KnownNat n
-         => AST Float
-         -> AST (Array n (V 4 Float))
-         -> AST (V 4 Float)
+         => Code Float
+         -> Code (Array n (V 4 Float))
+         -> Code (V 4 Float)
 gradient t colors
   =   ( (1-s) *^ ( view @(AnIndex _)  i    colors ) )
   ^+^ (    s  *^ ( view @(AnIndex _) (i+1) colors ) )
   where n :: Semiring a => a
         n = fromInteger . Prelude.fromIntegral $ natVal ( Proxy @n )
-        i :: AST Int32
+        i :: Code Int32
         i = max 0 . min (n-1) $ floor ( (n-1) * t )
-        s :: AST Float
+        s :: Code Float
         s = (n-1) * t - fromIntegral i
 
 -- | Cumulative distribution function of stellar temperatures.
-starTemperatureCDF :: [ ( AST Float, AST Float ) ]
+starTemperatureCDF :: [ ( Code Float, Code Float ) ]
 starTemperatureCDF
   = [ (0     ,   2400)
     , (0.7645,   3700) -- 76.45% of stars have perceived temperature in the 2400K - 3700K range
@@ -126,7 +126,7 @@ starTemperatureCDF
     , (1     , 200000)
     ]
 
-piecewiseLinear :: [ ( AST Float, AST Float ) ] -> AST Float -> AST Float
+piecewiseLinear :: [ ( Code Float, Code Float ) ] -> Code Float -> Code Float
 piecewiseLinear ( ( t1, v1 ) : ( t2, v2 ) : tvs ) t
   = if t < t2
     then v1 + ( v2 - v1 ) * ( t - t1 ) / ( t2 - t1 )
@@ -134,5 +134,5 @@ piecewiseLinear ( ( t1, v1 ) : ( t2, v2 ) : tvs ) t
 piecewiseLinear [ (_,v) ] _ = v
 piecewiseLinear []        t = t
 
-starTemperature :: AST Float -> AST Float
+starTemperature :: Code Float -> Code Float
 starTemperature = piecewiseLinear starTemperatureCDF

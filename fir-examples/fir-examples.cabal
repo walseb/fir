@@ -96,9 +96,9 @@ common apps-common
         -threaded -rtsopts
 
     -- bypass TH segfault bug on Windows, see (GHC issue #13112)[https://gitlab.haskell.org/ghc/ghc/issues/13112]
-    if os(windows)
-      ghc-options:
-        -fexternal-interpreter
+    --if os(windows)
+    --  ghc-options:
+    --    -fexternal-interpreter
 
 common shaders-common
 
@@ -130,9 +130,12 @@ library fir-examples-paths
     exposed-modules:
         FIR.Examples.Paths
 
+    autogen-modules:
+        Paths_fir_examples
+
     other-modules:
+        Paths_fir_examples
       , FIR.Examples.Paths.CreateDirs
-      , Paths_fir_examples
 
 library
 

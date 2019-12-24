@@ -73,6 +73,7 @@ module FIR.Syntax.Labels
 import Data.Kind
   ( Type )
 import qualified GHC.Stack
+  ( HasCallStack )
 import GHC.TypeLits
   ( Symbol, KnownSymbol )
 
@@ -80,7 +81,7 @@ import GHC.TypeLits
 import Control.Type.Optic
   ( Optic, Name )
 import FIR.AST
-  ( AST )
+  ( Code )
 import FIR.Binding
   ( Var, R, RW )
 import FIR.Module
@@ -126,7 +127,7 @@ instance ( KnownSymbol k
          , PrimTy a
          , a ~ Has k i
          , CanGet k i
-         , r ~ AST a
+         , r ~ Code a
          , j ~ i
          , usage ~ 'Use k i
          )
@@ -148,8 +149,8 @@ infixr 1 .=
         , PrimTy a
         )
      => Label k a
-     -> AST a
-     -> Program i (AddBinding k (Var RW a) i) (AST a)
+     -> Code a
+     -> Program i (AddBinding k (Var RW a) i) (Code a)
 _ #= a = def @k @RW a
 
 -- | Define a new constant using a label.
@@ -160,8 +161,8 @@ _ #= a = def @k @RW a
         , PrimTy a
         )
      => Label k a
-     -> AST a
-     -> Program i (AddBinding k (Var R a) i) (AST a)
+     -> Code a
+     -> Program i (AddBinding k (Var R a) i) (Code a)
 _ #=! a = def @k @R a
 
 -- | Set the value of a variable with given label.
@@ -173,8 +174,8 @@ _ #=! a = def @k @R a
         , PrimTy a
         )
      => Label k a
-     -> AST a
-     -> Program i i (AST ())
+     -> Code a
+     -> Program i i (Code ())
 _ .= a = assign @(Name k :: Optic '[] i a) a
 
 -- | Modify a variable with given label using a function.
@@ -186,6 +187,6 @@ _ .= a = assign @(Name k :: Optic '[] i a) a
         , CanPut k i
         )
      => Label k a
-     -> (AST a -> AST a)
-     -> Program i i (AST ())
+     -> (Code a -> Code a)
+     -> Program i i (Code ())
 _ %= f = modifying @(Name k :: Optic '[] i a) f

@@ -38,7 +38,7 @@ import Control.Monad.Indexed
 import Data.Type.Map
   ( (:->) )
 import FIR.AST
-  ( AST )
+  ( AST, Code )
 import FIR.Definition
   ( Definition, KnownDefinitions
   , StartState
@@ -73,7 +73,7 @@ data Module
     :: Type where
   Module  :: forall defs endState
           .  ( KnownDefinitions defs, ValidDefinitions defs )
-          => Program (StartState defs) endState (AST ())
+          => Program (StartState defs) endState (Code ())
           -> Module defs
 
 --------------------------------------------------------------------------
@@ -96,5 +96,5 @@ data ShaderModule
   ShaderModule
     :: forall name stage defs endState
     .  ( KnownDefinitions defs, ValidDefinitions defs )
-    => Program (StartState defs) endState (AST ())
+    => Program (StartState defs) endState (Code ())
     -> ShaderModule name stage defs endState

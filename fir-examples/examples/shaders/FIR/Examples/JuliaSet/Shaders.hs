@@ -71,21 +71,21 @@ type FragmentDefs =
    ]
 
 
-complexSquare :: AST (V 2 Float) -> AST (V 2 Float)
+complexSquare :: Code (V 2 Float) -> Code (V 2 Float)
 complexSquare (Vec2 x y) = Vec2 ( x * x - y * y ) ( 2 * x * y )
 
 gradient :: forall n. KnownNat n
-         => AST Float
-         -> AST (Array n (V 4 Float))
-         -> AST (V 4 Float)
+         => Code Float
+         -> Code (Array n (V 4 Float))
+         -> Code (V 4 Float)
 gradient t colors
   =   ( (1-s) *^ ( view @(AnIndex _)  i    colors ) )
   ^+^ (    s  *^ ( view @(AnIndex _) (i+1) colors ) )
-  where n :: AST Float
+  where n :: Code Float
         n = Lit . fromIntegral $ knownValue @n
-        i :: AST Word32
+        i :: Code Word32
         i = floor ( (n-1) * t )
-        s :: AST Float
+        s :: Code Float
         s = (n-1) * t - fromIntegral i
 
 
@@ -102,14 +102,14 @@ sunset = MkArray . fromJust . Vector.fromList $
        , V4 1    1    1    1
        ]
 
-maxDepth :: AST Word32
+maxDepth :: Code Word32
 maxDepth = 256
 
-xSamples, ySamples :: AST Word32
+xSamples, ySamples :: Code Word32
 xSamples = 4
 ySamples = 4
 
-xWidth, yWidth :: AST Float
+xWidth, yWidth :: Code Float
 xWidth = recip . fromIntegral $ xSamples
 yWidth = recip . fromIntegral $ ySamples
 
@@ -135,7 +135,7 @@ fragment = shader do
         yNo <- #ySampleNo
 
         let
-          dx, dy :: AST Float
+          dx, dy :: Code Float
           dx = ( fromIntegral xNo + 0.5 ) * xWidth - 0.5
           dy = ( fromIntegral yNo + 0.5 ) * xWidth - 0.5
 
@@ -161,7 +161,7 @@ fragment = shader do
 
     total <- #total
     t <- def @"t" @R
-        ( log ( fromIntegral total * xWidth * yWidth ) / log ( fromIntegral maxDepth ) :: AST Float )
+        ( log ( fromIntegral total * xWidth * yWidth ) / log ( fromIntegral maxDepth ) :: Code Float )
 
     let col = gradient t (Lit sunset)
 

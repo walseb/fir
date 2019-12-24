@@ -91,8 +91,8 @@ import Data.Type.Ord
   )
 import Data.Type.String
   ( ShowNat )
-import {-# SOURCE #-} FIR.AST
-  ( AST )
+import FIR.AST.Type
+  ( AugType(Val) )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..) )
 import {-# SOURCE #-} FIR.Prim.Singletons
@@ -240,15 +240,19 @@ traverseStruct f
    = foldrStruct ( \a bs -> liftA2 (:) (f a) bs )
        ( pure [] )
 
-class Typeable bs => ASTStructFields (as :: [ Symbol :-> Type]) (bs :: [ Symbol :-> Type])
-        | as -> bs, bs -> as where
+class Typeable bs =>
+        ASTStructFields
+          ( ast :: ( AugType -> Type ) )
+          ( as :: [ Symbol :-> Type ] )
+          ( bs :: [ Symbol :-> Type ] )
+        | as -> bs, bs ast -> as where
   traverseStructASTs
     :: forall f b. Applicative f
-    => ( forall a. AST a -> f b ) -> Struct as -> f [b]
-instance ASTStructFields '[] '[] where
+    => ( forall a. ast (Val a) -> f b ) -> Struct as -> f [b]
+instance ASTStructFields ast '[] '[] where
   traverseStructASTs _ _ = pure []
-instance (KnownSymbol k2, k1 ~ k2, a ~ AST b, Typeable b, ASTStructFields as bs)
-   => ASTStructFields ( (k1 ':-> a) ': as) ( (k2 ':-> b) ': bs) where
+instance (KnownSymbol k2, k1 ~ k2, a ~ ast (Val b), Typeable b, ASTStructFields ast as bs)
+   => ASTStructFields ast ( (k1 ':-> a) ': as) ( (k2 ':-> b) ': bs) where
   traverseStructASTs f (a :& as) = (:) <$> f a <*> traverseStructASTs f as
 
 -----------------------------------------------------------

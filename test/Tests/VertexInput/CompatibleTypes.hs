@@ -34,7 +34,7 @@ type VertexDefs =
 vertex :: ShaderModule "main" VertexShader VertexDefs _
 vertex = shader do
   vec <- get @"in"
-  put @"out" ( ( convert :: AST Word32 -> AST Float ) <$$> vec )
+  put @"out" ( ( convert :: Code Word32 -> Code Float ) <$$> vec )
 
 ------------------------------------------------
 -- fragment shader

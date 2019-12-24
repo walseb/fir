@@ -30,8 +30,8 @@ program = Module $ entryPoint @"main" @Vertex do
   x <- get @"x"
   let x' = x - floor x
   z <- get @"z"
-  z1 :: AST Int32 <- round ( get @"z" )
-  let z2 :: AST Int32
+  z1 :: Code Int32 <- round ( get @"z" )
+  let z2 :: Code Int32
       z2 = truncate z
   y' <- convert $ get @"y" + pure z1 - pure z2
   let w = ceiling x + z

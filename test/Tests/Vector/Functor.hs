@@ -31,9 +31,9 @@ type Defs
 program :: Module Defs
 program = Module do
 
-  (f :: AST Float -> AST Float) <- fundef @"f" do
+  (f :: Code Float -> Code Float) <- fundef @"f" do
     u <- use @(Name "u")
-    t <- def @"t" @RW ( 11 :: AST Float ) -- local variable
+    t <- def @"t" @RW ( 11 :: Code Float ) -- local variable
     pure (u + t)
 
   entryPoint @"main" @Vertex do

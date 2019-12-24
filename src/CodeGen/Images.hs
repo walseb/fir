@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections       #-}
@@ -45,7 +46,7 @@ import qualified Data.Text.Short as ShortText
 import CodeGen.Binary
   ( instruction )
 import {-# SOURCE #-} CodeGen.CodeGen
-  ( codeGen )
+  ( CodeGen(codeGenArgs), codeGen )
 import CodeGen.IDs
   ( typeID, constID )
 import CodeGen.Instruction
@@ -59,13 +60,13 @@ import CodeGen.State
 import Data.Type.Known
   ( Known, knownValue )
 import FIR.AST
-  ( AST
-    ( NilOps, Proj, Dref, Bias
-    , LOD, MinLOD, Grad
-    , ConstOffsetBy, OffsetBy
-    , Gather, SampleNo
-    )
-   )
+  ( AST, Code
+  , pattern NilOps, pattern Proj, pattern Dref, pattern Bias
+  , pattern LOD, pattern MinLOD, pattern Grad
+  , pattern ConstOffsetBy, pattern OffsetBy
+  , pattern Gather, pattern SampleNo
+  , ImgOpsF
+  )
 import FIR.Prim.Image
   ( ImageProperties, ImageAndCoordinate(..)
   , ImageOperands, OperandName
@@ -94,15 +95,15 @@ import qualified SPIRV.ScalarTy
   ( ScalarTy(Integer, Floating) )
 
 --------------------------------------------------------------------------
-
+-- image sample/read/write
 
 imageTexel
   :: forall
         ( props :: ImageProperties )
         ( ops   :: [OperandName]   )
-  .  ( Known ImageProperties props )
+  .  ( CodeGen AST, Known ImageProperties props )
   => (ID, SPIRV.PrimTy)
-  -> AST (ImageOperands props ops)
+  -> Code (ImageOperands props ops)
   -> ID
   -> CGMonad (ID, SPIRV.PrimTy)
 imageTexel (imgID, imgTy) ops coords
@@ -202,9 +203,9 @@ imageTexel (imgID, imgTy) ops coords
 
 writeTexel
   :: forall props ops
-  .  ( Known ImageProperties props )
+  .  ( CodeGen AST, Known ImageProperties props )
   => (ID, SPIRV.PrimTy)
-  -> AST (ImageOperands props ops)
+  -> Code (ImageOperands props ops)
   -> ID
   -> ID
   -> CGMonad ()
@@ -266,7 +267,7 @@ addSampler (imgID, imgTy) samplerID
       pure (v, sampledImgTy)
 -}
 
-removeSampler :: (ID, SPIRV.Image) -> CGMonad (ID, SPIRV.PrimTy)
+removeSampler :: CodeGen AST => (ID, SPIRV.Image) -> CGMonad (ID, SPIRV.PrimTy)
 removeSampler (imgID, imgTy)
   = do
       let plainImgTy = SPIRV.PrimTy.Image imgTy
@@ -325,7 +326,8 @@ gatherOperation DepthTest   = SPIRV.Op.ImageDrefGather
 -- capabilities
 
 requireImageCapabilities
-  :: Bool
+  :: CodeGen AST
+  => Bool
   -> Word32
   -> SPIRV.Dimensionality
   -> SPIRV.Arrayness
@@ -344,7 +346,10 @@ requireImageCapabilities sampling bm dim arrayness ms mbFmt
 --------------------------------------------------------------------------
 -- dealing with operands
 
-operands :: AST (ImageOperands props ops) -> CGMonad (Word32, [(ID, Word32)])
+instance CodeGen (ImgOpsF ast) where
+  codeGenArgs _ = throwError "Unexpected image operand."
+
+operands :: CodeGen AST => Code (ImageOperands props ops) -> CGMonad (Word32, [(ID, Word32)])
 operands NilOps     = pure  ( 0x0000, [] )
 operands (Proj ops) = first ( 0x0002 .|. ) <$> operands ops
 operands (Dref dref ops)
@@ -446,7 +451,7 @@ opArgs bm ops
       ( shiftR bm 8 ) -- bitmask first, with bottom byte removed
       ( toArgs (map fst ops) ) -- then the IDs in order
 
-operandsToArgs :: AST (ImageOperands props ops) -> CGMonad (Word32, Args)
+operandsToArgs :: CodeGen AST => Code (ImageOperands props ops) -> CGMonad (Word32, Args)
 operandsToArgs ops = (fst &&& uncurry opArgs) <$> operands ops
 
 stableSplice :: Ord b => ( [a], b ) -> [ (a,b) ] -> [ (a,b) ]

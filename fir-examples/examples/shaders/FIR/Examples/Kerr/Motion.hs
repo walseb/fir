@@ -37,10 +37,10 @@ type MotionConstants
 
 -- Compute constants of motion for a photon setting off in a particular direction.
 initialiseMotion
-  :: AST KerrInfo
-  -> AST (V 4 Float) -- initial 4-position, in modified Boyer–Lindquist coordinates
-  -> AST (V 4 Float) -- initial photon direction vector, in Boyer–Lindquist coordinates
-  -> Program i i ( AST MotionConstants, AST (V 2 Float) )
+  :: Code KerrInfo
+  -> Code (V 4 Float) -- initial 4-position, in modified Boyer–Lindquist coordinates
+  -> Code (V 4 Float) -- initial photon direction vector, in Boyer–Lindquist coordinates
+  -> Program i i ( Code MotionConstants, Code (V 2 Float) )
 initialiseMotion kerrInfo (Vec4 _ r cosθ _) (Vec4 vt vr vθ vφ_)
   = purely do
 
@@ -93,11 +93,11 @@ initialiseMotion kerrInfo (Vec4 _ r cosθ _) (Vec4 vt vr vθ vφ_)
 
 
 geodesicEquations
-  :: AST KerrInfo
-  -> AST MotionConstants
-  -> AST Float
-  -> AST Canonical
-  -> Program _i _i (AST Canonical)
+  :: Code KerrInfo
+  -> Code MotionConstants
+  -> Code Float
+  -> Code Canonical
+  -> Program _i _i (Code Canonical)
 geodesicEquations kerrInfo constants _
   ( XP (Vec4 _ r cosθ _) (Vec2 p_r p_θ) ) = purely do
 
