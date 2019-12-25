@@ -11,7 +11,6 @@
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
@@ -80,9 +79,9 @@ instance GradedSemigroup (Array 0 a) Nat where
 
 newtype RuntimeArray (a :: Type) = MkRuntimeArray (Unsized.Vector a)
 
-deriving via (Unsized.Vector a) instance Eq   a => Eq   (RuntimeArray a)
-deriving via (Unsized.Vector a) instance Ord  a => Ord  (RuntimeArray a)
-deriving via (Unsized.Vector a) instance Show a => Show (RuntimeArray a)
-deriving via (Unsized.Vector) instance Functor     RuntimeArray
-deriving via (Unsized.Vector) instance Foldable    RuntimeArray
+deriving via Unsized.Vector a instance Eq   a => Eq   (RuntimeArray a)
+deriving via Unsized.Vector a instance Ord  a => Ord  (RuntimeArray a)
+deriving via Unsized.Vector a instance Show a => Show (RuntimeArray a)
+deriving via Unsized.Vector   instance Functor     RuntimeArray
+deriving via Unsized.Vector   instance Foldable    RuntimeArray
 deriving stock                instance Traversable RuntimeArray

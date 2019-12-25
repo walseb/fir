@@ -53,30 +53,29 @@ description:
 
   Important types used by this library:
 
-  [@AST a@]
+  [@Code a@]
 
       Code for a pure value of type @a@, represented internally as an abstract syntax tree.
-      See "AST".
+      See "FIR.AST".
 
       Overloaded functions are provided that automatically create and combine terms of this type.
-      For instance, @3 + 5 :: AST Float@ gets desugared to @PrimOp FAdd ( Lit 3.0 ) ( Lit 5.0 )@.
+      For instance, @3 + 5 :: Code Float@ gets desugared to @PrimOp FAdd ( Lit 3.0 ) ( Lit 5.0 )@.
 
-  [@Codensity AST (AST a := j) i@]
+  [@Program i j a@]
 
       A monadic expression, starting in state @i@ and ending in state @j@.
       This state is used to keep track of information at the type level,
       allowing for type errors to be thrown on invalid operations
       (e.g. writing to a read-only variable, image sampling outside a fragment shader, etc).
 
-      A value of type @Codensity AST (AST a := j) i@ can be thought of as stateful GPU code
+      A value of type @Program i j (Code a)@ can be thought of as stateful GPU code
       producing a value of type @a@.
 
-      Uses McBride-style indexed monads, see "Control.Monad.Indexed".
+      Internally represented using the codensity transformation of McBride-style indexed monads, see "Control.Monad.Indexed".
 
-  [@Module defs a@]
+  [@Module defs@]
 
-      Code for a program that can be compiled to a @SPIR-V@ module,
-      and which returns a value of type @a@; most often @a ~ ()@.
+      Code for a program that can be compiled to a @SPIR-V@ module.
 
       @defs@ is a type-level list of shader inputs/ouputs (uniforms, varyings, etc),
       top-level functions, and entry points.

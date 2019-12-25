@@ -240,6 +240,8 @@ module FIR
 import Data.String
   ( IsString(fromString) )
 import Prelude
+import Data.Functor
+  ( ($>) )
 import Data.Word
   ( Word8, Word16, Word32, Word64 )
 import Data.Int
@@ -403,7 +405,7 @@ class CompilableProgram prog where
         -> Prelude.pure (Left err)
       Right (mbBin, reqs)
         | Just (ModuleBinary bytes) <- mbBin
-        -> writeBytesAtomically bytes *> Prelude.pure ( Right reqs )
+        -> writeBytesAtomically bytes $> Right reqs
         | otherwise
         -> Prelude.pure ( Right reqs )
     where

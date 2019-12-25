@@ -133,7 +133,7 @@ instance CodeGen AST => CodeGen (ArrayF AST) where
     ( _ :: ArrayF AST (Val (Array n a)) ) ->
       let
         n :: Word32
-        n = Vector.knownLength' vec ( \px -> fromIntegral ( natVal px ) )
+        n = Vector.knownLength' vec ( fromIntegral . natVal )
         vecTy :: SPIRV.PrimTy
         vecTy = SPIRV.Vector n ( primTy @a )
       in

@@ -4,8 +4,8 @@
 {-# LANGUAGE DerivingVia            #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -415,7 +415,7 @@ instance SanitiseVectorisation n AST => SanitiseVectorisation n (PrimOpF AST) wh
                b1b2 = unsafeCoerce b1 * unsafeCoerce b2
                b1b2' :: Code b1
                b1b2' = unsafeCoerce b1b2
-           in Just $ ( Pure ( Proxy @(V n) ) b1b2' )
+           in Just $ Pure ( Proxy @(V n) ) b1b2'
       ( Just (Pure _ b1), Just sv2 )
         -> let b1' :: Code a
                b1' = unsafeCoerce b1
