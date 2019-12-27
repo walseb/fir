@@ -1,18 +1,20 @@
 # Examples
 
-* [Installation instructions](#installation)
-  - [Windows](#win)
-  - [Linux](#linux)
-* [Hot reloading](#hotreloading)
-* [Overview of examples](#overview)
-  - [Kerr space-time](#kerr)
-  - [Full graphics pipeline](#fullpipeline)
-  - [FIR logo](#logo)
-  - [Hopf fibration](#hopf)
-  - [Texture sampling](#texture)
-  - [Julia set](#julia)
-  - [Offscreen rendering](#offscreen)
-  - [Bézier curves](#bezier)
+- [Examples](#examples)
+  - [Installation instructions](#installation-instructions)
+    - [Windows](#windows)
+    - [Linux](#linux)
+    - [MacOS (via MoltenVK and nix)](#macos-via-moltenvk-and-nix)
+  - [Hot reloading](#hot-reloading)
+  - [Overview of examples](#overview-of-examples)
+    - [Kerr space-time](#kerr-space-time)
+    - [Full graphics pipeline](#full-graphics-pipeline)
+    - [FIR logo](#fir-logo)
+    - [Hopf fibration](#hopf-fibration)
+    - [Texture sampling](#texture-sampling)
+    - [Julia set](#julia-set)
+    - [Offscreen rendering](#offscreen-rendering)
+    - [Bézier curves](#b%c3%a9zier-curves)
 
 
 <a name="installation"></a>
@@ -64,6 +66,26 @@ This might require adding newer package repository lists.
 For Vulkan, you'll need the Vulkan SDK. What to install will usually depend on your GPU (AMD/NVIDIA/Intel).
 The [LunarG website](https://vulkan.lunarg.com/doc/sdk/latest/linux/getting_started.html) provides installation instructions
 for the Vulkan SDK on Linux.
+
+<a name="darwin"></a>
+### MacOS (via MoltenVK and nix)
+`default.nix` contains overlays for `vulkan-api` and `fir` as well as a derivation for `fir-examples`.  Because `MoltenVK` only supports a subset of the Vulkan spec (and only SPIR-V version 1.0), not all the examples run.  `JuliaSet`, `Texture`, and `Logo` run successfuly on MacOS Mojave.
+
+Build the project:
+
+```shell
+cd fir-examples
+nix-build
+```
+
+On `darwin`, `nix` will prompt you to download the correct LunarG SDK and add it to the store; after which the above will compile the needed dependencies and output `fir-examples` to `result` in the `fir-examples` directory.  However, you'll need to be in the correct nix shell for the binaries to have access to the needed paths and frameworks. (Unfortunately due to the project structure this will build `fir` twice; MRs welcome. )
+
+Enter the shell and run a binary:
+
+```shell
+nix-shell -A fir-examples
+result/bin/JuliaSet
+```
 
 
 <a name="hotreloading"></a>
