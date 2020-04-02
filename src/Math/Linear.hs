@@ -102,8 +102,6 @@ import Foreign.Storable
   ( Storable(alignment, sizeOf, peek, poke, peekElemOff, pokeElemOff) )
 import GHC.Base
   ( Int#, Int(I#), (+#) )
-import GHC.TypeLits.Compare
-  ( (:<=?)(LE,NLE), (%<=?) )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal
   , type (+), type (-), type (*)
@@ -122,6 +120,10 @@ import Data.Binary
 -- distributive
 import Data.Distributive
   ( Distributive(..) )
+
+-- typelits-witnesses
+import GHC.TypeLits.Compare
+  ( (:<=?)(LE,NLE), (%<=?) )
 
 -- fir
 import Control.Arrow.Strength
@@ -427,6 +429,7 @@ dim = natVal ( Proxy @n )
 
 infixl 6 ^+^, ^-^
 infixl 7 ^.^, `dot`, ^×^, `cross`
+infix 8 ^/, /^
 infix  8 ^*, *^
 
 
@@ -450,6 +453,12 @@ class Semiring (Scalar v) => Semimodule d v | v -> d where
   (^*)  :: ValidDim v d n => OfDim v d n -> Scalar v    -> OfDim v d n
   (*^) = flip (^*)
   (^*) = flip (*^)
+  (^/) :: ( ValidDim v d n, DivisionRing (Scalar v) )
+       => OfDim v d n -> Scalar v -> OfDim v d n
+  v ^/ a = v ^* recip a
+  (/^) :: ( ValidDim v d n, DivisionRing (Scalar v) )
+       => Scalar v -> OfDim v d n -> OfDim v d n
+  (/^) = flip (^/)
 
 -- | A module M over a ring R consists of:
 --
@@ -670,7 +679,7 @@ instance ( KnownNat n, 1 <= n
          , KnownNat m, 1 <= m
          , Replicated (m*n-1) a rs
          , Length rs ~ (n*m-1)
-         , (m*n) ~ (n*m)
+         , 1 <= (n*m), (m*n) ~ (n*m)     -- help the natnormalise plugin along...
          , Replicate (n*m) a ~ (a ': rs) -- type checker unfortunately can't deduce this
          )
       => IsProduct (M m n a) (a ': rs)

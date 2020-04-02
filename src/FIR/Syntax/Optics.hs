@@ -45,6 +45,8 @@ import Data.Kind
   ( Type, Constraint )
 import Data.Proxy
   ( Proxy(Proxy) )
+import Data.Type.Equality
+  ( (:~:)(Refl) )
 import Data.Word
   ( Word32 )
 import GHC.TypeLits
@@ -56,6 +58,10 @@ import GHC.TypeNats
   ( Nat, KnownNat, natVal
   , CmpNat, type (<=), type (-)
   )
+
+-- typelits-witnesses
+import GHC.TypeLits.Compare
+  ( (:<=?)(LE), (%<=?) )
 
 -- vector
 import qualified Data.Vector.Sized as Vector
@@ -798,10 +804,10 @@ instance ( IntegralTy ty
          , KnownNat n, 1 <= n
          )
     => ReifiedSetter (RTOptic_ :: Optic ix (V n a) r) where
-  set i b (a :. as)
-    = if i == 0
-      then b :. as
-      else a :. set @(RTOptic_ :: Optic ix (V (n-1) a) r) (i-1) b as
+  set 0 b (_ :. as) = b :. as
+  set i b (a :. as) = case Proxy @1 %<=? Proxy @(n-1) of
+    LE Refl -> a :. set @(RTOptic_ :: Optic ix (V (n-1) a) r) (i-1) b as
+    _       -> a :. as
 
 instance
     TypeError (    Text "set: attempt to update vector element \

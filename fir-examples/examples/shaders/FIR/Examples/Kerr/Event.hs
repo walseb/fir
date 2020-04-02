@@ -127,7 +127,7 @@ rayTraceUntilEvent kerrInfo diskInfo constants x₀p₀ clock =
       , RK.startStepSize = 1e-3
       , RK.minStepSize   = \ _ _ -> 1e-7
       , RK.maxStepSize   = maxStepSize
-      , RK.maxIterations = 3000
+      , RK.maxIterations = 1000
       }
     where
       checkStepEvent
