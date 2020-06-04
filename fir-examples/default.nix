@@ -1,4 +1,4 @@
-{ compiler ? "ghc881" }:
+{ compiler ? "ghc883" }:
 let
   nixOverride = ../nixpkgs.json;
   pkgs' = let spec = builtins.fromJSON (builtins.readFile nixOverride);
@@ -16,8 +16,8 @@ let
     vulkan-darwin = import (nixpkgs'.fetchgit {
       url =
         "https://github.com/o1lo01ol1o/vulkan.git"; # vulkan-api exposing moltenvk overlay for darwin
-      rev = "440e7a8d341cd150b04d3ba17fb8f9e3d3786621";
-      sha256 = "09zqkyxqpy97cfkjwrvgp8wvj5kqv67bn4x4wxnmv3yh9hhsci70";
+      rev = "859155b3608d45c2aae9500ce47d2a405ea0ab88";
+      sha256 = "0x83b8dyc6npnqgv5i1aazq1chn98fzh4g3vdjg4sdm0zygvsj2x";
     }) { inherit pkgs' compiler; };
 
   };
