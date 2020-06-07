@@ -1,4 +1,4 @@
-{ compiler ? "ghc881" }:
+{ compiler ? "ghc883" }:
 let
   nixOverride = ./nixpkgs.json;
   pkgs' = let spec = builtins.fromJSON (builtins.readFile nixOverride);

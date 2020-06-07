@@ -16,8 +16,8 @@ let
     vulkan-darwin = import (nixpkgs'.fetchgit {
       url =
         "https://github.com/o1lo01ol1o/vulkan.git"; # vulkan-api exposing moltenvk overlay for darwin
-      rev = "859155b3608d45c2aae9500ce47d2a405ea0ab88";
-      sha256 = "0x83b8dyc6npnqgv5i1aazq1chn98fzh4g3vdjg4sdm0zygvsj2x";
+      rev = "f5c3bead73b5d06a6c9b8ccffdf1ef9bec80f195";
+      sha256 = "0zmh2h6zs9bp2qg5nf29lw4dhw0lkd1f2hkgbqd9d0cnpy76vyag";
     }) { inherit pkgs' compiler; };
 
   };
