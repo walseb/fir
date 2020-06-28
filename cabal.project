@@ -2,3 +2,9 @@ packages: .
 
 -- GHC package environment files needed for running tests
 write-ghc-environment-files: always
+
+source-repository-package
+  type: git
+  location: https://github.com/haskus/packages
+  tag: 077eeb63937d822ae7e985d7685456036233136d
+  subdir: haskus-utils-types

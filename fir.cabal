@@ -92,8 +92,33 @@ description:
   which includes instructions concerning installation and usage of the library, and of useful tools
   such as the @SPIR-V@ tools provided by the [Vulkan SDK](https://www.lunarg.com/vulkan-sdk/).
 
+common common
+
+  build-depends:
+        base
+          >= 4.13     && < 4.16
+      , bytestring
+          >= 0.10.9.0 && < 0.11
+      , directory
+          ^>= 1.3.3.0
+
+common test
+
+  build-depends:
+        filepath
+          ^>= 1.4.2.1
+      , process
+          ^>= 1.6.3.0
+      , text
+          ^>= 1.2.3.1
 
 library
+
+    import:
+        common
+      -- packages required for testing
+      -- (temporarily included here)
+      , test
 
     hs-source-dirs:
         src
@@ -209,60 +234,46 @@ library
       , SPIRV.Version
 
     build-depends: 
-        base
-          >= 4.13
-      , template-haskell
-          >= 2.15
+        atomic-file-ops
+          ^>= 0.3.0.0
       , binary
-          >= 0.8.7.0
-      , bytestring
-          >= 0.10.9.0
+          >= 0.8.7.0  && < 0.11
       , containers
-          >= 0.6.2.1
-      , mtl
-          >= 2.2.2
-      , transformers
-          >= 0.5.6.2
-      , tree-view
-          >= 0.5
-      , split
-          >= 0.2.3.3
-      , text-short
-          >= 0.1.2
-      , vector
-          >= 0.12.0.3
-      , vector-sized
-          >= 1.4.0.0
-      , finite-typelits
-          >= 0.1.4.2
-      , half
-          >= 0.3
-      , lens
-          >= 4.18
+          ^>= 0.6.2.1
       , distributive
-          >= 0.6
-      , typelits-witnesses
-          >= 0.2.3
-      , ghc-typelits-knownnat 
-          >= 0.7
-      , ghc-typelits-natnormalise 
-          >= 0.7
+          ^>= 0.6
+      , finite-typelits
+          ^>= 0.1.4.2
       , generic-monoid
-          >= 0.1.0.0
-      , atomic-file-ops
-          >= 0.3.0.0
-      , directory
-          >= 1.3.3.0
+          ^>= 0.1.0.0
+      , ghc-typelits-knownnat
+          ^>= 0.7
+      , ghc-typelits-natnormalise
+          ^>= 0.7
+      , half
+          ^>= 0.3
       , haskus-utils-variant
-          >= 3.0
-      -- packages required for testing
-      -- (temporarily included here)
-      , text
-          >= 1.2.3.1
-      , filepath
-          >= 1.4.2.1
-      , process
-          >= 1.6.3.0
+          ^>= 3.0
+      , lens
+          >= 4.18     && < 4.20
+      , mtl
+          ^>= 2.2.2
+      , split
+          >= 0.2.3.3  && < 0.3
+      , template-haskell
+          >= 2.15     && < 2.18
+      , text-short
+          >= 0.1.2    && < 0.2
+      , transformers
+          ^>= 0.5.6.2
+      , tree-view
+          ^>= 0.5
+      , typelits-witnesses
+          >= 0.2.3    && < 0.5
+      , vector
+          ^>= 0.12.0.3
+      , vector-sized
+          ^>= 1.4.0.0
 
     default-language:
         Haskell2010
@@ -280,8 +291,9 @@ library
         -fwarn-incomplete-uni-patterns
         -fwarn-missing-deriving-strategies
 
-
 test-suite fir-tests
+
+    import: common, test
 
     type:
       detailed-0.9
@@ -299,18 +311,6 @@ test-suite fir-tests
 
     build-depends:
         fir
-      , base
-          >= 4.13
-      , bytestring
-          >= 0.10.9.0
-      , text
-          >= 1.2.3.1
-      , directory
-          >= 1.3.3.0
-      , filepath
-          >= 1.4.2.1
-      , process
-          >= 1.6.3.0
       --, Cabal
       --    >= 3.0.0.0
 
