@@ -7,6 +7,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE NamedFieldPuns         #-}
+{-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -68,6 +69,16 @@ import Data.Generics.Product.Constraints
   ( HasConstraints(constraints)
   , HasConstraints'(constraints')
   )
+
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug )
+
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+import qualified Data.Text.Short as ShortText
+  ( pack )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -206,27 +217,39 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
         )
         resourceFlags
         []
-    descriptorTypes = map fst descriptorTypesAndFlags
-    n = fromIntegral ( natVal ( Proxy @n ) )
 
-  descriptorPool      <- createDescriptorPool device n descriptorTypes
-  descriptorSetLayout <- createDescriptorSetLayout device descriptorTypesAndFlags
-  descriptorSets      <- allocateDescriptorSets device descriptorPool descriptorSetLayout n
+    descriptorTypes :: [ Vulkan.VkDescriptorType ]
+    descriptorTypes = map fst descriptorTypesAndFlags
+    n :: Int
+    n = fromIntegral ( natVal ( Proxy @n ) )
+    nb :: ShortText
+    nb = ShortText.pack ( show n )
+
+  descriptorPool      <-
+    logDebug ( "Creating descriptor pool for " <> nb <> " sets of descriptors, each with types:\n" <> ShortText.pack ( show descriptorTypes ) )
+      *> createDescriptorPool device n descriptorTypes
+  descriptorSetLayout <-
+    logDebug "Creating descriptor set layout"
+      *> createDescriptorSetLayout device descriptorTypesAndFlags
+  descriptorSets      <-
+    logDebug ( "Allocating " <> nb <> " descriptor sets" )
+      *> allocateDescriptorSets device descriptorPool descriptorSetLayout n
 
   ( resourcesPost :: resources n Post )
-     <- ( constraints @CanInitialiseResource
+     <- logDebug "Initialising resources" *>
+        ( constraints @CanInitialiseResource
             ( initialiseResource physicalDevice device )
         ) resourcesPre
 
   ( descriptors :: V.Vector n Vulkan.VkDescriptorSet ) <-
-    ( `evalStateT` descriptorSets ) $ do
-      ( theseDescriptorSets, nextDescriptorSets ) <- splitAt n <$> get
-      put nextDescriptorSets
-      let
-        descriptors :: V.Vector n Vulkan.VkDescriptorSet
-        descriptors = fromJust $ V.fromList theseDescriptorSets
-      lift ( updateDescriptorSets device descriptors resourcesPost )
-      pure descriptors
+    ( logDebug "Updating descriptor sets" *> ) . ( `evalStateT` descriptorSets ) $ do
+        ( theseDescriptorSets, nextDescriptorSets ) <- splitAt n <$> get
+        put nextDescriptorSets
+        let
+          descriptors :: V.Vector n Vulkan.VkDescriptorSet
+          descriptors = fromJust $ V.fromList theseDescriptorSets
+        lift ( updateDescriptorSets device descriptors resourcesPost )
+        pure descriptors
 
   let
     indexBuffers  :: [ ( Vulkan.VkBuffer, Vulkan.VkIndexType ) ]

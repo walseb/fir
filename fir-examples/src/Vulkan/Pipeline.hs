@@ -32,6 +32,10 @@ import GHC.TypeNats
 -- bytestring
 import qualified Data.ByteString
 
+-- logging-effect
+import Control.Monad.Log
+  ( logDebug )
+
 -- resourcet
 import Control.Monad.Trans.Resource
   ( ReleaseKey )
@@ -271,7 +275,8 @@ createGraphicsPipeline device renderPass
   ( VkPipelineInfo extent sampleCount pipelineLayout )
   ( ShaderPipeline
       ( shaderModules :: PipelineStages info Vulkan.VkShaderModule )
-  ) =
+  ) = do
+    logDebug "Creating graphics pipeline"
 
     second GraphicsPipeline <$> allocateVulkanResource createInfo
       ( Vulkan.vkCreateGraphicsPipelines
@@ -441,7 +446,8 @@ createComputePipeline
   -> Vulkan.VkPipelineLayout
   -> Vulkan.VkShaderModule
   -> m ( ReleaseKey, VkPipeline )
-createComputePipeline device pipelineLayout shaderModule =
+createComputePipeline device pipelineLayout shaderModule = do
+  logDebug "Creating compute pipeline"
   second ComputePipeline <$> allocateVulkanResource createInfo
     ( Vulkan.vkCreateComputePipelines
         device

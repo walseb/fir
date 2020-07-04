@@ -295,10 +295,10 @@ offscreen = runVulkan () do
   commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
   queue       <- getQueue device 0
 
-  pipelineLayout <- createPipelineLayout device descriptorSetLayout
+  pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device descriptorSetLayout
   let pipelineInfo = VkPipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
 
-  shaders <- traverse (loadShader device) shaderPipeline
+  shaders <- logDebug "Loading shaders" *> traverse (loadShader device) shaderPipeline
 
   ( _, pipeline )
     <- createGraphicsPipeline device renderPass pipelineInfo (fmap snd shaders)

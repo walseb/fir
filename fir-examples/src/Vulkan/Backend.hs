@@ -44,6 +44,10 @@ import GHC.TypeNats
 import Data.Finite
   ( Finite )
 
+-- logging-effect
+import Control.Monad.Log
+  ( logInfo )
+
 -- resourcet
 import Control.Monad.Trans.Resource
   ( ReleaseKey )
@@ -76,8 +80,29 @@ import Vulkan.Pipeline
 -----------------------------------------------------------------------------------------------------
 
 createVulkanInstance :: MonadVulkan m => String -> [ CString ] -> m Vulkan.VkInstance
-createVulkanInstance appName neededExtensions =
+createVulkanInstance appName neededExtensions = do
+
+  ( availableLayers :: [ Vulkan.VkLayerProperties ] ) <-
+    liftIO $ fetchAll
+      ( \nPtr ptr ->
+          Vulkan.vkEnumerateInstanceLayerProperties nPtr ptr
+            >>= throwVkResult
+      )
+
   let
+    validationLayerAvailable :: Bool
+    validationLayerAvailable =
+      any
+        ( ( == "VK_LAYER_LUNARG_standard_validation" ) . Vulkan.getStringField @"layerName" )
+        availableLayers
+
+    enabledLayers :: [ String ]
+    enabledLayers
+      | validationLayerAvailable
+      = [ "VK_LAYER_LUNARG_standard_validation" ]
+      | otherwise
+      = []
+
     appInfo :: Vulkan.VkApplicationInfo
     appInfo =
       Vulkan.createVk
@@ -99,15 +124,18 @@ createVulkanInstance appName neededExtensions =
         &* Vulkan.setVkRef @"pApplicationInfo" appInfo
         &* Vulkan.setStrListCountAndRef
               @"enabledLayerCount" @"ppEnabledLayerNames"
-              [ "VK_LAYER_LUNARG_standard_validation" ]
+              enabledLayers
         &* Vulkan.setListCountAndRef
               @"enabledExtensionCount" @"ppEnabledExtensionNames"
               neededExtensions
         )
-  in
-    managedVulkanResource createInfo
-      Vulkan.vkCreateInstance
-      Vulkan.vkDestroyInstance
+
+  unless validationLayerAvailable $
+    logInfo "Validation layer unavailable. Is the Vulkan SDK installed?"
+
+  managedVulkanResource createInfo
+    Vulkan.vkCreateInstance
+    Vulkan.vkDestroyInstance
 
 
 createPhysicalDevice :: MonadIO m => Vulkan.VkInstance -> m Vulkan.VkPhysicalDevice
@@ -175,9 +203,10 @@ createLogicalDevice
   :: MonadVulkan m
   => Vulkan.VkPhysicalDevice
   -> Int
+  -> Bool
   -> Vulkan.VkPhysicalDeviceFeatures
   -> m Vulkan.VkDevice
-createLogicalDevice physicalDevice queueFamilyIndex features =
+createLogicalDevice physicalDevice queueFamilyIndex enableSwapchain features =
   let
     queueCreateInfo :: Vulkan.VkDeviceQueueCreateInfo
     queueCreateInfo =
@@ -188,6 +217,12 @@ createLogicalDevice physicalDevice queueFamilyIndex features =
         &* Vulkan.setListCountAndRef @"queueCount" @"pQueuePriorities" [ 1.0 :: Float ]
         )
 
+    deviceExtensions :: [ CString ]
+    deviceExtensions
+      | enableSwapchain
+      = [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
+      | otherwise
+      = []
     deviceCreateInfo :: Vulkan.VkDeviceCreateInfo
     deviceCreateInfo =
       Vulkan.createVk
@@ -205,7 +240,7 @@ createLogicalDevice physicalDevice queueFamilyIndex features =
         &* Vulkan.setListCountAndRef
               @"enabledExtensionCount"
               @"ppEnabledExtensionNames"
-              [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
+              deviceExtensions
         &* Vulkan.setVkRef @"pEnabledFeatures" features
         )
 

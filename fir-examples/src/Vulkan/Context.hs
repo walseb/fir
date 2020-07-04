@@ -156,10 +156,12 @@ initialiseContext appName neededExtensions RenderInfo { .. } = do
   vkInstance       <- logDebug "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
   physicalDevice   <- logDebug "Creating physical device"      *> createPhysicalDevice vkInstance
   queueFamilyIndex <- logDebug "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice [queueType]
-  device   <- logDebug "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex features
-  aSwapchainInfo <- case renderingContext @ctx of
-    SHeadless      -> pure NoSwapchain
+  ( device, aSwapchainInfo ) <- case renderingContext @ctx of
+    SHeadless      -> do
+      device <- logDebug "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex False features
+      pure ( device, NoSwapchain )
     SWithSwapchain -> do
+      device <- logDebug "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex True  features
       let SurfaceInfo {..} = surfaceInfo
       surface <- logDebug "Creating SDL surface" *> createSurface surfaceWindow vkInstance
       assertSurfacePresentable physicalDevice queueFamilyIndex surface
@@ -174,5 +176,5 @@ initialiseContext appName neededExtensions RenderInfo { .. } = do
       swapchainImageList <- logDebug "Getting swapchain images" *> getSwapchainImages device swapchain
       V.withSizedList swapchainImageList \ swapchainImages -> do
         let swapchainInfo = SwapchainInfo {..}
-        pure ( ASwapchainInfo swapchainInfo )
+        pure ( device, ASwapchainInfo swapchainInfo )
   pure ( VulkanContext {..} )

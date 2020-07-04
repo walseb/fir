@@ -291,9 +291,9 @@ kerr = runVulkan initialStateKerr do
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
-    pipelineLayout <- createPipelineLayout device descriptorSetLayout
+    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device descriptorSetLayout
 
-    shader <- loadShader device compPath
+    shader <- logDebug "Loading shader" *> loadShader device compPath
 
     let
       recordCommandBuffers pipe =

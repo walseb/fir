@@ -341,10 +341,10 @@ bezier = runVulkan bezierInitialState do
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
-    pipelineLayout <- createPipelineLayout device descriptorSetLayout
+    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device descriptorSetLayout
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
 
-    shaders <- traverse (\path -> (path, ) <$> loadShader device path) shaderPipeline
+    shaders <- logDebug "Loading shaders" *> traverse (\path -> (path, ) <$> loadShader device path) shaderPipeline
 
     let
       recordCommandBuffers pipe =
