@@ -1,7 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
@@ -17,6 +19,8 @@ module Vulkan.Backend where
 -- base
 import Control.Arrow
   ( (&&&) )
+import Control.Category
+  ( (>>>) )
 import Control.Monad
   ( (>=>), guard, unless )
 import Data.Bits
@@ -26,7 +30,7 @@ import Data.Foldable
 import Data.List
   hiding ( transpose )
 import Data.Maybe
-  ( fromMaybe )
+  ( fromMaybe, listToMaybe, mapMaybe )
 import Data.Ord
   ( Down(..) )
 import Data.Traversable
@@ -55,13 +59,17 @@ import Control.Monad.Trans.Resource
 -- sdl2
 import qualified SDL.Video.Vulkan
 
+-- text-short
+import qualified Data.Text.Short as ShortText
+  ( pack )
+
 -- transformers
 import Control.Monad.IO.Class
   ( MonadIO, liftIO )
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
-  ( Vector  )
+  ( Vector )
 
 -- vulkan-api
 import Graphics.Vulkan.Marshal.Create
@@ -79,6 +87,11 @@ import Vulkan.Pipeline
 
 -----------------------------------------------------------------------------------------------------
 
+data ValidationLayerName
+  = LunarG
+  | Khronos
+  deriving stock ( Eq, Show )
+
 createVulkanInstance :: MonadVulkan m => String -> [ CString ] -> m Vulkan.VkInstance
 createVulkanInstance appName neededExtensions = do
 
@@ -90,18 +103,24 @@ createVulkanInstance appName neededExtensions = do
       )
 
   let
-    validationLayerAvailable :: Bool
-    validationLayerAvailable =
-      any
-        ( ( == "VK_LAYER_LUNARG_standard_validation" ) . Vulkan.getStringField @"layerName" )
-        availableLayers
+    validationLayer :: Maybe ValidationLayerName
+    validationLayer
+      = listToMaybe
+      . mapMaybe
+        (   Vulkan.getStringField @"layerName"
+        >>> \case
+              "VK_LAYER_LUNARG_standard_validation" -> Just LunarG
+              "VK_LAYER_KHRONOS_validation"         -> Just Khronos
+              _                                     -> Nothing
+        )
+      $ availableLayers
+
 
     enabledLayers :: [ String ]
-    enabledLayers
-      | validationLayerAvailable
-      = [ "VK_LAYER_LUNARG_standard_validation" ]
-      | otherwise
-      = []
+    enabledLayers = case validationLayer of
+      Nothing      -> []
+      Just LunarG  -> [ "VK_LAYER_LUNARG_standard_validation" ]
+      Just Khronos -> [ "VK_LAYER_KHRONOS_validation" ]
 
     appInfo :: Vulkan.VkApplicationInfo
     appInfo =
@@ -130,8 +149,9 @@ createVulkanInstance appName neededExtensions = do
               neededExtensions
         )
 
-  unless validationLayerAvailable $
-    logInfo "Validation layer unavailable. Is the Vulkan SDK installed?"
+  case validationLayer of
+    Nothing -> logInfo "Validation layer unavailable. Is the Vulkan SDK installed?"
+    Just _  -> logInfo ( "Enabled validation layers " <> ShortText.pack ( show enabledLayers ) )
 
   managedVulkanResource createInfo
     Vulkan.vkCreateInstance
