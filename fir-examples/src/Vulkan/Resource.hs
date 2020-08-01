@@ -323,7 +323,7 @@ createDescriptorPool device maxSets descTypes =
         counts descTypes <&> \ ( descType, descCount ) ->
           Vulkan.createVk
           (  Vulkan.set @"type" descType
-          &* Vulkan.set @"descriptorCount" descCount
+          &* Vulkan.set @"descriptorCount" ( fromIntegral maxSets * descCount )
           )
       createInfo :: Vulkan.VkDescriptorPoolCreateInfo
       createInfo =
