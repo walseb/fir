@@ -1,4 +1,3 @@
-
 ![FIR](img/banner.png)
 
 ---
@@ -7,6 +6,7 @@
 * [Features and limitations](#features)
 * [Examples](#examples)
 * [Getting started](#getting-started)
+* [Report a bug](#bugs)
 * [Development information](#dev)
 * [Acknowledgements](#acknowledgements)
 
@@ -81,6 +81,16 @@ See [getting started](getting_started.md) for help on getting started with this 
 
 The [haddock documentation](https://sheaf.gitlab.io/fir/) is also worth perusing for specialised in-depth explanations.
 If you prefer to browse the haddocks locally, the ["getting started" guide](getting_started.md#docs) includes installation instructions.
+
+<a name="bugs"></a>
+# Report a bug
+
+Bugs can be reported on the [issue tracker](https://gitlab.com/sheaf/fir/-/issues).    
+
+If the bug concerns one of the Vulkan example programs, please ensure that maximum debug logging is enabled:
+  * run the example in GHCi, or pipe stdout to a log file, to obtain the logging information;
+  * ensure the Vulkan SDK is installed (which enables the Vulkan validation layers);
+  * set the `VK_LOADER_DEBUG` environment variable to the value `all`, enabling the loader debug messages.
 
 <a name="dev"></a>
 # Development information
