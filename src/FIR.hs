@@ -138,6 +138,7 @@ module FIR
   , FIR.Layout.Layout(..)
   , FIR.Layout.Poke(..)
   , FIR.Layout.pokeArray
+  , FIR.Layout.pokeArrayOff
   , FIR.Layout.roundUp
   , FIR.Layout.nextAligned
   , module FIR.Module

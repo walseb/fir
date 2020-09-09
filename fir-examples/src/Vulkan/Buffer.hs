@@ -31,7 +31,9 @@ import qualified Graphics.Vulkan.Marshal.Create as Vulkan
 
 -- fir
 import FIR
-  ( Poke(..), Layout(Base, Extended, Locations), pokeArray, roundUp )
+  ( Poke(..), Layout(Base, Extended, Locations)
+  , pokeArrayOff, roundUp
+  )
 
 -- fir-examples
 import Vulkan.Memory
@@ -45,7 +47,7 @@ createVertexBuffer
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, [a] -> IO (), Int )
+  -> m (Vulkan.VkBuffer, Int -> [a] -> IO (), Int )
 createVertexBuffer
   = createBufferFromList @a @Locations
       Vulkan.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
@@ -56,7 +58,7 @@ createIndexBuffer
   => Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, [a] -> IO (), Int )
+  -> m (Vulkan.VkBuffer, Int -> [a] -> IO (), Int )
 createIndexBuffer
   = createBufferFromList @a @Base
       Vulkan.VK_BUFFER_USAGE_INDEX_BUFFER_BIT
@@ -99,19 +101,19 @@ createBufferFromList
   -> Vulkan.VkPhysicalDevice
   -> Vulkan.VkDevice
   -> [ a ]
-  -> m (Vulkan.VkBuffer, [a] -> IO (), Int )
+  -> m (Vulkan.VkBuffer, Int -> [a] -> IO (), Int )
 createBufferFromList usage physicalDevice device elems = do
   ( buf, bufPtr ) <-
     createBufferFromPoke
       usage
       physicalDevice
       device
-      ( \memPtr -> pokeFunction memPtr elems )
+      ( \memPtr -> pokeFunction memPtr 0 elems )
       ( fromIntegral nbElems * fromIntegral (sizeOf @a @ali) )
   pure ( buf, pokeFunction bufPtr, nbElems )
     where
       nbElems = length elems
-      pokeFunction = pokeArray @a @ali
+      pokeFunction = pokeArrayOff @a @ali
 
 createBufferFromPoke
   :: MonadVulkan m

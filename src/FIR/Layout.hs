@@ -52,7 +52,7 @@ For further reference, see:
 
 module FIR.Layout
   ( Layout(..), Components
-  , Poke(..), pokeArray
+  , Poke(..), pokeArrayOff, pokeArray
   , inferPointerLayout
   , roundUp, nextAligned
   )
@@ -195,12 +195,23 @@ type family MaximumAlignmentHelper (lay :: Layout) (a :: Type) (as :: [fld :-> T
 roundUp :: Integral a => a -> a -> a
 roundUp n r = (n + r) - ( 1 + ( (n + r - 1) `mod` r ) )
 
+-- | Write elements to an array, whose start is given by a pointer.
 pokeArray :: forall a lay. Poke a lay => Ptr a -> [a] -> IO ()
-pokeArray ptr vals0 = go (fromIntegral $ sizeOf @a @lay) vals0 0
-  where go _ [] _         = return ()
-        go s (val:vals) n = do
-          poke @a @lay ( ptr `plusPtr` n ) val
-          go s vals (n + s)
+pokeArray ptr = pokeArrayOff @a @lay ptr 0
+
+-- | Write elements to an array, starting from the given index offset.
+pokeArrayOff :: forall a lay. Poke a lay => Ptr a -> Int -> [a] -> IO ()
+pokeArrayOff ptr off vals0
+  | off < 0   = pure ()
+  | otherwise = go ( ptr `plusPtr` ( sz * off ) ) vals0
+  where
+    sz :: Int
+    sz = fromIntegral ( sizeOf @a @lay )
+    go :: Ptr a -> [a] -> IO ()
+    go _    []         = pure ()
+    go ptr' (val:vals) = do
+      poke @a @lay ptr' val
+      go ( ptr' `plusPtr` sz ) vals
 
 nextAligned :: Word32 -> Word32 -> Word32
 nextAligned size ali
