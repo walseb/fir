@@ -46,4 +46,9 @@ program = Module $ entryPoint @"main" @Fragment do
     let col3 = view @(Swizzle "bgr") col2
         col = 0.25 *^ ( col1 ^+^ col3 ^+^ Lit darkGrey ^+^ Lit blue2 )
 
+    r <- use @( Name "in_col" :.: Swizzle "r" )
+
+
     put @"out_col" col
+    
+    assign @(Name "out_col" :.: Index 1 ) r
