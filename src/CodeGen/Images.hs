@@ -69,6 +69,7 @@ import FIR.AST
   )
 import FIR.Prim.Image
   ( ImageProperties, ImageAndCoordinate(..)
+  , ImageCoordinateKind(..)
   , ImageOperands, OperandName
   , GatherInfo(..)
   , knownImage
@@ -91,8 +92,6 @@ import qualified SPIRV.Requirements as SPIRV
   , lodCapabilities
   , gatherCapabilities
   )
-import qualified SPIRV.ScalarTy
-  ( ScalarTy(Integer, Floating) )
 
 --------------------------------------------------------------------------
 -- image sample/read/write
@@ -121,7 +120,7 @@ imageTexel (imgID, imgTy) ops coords
                 , SPIRV.multiSampling  = ms
                 , SPIRV.imageFormat    = mbFmt
                 }
-            , coordCompTy
+            , coordCompKind
             ) = knownValue @props
 
           imgResTy = case dtest of
@@ -132,9 +131,9 @@ imageTexel (imgID, imgTy) ops coords
       resTyID <- typeID imgResTy
       v <- fresh
 
-      sampling <- case coordCompTy of
+      sampling <- case coordCompKind of
         -- must be using a sampler (accessing with floating-point coordinates)
-        SPIRV.ScalarTy.Floating _
+        FloatingPointCoordinates
           -> do sampledImgID
                   <- case imgTy of
                         SPIRV.PrimTy.SampledImage _
@@ -172,7 +171,7 @@ imageTexel (imgID, imgTy) ops coords
                       }
                   pure True
         -- reading from image directly (using integral coordinates)
-        SPIRV.ScalarTy.Integer _ _
+        IntegralCoordinates
           -> do plainImgID
                   <- case imgTy of
                         SPIRV.PrimTy.Image _

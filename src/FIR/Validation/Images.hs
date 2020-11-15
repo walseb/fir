@@ -21,8 +21,8 @@ using floating-point texel coordinates.
 module FIR.Validation.Images
   ( LookupImageProperties
   , ValidImageRead, ValidImageWrite
-  , ImageCoordinates, ImageData
-  , GradCoordinates, OffsetCoordinates
+  , ValidImageCoordinate, ValidImageGradCoordinate, ValidImageOffsetCoordinate 
+  , ImageData
   , MatchesFormat, BasicDim, NotCubeDim
   , CanAddProj, CanAddDref
   , UsesAffineCoords
@@ -33,8 +33,6 @@ module FIR.Validation.Images
   where
 
 -- base
-import Data.Int
-  ( Int32 )
 import Data.Kind
   ( Type, Constraint )
 import Data.Type.Bool
@@ -58,6 +56,7 @@ import FIR.Binding
 import {-# SOURCE #-} FIR.Prim.Image
   ( ImageProperties(Properties), Image
   , OperandName(DepthComparison, ProjectiveCoords, BaseOperand)
+  , ImageCoordinateKind(..)
   )
 import FIR.Prim.Singletons
   ( ScalarFromTy )
@@ -124,17 +123,74 @@ type family ImagePropertiesFromLookup
 --
 -- Refer to the @SPIR-V@ specification for what operations are allowed.
 type family ValidImageRead
-              ( props :: ImageProperties )
-              ( ops   :: [OperandName]   )
+              ( props     :: ImageProperties )
+              ( ops       :: [OperandName]   )
+              ( coordType :: Type            )
             :: Constraint where
   ValidImageRead
-    ( Properties coords res _ depth _ ms usage fmt )
+    ( Properties coordKind res dim depth arr ms usage fmt )
     ops
-      = ( AllowedIndexing (ScalarFromTy coords) ms usage
-        , CheckDepthTest (DepthComparison `Elem` ops) (ScalarFromTy coords) depth
-        , CheckLODOperands (ScalarFromTy coords) ops
+    coordType
+      = ( AllowedIndexing coordKind ms usage
+        , CheckDepthTest (DepthComparison `Elem` ops) coordKind depth
+        , CheckLODOperands coordKind ops
         , CompatibleFormat (ScalarFromTy res) usage fmt
+        , ValidCoordinateType "image coordinates (for reading)" (ImageCoordinatesDim dim arr ops) coordKind coordType
         )
+
+type family ValidImageCoordinate
+              ( props     :: ImageProperties )
+              ( ops       :: [ OperandName ] )
+              ( coordType :: Type            )
+              where
+  ValidImageCoordinate ( Properties coordKind _ dim _ arr _ _ _ ) ops coordType
+    = ValidCoordinateType "image coordinates" (ImageCoordinatesDim dim arr ops) coordKind coordType
+
+type family ValidImageGradCoordinate
+              ( props     :: ImageProperties )
+              ( ops       :: [ OperandName ] )
+              ( coordType :: Type            )
+              where
+  ValidImageGradCoordinate ( Properties coordKind _ dim _ _ _ _ _ ) ops coordType
+    = ValidCoordinateType "gradient coordinates" (GradCoordinatesDim dim ops) coordKind coordType
+
+type family ValidImageOffsetCoordinate
+              ( props     :: ImageProperties )
+              ( ops       :: [ OperandName ] )
+              ( coordType :: Type            )
+              where
+  ValidImageOffsetCoordinate ( Properties coordKind _ dim _ _ _ _ _ ) ops coordType
+    = ValidCoordinateType "offset coordinates" (OffsetCoordinatesDim dim ops) coordKind coordType
+
+type family ValidCoordinateType
+              ( coordsName :: Symbol )
+              ( coordDim   :: Nat )
+              ( coordKind  :: ImageCoordinateKind )
+              ( coordType  :: Type )
+            :: Constraint where
+  ValidCoordinateType _ 1 coordKind a         = CoordinateConstraint coordKind a
+  ValidCoordinateType _ n coordKind ( V n a ) = CoordinateConstraint coordKind a
+  ValidCoordinateType coordsName n coordKind ( V j a ) =
+    TypeError 
+      (    Text "Use of " :<>: Text coordsName :<>: Text " of the wrong dimension."
+      :$$: Text "Expected dimension: " :<>: ShowType n
+      :$$: Text "  Actual dimension: " :<>: ShowType j
+      )
+  ValidCoordinateType coordsName n IntegralCoordinates nonVec =
+    TypeError 
+      (    Text "Cannot use type " :<>: ShowType nonVec :<>: Text " as " :<>: Text coordsName :<>: Text "."
+      :$$: Text "Expected a vector of integral types of dimension " :<>: ShowType n :<>: Text "."
+      )
+  ValidCoordinateType coordsName n FloatingPointCoordinates nonVec =
+    TypeError 
+      (    Text "Cannot use type " :<>: ShowType nonVec :<>: Text " as " :<>: Text coordsName :<>: Text "."
+      :$$: Text "Expected a vector of floating-point types of dimension " :<>: ShowType n :<>: Text "."
+      )
+
+
+type family CoordinateConstraint ( coordKind :: ImageCoordinateKind ) :: ( Type -> Constraint ) where
+  CoordinateConstraint IntegralCoordinates      = Integral
+  CoordinateConstraint FloatingPointCoordinates = Floating
 
 -- | Check that we can write to an image.
 --
@@ -142,56 +198,60 @@ type family ValidImageRead
 --
 --   * the image is not a storage image,
 --   * the image is a depth image,
---   * the coordinate type is not an integral type,
+--   * the coordinate type is not an integral type, or is of the wrong dimension,
 --   * an operand is incompatible with the given image properties,
 --   * an operand doesn't make sense for write operations.
 --
 -- Refer to the @SPIR-V@ specification for what operations are allowed.
 type family ValidImageWrite
-              ( props :: ImageProperties )
-              ( ops   :: [OperandName]   )
+              ( props     :: ImageProperties )
+              ( ops       :: [OperandName]   )
+              ( coordType :: Type            )
            :: Constraint where
   ValidImageWrite
     ( Properties _ _ _ _ _ _ Sampled _ )
     ops
+    _
       = TypeError ( Text "Cannot write to a sampled image; must be a storage image." )
   ValidImageWrite
     ( Properties _ _ _ (Just DepthImage) _ _ _ _ )
     ops
+    _
       = TypeError ( Text "Cannot write to a depth image." )
-
   ValidImageWrite
-    ( Properties coords res _ _ _ _ usage fmt )
+    ( Properties coordKind res dim _ arr _ usage fmt )
     ops
-      = ( IntegralIndexing (ScalarFromTy coords)
+    coordType
+      = ( IntegralIndexing coordKind
         , CompatibleFormat (ScalarFromTy res) usage fmt
         , AllowedWriteOps ops
+        , ValidCoordinateType "image coordinates (for writing)" (ImageCoordinatesDim dim arr ops) coordKind coordType
         )
 
-type family IntegralIndexing (inty :: SPIRV.ScalarTy) :: Constraint where
-  IntegralIndexing (SPIRV.Floating _)
+type family IntegralIndexing (inty :: ImageCoordinateKind) :: Constraint where
+  IntegralIndexing FloatingPointCoordinates
     = TypeError ( Text "Cannot write to an image using floating-point coordinates." )
   IntegralIndexing _ = ()
 
 -- Check whether floating-point coordinates are allowed.
 type family AllowedIndexing
-              ( inty  :: SPIRV.ScalarTy )
-              ( ms    :: MultiSampling  )
-              ( usage :: ImageUsage     )
+              ( inty  :: ImageCoordinateKind )
+              ( ms    :: MultiSampling      )
+              ( usage :: ImageUsage         )
             :: Constraint where
-  AllowedIndexing (SPIRV.Floating _) _ Storage
+  AllowedIndexing FloatingPointCoordinates _ Storage
     = TypeError
         ( Text "Cannot use floating-point coordinates with a storage image." )
-  AllowedIndexing (SPIRV.Floating _) MultiSampled _
+  AllowedIndexing FloatingPointCoordinates MultiSampled _
     = TypeError
         ( Text "Cannot use floating-point coordinates with multi-sampling." )
   AllowedIndexing _ _ _ = ()
 
 -- Check that depth-testing is appropriately performed.
 type family CheckDepthTest
-              ( depthTesting :: Bool    )
-              ( inty  :: SPIRV.ScalarTy )
-              ( depth :: Maybe HasDepth )
+              ( depthTesting :: Bool        )
+              ( inty  :: ImageCoordinateKind )
+              ( depth :: Maybe HasDepth     )
             :: Constraint where
   CheckDepthTest False _ (Just DepthImage)
     = TypeError
@@ -199,17 +259,17 @@ type family CheckDepthTest
   CheckDepthTest True _ (Just NotDepthImage)
     = TypeError
         ( Text "Cannot perform depth comparison: not a depth image." )
-  CheckDepthTest True (SPIRV.Integer _ _ ) _
+  CheckDepthTest True IntegralCoordinates _
     = TypeError
         ( Text "Cannot perform depth comparison using integral coordinates." )
   CheckDepthTest _ _ _ = ()
 
 -- If using integral coordinates, LOD instructions cannot be provided.
 type family CheckLODOperands
-                ( inty :: SPIRV.ScalarTy )
-                ( ops  :: [OperandName]  )
+                ( inty :: ImageCoordinateKind )
+                ( ops  :: [OperandName]      )
               :: Constraint where
-  CheckLODOperands (SPIRV.Floating _) _ = ()
+  CheckLODOperands FloatingPointCoordinates _ = ()
   CheckLODOperands _ ( BaseOperand ('LODOperand lod) ': _ )
     = TypeError 
         ( ShowType lod :<>: Text " operand not allowed: using integral coordinates." )
@@ -266,21 +326,19 @@ type family AllowedWriteOps (ops :: [OperandName]) :: Constraint where
 ----------------------------------------------------------
 -- Computing relevant image coordinate type.
 
--- | Type of coordinates used by an image
+-- | Dimension of the coordinates used by an image.
 --
--- This is the type of the value to be provided to sample an image,
--- e.g. a 2-vector for a 2D texture (using affine coordinates).
-type family ImageCoordinates
-              ( props :: ImageProperties )
-              ( ops   :: [OperandName]   )
-            :: Type where
-  ImageCoordinates
-    ( Properties a _ dim _ arr _ _ _ )
-    ops
-      = If
-          ( ProjectiveCoords `Elem` ops )
-          ( ImageCoordinatesType a dim arr Projective )
-          ( ImageCoordinatesType a dim arr Affine )
+-- For instance, a simple 2D texture requires a dimension 2 vector,
+-- simple 3D textures and cube maps requires a dimension 3 vector, etc.
+type family ImageCoordinatesDim
+              ( dim   :: Dimensionality )
+              ( arr   :: Arrayness      )
+              ( ops   :: [OperandName]  )
+            :: Nat where
+  ImageCoordinatesDim dim arr ops =
+    If ( ProjectiveCoords `Elem` ops )
+      ( ComputeCoordsDim dim arr Projective )
+      ( ComputeCoordsDim dim arr Affine )
 
 -- | Texel type of an image.
 --
@@ -299,63 +357,56 @@ type family ImageData
         r
         (V 4 r)
 
-type family ImageCoordinatesType
-              ( a    :: Type           )
+type family ComputeCoordsDim
               ( dim  :: Dimensionality )
               ( arr  :: Arrayness      )
               ( proj :: Projection     )
-              :: Type
+              :: Nat
               where
-  ImageCoordinatesType a OneD        NonArrayed Affine     =     a
-  ImageCoordinatesType a TwoD        NonArrayed Affine     = V 2 a
-  ImageCoordinatesType a ThreeD      NonArrayed Affine     = V 3 a
-  ImageCoordinatesType a Cube        NonArrayed Affine     = V 3 a
-  ImageCoordinatesType a Rect        NonArrayed Affine     = V 2 a
-  ImageCoordinatesType a Buffer      NonArrayed Affine     =     a
-  ImageCoordinatesType a SubpassData NonArrayed Affine     = V 2 a
-  ImageCoordinatesType a OneD        NonArrayed Projective = V 2 a
-  ImageCoordinatesType a TwoD        NonArrayed Projective = V 3 a
-  ImageCoordinatesType a ThreeD      NonArrayed Projective = V 4 a
-  ImageCoordinatesType a Cube        NonArrayed Projective = V 4 a
-  ImageCoordinatesType a Rect        NonArrayed Projective = V 3 a
-  ImageCoordinatesType a Buffer      NonArrayed Projective = V 2 a
-  ImageCoordinatesType a SubpassData NonArrayed Projective = V 3 a
-  ImageCoordinatesType a OneD        Arrayed    Affine     = V 2 a
-  ImageCoordinatesType a TwoD        Arrayed    Affine     = V 3 a
-  ImageCoordinatesType a Cube        Arrayed    Affine     = V 3 a -- weird stuff going on here
-  ImageCoordinatesType _ dim         Arrayed    Affine
+  ComputeCoordsDim OneD        NonArrayed Affine     = 1
+  ComputeCoordsDim TwoD        NonArrayed Affine     = 2
+  ComputeCoordsDim ThreeD      NonArrayed Affine     = 3
+  ComputeCoordsDim Cube        NonArrayed Affine     = 3
+  ComputeCoordsDim Rect        NonArrayed Affine     = 2
+  ComputeCoordsDim Buffer      NonArrayed Affine     = 1
+  ComputeCoordsDim SubpassData NonArrayed Affine     = 2
+  ComputeCoordsDim OneD        NonArrayed Projective = 2
+  ComputeCoordsDim TwoD        NonArrayed Projective = 3
+  ComputeCoordsDim ThreeD      NonArrayed Projective = 4
+  ComputeCoordsDim Cube        NonArrayed Projective = 4
+  ComputeCoordsDim Rect        NonArrayed Projective = 3
+  ComputeCoordsDim Buffer      NonArrayed Projective = 2
+  ComputeCoordsDim SubpassData NonArrayed Projective = 3
+  ComputeCoordsDim OneD        Arrayed    Affine     = 2
+  ComputeCoordsDim TwoD        Arrayed    Affine     = 3
+  ComputeCoordsDim Cube        Arrayed    Affine     = 3 -- weird stuff going on here
+  ComputeCoordsDim dim         Arrayed    Affine
     = TypeError ( Text "Unsupported arrayed image format \
                        \with dimensionality "
                   :<>: ShowType dim
                 )
-  ImageCoordinatesType _ dim         Arrayed    Projective
+  ComputeCoordsDim dim         Arrayed    Projective
     = TypeError ( Text "Cannot use projective coordinates with an arrayed image." )
 
 -- which coordinates to use to provide explicit derivatives
-type family GradCoordinates
-              ( props :: ImageProperties )
+type family GradCoordinatesDim
+              ( props :: Dimensionality  )
               ( ops   :: [OperandName]   )
-            :: Type where
-  GradCoordinates
-    ( Properties a _ dim _ _ _ _ _ )
-    ops
-      = If
-          ( ProjectiveCoords `Elem` ops )
-          ( ImageCoordinatesType a dim NonArrayed Projective )
-          ( ImageCoordinatesType a dim NonArrayed Affine     )
+            :: Nat where
+  GradCoordinatesDim dim ops =
+    If ( ProjectiveCoords `Elem` ops )
+      ( ComputeCoordsDim dim NonArrayed Projective )
+      ( ComputeCoordsDim dim NonArrayed Affine     )
 
 -- which coordinates to use to provide an offset
-type family OffsetCoordinates
-              ( props :: ImageProperties )
+type family OffsetCoordinatesDim
+              ( props :: Dimensionality  )
               ( ops   :: [OperandName]   )
-            :: Type where
-  OffsetCoordinates
-    ( Properties _ _ dim _ _ _ _ _ )
-    ops
-    = If
-        ( ProjectiveCoords `Elem` ops )
-        ( ImageCoordinatesType Int32 dim NonArrayed Projective )
-        ( ImageCoordinatesType Int32 dim NonArrayed Affine     )
+            :: Nat where
+  OffsetCoordinatesDim dim ops =
+    If ( ProjectiveCoords `Elem` ops )
+      ( ComputeCoordsDim dim NonArrayed Projective )
+      ( ComputeCoordsDim dim NonArrayed Affine     )
 
 
 -----------------------------------------------------------

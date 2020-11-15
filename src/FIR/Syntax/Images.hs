@@ -87,7 +87,7 @@ import Data.Type.Known
   ( Known )
 import FIR.Prim.Image
   ( ImageProperties
-  , Image, ImageData, ImageCoordinates
+  , Image, ImageData
   , OperandName, ImageOperands
   )
 import FIR.ProgramState
@@ -112,7 +112,7 @@ type family ImageTexel
               ( k :: Symbol )
             = ( optic
                 :: Optic
-                    '[ ImageOperands props ops, ImageCoordinates props ops]
+                    '[ ImageOperands props ops, imgCds ]
                     ( i :: ProgramState )
                     ( ImageData props ops )
               )
@@ -123,12 +123,12 @@ type family ImageTexel
           `ComposeO`
           ( RTOptic_
               :: Optic
-                  '[ ImageOperands props ops, ImageCoordinates props ops]
+                  '[ ImageOperands props ops, imgCds ]
                   ( Image props )
                   ( ImageData props ops )
           )
         ) :: Optic
-              '[ ImageOperands props ops, ImageCoordinates props ops]
+              '[ ImageOperands props ops, imgCds ]
               i
               (ImageData props ops)
       )
@@ -151,10 +151,9 @@ instance {-# OVERLAPPING #-}
          ( KnownSymbol k
          , LookupImageProperties k i ~ props
          , Known ImageProperties props
-         , ValidImageRead props ops
+         , ValidImageRead props ops imgCds
          , empty ~ '[]
          , imgOps ~ ImageOperands props ops
-         , imgCds ~ ImageCoordinates props ops
          , imgData ~ ImageData props ops
          )
       => Gettable ( ( ( Field_ k :: Optic empty i (Image props))
@@ -178,10 +177,9 @@ instance {-# OVERLAPPING #-}
          ( KnownSymbol k
          , LookupImageProperties k i ~ props
          , Known ImageProperties props
-         , ValidImageWrite props ops
+         , ValidImageWrite props ops imgCds
          , empty ~ '[]
          , imgOps ~ ImageOperands props ops
-         , imgCds ~ ImageCoordinates props ops
          , imgData ~ ImageData props ops
          )
       => Settable ( ( ( Field_ k :: Optic empty i (Image props))

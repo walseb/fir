@@ -107,7 +107,6 @@ import FIR.Prim.Array
 import FIR.Prim.Image
   ( Image, ImageProperties, ImageData
   , ImageOperands, OperandName
-  , ImageCoordinates
   )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing)
@@ -162,12 +161,12 @@ data SOptic (optic :: Optic i s a) :: Type where
               -> SOptic ( (  ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
                              `ComposeO`
                              ( RTOptic_ :: Optic
-                                            '[ ImageOperands props ops, ImageCoordinates props ops ]
+                                            '[ ImageOperands props ops, imgCds ]
                                              (Image props)
                                              (ImageData props ops)
                              )
                           ) :: Optic
-                                '[ ImageOperands props ops, ImageCoordinates props ops ]
+                                '[ ImageOperands props ops, imgCds ]
                                 i
                                 (ImageData props ops)
                         )
@@ -352,10 +351,10 @@ instance {-# OVERLAPPING #-}
            ( imgData :: Type            )
          .
          ( KnownSymbol k
+         , PrimTy imgCds
          , LookupImageProperties k i ~ props
          , Known ImageProperties props
          , imgOps ~ ImageOperands props ops
-         , imgCds ~ ImageCoordinates props ops
          , imgData ~ ImageData props ops
          , empty ~ '[]
          )

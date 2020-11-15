@@ -174,7 +174,7 @@ import FIR.Module
   )
 import FIR.Prim.Image
   ( ImageProperties, ImageOperands
-  , ImageData, ImageCoordinates
+  , ImageData
   )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, IntegralTy
@@ -542,26 +542,28 @@ modify = modifying @(Name k :: Optic '[] i a)
 imageRead :: forall
               ( imgName :: Symbol          )
               ( props   :: ImageProperties )
+              ( imgCds  :: Type            )
               ( i       :: ProgramState    )
             .
             ( KnownSymbol imgName
+            , PrimTy imgCds
             , Gettable
                 ( ImageTexel imgName
                   :: Optic
-                      '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                      '[ ImageOperands props '[], imgCds ]
                        i
                        ( ImageData props '[] )
                 )
             , props ~ LookupImageProperties imgName i
             , Known ImageProperties props
-            , ValidImageRead props '[]
+            , ValidImageRead props '[] imgCds
             )
-          => Code (ImageCoordinates props '[])
+          => Code imgCds
           -> Program i i (Code (ImageData props '[]))
 imageRead = use
           @( ImageTexel imgName
               :: Optic
-                   '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                   '[ ImageOperands props '[], imgCds ]
                     i
                     ( ImageData props '[] )
            )
@@ -580,27 +582,29 @@ imageRead = use
 imageWrite :: forall
                 ( imgName :: Symbol          )
                 ( props   :: ImageProperties )
+                ( imgCds  :: Type            )
                 ( i       :: ProgramState    )
              .
              ( KnownSymbol imgName
+             , PrimTy imgCds
              , Gettable
                 ( ImageTexel imgName
                   :: Optic
-                      '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                      '[ ImageOperands props '[], imgCds ]
                        i
                        ( ImageData props '[] )
                 )
              , props ~ LookupImageProperties imgName i
              , Known ImageProperties props
-             , ValidImageWrite props '[]
+             , ValidImageWrite props '[] imgCds
              )
-           => Code (ImageCoordinates props '[])
+           => Code  imgCds
            -> Code (ImageData props '[])
            -> Program i i ( Code () )
 imageWrite = assign
            @( ImageTexel imgName
                 :: Optic
-                    '[ ImageOperands props '[], ImageCoordinates props '[] ]
+                    '[ ImageOperands props '[], imgCds ]
                      i
                      ( ImageData props '[] )
             )

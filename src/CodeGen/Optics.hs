@@ -404,9 +404,9 @@ operationTree is
       ( componentsTrees same comps =<<
           combinedIndices @iss @is @as sSameLength sLength is
       )
-operationTree _ (SBinding _)
+operationTree _ (SBinding {})
   = throwError "operationTree: trying to access a binding within a binding"
-operationTree _ (SImageTexel _ _)
+operationTree _ (SImageTexel {})
   = throwError "operationTree: unexpected image optic"
 
 continue :: OpticalOperationTree -> OpticalOperationTree -> CGMonad OpticalOperationTree

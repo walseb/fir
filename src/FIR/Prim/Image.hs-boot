@@ -36,9 +36,13 @@ import SPIRV.Image
 
 --------------------------------------------------
 
+data ImageCoordinateKind
+  = IntegralCoordinates
+  | FloatingPointCoordinates 
+
 data ImageProperties where
   Properties
-    :: Type
+    :: ImageCoordinateKind
     -> Type
     -> Dimensionality
     -> Maybe HasDepth
@@ -47,9 +51,6 @@ data ImageProperties where
     -> ImageUsage
     -> Maybe (ImageFormat Nat)
     -> ImageProperties
-
-type family ImageComponent ( props :: ImageProperties ) :: Type where
-  ImageComponent ( Properties a _ _ _ _ _ _ _ ) = a
 
 data Image (props :: ImageProperties)
 type role Image phantom

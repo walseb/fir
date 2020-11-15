@@ -26,34 +26,32 @@ describing the image, such as the format of the image (e.g. RGBA8, depth image, 
 module FIR.Prim.Image
   ( -- * Images
     -- ** Image properties
-    ImageProperties(Properties)
+    ImageCoordinateKind(..)
+  , ImageProperties(Properties)
   -- ** Opaque image data type
   , Image
   -- ** Type reflection of image properties
   -- $reflection
   , ImageAndCoordinate(..)
-  , ImageComponent
-  , knownImage, knownImageCoordinateComponent
+  , knownImage, knownImageCoordinateKind
 
   -- * Image operands
   , OperandName(..), ImageOperands
   -- ** Specific data type for gathering operations
   , Gather(..), GatherInfo(..)
 
-  -- * Compute the coordinate and texel type of an image
-  , ImageCoordinates, ImageData
+  -- * Compute the texel type of an image
+  , ImageData
 
   -- * Helper type families for checking validity of image operands
   , CanAddProj, CanAddDref, BasicDim, NotCubeDim
   , NoMS, NoDuplicate, CanMultiSample
   , NoLODOps, UsesAffineCoords
-  , WhichGather, GradCoordinates, OffsetCoordinates
+  , WhichGather
   )
   where
 
 -- base
-import Prelude
-  hiding ( Floating, Integral )
 import Data.Int
   ( Int32 )
 import Data.Kind
@@ -73,8 +71,7 @@ import FIR.Prim.Array
 import {-# SOURCE #-} FIR.Prim.Singletons
   ( ScalarTy, scalarTy )
 import FIR.Validation.Images
-  ( ImageCoordinates, ImageData
-  , GradCoordinates, OffsetCoordinates
+  ( ImageData
   , MatchesFormat, BasicDim, NotCubeDim
   , CanAddProj, CanAddDref
   , UsesAffineCoords
@@ -95,8 +92,6 @@ import SPIRV.Image
   )
 import qualified SPIRV.Image    as SPIRV
   ( Image(..) )
-import qualified SPIRV.ScalarTy as SPIRV
-  ( ScalarTy )
 
 --------------------------------------------------
 
@@ -108,19 +103,27 @@ import qualified SPIRV.ScalarTy as SPIRV
 -- as check that operations done with the image are valid.
 data ImageProperties where
   Properties
-    :: Type -- ^ Component type of image coordinates.
-    -> Type -- ^ Texel component type.
-    -> Dimensionality -- ^ Dimensionality of the image (1D, 2D, 3D, cubemap, ...).
-    -> Maybe HasDepth -- ^ Whether the image is a depth image.
-    -> Arrayness      -- ^ Whether the image has an extra array component.
-    -> MultiSampling  -- ^ Whether the image is multisampled.
-    -> ImageUsage     -- ^ Is the image sampled or a storage image?
+    :: ImageCoordinateKind     -- ^ The kind of coordinates this image allows (integral/floating point).
+    -> Type                    -- ^ Texel component type.
+    -> Dimensionality          -- ^ Dimensionality of the image (1D, 2D, 3D, cubemap, ...).
+    -> Maybe HasDepth          -- ^ Whether the image is a depth image.
+    -> Arrayness               -- ^ Whether the image has an extra array component.
+    -> MultiSampling           -- ^ Whether the image is multisampled.
+    -> ImageUsage              -- ^ Is the image sampled or a storage image?
     -> Maybe (ImageFormat Nat) -- ^ 'SPIRV.Image.ImageFormat' of the image.
     -> ImageProperties
 
--- Access the component type.
-type family ImageComponent ( props :: ImageProperties ) :: Type where
-  ImageComponent ( Properties a _ _ _ _ _ _ _ ) = a
+-- | The kind of coordinates that an image format supports.
+data ImageCoordinateKind
+  = IntegralCoordinates      -- ^ Access image texels using integral coordinates.
+  | FloatingPointCoordinates -- ^ Access image texels using floating point coordinates.
+
+instance Demotable ImageCoordinateKind where
+  type Demote ImageCoordinateKind = ImageCoordinateKind
+instance Known ImageCoordinateKind IntegralCoordinates where
+  known = IntegralCoordinates
+instance Known ImageCoordinateKind FloatingPointCoordinates where
+  known = FloatingPointCoordinates
 
 -- | Abstract handle to an image.
 -- 
@@ -131,12 +134,12 @@ data Image (props :: ImageProperties) where
 
 -- newtype to retain injectivity of 'Demote' type family
 newtype ImageAndCoordinate
-  = ImageAndCoordinate (SPIRV.Image, SPIRV.ScalarTy)
+  = ImageAndCoordinate (SPIRV.Image, ImageCoordinateKind)
 
 instance Demotable ImageProperties where
   type Demote ImageProperties = ImageAndCoordinate
 
-instance ( ScalarTy                        coordComp
+instance ( Known ImageCoordinateKind       coordKind
          , ScalarTy                        texelComp
          , Known Dimensionality            dimensionality
          , Known (Maybe HasDepth)          hasDepth
@@ -148,7 +151,7 @@ instance ( ScalarTy                        coordComp
          )
   => Known ImageProperties
       ( 'Properties
-           coordComp texelComp
+           coordKind texelComp
            dimensionality hasDepth
            arrayness multiSampling
            imageUsage imageFormat
@@ -165,7 +168,7 @@ instance ( ScalarTy                        coordComp
             , SPIRV.imageUsage = Just (knownValue @imageUsage)
             , SPIRV.imageFormat      = knownValue @imageFormat
             }
-        , scalarTy @coordComp
+        , knownValue @coordKind
         )
 
 
@@ -176,13 +179,13 @@ instance ( ScalarTy                        coordComp
 -- this type-level information to the value level.
 
 -- | Provided image properties at the type-level,
--- return the component type of the image's texels.
-knownImageCoordinateComponent
+-- return the kind of coordinates that the image uses.
+knownImageCoordinateKind
   :: forall props. Known ImageProperties props
-  => SPIRV.ScalarTy
-knownImageCoordinateComponent
+  => ImageCoordinateKind
+knownImageCoordinateKind
   = case knownValue @props of
-      ImageAndCoordinate (_, comp) -> comp
+      ImageAndCoordinate (_, coordKind) -> coordKind
 
 -- | Return the 'SPIRV.Image.Image' type with the given properties.
 knownImage :: forall props. Known ImageProperties props => SPIRV.Image

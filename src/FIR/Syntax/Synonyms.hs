@@ -132,6 +132,7 @@ import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Image
   ( ImageProperties(Properties)
+  , ImageCoordinateKind(..)
   , Image, GatherInfo(..)
   )
 import FIR.Prim.Singletons
@@ -193,38 +194,38 @@ type Texture1D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float  (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties FloatingPointCoordinates (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 type Texture2D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float  (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties FloatingPointCoordinates (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 type Texture3D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Float  (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
+         (Properties FloatingPointCoordinates (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Sampled (Just fmt))
       )
 
 type Image1D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Word32 (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
+         (Properties IntegralCoordinates (FormatDefault fmt) OneD   (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
       )
 type Image2D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Word32 (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
+         (Properties IntegralCoordinates (FormatDefault fmt) TwoD   (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
       )
 type Image3D decs fmt
   = Global Storage.UniformConstant
       decs
       ( Image
-         (Properties Word32 (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
+         (Properties IntegralCoordinates (FormatDefault fmt) ThreeD (Just NotDepthImage) NonArrayed SingleSampled Storage (Just fmt))
       )
 
 type Texture decs props

@@ -35,8 +35,6 @@ import FIR.AST.Type
   ( AugType(Val) )
 import {-# SOURCE #-} FIR.Prim.Image
   ( ImageOperands, OperandName(..)
-  , ImageComponent
-  , GradCoordinates, OffsetCoordinates
   , GatherInfo(..), WhichGather
   )
 import {-# SOURCE #-} FIR.Prim.Singletons
@@ -48,6 +46,7 @@ import FIR.Validation.Images
   , NoDuplicate
   , NoMS, CanMultiSample
   , NoLODOps
+  , ValidImageCoordinate, ValidImageGradCoordinate, ValidImageOffsetCoordinate 
   )
 import qualified SPIRV.Image as SPIRV
 
@@ -95,7 +94,7 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
   -- except possibly 'Proj'.
   DrefF
     :: CanAddDref ops
-    => ast ( Val ( ImageComponent props ) ) -- ^ Reference value used to perform the depth comparison.
+    => ast ( Val Float ) -- ^ Reference value used to perform the depth comparison.
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (DepthComparison ': ops) ) )
 
@@ -105,8 +104,9 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
        , NoMS "Bias" props
        , NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.Bias)) ops
        , NoLODOps "Bias" '[SPIRV.LOD, SPIRV.Grad] ops
+       , ValidImageCoordinate props ops imgCoords
        )
-    => ast ( Val ( ImageComponent props ) ) -- ^ Bias.
+    => ast ( Val imgCoords ) -- ^ Bias.
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.Bias) ': ops) ) )
 
@@ -116,8 +116,9 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
        , NoMS "LOD" props
        , NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.LOD)) ops
        , NoLODOps "LOD" '[SPIRV.Bias, SPIRV.Grad, SPIRV.MinLOD] ops
+       , ValidImageCoordinate props ops imgCoords
        )
-     => ast ( Val ( ImageComponent props ) ) -- ^ LOD.
+     => ast ( Val imgCoords ) -- ^ LOD.
      -> ast ( Val ( ImageOperands props ops ) )
      -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.LOD ) ': ops) ) )
 
@@ -128,41 +129,43 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
        , NoMS "MinLOD" props
        , NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.MinLOD)) ops
        , NoLODOps "MinLOD" '[SPIRV.LOD, SPIRV.Bias] ops
+       , ValidImageCoordinate props ops imgCoords
        )
-    => ast ( Val ( ImageComponent props ) ) -- ^ Minimum LOD.
+    => ast ( Val imgCoords ) -- ^ Minimum LOD.
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.MinLOD ) ': ops) ) )
 
   -- | Provide explicit derivatives.
   GradF
-    :: ( vec ~ GradCoordinates props ops
+    :: ( PrimTy gradCoords
        , NoMS "Grad" props
        , NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.Grad)) ops
        , NoLODOps "Grad" '[ SPIRV.Bias, SPIRV.LOD ] ops
+       , ValidImageGradCoordinate props ops gradCoords
        )
-    => ( ast (Val vec), ast (Val vec) ) -- ^ Gradient: ( df\/dx, df\/dy ).
+    => ( ast (Val gradCoords), ast (Val gradCoords) ) -- ^ Gradient: ( df\/dx, df\/dy ).
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.Grad) ': ops) ) )
 
   -- | Add a constant offset to the coordinates.
   ConstOffsetByF
-    :: ( PrimTy vec
-       , vec ~ OffsetCoordinates props ops
+    :: ( PrimTy offCoords
        , NoDuplicate (BaseOperand SPIRV.ConstOffset) ops
        , NotCubeDim "ConstOffsetBy" props
+       , ValidImageOffsetCoordinate props ops offCoords
        )
-    => vec -- Offset (a Haskell constant).
+    => offCoords -- Offset (a Haskell constant).
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand SPIRV.ConstOffset ': ops) ) )
 
   -- | Add an offset to the coordinates.
   OffsetByF
-    :: ( PrimTy vec
-       , vec ~ OffsetCoordinates props ops
+    :: ( PrimTy offCoords
        , NoDuplicate (BaseOperand SPIRV.Offset) ops
        , NotCubeDim "OffsetBy" props
+       , ValidImageOffsetCoordinate props ops offCoords
        )
-    => ast ( Val vec ) -- Offset.
+    => ast ( Val offCoords ) -- Offset.
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand SPIRV.Offset ': ops) ) )
 
