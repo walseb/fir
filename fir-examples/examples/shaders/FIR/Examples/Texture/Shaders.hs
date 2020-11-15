@@ -79,6 +79,7 @@ fragment = shader do
     uv  <- get @"in_uv"
     -- naughty texture flipping trick
     let r = view @(Index 0) col
+        uv' :: Code (V 2 Float)
         uv' =
           if r < 0.01 || r > 0.99
           then over @(Index 0) (\x -> 1 - x) uv

@@ -456,7 +456,7 @@ texture = runVulkan initialState do
 
       resourceFlags :: ResourceSet numImages Named
       resourceFlags = ResourceSet
-        ( StageFlags Vulkan.VK_SHADER_STAGE_VERTEX_BIT   )
+        ( StageFlags ( Vulkan.VK_SHADER_STAGE_VERTEX_BIT .|. Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT ) )
         ( StageFlags Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT )
         InputResource
         InputResource
