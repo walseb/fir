@@ -198,7 +198,8 @@ typeID ty = TyID <$>
                  pure (eltID, lgID) -- (I suppose this is to do with specialisation constants)
             )
             ( \(eltTyID, lgID) v -> do
-                addDecorations v decs
+                -- decorate the array (only include layout decorations)
+                addDecorations v (Set.filter SPIRV.isLayoutDecoration decs)
                 mkTyConInstruction ( Arg eltTyID $ Arg lgID EndArgs ) v
             )
 
@@ -206,7 +207,8 @@ typeID ty = TyID <$>
           createIDRec _knownPrimTy
             ( typeID a )
             ( \eltTyID v -> do
-              addDecorations v decs
+              -- decorate the array (only include layout decorations)
+              addDecorations v (Set.filter SPIRV.isLayoutDecoration decs)
               mkTyConInstruction ( Arg eltTyID EndArgs ) v
             )
 
@@ -259,8 +261,8 @@ typeID ty = TyID <$>
                           NotForBuiltins -> pure ()
                       )
 
-                    -- decorate the overall struct
-                    addDecorations structTyID decs
+                    -- decorate the overall struct (only include layout decorations)
+                    addDecorations structTyID (Set.filter SPIRV.isLayoutDecoration decs)
 
                     -- declare the type
                     mkTyConInstruction (toArgs eltIDs) structTyID
