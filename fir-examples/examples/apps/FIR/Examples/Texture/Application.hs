@@ -456,7 +456,7 @@ texture = runVulkan initialState do
 
       resourceFlags :: ResourceSet numImages Named
       resourceFlags = ResourceSet
-        ( StageFlags ( Vulkan.VK_SHADER_STAGE_VERTEX_BIT .|. Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT ) )
+        ( StageFlags Vulkan.VK_SHADER_STAGE_VERTEX_BIT )
         ( StageFlags Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT )
         InputResource
         InputResource
@@ -478,7 +478,7 @@ texture = runVulkan initialState do
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
-    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device descriptorSetLayout
+    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
 
     shaders <- logDebug "Loading shaders" *> traverse (\path -> (path, ) <$> loadShader device path) shaderPipeline

@@ -263,7 +263,7 @@ numericOp _  Mul  (Floating         w) = ( FMul   , Floating         w )
 numericOp _  Mul  (Integer s        w) = ( IMul   , Integer s        w )
 -- additive group
 numericOp _  Sub  (Floating         w) = ( FSub   , Floating         w )
-numericOp _  Sub  (Integer s        w) = ( ISub   , Integer s        w ) -- technically can call subtraction on unsigned integer types
+numericOp _  Sub  (Integer s        w) = ( ISub   , Integer s        w )
 numericOp _  Neg  (Floating         w) = ( FNegate, Floating         w )
 numericOp _  Neg  (Integer Signed   w) = ( SNegate, Integer Signed   w )
 numericOp _  Neg  (Integer Unsigned _) = error "internal error: 'negate' called on unsigned type"

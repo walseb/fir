@@ -174,7 +174,6 @@ import FIR.Module
   )
 import FIR.Prim.Image
   ( ImageProperties, ImageOperands
-  , ImageData
   )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, IntegralTy
@@ -208,11 +207,11 @@ import FIR.Validation.Bindings
 import FIR.Validation.Definitions
   ( ValidDefinitions )
 import FIR.Validation.Images
-  ( LookupImageProperties
+  ( LookupImageProperties, ImageTexelType
   , ValidImageRead, ValidImageWrite
   )
 import Math.Algebra.Class
-  ( AdditiveMonoid(..), AdditiveGroup(..)
+  ( AdditiveMonoid(..), CancellativeAdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
@@ -540,32 +539,35 @@ modify = modifying @(Name k :: Optic '[] i a)
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
 imageRead :: forall
-              ( imgName :: Symbol          )
-              ( props   :: ImageProperties )
-              ( imgCds  :: Type            )
-              ( i       :: ProgramState    )
+              ( imgName  :: Symbol          )
+              ( props    :: ImageProperties )
+              ( imgCds   :: Type            )
+              ( imgTexel :: Type            )
+              ( i        :: ProgramState    )
             .
             ( KnownSymbol imgName
             , PrimTy imgCds
+            , PrimTy imgTexel
+            , imgTexel ~ ( ImageTexelType props '[] )
             , Gettable
                 ( ImageTexel imgName
                   :: Optic
                       '[ ImageOperands props '[], imgCds ]
                        i
-                       ( ImageData props '[] )
+                       ( ImageTexelType props '[] ) -- can't use "imgTexel", GHC trac #15710
                 )
             , props ~ LookupImageProperties imgName i
             , Known ImageProperties props
             , ValidImageRead props '[] imgCds
             )
           => Code imgCds
-          -> Program i i (Code (ImageData props '[]))
+          -> Program i i (Code (ImageTexelType props '[]))
 imageRead = use
           @( ImageTexel imgName
               :: Optic
                    '[ ImageOperands props '[], imgCds ]
                     i
-                    ( ImageData props '[] )
+                    imgTexel
            )
           NilOps
 
@@ -580,33 +582,36 @@ imageRead = use
 -- * @props@: image properties (usually inferred),
 -- * @i@: monadic state (usually inferred).
 imageWrite :: forall
-                ( imgName :: Symbol          )
-                ( props   :: ImageProperties )
-                ( imgCds  :: Type            )
-                ( i       :: ProgramState    )
+                ( imgName  :: Symbol          )
+                ( props    :: ImageProperties )
+                ( imgCds   :: Type            )
+                ( imgTexel :: Type            )
+                ( i        :: ProgramState    )
              .
              ( KnownSymbol imgName
              , PrimTy imgCds
+             , PrimTy imgTexel
+             , imgTexel ~ ( ImageTexelType props '[] )
              , Gettable
                 ( ImageTexel imgName
                   :: Optic
                       '[ ImageOperands props '[], imgCds ]
                        i
-                       ( ImageData props '[] )
+                       ( ImageTexelType props '[] ) -- can't use "imgTexel", GHC trac #15710
                 )
              , props ~ LookupImageProperties imgName i
              , Known ImageProperties props
              , ValidImageWrite props '[] imgCds
              )
-           => Code  imgCds
-           -> Code (ImageData props '[])
+           => Code imgCds
+           -> Code imgTexel
            -> Program i i ( Code () )
 imageWrite = assign
            @( ImageTexel imgName
                 :: Optic
                     '[ ImageOperands props '[], imgCds ]
                      i
-                     ( ImageData props '[] )
+                     imgTexel
             )
            NilOps
 
@@ -816,8 +821,9 @@ instance (ScalarTy a, AdditiveMonoid a, j ~ i) => AdditiveMonoid (Program i j (C
   fromInteger = ixPure . fromInteger
 instance (ScalarTy a, Semiring a, j ~ i) => Semiring (Program i j (Code a)) where
   (*)    = ixLiftA2 (*)
-instance (ScalarTy a, AdditiveGroup a, j ~ i) => AdditiveGroup (Program i j (Code a)) where
+instance (ScalarTy a, CancellativeAdditiveMonoid a, j ~ i) => CancellativeAdditiveMonoid (Program i j (Code a)) where
   (-)    = ixLiftA2 (-)
+instance (ScalarTy a, AdditiveGroup a, j ~ i) => AdditiveGroup (Program i j (Code a)) where
   negate = ixFmap negate
 instance (ScalarTy a, Signed a, j ~ i) => Signed (Program i j (Code a)) where
   abs    = ixFmap abs

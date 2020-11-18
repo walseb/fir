@@ -263,7 +263,7 @@ logo = runVulkan initialStateLogo do
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
-    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device descriptorSetLayout
+    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
 
     shader <- logDebug "Loading shader" *> loadShader device compPath
 

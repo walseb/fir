@@ -36,7 +36,7 @@ import Data.Coerce
 
 -- fir
 import Math.Algebra.Class
-  ( AdditiveMonoid(..), AdditiveGroup(..)
+  ( AdditiveMonoid(..), CancellativeAdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring, DivisionRing(..)
   , Signed(..), Floating(..)
   )
@@ -82,8 +82,10 @@ instance Ring a => Semiring (Quaternion a) where
            (xr*yj + xj*yr + xk*yi - xi*yk)
            (xr*yk + xk*yr + xi*yj - xj*yi)
 
+instance CancellativeAdditiveMonoid a => CancellativeAdditiveMonoid (Quaternion a) where
+  (-) = liftA2 (-)
+
 instance AdditiveGroup a => AdditiveGroup (Quaternion a) where
-  (-)    = liftA2 (-)
   negate = fmap negate
 
 instance Floating a => Signed (Quaternion a) where

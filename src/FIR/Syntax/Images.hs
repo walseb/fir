@@ -87,7 +87,7 @@ import Data.Type.Known
   ( Known )
 import FIR.Prim.Image
   ( ImageProperties
-  , Image, ImageData
+  , Image
   , OperandName, ImageOperands
   )
 import FIR.ProgramState
@@ -95,6 +95,7 @@ import FIR.ProgramState
 import FIR.Validation.Images
   ( LookupImageProperties
   , ValidImageRead, ValidImageWrite
+  , ImageTexelType
   )
 
 -----------------------------------------------------------------------
@@ -114,7 +115,7 @@ type family ImageTexel
                 :: Optic
                     '[ ImageOperands props ops, imgCds ]
                     ( i :: ProgramState )
-                    ( ImageData props ops )
+                    ( ImageTexelType props ops )
               )
             | optic -> k
             where
@@ -125,12 +126,12 @@ type family ImageTexel
               :: Optic
                   '[ ImageOperands props ops, imgCds ]
                   ( Image props )
-                  ( ImageData props ops )
+                  ( ImageTexelType props ops )
           )
         ) :: Optic
               '[ ImageOperands props ops, imgCds ]
               i
-              (ImageData props ops)
+              (ImageTexelType props ops)
       )
 
 ----------------------------------------------------
@@ -139,14 +140,14 @@ type family ImageTexel
 
 instance {-# OVERLAPPING #-} 
          forall 
-           ( k       :: Symbol          )
-           ( i       :: ProgramState    )
-           ( props   :: ImageProperties )
-           ( ops     :: [OperandName]   )
-           ( empty   :: [Type]          )
-           ( imgOps  :: Type            )
-           ( imgCds  :: Type            )
-           ( imgData :: Type            )
+           ( k        :: Symbol          )
+           ( i        :: ProgramState    )
+           ( props    :: ImageProperties )
+           ( ops      :: [OperandName]   )
+           ( empty    :: [Type]          )
+           ( imgOps   :: Type            )
+           ( imgCds   :: Type            )
+           ( imgTexel :: Type            )
          .
          ( KnownSymbol k
          , LookupImageProperties k i ~ props
@@ -154,25 +155,25 @@ instance {-# OVERLAPPING #-}
          , ValidImageRead props ops imgCds
          , empty ~ '[]
          , imgOps ~ ImageOperands props ops
-         , imgData ~ ImageData props ops
+         , imgTexel ~ ImageTexelType props ops
          )
       => Gettable ( ( ( Field_ k :: Optic empty i (Image props))
                     `ComposeO`
-                      ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData )
-                    ) :: Optic '[imgOps, imgCds] i imgData
+                      ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgTexel )
+                    ) :: Optic '[imgOps, imgCds] i imgTexel
                   )
       where
 
 instance {-# OVERLAPPING #-} 
          forall 
-           ( k       :: Symbol          )
-           ( i       :: ProgramState    )
-           ( props   :: ImageProperties )
-           ( ops     :: [OperandName]   )
-           ( empty   :: [Type]          )
-           ( imgOps  :: Type            )
-           ( imgCds  :: Type            )
-           ( imgData :: Type            )
+           ( k        :: Symbol          )
+           ( i        :: ProgramState    )
+           ( props    :: ImageProperties )
+           ( ops      :: [OperandName]   )
+           ( empty    :: [Type]          )
+           ( imgOps   :: Type            )
+           ( imgCds   :: Type            )
+           ( imgTexel :: Type            )
          .
          ( KnownSymbol k
          , LookupImageProperties k i ~ props
@@ -180,11 +181,11 @@ instance {-# OVERLAPPING #-}
          , ValidImageWrite props ops imgCds
          , empty ~ '[]
          , imgOps ~ ImageOperands props ops
-         , imgData ~ ImageData props ops
+         , imgTexel ~ ImageTexelType props ops
          )
       => Settable ( ( ( Field_ k :: Optic empty i (Image props))
                     `ComposeO`
-                      ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData )
-                    ) :: Optic '[imgOps, imgCds] i imgData
+                      ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgTexel )
+                    ) :: Optic '[imgOps, imgCds] i imgTexel
                   )
       where

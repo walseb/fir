@@ -105,7 +105,7 @@ import Data.Type.Map
 import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray )
 import FIR.Prim.Image
-  ( Image, ImageProperties, ImageData
+  ( Image, ImageProperties
   , ImageOperands, OperandName
   )
 import FIR.Prim.Singletons
@@ -130,7 +130,7 @@ import FIR.Validation.Bounds
   , StructFieldFromIndex, StructIndexFromName
   )
 import FIR.Validation.Images
-  ( LookupImageProperties )
+  ( LookupImageProperties, ImageTexelType )
 import Math.Linear
   ( V((:.)), M(M)
   , (^!), at, replaceV
@@ -158,17 +158,18 @@ data SOptic (optic :: Optic i s a) :: Type where
                  )
               => Proxy k
               -> Proxy props
+              -> SPrimTy (ImageTexelType props ops)
               -> SOptic ( (  ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
                              `ComposeO`
                              ( RTOptic_ :: Optic
                                             '[ ImageOperands props ops, imgCds ]
                                              (Image props)
-                                             (ImageData props ops)
+                                             (ImageTexelType props ops)
                              )
                           ) :: Optic
                                 '[ ImageOperands props ops, imgCds ]
                                 i
-                                (ImageData props ops)
+                                (ImageTexelType props ops)
                         )
   SComposeO :: forall is js s a b (o1 :: Optic is s a) (o2 :: Optic js a b)
             .  SLength is -> SOptic o1 -> SOptic o2 -> SOptic (o1 :.: o2)
@@ -222,7 +223,7 @@ showSOptic (SOfType _ sTy ) = "OfType " ++ show sTy
 showSOptic (SAnIndex _ _ _) = "AnIndex"
 showSOptic (SIndex   _ _ n) = "Index "   ++ show n
 showSOptic (SBinding    k  ) = "Binding "    ++ show (symbolVal k)
-showSOptic (SImageTexel k _) = "ImageTexel " ++ show (symbolVal k)
+showSOptic (SImageTexel k _ _) = "ImageTexel " ++ show (symbolVal k)
 showSOptic (SComposeO _   o1 o2) = showSOptic o1 ++ " :.: " ++ showSOptic o2
 showSOptic (SProd _ comps) = "Prod ( " ++ showSProductComponents comps ++ " )"
 
@@ -341,38 +342,39 @@ instance ( ValidAnIndexOptic is s a, is ~ '[ix], IntegralTy ix, PrimTy s, PrimTy
 -- binding + image texel optic... the two parts must always occur together
 instance {-# OVERLAPPING #-}
          forall
-           ( k       :: Symbol          )
-           ( i       :: ProgramState    )
-           ( props   :: ImageProperties )
-           ( ops     :: [OperandName]   )
-           ( empty   :: [Type]          )
-           ( imgOps  :: Type            )
-           ( imgCds  :: Type            )
-           ( imgData :: Type            )
+           ( k        :: Symbol          )
+           ( i        :: ProgramState    )
+           ( props    :: ImageProperties )
+           ( ops      :: [OperandName]   )
+           ( empty    :: [Type]          )
+           ( imgOps   :: Type            )
+           ( imgCds   :: Type            )
+           ( imgTexel :: Type            )
          .
          ( KnownSymbol k
          , PrimTy imgCds
+         , PrimTy imgTexel
          , LookupImageProperties k i ~ props
          , Known ImageProperties props
          , imgOps ~ ImageOperands props ops
-         , imgData ~ ImageData props ops
+         , imgTexel ~ ImageTexelType props ops
          , empty ~ '[]
          )
       => KnownOptic
             ( ( ( Field_ (k :: Symbol) :: Optic empty i (Image props) )
                 `ComposeO`
-                ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgData)
-              ) :: Optic '[imgOps, imgCds] i imgData
+                ( RTOptic_ :: Optic '[imgOps, imgCds] (Image props) imgTexel)
+              ) :: Optic '[imgOps, imgCds] i imgTexel
             )
   where
-  opticSing = SImageTexel (Proxy @k) (Proxy @props)
+  opticSing = SImageTexel (Proxy @k) (Proxy @props) (primTySing @imgTexel)
 
 type family ValidAnIndexOptic (is :: [Type]) (s :: Type) (a :: Type) :: Constraint where
   ValidAnIndexOptic '[] _ _
     = TypeError ( Text "Run-time optic does not specify the type of its run-time indices." )
   ValidAnIndexOptic _ (Image _) _
     = TypeError (    Text "Forbidden standalone image texel optic."
-                :$$: Text "Optics for image texels must be copresent with a binding optic."
+                :$$: Text "Use the 'ImageTexel` optic, or an `imageRead`/`imageWrite` operation."
                 )
   ValidAnIndexOptic '[ix] _ _ = ()
   ValidAnIndexOptic is _ _

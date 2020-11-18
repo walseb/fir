@@ -37,6 +37,8 @@ import Data.Binary.Class.Put
   ( Put(..), PutWord32Enum(..) )
 import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
+import Data.Type.List
+  ( Length )
 import SPIRV.ScalarTy
   ( ScalarTy, Signedness(..) )
 
@@ -196,6 +198,9 @@ type UI = ( 'Integer 'Unnormalised 'Unsigned :: Component )
 data ImageFormat a
   = ImageFormat Component [a]
   deriving stock ( Eq, Show, Ord )
+
+type family ImageFormatDimension ( fmt :: ImageFormat Nat ) :: Nat where
+  ImageFormatDimension ( 'ImageFormat _ comps ) = Length comps
 
 pattern RGBA32 :: Component -> ImageFormat Word32
 pattern RGBA32 component = ImageFormat component [32,32,32,32]

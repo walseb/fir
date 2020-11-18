@@ -151,7 +151,7 @@ import FIR.Prim.Struct
 import FIR.Validation.Bounds
   ( StructIndexFromName )
 import Math.Algebra.Class
-  ( AdditiveMonoid(..), AdditiveGroup(..)
+  ( AdditiveMonoid(..), CancellativeAdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring
   , DivisionRing(..)
   , Signed(..), Archimedean(..)
@@ -188,7 +188,7 @@ import qualified SPIRV.PrimOp   as SPIRV
 -- Note that rebindable syntax for if-then-else is provided
 -- by the module "FIR.Syntax.IfThenElse".
 
-instance Boolean (Code Bool) where
+instance ( b ~ Bool ) => Boolean (Code b) where
   true  = Lit True
   false = Lit False
   (&&)  = primOp @Bool @SPIRV.BoolAnd
@@ -263,8 +263,9 @@ instance (ScalarTy a, AdditiveMonoid a) => AdditiveMonoid (Code a) where
   fromInteger = Lit . fromInteger
 instance (ScalarTy a, Semiring a) => Semiring (Code a) where
   (*)    = primOp @a @SPIRV.Mul
-instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (Code a) where
+instance (ScalarTy a, CancellativeAdditiveMonoid a) => CancellativeAdditiveMonoid (Code a) where
   (-)    = primOp @a @SPIRV.Sub
+instance (ScalarTy a, AdditiveGroup a) => AdditiveGroup (Code a) where
   negate = primOp @a @SPIRV.Neg
 instance (ScalarTy a, Signed a) => Signed (Code a) where
   abs    = primOp @a @SPIRV.Abs

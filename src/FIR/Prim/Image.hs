@@ -40,9 +40,6 @@ module FIR.Prim.Image
   -- ** Specific data type for gathering operations
   , Gather(..), GatherInfo(..)
 
-  -- * Compute the texel type of an image
-  , ImageData
-
   -- * Helper type families for checking validity of image operands
   , CanAddProj, CanAddDref, BasicDim, NotCubeDim
   , NoMS, NoDuplicate, CanMultiSample
@@ -71,8 +68,7 @@ import FIR.Prim.Array
 import {-# SOURCE #-} FIR.Prim.Singletons
   ( ScalarTy, scalarTy )
 import FIR.Validation.Images
-  ( ImageData
-  , MatchesFormat, BasicDim, NotCubeDim
+  ( MatchesFormat, BasicDim, NotCubeDim
   , CanAddProj, CanAddDref
   , UsesAffineCoords
   , NoDuplicate

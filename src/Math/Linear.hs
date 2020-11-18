@@ -136,17 +136,17 @@ import Data.Type.List
   ( Replicate
   , Length, KnownLength
   )
+import Math.Algebra.Class
+  ( AdditiveMonoid(..), CancellativeAdditiveMonoid(..), AdditiveGroup(..)
+  , Semiring(..), Ring
+  , DivisionRing(..), Floating(..)
+  )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..) )
 import Math.Logic.Class
   ( Boolean(..), Eq(Logic,(==))
   , (#.)
   , Ord(..)
-  )
-import Math.Algebra.Class
-  ( AdditiveMonoid(..), AdditiveGroup(..)
-  , Semiring(..), Ring
-  , DivisionRing(..), Floating(..)
   )
 
 -------------------------------------------------------------------------------

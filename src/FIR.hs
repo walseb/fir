@@ -353,7 +353,7 @@ class DrawableProgramAST prog where
 
 instance DrawableProgramAST (AST a) where
   showAST = showTree . toTree
-instance Syntactic a => DrawableProgramAST (Program i j (Code a)) where
+instance SyntacticVal a => DrawableProgramAST (Program i j a) where
   showAST = showTree . toTree . toAST
 instance DrawableProgramAST (Module def) where
   showAST (Module prog) = showAST prog

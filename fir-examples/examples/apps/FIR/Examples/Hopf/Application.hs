@@ -338,7 +338,7 @@ hopf = runVulkan initialState do
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
-    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device descriptorSetLayout
+    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_8_BIT pipelineLayout
 
     shaders <- logDebug "Loading shaders" *> traverse (\path -> (path, ) <$> loadShader device path) shaderPipeline

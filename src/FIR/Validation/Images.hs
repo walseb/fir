@@ -22,7 +22,7 @@ module FIR.Validation.Images
   ( LookupImageProperties
   , ValidImageRead, ValidImageWrite
   , ValidImageCoordinate, ValidImageGradCoordinate, ValidImageOffsetCoordinate 
-  , ImageData
+  , ImageTexelType
   , MatchesFormat, BasicDim, NotCubeDim
   , CanAddProj, CanAddDref
   , UsesAffineCoords
@@ -67,6 +67,7 @@ import Math.Linear
 import SPIRV.Image
   ( ImageUsage(Sampled, Storage)
   , ImageFormat(ImageFormat), I, UI
+  , ImageFormatDimension
   , RequiredFormatUsage
   , Arrayness(..)
   , Dimensionality(..)
@@ -344,18 +345,26 @@ type family ImageCoordinatesDim
 --
 -- This is what is returned from an image sampling operation,
 -- or needs to be provided for an image write operation.
-type family ImageData
+type family ImageTexelType
               ( props :: ImageProperties )
               ( ops   :: [OperandName]   )
             :: Type
             where
-  ImageData ( Properties _ r _ _ _ _ _ _ ) ops
+  ImageTexelType ( Properties _ r _ _ _ _ _ fmt ) ops
     = If
         (    DepthComparison `Elem` ops
           && Not ( (BaseOperand ConstOffsets) `Elem` ops)
         )
         r
-        (V 4 r)
+        ( MkTexelType fmt r )
+
+type family MkTexelType ( fmt :: Maybe ( ImageFormat Nat ) ) ( texel :: Type ) :: Type where
+  MkTexelType Nothing      texel = V 4 texel -- most flexible default type for unknown image format
+  MkTexelType ( Just fmt ) texel = MkTexelType' ( ImageFormatDimension fmt ) texel
+
+type family MkTexelType' ( dim :: Nat ) ( texel :: Type ) :: Type where
+  MkTexelType' 1 texel = texel
+  MkTexelType' n texel = V n texel
 
 type family ComputeCoordsDim
               ( dim  :: Dimensionality )

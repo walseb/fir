@@ -50,7 +50,7 @@ import {-# SOURCE #-} CodeGen.CodeGen
 import CodeGen.IDs
   ( typeID, constID )
 import CodeGen.Instruction
-  ( ID, Instruction(..)
+  ( ID, TyID, Instruction(..)
   , Args(Arg,EndArgs), toArgs
   )
 import CodeGen.Monad
@@ -104,8 +104,9 @@ imageTexel
   => (ID, SPIRV.PrimTy)
   -> Code (ImageOperands props ops)
   -> ID
+  -> (TyID, SPIRV.PrimTy)
   -> CGMonad (ID, SPIRV.PrimTy)
-imageTexel (imgID, imgTy) ops coords
+imageTexel (imgID, imgTy) ops coords (imgTexelTyID, imgTexelTy)
   = do
       ( bm, operandsArgs ) <- operandsToArgs ops
       let lod    = lodMethod    bm
@@ -114,8 +115,7 @@ imageTexel (imgID, imgTy) ops coords
           gathering = gather    bm
           ImageAndCoordinate
             ( SPIRV.Image.Image
-                { SPIRV.texelComponent = texComp
-                , SPIRV.dimensionality = dim
+                { SPIRV.dimensionality = dim
                 , SPIRV.arrayness      = arrayness
                 , SPIRV.multiSampling  = ms
                 , SPIRV.imageFormat    = mbFmt
@@ -123,12 +123,6 @@ imageTexel (imgID, imgTy) ops coords
             , coordCompKind
             ) = knownValue @props
 
-          imgResTy = case dtest of
-                        DepthTest
-                          | not gathering
-                          -> SPIRV.Scalar texComp
-                        _ -> SPIRV.Vector 4 (SPIRV.Scalar texComp)
-      resTyID <- typeID imgResTy
       v <- fresh
 
       sampling <- case coordCompKind of
@@ -152,7 +146,7 @@ imageTexel (imgID, imgTy) ops coords
                   instruction
                     Instruction
                       { operation = gatherOperation dtest
-                      , resTy     = Just resTyID
+                      , resTy     = Just imgTexelTyID
                       , resID     = Just v
                       , args      = Arg sampledImgID
                                   $ Arg coords
@@ -163,7 +157,7 @@ imageTexel (imgID, imgTy) ops coords
                   instruction
                     Instruction
                       { operation = sampleOperation lod dtest proj
-                      , resTy     = Just resTyID
+                      , resTy     = Just imgTexelTyID
                       , resID     = Just v
                       , args      = Arg sampledImgID
                                   $ Arg coords
@@ -185,7 +179,7 @@ imageTexel (imgID, imgTy) ops coords
                 instruction
                   Instruction
                     { operation = SPIRV.Op.ImageRead
-                    , resTy     = Just resTyID
+                    , resTy     = Just imgTexelTyID
                     , resID     = Just v
                     , args      = Arg plainImgID
                                 $ Arg coords
@@ -197,7 +191,7 @@ imageTexel (imgID, imgTy) ops coords
       requireImageCapabilities sampling bm dim arrayness ms mbFmt
       
       -- return the result ID
-      pure (v, imgResTy)
+      pure (v, imgTexelTy)
 
 
 writeTexel

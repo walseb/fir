@@ -228,9 +228,9 @@ shaderInfo shaderStage shaderModule =
 createPipelineLayout
   :: MonadVulkan m
   => Vulkan.VkDevice
-  -> Vulkan.VkDescriptorSetLayout
+  -> [ Vulkan.VkDescriptorSetLayout ]
   -> m Vulkan.VkPipelineLayout
-createPipelineLayout device layout0 =
+createPipelineLayout device layouts =
   managedVulkanResource pipelineLayoutCreateInfo
     ( Vulkan.vkCreatePipelineLayout  device )
     ( Vulkan.vkDestroyPipelineLayout device )
@@ -245,7 +245,7 @@ createPipelineLayout device layout0 =
           &* Vulkan.setListCountAndRef
                 @"setLayoutCount"
                 @"pSetLayouts"
-                [ layout0 ]
+                layouts
           &* Vulkan.setListCountAndRef
                 @"pushConstantRangeCount"
                 @"pPushConstantRanges"

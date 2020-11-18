@@ -72,7 +72,7 @@ import Math.Logic.Bits
 import Math.Logic.Class
   ( Boolean(..), Eq(..), Ord(..) )
 import Math.Algebra.Class
-  ( AdditiveMonoid(..), AdditiveGroup(..)
+  ( AdditiveMonoid(..), CancellativeAdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Signed(..)
   , Archimedean(..)
   , DivisionRing(..)
@@ -222,7 +222,7 @@ instance (ScalarTy a, Semiring a) => PrimOp SPIRV.Mul (a :: Type) where
   vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.Mul a)
   vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
   opSing = Just SMul
-instance (ScalarTy a, AdditiveGroup a) => PrimOp SPIRV.Sub (a :: Type) where
+instance (ScalarTy a, CancellativeAdditiveMonoid a) => PrimOp SPIRV.Sub (a :: Type) where
   type PrimOpAugType SPIRV.Sub a = Val a :--> Val a :--> Val a
   op = (-)
   opName = SPIRV.NumOp SPIRV.Sub (scalarTy @a)
@@ -473,7 +473,7 @@ instance ( KnownNat n, ScalarTy a, AdditiveMonoid a ) => PrimOp ('Vectorise SPIR
   type PrimOpAugType ('Vectorise SPIRV.Add) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (+)
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Add @a)) (val @n) (scalarTy @a)
-instance ( KnownNat n, ScalarTy a, AdditiveGroup a ) => PrimOp ('Vectorise SPIRV.Sub) (V n a) where
+instance ( KnownNat n, ScalarTy a, CancellativeAdditiveMonoid a ) => PrimOp ('Vectorise SPIRV.Sub) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Sub) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (-)
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Sub @a)) (val @n) (scalarTy @a)

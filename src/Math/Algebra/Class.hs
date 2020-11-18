@@ -75,7 +75,9 @@ infixl 7 /
 infixr 8 **
 
 class AdditiveMonoid a where
+  -- | Addition.
   (+)  :: a -> a -> a
+  -- | Identity for addition.
   zero :: a
   fromInteger :: Integer -> a
   -- technically should be a method of "Ring"
@@ -115,6 +117,7 @@ deriving via Base CFloat  instance AdditiveMonoid CFloat
 deriving via Base CDouble instance AdditiveMonoid CDouble
 
 class AdditiveMonoid a => Semiring a where
+  -- | Multiplication.
   (*) :: a -> a -> a
 
 instance Prelude.Num a => Semiring (Base a) where
@@ -148,12 +151,53 @@ deriving via Base CULLong instance Semiring CULLong
 deriving via Base CFloat  instance Semiring CFloat
 deriving via Base CDouble instance Semiring CDouble
 
-class AdditiveMonoid a => AdditiveGroup a where
-  (-)    :: a -> a -> a
+-- | Cancellative monoid under addition.
+class AdditiveMonoid a => CancellativeAdditiveMonoid a where
+  -- | Left-inverse to addition:
+  --
+  -- > ( \ x -> x - y ) . ( \ x -> x + y ) = id
+  --
+  -- Might be partially undefined or underflow,
+  -- as ( \ x -> x + y ) need not be surjective for any fixed y.
+  (-) :: a -> a -> a
+
+instance Prelude.Num a => CancellativeAdditiveMonoid (Base a) where
+  (-) = coerce ( (Prelude.-) :: a -> a -> a )
+
+deriving via Base Word8  instance CancellativeAdditiveMonoid Word8
+deriving via Base Word16 instance CancellativeAdditiveMonoid Word16
+deriving via Base Word32 instance CancellativeAdditiveMonoid Word32
+deriving via Base Word64 instance CancellativeAdditiveMonoid Word64
+deriving via Base Word   instance CancellativeAdditiveMonoid Word
+deriving via Base Int8   instance CancellativeAdditiveMonoid Int8
+deriving via Base Int16  instance CancellativeAdditiveMonoid Int16
+deriving via Base Int32  instance CancellativeAdditiveMonoid Int32
+deriving via Base Int64  instance CancellativeAdditiveMonoid Int64
+deriving via Base Int    instance CancellativeAdditiveMonoid Int
+deriving via Base Half   instance CancellativeAdditiveMonoid Half
+deriving via Base Float  instance CancellativeAdditiveMonoid Float
+deriving via Base Double instance CancellativeAdditiveMonoid Double
+
+deriving via Base CChar   instance CancellativeAdditiveMonoid CChar
+deriving via Base CSChar  instance CancellativeAdditiveMonoid CSChar
+deriving via Base CUChar  instance CancellativeAdditiveMonoid CUChar
+deriving via Base CShort  instance CancellativeAdditiveMonoid CShort
+deriving via Base CUShort instance CancellativeAdditiveMonoid CUShort
+deriving via Base CInt    instance CancellativeAdditiveMonoid CInt
+deriving via Base CUInt   instance CancellativeAdditiveMonoid CUInt
+deriving via Base CLong   instance CancellativeAdditiveMonoid CLong
+deriving via Base CULong  instance CancellativeAdditiveMonoid CULong
+deriving via Base CLLong  instance CancellativeAdditiveMonoid CLLong
+deriving via Base CULLong instance CancellativeAdditiveMonoid CULLong
+deriving via Base CFloat  instance CancellativeAdditiveMonoid CFloat
+deriving via Base CDouble instance CancellativeAdditiveMonoid CDouble
+
+-- | Additive group.
+class CancellativeAdditiveMonoid a => AdditiveGroup a where
+  -- | Negation.
   negate :: a -> a
 
 instance Prelude.Num a => AdditiveGroup (Base a) where
-  (-)    = coerce ( (Prelude.-)    :: a -> a -> a )
   negate = coerce ( Prelude.negate :: a -> a )
 
 deriving via Base Int8   instance AdditiveGroup Int8
@@ -175,7 +219,13 @@ deriving via Base CFloat  instance AdditiveGroup CFloat
 deriving via Base CDouble instance AdditiveGroup CDouble
 
 class AdditiveGroup a => Signed a where
+  -- | Absolute value.
   abs    :: a -> a
+  -- | Sign. 
+  --
+  -- > signum  5 =  1
+  -- > signum -7 = -1
+  -- > signum  0 =  0
   signum :: a -> a
 
 instance Prelude.Num a => Signed (Base a) where
@@ -205,7 +255,9 @@ instance (Semiring a, AdditiveGroup a) => Ring a where
 
 class Ring a => DivisionRing a where
   {-# MINIMAL ( (/) | recip ), fromRational #-}
+  -- | Division.
   (/)   :: a -> a -> a
+  -- | Reciprocal.
   recip :: a -> a
   fromRational :: Rational -> a
 
@@ -233,7 +285,7 @@ class (Ord a, AdditiveMonoid a) => Archimedean a where
   divMod :: a -> a -> (a,a)
   divMod a b = ( div a b, mod a b )
 
-instance ( Ord a, AdditiveMonoid a, Prelude.Integral a ) => Archimedean (Base a) where
+instance ( Ord a, CancellativeAdditiveMonoid a, Prelude.Integral a ) => Archimedean (Base a) where
   mod    = coerce ( Prelude.mod    :: a -> a -> a     )
   rem    = coerce ( Prelude.rem    :: a -> a -> a     )
   div    = coerce ( Prelude.div    :: a -> a -> a     )
@@ -263,12 +315,20 @@ deriving via Base CLLong  instance Archimedean CLLong
 deriving via Base CULLong instance Archimedean CULLong
 
 newtype Fixed a = Fixed { runFixed :: a }
-deriving via a instance Eq             a => Eq             (Fixed a)
-deriving via a instance Ord            a => Ord            (Fixed a)
-deriving via a instance AdditiveMonoid a => AdditiveMonoid (Fixed a)
-deriving via a instance AdditiveGroup  a => AdditiveGroup  (Fixed a)
-deriving via a instance Semiring       a => Semiring       (Fixed a)
-deriving via a instance Signed         a => Signed         (Fixed a)
+deriving via a instance Eq                         a
+                     => Eq                         (Fixed a)
+deriving via a instance Ord                        a
+                     => Ord                        (Fixed a)
+deriving via a instance AdditiveMonoid             a
+                     => AdditiveMonoid             (Fixed a)
+deriving via a instance CancellativeAdditiveMonoid a
+                     => CancellativeAdditiveMonoid (Fixed a)
+deriving via a instance AdditiveGroup              a
+                     => AdditiveGroup              (Fixed a)
+deriving via a instance Semiring                   a
+                     => Semiring                   (Fixed a)
+deriving via a instance Signed                     a
+                     => Signed                     (Fixed a)
 
 instance ( Eq a, Logic a ~ Bool
          , Ord a

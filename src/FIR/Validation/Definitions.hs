@@ -222,6 +222,10 @@ type family ValidImageDecorations
     = ValidImageDecorations name ty decs
   ValidImageDecorations name ty ( SPIRV.Binding _ ': decs )
     = ValidImageDecorations name ty decs
+  ValidImageDecorations name ty ( SPIRV.NonReadable ': decs )
+    = ValidImageDecorations name ty decs
+  ValidImageDecorations name ty ( SPIRV.NonWritable ': decs )
+    = ValidImageDecorations name ty decs
   ValidImageDecorations name _ ( dec ': _ )
     = TypeError
         (    Text "Unexpected decoration " :<>: ShowType dec

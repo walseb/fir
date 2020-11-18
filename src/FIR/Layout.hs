@@ -274,6 +274,11 @@ instance Poke Double lay where
   type Alignment lay Double = 8
   poke = Storable.poke
 
+instance TypeError ( Text "Cannot store Boolean types." ) => Poke Bool lay where
+  type SizeOf    lay Bool = 4
+  type Alignment lay Bool = 4
+  poke = error "unreachable"
+
 
 instance ( Poke a lay
          , ScalarTy a

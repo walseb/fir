@@ -76,7 +76,7 @@ import CodeGen.Composite
 import CodeGen.Debug
   ( whenAsserting )
 import CodeGen.IDs
-  ( constID, bindingID )
+  ( constID, bindingID, typeID )
 import CodeGen.Images
   ( imageTexel, writeTexel )
 import CodeGen.Instruction
@@ -196,18 +196,20 @@ instance CodeGen AST => CodeGen (UseF AST) where
             _ -> pure bd
 
     -- image
-    SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
+    SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props ) texelTy
       -> case is of 
           ( ops `ConsAST` coords `ConsAST` NilAST )
             -> do
                   let imgName = knownValue @name
+                      imgTexelTy = sPrimTy texelTy
                   bd@(bdID, bdTy) <- bindingID imgName
+                  resTyID <- typeID imgTexelTy
                   img <- case bdTy of
                             SPIRV.Pointer storage imgTy
                               -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
                             _ -> pure bd
                   (cdID, _) <- codeGen coords
-                  imageTexel img ops cdID
+                  imageTexel img ops cdID (resTyID, imgTexelTy)
 
     SComposeO _ (SBinding (_ :: Proxy name )) getter ->
       do  let varName = knownValue @name
@@ -220,7 +222,7 @@ instance CodeGen AST => CodeGen (UseF AST) where
 
     SComposeO
       (SSucc (SSucc _))
-      (SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props ))
+      (SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props ) texelTy)
       getter
        -> case is of
             ( ops `ConsAST` coords `ConsAST` nextindices )
@@ -228,14 +230,16 @@ instance CodeGen AST => CodeGen (UseF AST) where
                 do 
                   -- copy-pasted from above
                   let imgName = knownValue @name
+                      imgTexelTy = sPrimTy texelTy
                   bd@(bdID, bdTy) <- bindingID imgName
+                  resTyID <- typeID imgTexelTy
                   img <- case bdTy of
                             SPIRV.Pointer storage imgTy
                               -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
                             _ -> pure bd
                   (cdID, _) <- codeGen coords
                   -- end of copy-paste
-                  texel <- imageTexel img ops cdID
+                  texel <- imageTexel img ops cdID (resTyID, imgTexelTy)
                   extractUsingGetter texel getter nextindices
 
     _ -> throwError (   "codeGen: cannot 'use', unsupported optic:\n"
@@ -269,7 +273,7 @@ instance CodeGen AST => CodeGen (AssignF AST) where
          pure (ID 0, SPIRV.Unit) -- ID should never be used
 
    -- image
-   SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props )
+   SImageTexel ( _ :: Proxy name ) ( _ :: Proxy props ) _
      -> case is of 
          ( ops `ConsAST` coords `ConsAST` NilAST )
            -> do
