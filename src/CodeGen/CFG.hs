@@ -442,5 +442,8 @@ locally :: CGMonad a -> CGMonad a
 locally action = do
   bindingsBefore <- use _localBindings
   res <- action
-  assign _localBindings bindingsBefore
+  bindingsAfter <- use _localBindings
+  -- keep the updated values of local bindings,
+  -- but only for bindings that were defined before the "locally" block
+  assign _localBindings ( bindingsAfter `Map.intersection` bindingsBefore )
   pure res
