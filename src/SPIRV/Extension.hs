@@ -37,11 +37,13 @@ import Data.Binary.Class.Put
 data ExtInst
   = OpenCL
   | GLSL
+  | DebugPrintf
   deriving stock ( Show, Eq, Ord, Enum, Bounded )
 
 extInstName :: ExtInst -> ShortText
-extInstName OpenCL = "OpenCL.std"
-extInstName GLSL   = "GLSL.std.450"
+extInstName OpenCL      = "OpenCL.std"
+extInstName GLSL        = "GLSL.std.450"
+extInstName DebugPrintf = "NonSemantic.DebugPrintf"
 
 --------------------------------------------------
 -- extensions
@@ -168,3 +170,5 @@ pattern SPV_INTEL_blocking_pipes :: Extension
 pattern SPV_INTEL_blocking_pipes = Extension "SPV_INTEL_blocking_pipes"
 pattern SPV_KHR_physical_storage_buffer :: Extension
 pattern SPV_KHR_physical_storage_buffer = Extension "SPV_KHR_physical_storage_buffer"
+pattern SPV_KHR_non_semantic_info :: Extension
+pattern SPV_KHR_non_semantic_info = Extension "SPV_KHR_non_semantic_info"

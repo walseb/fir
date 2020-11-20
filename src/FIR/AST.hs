@@ -40,6 +40,7 @@ module FIR.AST
     -- * Re-exports
   , module FIR.AST.ControlFlow
   , module FIR.AST.Effs
+  , module FIR.AST.Exts
   , module FIR.AST.Images
   , module FIR.AST.Optics
   , module FIR.AST.Prim
@@ -70,6 +71,7 @@ import FIR.AST.ControlFlow
 import FIR.AST.Display
   ( toTree )
 import FIR.AST.Effs
+import FIR.AST.Exts
 import FIR.AST.Images
 import FIR.AST.Optics
 import FIR.AST.Prim
@@ -91,6 +93,7 @@ type AllOpsF
      , MkVectorF, MatF, UnMatF, StructF, ArrayF, NilHListF, ConsHListF
      , IfF, IfMF, SwitchF, SwitchMF, WhileF
      , DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
+     , DebugPrintfF
      , ImgOpsF
      , UseF, AssignF, ViewF, SetF
      ]

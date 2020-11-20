@@ -11,7 +11,7 @@
 {-# LANGUAGE TypeOperators       #-}
 
 {-|
-Module: FIR.AST.Eff
+Module: FIR.AST.Effs
 
 Effectful operations of the AST:
   * defining new variables/functions/entry-points,

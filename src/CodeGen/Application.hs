@@ -21,9 +21,9 @@ Functionality for keeping track of function arguments, such as patterns for the 
 
 module CodeGen.Application
   ( UAST(..), UCode(..)
-  , ASTs(..), pattern SnocAST
+  , ASTs(.., SnocAST)
   , Codes, pattern ConsCode
-  , Application(..), pattern Nullary
+  , Application(.., Nullary)
   , traverseASTs
   ) where
 

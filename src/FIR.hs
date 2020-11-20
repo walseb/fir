@@ -363,7 +363,7 @@ instance DrawableProgramAST (ShaderModule name stage defs endState) where
 -- | Compiler flags.
 data CompilerFlag
   = NoCode -- ^ Don't emit any SPIR-V code.
-  | Debug  -- ^ Include additional debug instructions, such as source-code line-number annotations.
+  | Debug  -- ^ Include additional debug instructions, such as source-code line-number annotations and @debugPrintf@ output.
   | Assert -- ^ Include additional assertions.
   | SPIRV SPIRV.Version -- ^ SPIR-V version number.
   deriving stock ( Prelude.Eq, Show )

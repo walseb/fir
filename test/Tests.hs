@@ -43,13 +43,17 @@ allTests
           , ( "Selection", Validate )
           , ( "Switch"   , Validate )
           ]
+    , Folder "Debug"
+          [ ( "Printf", Validate )
+          ]
     , Folder "Geometry"
           [ ( "Geometry"   , Validate  )
           , ( "NotGeometry", Typecheck )
           ]
     , Folder "Images"
-          [ ( "Gather", Validate )
-          , ( "Sample", Validate )
+          [ ( "Gather"   , Validate )
+          , ( "ReadWrite", Validate )
+          , ( "Sample"   , Validate )
           ]
     , Folder "Interface"
           [ ( "ComponentMismatch", Typecheck )

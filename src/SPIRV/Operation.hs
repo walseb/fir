@@ -19,6 +19,8 @@ import Data.Word
 -- fir
 import SPIRV.Extension
   ( ExtInst(GLSL, OpenCL) )
+import qualified SPIRV.Extension
+  ( ExtInst(DebugPrintf) )
 
 --------------------------------------------------
 -- operation data type
@@ -635,6 +637,9 @@ pattern OpenCL_Cross :: Operation
 pattern OpenCL_Cross = ExtCode OpenCL 104
 pattern OpenCL_Normalize :: Operation
 pattern OpenCL_Normalize = ExtCode OpenCL 107
+-- Non-semantic DebugPrintf instruction
+pattern DebugPrintf :: Operation
+pattern DebugPrintf = ExtCode SPIRV.Extension.DebugPrintf 1
 
 showOperation :: Operation -> String
 showOperation Nop = "Nop"
@@ -912,5 +917,6 @@ showOperation OpenCL_UAbs      = "UAbs"
 showOperation OpenCL_UAbsDiff  = "UAbsDiff"
 showOperation OpenCL_Cross     = "Cross"
 showOperation OpenCL_Normalize = "Normalize"
+showOperation DebugPrintf      = "DebugPrintf"
 showOperation (Code i) = show i
 showOperation (ExtCode _ i) = show i

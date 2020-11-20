@@ -14,8 +14,6 @@ Code generation for primitive operations (e.g. arithmetic operations).
 module CodeGen.PrimOps (primOp) where
 
 -- base
-import Control.Monad
-  ( void )
 import Data.Proxy
   ( Proxy )
 
@@ -33,7 +31,7 @@ import CodeGen.Binary
 import {-# SOURCE #-} CodeGen.CodeGen
   ( CodeGen(codeGenArgs), codeGen )
 import CodeGen.IDs
-  ( typeID, extInstID )
+  ( typeID )
 import CodeGen.Instruction
   ( toArgs
   , ID(ID)
@@ -42,16 +40,16 @@ import CodeGen.Instruction
 import CodeGen.Monad
   ( CGMonad, MonadFresh(fresh) )
 import CodeGen.State
-  ( _backend )
+  ( _backend, requireCapabilities )
 import FIR.AST
   ( AST, PrimOpF(..) )
 import FIR.AST.Type
   ( Nullary )
 import FIR.Prim.Op
   ( PrimOp(opName) )
-import qualified SPIRV.Operation as SPIRV.Op
-import qualified SPIRV.PrimOp    as SPIRV
-import qualified SPIRV.PrimTy    as SPIRV
+import qualified SPIRV.PrimOp       as SPIRV
+import qualified SPIRV.PrimTy       as SPIRV
+import qualified SPIRV.Requirements as SPIRV
 
 ----------------------------------------------------------------------------
 -- primops
@@ -68,10 +66,7 @@ primOp prim as = do
   bk <- view _backend
   let (op, retTy) = SPIRV.opAndReturnType bk prim
 
-  case op of
-    SPIRV.Op.ExtCode extInst _
-      -> void (extInstID extInst) -- ensure extended instruction set is declared
-    _ -> pure ()
+  requireCapabilities $ SPIRV.primOpCapabilities bk prim
 
   case retTy of
     SPIRV.Unit -> do

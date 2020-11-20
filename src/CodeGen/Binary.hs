@@ -48,7 +48,7 @@ import Data.Set
 
 -- lens
 import Control.Lens
-  ( view, use )
+  ( view )
 
 -- mtl
 import Control.Monad.Except
@@ -67,6 +67,8 @@ import Control.Monad.Trans.Class
   ( lift )
 
 -- fir
+import CodeGen.IDs
+  ( extInstID )
 import CodeGen.Instruction
   ( Args(..), toArgs
   , ID(..), TyID(..), pattern MkTyID
@@ -76,7 +78,7 @@ import CodeGen.Monad
   ( CGMonad, note, liftPut )
 import CodeGen.State
   ( CGContext(..), CGState(..)
-  , _knownExtInsts, _emittingCode
+  , _emittingCode
   )
 import Data.Binary.Class.Put
   ( Put(put, wordCount) )
@@ -136,14 +138,15 @@ whenEmitting action = (`when` action) =<< view _emittingCode
 
 -- | Emit code for an instruction (wrapper).
 instruction :: Instruction -> CGMonad ()
-instruction inst = do
-  whenEmitting do
-    extInsts <- use _knownExtInsts
-    liftPut $ putInstruction extInsts inst
+instruction inst = whenEmitting do
+  case operation inst of
+    SPIRV.Op.ExtCode ext _ -> do
+      extID <- extInstID ext
+      liftPut $ putExtendedInstruction extID inst
+    _ -> liftPut $ putInstruction inst
 
-putInstruction :: Map SPIRV.ExtInst ID -> Instruction -> Binary.Put
-putInstruction extInsts
-  Instruction { operation = op, resTy = opResTy, resID = opResID, args = opArgs }
+putInstruction :: Instruction -> Binary.Put
+putInstruction Instruction { operation = op, resTy = opResTy, resID = opResID, args = opArgs }
     = case op of
 
       SPIRV.Op.Code opCode ->
@@ -157,20 +160,24 @@ putInstruction extInsts
               traverse_ put opResID
               put opArgs
 
+      _ -> error "putInstruction: unexpected extended instruction"
 
-      SPIRV.Op.ExtCode ext extOpCode ->
-        case Map.lookup ext extInsts of
-          Nothing    -> pure ()
-          Just extID ->
-            putInstruction Map.empty
-              Instruction
-                { operation = SPIRV.Op.ExtInst
-                , resTy     = opResTy
-                , resID     = opResID
-                , args      = Arg extID
-                            $ Arg extOpCode
-                            opArgs
-                }
+putExtendedInstruction :: ID -> Instruction -> Binary.Put
+putExtendedInstruction extID Instruction { operation = op, resTy = opResTy, resID = opResID, args = opArgs }
+  = case op of
+
+      SPIRV.Op.ExtCode _ extOpCode ->
+        putInstruction
+          Instruction
+            { operation = SPIRV.Op.ExtInst
+            , resTy     = opResTy
+            , resID     = opResID
+            , args      = Arg extID
+                        $ Arg extOpCode
+                        opArgs
+            }
+
+      _ -> error "putExtendedInstruction: unexpected non-extended instruction"
 
 putHeader :: SPIRV.Version -> Word32 -> Binary.Put
 putHeader ver bound
@@ -189,7 +196,7 @@ putCapabilities = traverseSet_ putCap
   where
     putCap :: SPIRV.Capability -> Binary.Put
     putCap cap 
-      = putInstruction Map.empty
+      = putInstruction
           Instruction
             { operation = SPIRV.Op.Capability
             , resTy     = Nothing
@@ -203,7 +210,7 @@ putExtensions = traverseSet_ putExt
   where
     putExt :: SPIRV.Extension -> Binary.Put
     putExt ext
-      = putInstruction Map.empty
+      = putInstruction
           Instruction
             { operation = SPIRV.Op.Extension
             , resTy     = Nothing
@@ -214,18 +221,18 @@ putExtensions = traverseSet_ putExt
 
 putExtendedInstructions :: Map SPIRV.ExtInst ID -> Binary.Put
 putExtendedInstructions
-  = traverseWithKey_ \ extInst extInstID ->
-      putInstruction Map.empty
+  = traverseWithKey_ \ extInst extID ->
+      putInstruction
         Instruction
           { operation = SPIRV.Op.ExtInstImport
           , resTy     = Nothing
-          , resID     = Just extInstID
+          , resID     = Just extID
           , args      = Arg ( SPIRV.extInstName extInst ) EndArgs
           }
       
 putMemoryModel :: SPIRV.Backend -> Binary.Put
 putMemoryModel bk
-  = putInstruction Map.empty
+  = putInstruction
       Instruction
         { operation = SPIRV.Op.MemoryModel
         , resTy     = Nothing
@@ -242,7 +249,7 @@ putMemoryModel bk
 
 putEntryPoint :: SPIRV.ExecutionModel -> ShortText -> ID -> Map ShortText ID -> Binary.Put
 putEntryPoint model modelName entryPointID interface
-  = putInstruction Map.empty
+  = putInstruction
       Instruction
         { operation = SPIRV.Op.EntryPoint
         -- slight kludge to account for unusual parameters for OpEntryPoint
@@ -275,7 +282,7 @@ putModelExecutionModes modelID
   = traverse_
       ( \case
           SPIRV.MaxPatchVertices {} -> pure () -- custom execution mode that doesn't exist in SPIR-V
-          mode -> putInstruction Map.empty
+          mode -> putInstruction
             Instruction
               { operation = SPIRV.Op.ExecutionMode
               , resTy     = Nothing
@@ -305,7 +312,7 @@ putExecutionModes entryPointIDs
 putKnownStringLits :: Map ShortText ID -> Binary.Put
 putKnownStringLits
   = traverseWithKey_
-      ( \ lit ident -> putInstruction Map.empty
+      ( \ lit ident -> putInstruction
         Instruction
           { operation = SPIRV.Op.String
           , resTy     = Nothing
@@ -317,7 +324,7 @@ putKnownStringLits
 putBindingAnnotations :: Map ShortText ID -> Binary.Put
 putBindingAnnotations
   = traverseWithKey_
-      ( \ name ident -> putInstruction Map.empty
+      ( \ name ident -> putInstruction
         Instruction
           { operation = SPIRV.Op.Name
           , resTy     = Nothing
@@ -331,7 +338,7 @@ putNames :: Set ( ID, Either ShortText (Word32, ShortText) ) -> Binary.Put
 putNames = traverse_
   ( \case
       ( ident, Left name )
-        -> putInstruction Map.empty
+        -> putInstruction
               Instruction
                 { operation = SPIRV.Op.Name
                 , resTy     = Nothing
@@ -341,7 +348,7 @@ putNames = traverse_
                 }
 
       ( ident, Right (index,name) )
-        -> putInstruction Map.empty
+        -> putInstruction
              Instruction
                { operation = SPIRV.Op.MemberName
                , resTy     = Nothing
@@ -358,7 +365,7 @@ putDecorations
       ( \ decoratee ->
           traverse_
             ( \ dec ->
-                putInstruction Map.empty
+                putInstruction
                   Instruction
                     { operation = SPIRV.Op.Decorate
                     , resTy     = Nothing
@@ -375,7 +382,7 @@ putMemberDecorations
       ( \ (structTyID, index) ->
            traverse_
              ( \dec ->
-                 putInstruction Map.empty
+                 putInstruction
                    Instruction
                      { operation = SPIRV.Op.MemberDecorate
                      , resTy     = Nothing
@@ -392,13 +399,13 @@ putTypesAndConstants
   -> Map constants Instruction
   -> Binary.Put
 putTypesAndConstants ts cs
-  = traverse_ ( putInstruction Map.empty )
+  = traverse_ putInstruction
       ( sortOn resID $ Map.elems ts ++ Map.elems cs )
 
 putUndefineds :: Map SPIRV.PrimTy (ID, TyID) -> Binary.Put
 putUndefineds = traverse_
   ( \ ( undefID, undefTyID ) ->
-      putInstruction Map.empty
+      putInstruction
         Instruction
           { operation = SPIRV.Op.Undef
           , resTy     = Just undefTyID
@@ -417,7 +424,7 @@ putGlobals typeIDs
               <- note
                    ( "putGlobals: pointer type " <> ShortText.pack (show ptrTy) <> " not bound to any ID." )
                    ( coerce . resID =<< Map.lookup (SPIRV.pointerTy ptrTy) typeIDs )
-            lift $ putInstruction Map.empty
+            lift $ putInstruction
                   Instruction
                     { operation = SPIRV.Op.Variable
                     , resTy = Just ptrTyID

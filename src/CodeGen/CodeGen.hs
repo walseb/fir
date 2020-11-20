@@ -75,7 +75,7 @@ import CodeGen.CFG
 import CodeGen.Composite
   ( ) -- CodeGen instances for MkVector, Mat, UnMat, Struct, Array, GradedMappend
 import CodeGen.Debug
-  ( whenDebugging, putSrcInfo )
+  ( whenDebugging, putSrcInfo ) -- CodeGen instance for DebugPrintF
 import CodeGen.Functions
   ( ) -- CodeGen instances for FunDef, FunCall, DefEntryPoint
 import CodeGen.IDs
