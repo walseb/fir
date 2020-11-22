@@ -69,7 +69,7 @@ import qualified Vulkan
 import FIR
   ( runCompilationsTH
   , Struct((:&),End)
-  , ModuleRequirements
+  , ModuleRequirements(..)
   )
 import qualified FIR
 import Math.Linear
@@ -204,7 +204,7 @@ kerr = runVulkan initialStateKerr do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions []
+    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
       RenderInfo
         { features
         , queueType   = Vulkan.QUEUE_COMPUTE_BIT

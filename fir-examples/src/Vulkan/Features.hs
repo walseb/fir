@@ -11,6 +11,10 @@ module Vulkan.Features where
 import Data.Foldable
   ( foldl' )
 
+-- bytestring
+import Data.ByteString
+  ( ByteString )
+
 -- vulkan
 import qualified Vulkan
 
@@ -34,6 +38,10 @@ requiredFeatures ( ModuleRequirements { requiredCapabilities } ) =
           { Vulkan.shaderFloat16 = SPIRV.Float16 `elem` requiredCapabilities
           , Vulkan.shaderInt8    = SPIRV.Int8    `elem` requiredCapabilities
           }
+
+requiredDeviceExtensions :: SPIRV.Extension -> [ ByteString ]
+requiredDeviceExtensions SPIRV.SPV_KHR_non_semantic_info = [ Vulkan.KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME ]
+requiredDeviceExtensions _ = []
 
 enableCapabilityFeature :: Vulkan.PhysicalDeviceFeatures -> SPIRV.Capability -> Vulkan.PhysicalDeviceFeatures
 enableCapabilityFeature feats SPIRV.SampledCubeArray                 = feats { Vulkan.imageCubeArray                           = True }

@@ -50,6 +50,10 @@ import GHC.TypeNats
 import Data.ByteString
   ( ByteString )
 
+-- containers
+import Data.Set
+  ( Set )
+
 -- finite-typelits
 import Data.Finite
   ( Finite )
@@ -103,7 +107,13 @@ data ValidationLayerName
   | Khronos
   deriving stock ( Eq, Show )
 
-createVulkanInstance :: MonadVulkan m => ByteString -> [ ByteString ] -> [ SPIRV.Extension ] -> m Vulkan.Instance
+createVulkanInstance
+ :: forall m
+ .  MonadVulkan m
+ => ByteString
+ -> [ ByteString ]
+ -> Set SPIRV.Extension
+ -> m Vulkan.Instance
 createVulkanInstance appName neededVulkanExtensionNames neededSPIRVExtensions = do
 
   ( availableLayers :: Boxed.Vector Vulkan.LayerProperties ) <- snd <$> Vulkan.enumerateInstanceLayerProperties
@@ -128,7 +138,7 @@ createVulkanInstance appName neededVulkanExtensionNames neededSPIRVExtensions = 
               SPIRV.SPV_KHR_non_semantic_info -> Just Vulkan.VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
               _                               -> Nothing
         )
-      $ neededSPIRVExtensions
+      $ toList neededSPIRVExtensions
 
     enabledLayers :: [ ByteString ]
     enabledLayers = case validationLayer of
@@ -222,10 +232,10 @@ createLogicalDevice
      )
   => Vulkan.PhysicalDevice
   -> Int
-  -> Bool
+  -> [ ByteString ]
   -> Vulkan.PhysicalDeviceFeatures2 fs
   -> m Vulkan.Device
-createLogicalDevice physicalDevice queueFamilyIndex enableSwapchain
+createLogicalDevice physicalDevice queueFamilyIndex deviceExtensions
   ( Vulkan.PhysicalDeviceFeatures2 { Vulkan.next = extras, Vulkan.features = features } ) =
     snd <$> Vulkan.withDevice physicalDevice deviceCreateInfo Nothing allocate
       where
@@ -237,13 +247,6 @@ createLogicalDevice physicalDevice queueFamilyIndex enableSwapchain
             , Vulkan.queueFamilyIndex = fromIntegral queueFamilyIndex
             , Vulkan.queuePriorities  = Boxed.Vector.singleton ( 1.0 :: Float )
             }
-    
-        deviceExtensions :: [ ByteString ]
-        deviceExtensions
-          | enableSwapchain
-          = [ Vulkan.KHR_SWAPCHAIN_EXTENSION_NAME ]
-          | otherwise
-          = []
 
         features2 :: Vulkan.PhysicalDeviceFeatures2 '[]
         features2 = Vulkan.PhysicalDeviceFeatures2 { Vulkan.next = (), Vulkan.features = features }
@@ -777,17 +780,18 @@ submitCommandBuffer
   -> [ Vulkan.Semaphore ]
   -> Maybe Vulkan.Fence
   -> m ()
-submitCommandBuffer queue commandBuffer wait signal mbFence = Vulkan.queueSubmit queue ( Boxed.Vector.singleton $ Vulkan.SomeStruct submitInfo ) ( fromMaybe Vulkan.NULL_HANDLE mbFence )
-  where
-    submitInfo :: Vulkan.SubmitInfo '[]
-    submitInfo =
-      Vulkan.SubmitInfo
-        { Vulkan.next             = ()
-        , Vulkan.waitSemaphores   = Boxed.Vector.fromList $ map fst wait
-        , Vulkan.waitDstStageMask = Boxed.Vector.fromList $ map snd wait
-        , Vulkan.commandBuffers   = Boxed.Vector.singleton ( Vulkan.commandBufferHandle commandBuffer )
-        , Vulkan.signalSemaphores = Boxed.Vector.fromList signal
-        }
+submitCommandBuffer queue commandBuffer wait signal mbFence =
+  Vulkan.queueSubmit queue ( Boxed.Vector.singleton $ Vulkan.SomeStruct submitInfo ) ( fromMaybe Vulkan.NULL_HANDLE mbFence )
+    where
+      submitInfo :: Vulkan.SubmitInfo '[]
+      submitInfo =
+        Vulkan.SubmitInfo
+          { Vulkan.next             = ()
+          , Vulkan.waitSemaphores   = Boxed.Vector.fromList $ map fst wait
+          , Vulkan.waitDstStageMask = Boxed.Vector.fromList $ map snd wait
+          , Vulkan.commandBuffers   = Boxed.Vector.singleton ( Vulkan.commandBufferHandle commandBuffer )
+          , Vulkan.signalSemaphores = Boxed.Vector.fromList signal
+          }
 
 beginCommandBuffer :: MonadIO m => Vulkan.CommandBuffer -> m ()
 beginCommandBuffer commandBuffer = Vulkan.beginCommandBuffer commandBuffer commandBufferBeginInfo

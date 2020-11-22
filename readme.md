@@ -77,7 +77,7 @@ See [getting started](getting_started.md) for help on getting started with this 
   * a simple vertex shader example,
   * how to compile and debug shaders, using built-in functionality as well as SPIR-V tools,
   * a walkthrough of the type-level optics framework used by this library,
-  * how to specify graphics pipelines, which can then be used with the [vulkan-api](https://github.com/achirkin/vulkan) library.
+  * how to specify graphics pipelines, which can then be used with the [vulkan](https://github.com/expipiplus1/vulkan) or [vulkan-api](https://github.com/achirkin/vulkan) libraries.
 
 The [haddock documentation](https://sheaf.gitlab.io/fir/) is also worth perusing for specialised in-depth explanations.
 If you prefer to browse the haddocks locally, the ["getting started" guide](getting_started.md#docs) includes installation instructions.
@@ -106,7 +106,7 @@ I extend my thanks to:
 * **Li-yao Xia**, for his assistance in improving the typing of the AST, and his always excellent answers on StackOverflow.
 * **Sylvain Henry**, for his help and suggestions regarding extensible syntax trees as well as the nicely thought-out [variants](https://hackage.haskell.org/package/haskus-utils-variant) library (among other things).
 * **Oliver Charles**, for inspiring me to take on this project by streaming his efforts at [porting Quake 3 to Haskell using Vulkan](https://github.com/ocharles/zero-to-quake-3). This was invaluable in helping me get started with using Vulkan in Haskell.
-* **Artem Chirkin**, for his well-designed [vulkan-api](https://github.com/achirkin/vulkan) library.
+* **Artem Chirkin** and **Joe Hermaszewski** for their work providing Vulkan bindings for Haskell.
 * **Schell Scivally**, for patiently explaining his [ixshader library](https://hackage.haskell.org/package/ixshader).
 * **Conor McBride**, whose paper [*Kleisli arrows of outrageous fortune*](https://personal.cis.strath.ac.uk/conor.mcbride/Kleisli.pdf) forms the basis of the implementation of indexed monads which enabled the approach taken in FIR.
 * **The GHC developers**, for their tireless work on improving Haskell, tremendously helpful advice, and for continually keeping me excited in the future of programming.

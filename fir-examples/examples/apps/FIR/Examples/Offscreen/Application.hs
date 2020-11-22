@@ -44,7 +44,7 @@ import Control.Monad.IO.Class
 
 -- vector
 import qualified Data.Vector as Boxed.Vector
-  ( empty, fromList, singleton )
+  ( singleton )
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
@@ -57,7 +57,7 @@ import qualified Vulkan
 import FIR
   ( runCompilationsTH
   , Struct(..)
-  , ModuleRequirements
+  , ModuleRequirements(..)
   )
 import Math.Linear
   ( M, pattern V3 )
@@ -181,7 +181,7 @@ offscreen = runVulkan () do
   let
     features = requiredFeatures reqs
   VulkanContext{..} <-
-    initialiseContext @Headless appName [] []
+    initialiseContext @Headless appName [] ( requiredExtensions reqs )
       RenderInfo
         { features
         , queueType   = Vulkan.QUEUE_GRAPHICS_BIT

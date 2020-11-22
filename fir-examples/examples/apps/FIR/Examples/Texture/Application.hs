@@ -92,7 +92,7 @@ import qualified Vulkan
 import FIR
   ( runCompilationsTH
   , Struct(..)
-  , ModuleRequirements
+  , ModuleRequirements(..)
   )
 import Math.Linear
 
@@ -233,7 +233,7 @@ texture = runVulkan initialState do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions []
+    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
       RenderInfo
         { features
         , queueType   = Vulkan.QUEUE_GRAPHICS_BIT

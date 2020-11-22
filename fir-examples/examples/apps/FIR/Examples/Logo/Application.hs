@@ -68,7 +68,7 @@ import qualified Vulkan
 import FIR
   ( runCompilationsTH
   , (:->)((:->)), Struct((:&),End)
-  , ModuleRequirements
+  , ModuleRequirements(..)
   )
 import qualified FIR
 import Math.Linear
@@ -182,7 +182,7 @@ logo = runVulkan initialStateLogo do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions []
+    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
       RenderInfo
         { features
         , queueType   = Vulkan.QUEUE_COMPUTE_BIT

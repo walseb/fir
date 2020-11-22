@@ -72,7 +72,7 @@ Upon completion, the documentation can be found in `fir/dist-newstyle/build/{arc
 <a name="examples"></a>
 ### Installing the built-in examples
 
-Some [illustrative examples](fir-examples/readme.md) are included, which use the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings.
+Some [illustrative examples](fir-examples/readme.md) are included, which use the [vulkan](http://hackage.haskell.org/package/vulkan) Haskell bindings.
 Refer to the examples page for further information about the examples, including installation instructions.
 
 
@@ -505,7 +505,7 @@ This is useful as it catches mistakes in shaders and shader interfaces (includin
 Much better to get a compile-time type error that a black screen at runtime!
 
 
-Convenience functionality to create Vulkan graphics pipelines from such information is also provided, using the [vulkan-api](http://hackage.haskell.org/package/vulkan-api) Haskell bindings (see [`Vulkan.Pipeline.createGraphicsPipeline`](fir-examples/src/Vulkan/Pipeline.hs)).
+Convenience functionality to create Vulkan graphics pipelines from such information is also provided, using the [vulkan](http://hackage.haskell.org/package/vulkan) Haskell bindings (see [`Vulkan.Pipeline.createGraphicsPipeline`](fir-examples/src/Vulkan/Pipeline.hs)).
 
 <a name="syntactic"></a>
 ## Manipulating custom data types

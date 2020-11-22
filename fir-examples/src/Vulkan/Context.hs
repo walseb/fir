@@ -15,8 +15,10 @@ module Vulkan.Context where
 -- base
 import Data.Bits
   ( (.|.) )
+import Data.Foldable
+  ( toList )
 import Data.Maybe
-  ( fromMaybe )
+  ( fromMaybe, fromJust )
 import Data.Kind
   ( Type )
 import Foreign.C.String
@@ -29,8 +31,14 @@ import GHC.TypeLits
 -- bytestring
 import Data.ByteString
   ( ByteString )
+import qualified Data.ByteString as ByteString
+  ( intercalate )
 import qualified Data.ByteString.Short as ShortByteString
-  ( packCString, fromShort )
+  ( packCString, fromShort, toShort )
+
+-- containers
+import Data.Set
+  ( Set )
 
 -- filepath
 import System.FilePath
@@ -70,6 +78,7 @@ import qualified FIR as SPIRV
 import FIR.Examples.Paths
   ( assetDir )
 import Vulkan.Backend
+import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.SDL
 
@@ -161,17 +170,32 @@ peekCString = fmap ( fromMaybe "???" . ShortText.fromShortByteString ) . ShortBy
 
 initialiseContext
   :: forall ctx m. ( KnownRenderingContext ctx, MonadVulkan m )
-  => ByteString -> [ ByteString ] -> [ SPIRV.Extension ] -> RenderInfo ctx -> m ( VulkanContext ctx )
-initialiseContext appName neededExtensions neededSPIRVExts RenderInfo { .. } = do
-  vkInstance       <- logDebug "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions neededSPIRVExts
+  => ByteString -> [ ByteString ] -> Set SPIRV.Extension -> RenderInfo ctx -> m ( VulkanContext ctx )
+initialiseContext appName neededInstanceExtensions neededSPIRVExts RenderInfo { .. } = do
+  vkInstance       <- logDebug "Creating Vulkan instance"      *> createVulkanInstance appName neededInstanceExtensions neededSPIRVExts
   physicalDevice   <- logDebug "Creating physical device"      *> createPhysicalDevice vkInstance
   queueFamilyIndex <- logDebug "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice [queueType]
+  let
+    deviceExtensions :: [ ByteString ]
+    deviceExtensions = requiredDeviceExtensions =<< toList neededSPIRVExts
   ( device, aSwapchainInfo ) <- case renderingContext @ctx of
     SHeadless      -> do
-      device <- logDebug "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex False features
+      let
+        usedDeviceExts :: [ ByteString ]
+        usedDeviceExts = deviceExtensions
+      logInfo $ "Needed device extensions are: " <>
+        ( fromJust . ShortText.fromShortByteString . ShortByteString.toShort $ ByteString.intercalate ", " usedDeviceExts )
+      device <- logDebug "Creating logical device" *>
+        createLogicalDevice physicalDevice queueFamilyIndex usedDeviceExts features
       pure ( device, NoSwapchain )
     SWithSwapchain -> do
-      device <- logDebug "Creating logical device" *> createLogicalDevice physicalDevice queueFamilyIndex True  features
+      let
+        usedDeviceExts :: [ ByteString ]
+        usedDeviceExts = ( Vulkan.KHR_SWAPCHAIN_EXTENSION_NAME : deviceExtensions )
+      logInfo $ "Needed device extensions are: " <>
+        ( fromJust . ShortText.fromShortByteString . ShortByteString.toShort $ ByteString.intercalate ", " usedDeviceExts )
+      device <- logDebug "Creating logical device" *>
+        createLogicalDevice physicalDevice queueFamilyIndex usedDeviceExts features
       let SurfaceInfo {..} = surfaceInfo
       surface <- logDebug "Creating SDL surface" *> createSurface surfaceWindow vkInstance
       assertSurfacePresentable physicalDevice queueFamilyIndex surface

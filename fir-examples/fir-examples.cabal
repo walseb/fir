@@ -269,33 +269,6 @@ executable Hopf
 
 
 -----------------------------------
--- Ising
-
-library ising-shaders
-
-  import: shaders-common
-
-  exposed-modules:
-    FIR.Examples.Ising.Shaders
-
-executable Ising
-
-  import: apps-common
-
-  main-is:
-    Main.hs
-
-  other-modules:
-    FIR.Examples.Ising.Application
-
-  hs-source-dirs:
-    examples/exes/Ising
-
-  build-depends:
-    ising-shaders
-
-
------------------------------------
 -- JuliaSet
 
 library juliaset-shaders
