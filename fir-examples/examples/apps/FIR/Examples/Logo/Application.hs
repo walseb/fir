@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DuplicateRecordFields      #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -60,12 +61,8 @@ import Control.Monad.IO.Class
 import qualified Data.Vector.Sized as V
   ( zip, zip3, index )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan                as Vulkan
-import qualified Graphics.Vulkan.Core_1_0       as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir
 import FIR
@@ -168,27 +165,27 @@ logo = runVulkan initialStateLogo do
         , mouseMode  = SDL.RelativeLocation
         }
 
-  features <- liftIO ( requiredFeatures reqs )
   let
+    features = requiredFeatures reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
         , preferredFormat =
-            VkSurfaceFormatKHR
-              Vulkan.VK_FORMAT_B8G8R8A8_UNORM
-              Vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+            Vulkan.SurfaceFormatKHR
+              Vulkan.FORMAT_B8G8R8A8_UNORM
+              Vulkan.COLOR_SPACE_SRGB_NONLINEAR_KHR
         , surfaceUsage =
-            [ Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-            , Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
-            , Vulkan.VK_IMAGE_USAGE_STORAGE_BIT
+            [ Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT
+            , Vulkan.IMAGE_USAGE_TRANSFER_DST_BIT
+            , Vulkan.IMAGE_USAGE_STORAGE_BIT
             ]
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions
+    initialiseContext @WithSwapchain appName windowExtensions []
       RenderInfo
         { features
-        , queueType   = Vulkan.VK_QUEUE_COMPUTE_BIT
+        , queueType   = Vulkan.QUEUE_COMPUTE_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -200,28 +197,28 @@ logo = runVulkan initialStateLogo do
     let
 
       width, height :: Num a => a
-      width  = fromIntegral $ Vulkan.getField @"width"  swapchainExtent
-      height = fromIntegral $ Vulkan.getField @"height" swapchainExtent
+      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
 
-      extent3D :: Vulkan.VkExtent3D
+      extent3D :: Vulkan.Extent3D
       extent3D
-        = Vulkan.createVk
-            (  Vulkan.set @"width"  width
-            &* Vulkan.set @"height" height
-            &* Vulkan.set @"depth"  1
-            )
+        = Vulkan.Extent3D
+            { Vulkan.width  = width
+            , Vulkan.height = height
+            , Vulkan.depth  = 1
+            }
 
-      colFmt :: Vulkan.VkFormat
-      colFmt = Vulkan.getField @"format" surfaceFormat
+      colFmt :: Vulkan.Format
+      colFmt = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
 
     swapchainImagesAndViews <-
       for swapchainImages \swapchainImage -> do
         swapchainImageView
           <- createImageView
                 device swapchainImage
-                Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                Vulkan.IMAGE_VIEW_TYPE_2D
                 colFmt
-                Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+                Vulkan.IMAGE_ASPECT_COLOR_BIT
         pure ( swapchainImage, swapchainImageView )
 
     screenshotImagesAndMemories <-
@@ -236,8 +233,8 @@ logo = runVulkan initialStateLogo do
 
       resourceFlags :: ResourceSet numImages Named
       resourceFlags = ResourceSet
-        ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
-        ( StageFlags Vulkan.VK_SHADER_STAGE_COMPUTE_BIT )
+        ( StageFlags Vulkan.SHADER_STAGE_COMPUTE_BIT )
+        ( StageFlags Vulkan.SHADER_STAGE_COMPUTE_BIT )
 
       initialCamera :: Camera
       initialCamera = camera initialObserverLogo Nothing
@@ -257,7 +254,7 @@ logo = runVulkan initialStateLogo do
     -------------------------------------------
     -- Create a command buffer and record the commands into it.
 
-    commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
+    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
     queue       <- getQueue device 0
 
     nextImageSem <- createSemaphore device
@@ -361,14 +358,13 @@ logo = runVulkan initialStateLogo do
       submitCommandBuffer
         queue
         commandBuffer
-        [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
+        [(nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
         [submitted]
         Nothing
 
       present queue swapchain nextImageIndex [submitted]
 
-      liftIO ( Vulkan.vkQueueWaitIdle queue )
-        >>= throwVkResult
+      Vulkan.queueWaitIdle queue
 
       when ( takeScreenshot action ) $
         writeScreenshotData shortName device swapchainExtent

@@ -1,48 +1,54 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DerivingStrategies  #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PatternSynonyms       #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE ViewPatterns          #-}
 
 module Vulkan.Backend where
 
 -- base
 import Control.Arrow
-  ( (&&&) )
+  ( second )
 import Control.Category
   ( (>>>) )
 import Control.Monad
-  ( (>=>), guard, unless )
+  ( guard, unless, void )
 import Data.Bits
   ( Bits((.&.)) )
+import Data.Coerce
+  ( coerce )
 import Data.Foldable
   ( toList, for_ )
 import Data.List
   hiding ( transpose )
 import Data.Maybe
-  ( fromMaybe, listToMaybe, mapMaybe )
+  ( fromMaybe, mapMaybe )
 import Data.Ord
   ( Down(..) )
+import Data.Semigroup
+  ( First(..) )
 import Data.Traversable
   ( for )
 import Data.Word
   ( Word32 )
-import qualified Foreign
-import Foreign.C.String
-  ( CString )
-import qualified Foreign.Marshal
 import GHC.TypeNats
   ( Nat, KnownNat )
+
+-- bytestring
+import Data.ByteString
+  ( ByteString )
 
 -- finite-typelits
 import Data.Finite
@@ -54,7 +60,7 @@ import Control.Monad.Log
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( ReleaseKey )
+  ( ReleaseKey, allocate )
 
 -- sdl2
 import qualified SDL.Video.Vulkan
@@ -65,20 +71,25 @@ import qualified Data.Text.Short as ShortText
 
 -- transformers
 import Control.Monad.IO.Class
-  ( MonadIO, liftIO )
+  ( MonadIO )
+
+-- vector
+import qualified Data.Vector as Boxed
+  ( Vector )
+import qualified Data.Vector as Boxed.Vector
+  ( (!?), empty, find, fromList, head, imapMaybe, singleton, toList )
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( Vector )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan as Vulkan
-import qualified Graphics.Vulkan.Core_1_0 as Vulkan
-import qualified Graphics.Vulkan.Ext.VK_KHR_surface as Vulkan
-import qualified Graphics.Vulkan.Ext.VK_KHR_swapchain as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
+import qualified Vulkan.CStruct.Extends as Vulkan
+  ( Extendss, PokeChain, SomeStruct(SomeStruct) )
+
+-- fir
+import qualified FIR as SPIRV
 
 -- fir-examples
 import Vulkan.Memory
@@ -92,210 +103,178 @@ data ValidationLayerName
   | Khronos
   deriving stock ( Eq, Show )
 
-createVulkanInstance :: MonadVulkan m => String -> [ CString ] -> m Vulkan.VkInstance
-createVulkanInstance appName neededExtensions = do
+createVulkanInstance :: MonadVulkan m => ByteString -> [ ByteString ] -> [ SPIRV.Extension ] -> m Vulkan.Instance
+createVulkanInstance appName neededVulkanExtensionNames neededSPIRVExtensions = do
 
-  ( availableLayers :: [ Vulkan.VkLayerProperties ] ) <-
-    liftIO $ fetchAll
-      ( \nPtr ptr ->
-          Vulkan.vkEnumerateInstanceLayerProperties nPtr ptr
-            >>= throwVkResult
-      )
+  ( availableLayers :: Boxed.Vector Vulkan.LayerProperties ) <- snd <$> Vulkan.enumerateInstanceLayerProperties
 
   let
     validationLayer :: Maybe ValidationLayerName
     validationLayer
-      = listToMaybe
-      . mapMaybe
-        (   Vulkan.getStringField @"layerName"
+      = coerce 
+      . foldMap
+        (  (  Vulkan.layerName :: Vulkan.LayerProperties -> ByteString )
         >>> \case
-              "VK_LAYER_LUNARG_standard_validation" -> Just LunarG
-              "VK_LAYER_KHRONOS_validation"         -> Just Khronos
+              "VK_LAYER_LUNARG_standard_validation" -> Just ( First LunarG  )
+              "VK_LAYER_KHRONOS_validation"         -> Just ( First Khronos )
               _                                     -> Nothing
         )
       $ availableLayers
 
+    validationFeatures :: [ Vulkan.ValidationFeatureEnableEXT ]
+    validationFeatures
+      = mapMaybe
+        ( \case
+              SPIRV.SPV_KHR_non_semantic_info -> Just Vulkan.VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
+              _                               -> Nothing
+        )
+      $ neededSPIRVExtensions
 
-    enabledLayers :: [ String ]
+    enabledLayers :: [ ByteString ]
     enabledLayers = case validationLayer of
       Nothing      -> []
       Just LunarG  -> [ "VK_LAYER_LUNARG_standard_validation" ]
       Just Khronos -> [ "VK_LAYER_KHRONOS_validation" ]
 
-    appInfo :: Vulkan.VkApplicationInfo
+    appInfo :: Vulkan.ApplicationInfo
     appInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_APPLICATION_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
-        &* Vulkan.setStrRef @"pApplicationName" appName
-        &* Vulkan.set @"applicationVersion" 0
-        &* Vulkan.setStrRef @"pEngineName" "fir"
-        &* Vulkan.set @"engineVersion" 0
-        &* Vulkan.set @"apiVersion" Vulkan.VK_API_VERSION_1_1
-        )
+      Vulkan.ApplicationInfo
+        { Vulkan.applicationName    = Just appName
+        , Vulkan.applicationVersion = 0
+        , Vulkan.engineName         = Just "fir"
+        , Vulkan.engineVersion      = 0
+        , Vulkan.apiVersion         = Vulkan.API_VERSION_1_2
+        }
 
-    createInfo :: Vulkan.VkInstanceCreateInfo
+    validationFeaturesExt :: Vulkan.ValidationFeaturesEXT
+    validationFeaturesExt =
+      Vulkan.ValidationFeaturesEXT
+        { Vulkan.enabledValidationFeatures  = Boxed.Vector.fromList validationFeatures
+        , Vulkan.disabledValidationFeatures = Boxed.Vector.empty
+        }
+
+    createInfo :: Vulkan.InstanceCreateInfo '[ Vulkan.ValidationFeaturesEXT ]
     createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.setVkRef @"pApplicationInfo" appInfo
-        &* Vulkan.setStrListCountAndRef
-              @"enabledLayerCount" @"ppEnabledLayerNames"
-              enabledLayers
-        &* Vulkan.setListCountAndRef
-              @"enabledExtensionCount" @"ppEnabledExtensionNames"
-              neededExtensions
-        )
+      Vulkan.InstanceCreateInfo
+        { Vulkan.next                  = ( validationFeaturesExt, () )
+        , Vulkan.flags                 = Vulkan.zero
+        , Vulkan.applicationInfo       = Just appInfo
+        , Vulkan.enabledLayerNames     = Boxed.Vector.fromList enabledLayers
+        , Vulkan.enabledExtensionNames = Boxed.Vector.fromList neededVulkanExtensionNames
+        }
 
   case validationLayer of
     Nothing -> logInfo "Validation layer unavailable. Is the Vulkan SDK installed?"
     Just _  -> logInfo ( "Enabled validation layers " <> ShortText.pack ( show enabledLayers ) )
 
-  managedVulkanResource createInfo
-    Vulkan.vkCreateInstance
-    Vulkan.vkDestroyInstance
+  snd <$> Vulkan.withInstance createInfo Nothing allocate
 
 
-createPhysicalDevice :: MonadIO m => Vulkan.VkInstance -> m Vulkan.VkPhysicalDevice
-createPhysicalDevice vk = liftIO do
-  physicalDevices <-
-    fetchAll
-      ( \nPtr ptr ->
-          Vulkan.vkEnumeratePhysicalDevices vk nPtr ptr
-            >>= throwVkResult
-      )
+createPhysicalDevice :: MonadIO m => Vulkan.Instance -> m Vulkan.PhysicalDevice
+createPhysicalDevice vk = do
+  physicalDevices <- snd <$> Vulkan.enumeratePhysicalDevices vk
 
   typedDevices <-
-    for physicalDevices $ \physicalDevice -> do
-      properties <-
-        allocaAndPeek
-          ( Vulkan.vkGetPhysicalDeviceProperties physicalDevice )
+    for physicalDevices \ physicalDevice -> do
+      properties <- Vulkan.getPhysicalDeviceProperties physicalDevice
+      pure ( physicalDevice, Vulkan.deviceType properties )
 
-      pure ( physicalDevice, Vulkan.getField @"deviceType" properties )
-
-  case filter (isSuitableDeviceType . snd) typedDevices of
-    [] -> error "Could not find a suitable physical device"
-    ( ( d, _deviceType ) : _ds )
-      -> pure d
+  case Boxed.Vector.find ( isSuitableDeviceType . snd ) typedDevices of
+    Nothing       -> error "Could not find a suitable physical device"
+    Just ( d, _ ) -> pure d
 
   where
-
-    isSuitableDeviceType :: Vulkan.VkPhysicalDeviceType -> Bool
+    isSuitableDeviceType :: Vulkan.PhysicalDeviceType -> Bool
     isSuitableDeviceType
       = flip elem
-          [ Vulkan.VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
-          , Vulkan.VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+          [ Vulkan.PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+          , Vulkan.PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
           ]
 
 
 findQueueFamilyIndex
   :: MonadIO m
-  => Vulkan.VkPhysicalDevice
-  -> [ Vulkan.VkQueueFlags ]
+  => Vulkan.PhysicalDevice
+  -> [ Vulkan.QueueFlags ]
   -> m Int
-findQueueFamilyIndex physicalDevice requiredFlags = liftIO do
-  queueFamilies <- fetchAll ( Vulkan.vkGetPhysicalDeviceQueueFamilyProperties physicalDevice )
-
+findQueueFamilyIndex physicalDevice requiredFlags = do
+  queueFamilies <- Vulkan.getPhysicalDeviceQueueFamilyProperties physicalDevice
   let
-    capableFamilyIndices :: [Int]
-    capableFamilyIndices = do
-      ( i, queueFamily ) <- zip [0..] queueFamilies
-
+    capableFamilyIndices :: Boxed.Vector Int
+    capableFamilyIndices = ( `Boxed.Vector.imapMaybe` queueFamilies ) \ i queueFamily -> do
       let
-        flags :: Vulkan.VkQueueFlags
-        flags = Vulkan.getField @"queueFlags" queueFamily
-
+        flags :: Vulkan.QueueFlags
+        flags = Vulkan.queueFlags queueFamily
       for_ requiredFlags
-        ( \f ->
-            guard ( flags .&. f > Vulkan.VK_ZERO_FLAGS )
+        ( \ f ->
+            guard ( flags .&. f > Vulkan.zero )
         )
-
       pure i
-
-  case capableFamilyIndices of
-    []        -> error "No queue family has sufficient capabilities"
-    ( i : _ ) -> pure i
-
+  case capableFamilyIndices Boxed.Vector.!? 0 of
+    Nothing -> error "No queue family has sufficient capabilities"
+    Just i  -> pure i
 
 createLogicalDevice
-  :: MonadVulkan m
-  => Vulkan.VkPhysicalDevice
+  :: forall fs m
+  .  ( MonadVulkan m
+     , Vulkan.PokeChain fs
+     , Vulkan.Extendss Vulkan.DeviceCreateInfo fs
+     )
+  => Vulkan.PhysicalDevice
   -> Int
   -> Bool
-  -> Vulkan.VkPhysicalDeviceFeatures
-  -> m Vulkan.VkDevice
-createLogicalDevice physicalDevice queueFamilyIndex enableSwapchain features =
-  let
-    queueCreateInfo :: Vulkan.VkDeviceQueueCreateInfo
-    queueCreateInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO
-        &* Vulkan.set @"pNext" Foreign.nullPtr
-        &* Vulkan.set @"queueFamilyIndex" ( fromIntegral queueFamilyIndex )
-        &* Vulkan.setListCountAndRef @"queueCount" @"pQueuePriorities" [ 1.0 :: Float ]
-        )
+  -> Vulkan.PhysicalDeviceFeatures2 fs
+  -> m Vulkan.Device
+createLogicalDevice physicalDevice queueFamilyIndex enableSwapchain
+  ( Vulkan.PhysicalDeviceFeatures2 { Vulkan.next = extras, Vulkan.features = features } ) =
+    snd <$> Vulkan.withDevice physicalDevice deviceCreateInfo Nothing allocate
+      where
+        queueCreateInfo :: Vulkan.DeviceQueueCreateInfo '[]
+        queueCreateInfo =
+          Vulkan.DeviceQueueCreateInfo
+            { Vulkan.next             = ()
+            , Vulkan.flags            = Vulkan.zero
+            , Vulkan.queueFamilyIndex = fromIntegral queueFamilyIndex
+            , Vulkan.queuePriorities  = Boxed.Vector.singleton ( 1.0 :: Float )
+            }
+    
+        deviceExtensions :: [ ByteString ]
+        deviceExtensions
+          | enableSwapchain
+          = [ Vulkan.KHR_SWAPCHAIN_EXTENSION_NAME ]
+          | otherwise
+          = []
 
-    deviceExtensions :: [ CString ]
-    deviceExtensions
-      | enableSwapchain
-      = [ Vulkan.VK_KHR_SWAPCHAIN_EXTENSION_NAME ]
-      | otherwise
-      = []
-    deviceCreateInfo :: Vulkan.VkDeviceCreateInfo
-    deviceCreateInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO
-        &* Vulkan.set @"pNext" Foreign.nullPtr
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.setListCountAndRef
-              @"queueCreateInfoCount"
-              @"pQueueCreateInfos"
-              [ queueCreateInfo ]
-        &* Vulkan.setListCountAndRef
-              @"enabledLayerCount"
-              @"ppEnabledLayerNames"
-              []
-        &* Vulkan.setListCountAndRef
-              @"enabledExtensionCount"
-              @"ppEnabledExtensionNames"
-              deviceExtensions
-        &* Vulkan.setVkRef @"pEnabledFeatures" features
-        )
-
-  in
-    managedVulkanResource deviceCreateInfo
-      ( Vulkan.vkCreateDevice physicalDevice )
-      Vulkan.vkDestroyDevice
-
+        features2 :: Vulkan.PhysicalDeviceFeatures2 '[]
+        features2 = Vulkan.PhysicalDeviceFeatures2 { Vulkan.next = (), Vulkan.features = features }
+        deviceCreateInfo :: Vulkan.DeviceCreateInfo ( Vulkan.PhysicalDeviceFeatures2 '[] ': fs )
+        deviceCreateInfo =
+          Vulkan.DeviceCreateInfo
+            { Vulkan.next                  = ( features2, extras )
+            , Vulkan.flags                 = Vulkan.zero
+            , Vulkan.queueCreateInfos      = Boxed.Vector.singleton ( Vulkan.SomeStruct queueCreateInfo )
+            , Vulkan.enabledLayerNames     = Boxed.Vector.empty
+            , Vulkan.enabledExtensionNames = Boxed.Vector.fromList deviceExtensions
+            , Vulkan.enabledFeatures       = Nothing
+            }
 
 chooseSwapchainFormat
   :: MonadIO m
-  => Vulkan.VkSurfaceFormatKHR
-  -> Vulkan.VkPhysicalDevice
+  => Vulkan.SurfaceFormatKHR
+  -> Vulkan.PhysicalDevice
   -> SDL.Video.Vulkan.VkSurfaceKHR
-  -> m Vulkan.VkSurfaceFormatKHR
+  -> m Vulkan.SurfaceFormatKHR
 chooseSwapchainFormat
-  preferredFormat@(VkSurfaceFormatKHR fmt_p spc_p)
+  preferredFormat@( Vulkan.SurfaceFormatKHR fmt_p spc_p )
   physicalDevice
   surface
-  = liftIO do
-      surfaceFormats <-
-        fetchAll
-          ( \surfaceFormatCountPtr surfaceFormatsPtr ->
-            Vulkan.vkGetPhysicalDeviceSurfaceFormatsKHR
-              physicalDevice
-              ( Vulkan.VkPtr surface )
-              surfaceFormatCountPtr
-              surfaceFormatsPtr
-              >>= throwVkResult
-          )
+  = do
+      surfaceFormats <- snd <$> Vulkan.getPhysicalDeviceSurfaceFormatsKHR physicalDevice ( Vulkan.SurfaceKHR surface )
 
-      case sortOn ( Down . score ) surfaceFormats of
+      case sortOn ( Down . score ) ( Boxed.Vector.toList surfaceFormats ) of
         [] -> error "No formats found."
         ( best : _ )
-          | Vulkan.VK_FORMAT_UNDEFINED <- Vulkan.getField @"format" best
+          | Vulkan.FORMAT_UNDEFINED <- ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) best
             -> pure preferredFormat
           | otherwise
             -> pure best
@@ -306,255 +285,200 @@ chooseSwapchainFormat
         | a == b    = 1
         | otherwise = 0
 
-      score :: Vulkan.VkSurfaceFormatKHR -> Int
-      score (VkSurfaceFormatKHR fmt spc)
+      score :: Vulkan.SurfaceFormatKHR -> Int
+      score ( Vulkan.SurfaceFormatKHR fmt spc )
         = match fmt fmt_p
         + match spc spc_p
 
-{-# COMPLETE VkSurfaceFormatKHR #-}
-pattern VkSurfaceFormatKHR :: Vulkan.VkFormat -> Vulkan.VkColorSpaceKHR -> Vulkan.VkSurfaceFormatKHR
-pattern VkSurfaceFormatKHR { format, colorSpace }
-  <- ( Vulkan.getField @"format" &&& Vulkan.getField @"colorSpace"
-         -> (format, colorSpace)
-     )
-    where VkSurfaceFormatKHR fmt spc
-            = Vulkan.createVk
-                (  Vulkan.set @"format"     fmt
-                &* Vulkan.set @"colorSpace" spc
-                )
-
 createSwapchain
   :: ( MonadIO m, MonadVulkan m )
-  => Vulkan.VkPhysicalDevice
-  -> Vulkan.VkDevice
+  => Vulkan.PhysicalDevice
+  -> Vulkan.Device
   -> SDL.Video.Vulkan.VkSurfaceKHR
-  -> Vulkan.VkSurfaceFormatKHR
-  -> Vulkan.VkImageUsageFlags
-  -> m ( Vulkan.VkSwapchainKHR, Vulkan.VkExtent2D )
+  -> Vulkan.SurfaceFormatKHR
+  -> Vulkan.ImageUsageFlags
+  -> m ( Vulkan.SwapchainKHR, Vulkan.Extent2D )
 createSwapchain physicalDevice device surface surfaceFormat imageUsage = do
 
-  surfaceCapabilities <- liftIO $
-    allocaAndPeek
-      ( Vulkan.vkGetPhysicalDeviceSurfaceCapabilitiesKHR
-          physicalDevice
-          ( Vulkan.VkPtr surface )
-          >=> throwVkResult
-      )
+  surfaceCapabilities <- Vulkan.getPhysicalDeviceSurfaceCapabilitiesKHR physicalDevice ( Vulkan.SurfaceKHR surface )
 
   let
     minImageCount, maxImageCount, imageCount :: Word32
-    minImageCount = Vulkan.getField @"minImageCount" surfaceCapabilities
-    maxImageCount = Vulkan.getField @"maxImageCount" surfaceCapabilities
+    minImageCount = ( Vulkan.minImageCount :: Vulkan.SurfaceCapabilitiesKHR -> Word32 ) surfaceCapabilities
+    maxImageCount = ( Vulkan.maxImageCount :: Vulkan.SurfaceCapabilitiesKHR -> Word32 ) surfaceCapabilities
     imageCount
       | maxImageCount == 0 = minImageCount + 1 -- no maximum
       | otherwise = min ( minImageCount + 1 ) maxImageCount
 
-    currentExtent :: Vulkan.VkExtent2D
-    currentExtent = Vulkan.getField @"currentExtent" surfaceCapabilities
+    currentExtent :: Vulkan.Extent2D
+    currentExtent = ( Vulkan.currentExtent :: Vulkan.SurfaceCapabilitiesKHR -> Vulkan.Extent2D ) surfaceCapabilities
 
-    currentTransform :: Vulkan.VkSurfaceTransformBitmaskKHR Vulkan.FlagBit
-    currentTransform = Vulkan.getField @"currentTransform" surfaceCapabilities
+    currentTransform :: Vulkan.SurfaceTransformFlagBitsKHR
+    currentTransform = ( Vulkan.currentTransform :: Vulkan.SurfaceCapabilitiesKHR -> Vulkan.SurfaceTransformFlagBitsKHR ) surfaceCapabilities
 
-    swapchainCreateInfo :: Vulkan.VkSwapchainCreateInfoKHR
+    swapchainCreateInfo :: Vulkan.SwapchainCreateInfoKHR '[]
     swapchainCreateInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType"                 Vulkan.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR
-        &* Vulkan.set @"pNext"                 Foreign.nullPtr
-        &* Vulkan.set @"surface"               ( Vulkan.VkPtr surface )
-        &* Vulkan.set @"minImageCount"         imageCount
-        &* Vulkan.set @"imageFormat"           ( format surfaceFormat )
-        &* Vulkan.set @"imageColorSpace"       ( colorSpace surfaceFormat )
-        &* Vulkan.set @"imageExtent"           currentExtent
-        &* Vulkan.set @"imageArrayLayers"      1
-        &* Vulkan.set @"imageUsage"            imageUsage
-        &* Vulkan.set @"imageSharingMode"      Vulkan.VK_SHARING_MODE_EXCLUSIVE
-        &* Vulkan.set @"queueFamilyIndexCount" 0
-        &* Vulkan.set @"pQueueFamilyIndices"   Vulkan.vkNullPtr
-        &* Vulkan.set @"preTransform"          currentTransform
-        &* Vulkan.set @"compositeAlpha"        Vulkan.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
-        &* Vulkan.set @"presentMode"           Vulkan.VK_PRESENT_MODE_FIFO_KHR
-        &* Vulkan.set @"clipped"               Vulkan.VK_TRUE
-        &* Vulkan.set @"oldSwapchain"          Vulkan.VK_NULL_HANDLE
-        )
+      Vulkan.SwapchainCreateInfoKHR
+        { Vulkan.next                  = ()
+        , Vulkan.flags                 = Vulkan.zero
+        , Vulkan.surface               = Vulkan.SurfaceKHR surface
+        , Vulkan.minImageCount         = imageCount
+        , Vulkan.imageFormat           = ( Vulkan.format     :: Vulkan.SurfaceFormatKHR -> Vulkan.Format        ) surfaceFormat
+        , Vulkan.imageColorSpace       = ( Vulkan.colorSpace :: Vulkan.SurfaceFormatKHR -> Vulkan.ColorSpaceKHR ) surfaceFormat
+        , Vulkan.imageExtent           = currentExtent
+        , Vulkan.imageArrayLayers      = 1
+        , Vulkan.imageUsage            = imageUsage
+        , Vulkan.imageSharingMode      = Vulkan.SHARING_MODE_EXCLUSIVE
+        , Vulkan.queueFamilyIndices    = Boxed.Vector.empty
+        , Vulkan.preTransform          = currentTransform
+        , Vulkan.compositeAlpha        = Vulkan.COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+        , Vulkan.presentMode           = Vulkan.PRESENT_MODE_FIFO_KHR
+        , Vulkan.clipped               = True
+        , Vulkan.oldSwapchain          = Vulkan.NULL_HANDLE
+        }
 
-  swapchain <-
-    managedVulkanResource swapchainCreateInfo
-      ( Vulkan.vkCreateSwapchainKHR  device )
-      ( Vulkan.vkDestroySwapchainKHR device )
-
+  swapchain <- snd <$> Vulkan.withSwapchainKHR device swapchainCreateInfo Nothing allocate
   pure ( swapchain, currentExtent )
-
 
 getSwapchainImages
   :: MonadIO m
-  => Vulkan.VkDevice
-  -> Vulkan.VkSwapchainKHR
-  -> m [ Vulkan.VkImage ]
-getSwapchainImages device swapchain
-  = liftIO $
-      fetchAll
-        ( \imageCountPtr imagesPtr ->
-            Vulkan.vkGetSwapchainImagesKHR
-              device
-              swapchain
-              imageCountPtr
-              imagesPtr
-            >>= throwVkResult
-        )
+  => Vulkan.Device
+  -> Vulkan.SwapchainKHR
+  -> m ( Boxed.Vector Vulkan.Image )
+getSwapchainImages device swapchain = snd <$> Vulkan.getSwapchainImagesKHR device swapchain
 
 
 createFramebuffer
   :: ( MonadVulkan m, Foldable f )
-  => Vulkan.VkDevice
-  -> Vulkan.VkRenderPass
-  -> Vulkan.VkExtent2D
-  -> f Vulkan.VkImageView
-  -> m Vulkan.VkFramebuffer
-createFramebuffer dev renderPass extent attachments =
-  let
-    createInfo :: Vulkan.VkFramebufferCreateInfo
+  => Vulkan.Device
+  -> Vulkan.RenderPass
+  -> Vulkan.Extent2D
+  -> f Vulkan.ImageView
+  -> m Vulkan.Framebuffer
+createFramebuffer dev renderPass extent attachments = snd <$> Vulkan.withFramebuffer dev createInfo Nothing allocate
+  where
+    createInfo :: Vulkan.FramebufferCreateInfo '[]
     createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"renderPass" renderPass
-        &* Vulkan.setListCountAndRef @"attachmentCount" @"pAttachments" ( toList attachments )
-        &* Vulkan.set @"width"  ( Vulkan.getField @"width"  extent )
-        &* Vulkan.set @"height" ( Vulkan.getField @"height" extent )
-        &* Vulkan.set @"layers" 1
-        )
-  in
-    managedVulkanResource createInfo
-      ( Vulkan.vkCreateFramebuffer  dev )
-      ( Vulkan.vkDestroyFramebuffer dev )
+      Vulkan.FramebufferCreateInfo
+        { Vulkan.next        = ()
+        , Vulkan.flags       = Vulkan.zero
+        , Vulkan.renderPass  = renderPass
+        , Vulkan.attachments = Boxed.Vector.fromList . toList $ attachments
+        , Vulkan.width       = ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) extent
+        , Vulkan.height      = ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) extent
+        , Vulkan.layers      = 1
+        }
 
 
 data ImageInfo
   = ImageInfo
-  { imageType        :: Vulkan.VkImageType
-  , imageExtent      :: Vulkan.VkExtent3D
-  , imageFormat      :: Vulkan.VkFormat
-  , imageLayout      :: Vulkan.VkImageLayout
+  { imageType        :: Vulkan.ImageType
+  , imageExtent      :: Vulkan.Extent3D
+  , imageFormat      :: Vulkan.Format
+  , imageLayout      :: Vulkan.ImageLayout
   , imageMipLevels   :: Word32
   , imageArrayLayers :: Word32
-  , imageSamples     :: Vulkan.VkSampleCountFlagBits
-  , imageTiling      :: Vulkan.VkImageTiling
-  , imageUsage       :: Vulkan.VkImageUsageFlags
+  , imageSamples     :: Vulkan.SampleCountFlagBits
+  , imageTiling      :: Vulkan.ImageTiling
+  , imageUsage       :: Vulkan.ImageUsageFlags
   }
 
-pattern Default2DImageInfo :: Vulkan.VkExtent3D -> Vulkan.VkFormat -> Vulkan.VkImageUsageFlags -> ImageInfo
+pattern Default2DImageInfo :: Vulkan.Extent3D -> Vulkan.Format -> Vulkan.ImageUsageFlags -> ImageInfo
 pattern Default2DImageInfo extent3D fmt usage
   = ImageInfo
-  { imageType        = Vulkan.VK_IMAGE_TYPE_2D
+  { imageType        = Vulkan.IMAGE_TYPE_2D
   , imageExtent      = extent3D
   , imageFormat      = fmt
-  , imageLayout      = Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
+  , imageLayout      = Vulkan.IMAGE_LAYOUT_UNDEFINED
   , imageMipLevels   = 1
   , imageArrayLayers = 1
-  , imageSamples     = Vulkan.VK_SAMPLE_COUNT_1_BIT
-  , imageTiling      = Vulkan.VK_IMAGE_TILING_OPTIMAL
+  , imageSamples     = Vulkan.SAMPLE_COUNT_1_BIT
+  , imageTiling      = Vulkan.IMAGE_TILING_OPTIMAL
   , imageUsage       = usage
   }
 
 createImage
   :: MonadVulkan m
-  => Vulkan.VkPhysicalDevice
-  -> Vulkan.VkDevice
+  => Vulkan.PhysicalDevice
+  -> Vulkan.Device
   -> ImageInfo
-  -> [ Vulkan.VkMemoryPropertyFlags ]
-  -> m (Vulkan.VkImage, Vulkan.VkDeviceMemory)
+  -> [ Vulkan.MemoryPropertyFlags ]
+  -> m (Vulkan.Image, Vulkan.DeviceMemory)
 createImage physicalDevice device ImageInfo { .. } reqs
-  = let createInfo :: Vulkan.VkImageCreateInfo
+  = let createInfo :: Vulkan.ImageCreateInfo '[]
         createInfo =
-          Vulkan.createVk
-            (  Vulkan.set @"sType"       Vulkan.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO
-            &* Vulkan.set @"pNext"       Vulkan.vkNullPtr
-            &* Vulkan.set @"flags"       Vulkan.VK_ZERO_FLAGS
-            &* Vulkan.set @"imageType"   imageType
-            &* Vulkan.set @"format"      imageFormat
-            &* Vulkan.set @"extent"      imageExtent
-            &* Vulkan.set @"mipLevels"   imageMipLevels
-            &* Vulkan.set @"arrayLayers" imageArrayLayers
-            &* Vulkan.set @"samples"     imageSamples
-            &* Vulkan.set @"tiling"      imageTiling
-            &* Vulkan.set @"usage"       imageUsage
-            &* Vulkan.set @"sharingMode" Vulkan.VK_SHARING_MODE_EXCLUSIVE
-            &* Vulkan.set @"queueFamilyIndexCount" 0
-            &* Vulkan.set @"pQueueFamilyIndices"   Vulkan.VK_NULL
-            &* Vulkan.set @"initialLayout"         imageLayout
-            )
+          Vulkan.ImageCreateInfo
+            { Vulkan.next               = ()
+            , Vulkan.flags              = Vulkan.zero
+            , Vulkan.imageType          = imageType
+            , Vulkan.format             = imageFormat
+            , Vulkan.extent             = imageExtent
+            , Vulkan.mipLevels          = imageMipLevels
+            , Vulkan.arrayLayers        = imageArrayLayers
+            , Vulkan.samples            = imageSamples
+            , Vulkan.tiling             = imageTiling
+            , Vulkan.usage              = imageUsage
+            , Vulkan.sharingMode        = Vulkan.SHARING_MODE_EXCLUSIVE
+            , Vulkan.queueFamilyIndices = Boxed.Vector.empty
+            , Vulkan.initialLayout      = imageLayout
+            }
     in do
-      image <- managedVulkanResource createInfo
-                  ( Vulkan.vkCreateImage  device )
-                  ( Vulkan.vkDestroyImage device )
-
-      memReqs <- allocaAndPeek ( Vulkan.vkGetImageMemoryRequirements device image )
-
+      ( _, image ) <- Vulkan.withImage device createInfo Nothing allocate
+      memReqs      <- Vulkan.getImageMemoryRequirements device image
       ( _, memory ) <- allocateMemory physicalDevice device memReqs reqs
-
-      liftIO
-        ( Vulkan.vkBindImageMemory device image memory 0
-            >>= throwVkResult
-        )
-
+      Vulkan.bindImageMemory device image memory 0
       pure (image, memory)
 
 
 createImageView
   :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> Vulkan.VkImage
-  -> Vulkan.VkImageViewType
-  -> Vulkan.VkFormat
-  -> Vulkan.VkImageAspectFlags
-  -> m Vulkan.VkImageView
-createImageView dev image viewType fmt aspect =
-  let
-    components :: Vulkan.VkComponentMapping
+  => Vulkan.Device
+  -> Vulkan.Image
+  -> Vulkan.ImageViewType
+  -> Vulkan.Format
+  -> Vulkan.ImageAspectFlags
+  -> m Vulkan.ImageView
+createImageView dev image viewType fmt aspect = snd <$> Vulkan.withImageView dev createInfo Nothing allocate
+  where
+    components :: Vulkan.ComponentMapping
     components =
-      Vulkan.createVk
-        (  Vulkan.set @"r" Vulkan.VK_COMPONENT_SWIZZLE_IDENTITY
-        &* Vulkan.set @"g" Vulkan.VK_COMPONENT_SWIZZLE_IDENTITY
-        &* Vulkan.set @"b" Vulkan.VK_COMPONENT_SWIZZLE_IDENTITY
-        &* Vulkan.set @"a" Vulkan.VK_COMPONENT_SWIZZLE_IDENTITY
-        )
+      Vulkan.ComponentMapping
+        { Vulkan.r = Vulkan.COMPONENT_SWIZZLE_IDENTITY
+        , Vulkan.g = Vulkan.COMPONENT_SWIZZLE_IDENTITY
+        , Vulkan.b = Vulkan.COMPONENT_SWIZZLE_IDENTITY
+        , Vulkan.a = Vulkan.COMPONENT_SWIZZLE_IDENTITY
+        }
 
-    subResourceRange :: Vulkan.VkImageSubresourceRange
+    subResourceRange :: Vulkan.ImageSubresourceRange
     subResourceRange =
-      Vulkan.createVk
-        (  Vulkan.set @"aspectMask"     aspect
-        &* Vulkan.set @"baseMipLevel"   0
-        &* Vulkan.set @"levelCount"     1
-        &* Vulkan.set @"baseArrayLayer" 0
-        &* Vulkan.set @"layerCount"     1
-        )
+      Vulkan.ImageSubresourceRange
+        { Vulkan.aspectMask     = aspect
+        , Vulkan.baseMipLevel   = 0
+        , Vulkan.levelCount     = 1
+        , Vulkan.baseArrayLayer = 0
+        , Vulkan.layerCount     = 1
+        }
 
-    createInfo :: Vulkan.VkImageViewCreateInfo
+    createInfo :: Vulkan.ImageViewCreateInfo '[]
     createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
-        &* Vulkan.set @"pNext"      Vulkan.vkNullPtr
-        &* Vulkan.set @"flags"      Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"image"      image
-        &* Vulkan.set @"viewType"   viewType
-        &* Vulkan.set @"format"     fmt
-        &* Vulkan.set @"components" components
-        &* Vulkan.set @"subresourceRange" subResourceRange
-        )
-  in
-    managedVulkanResource createInfo
-      ( Vulkan.vkCreateImageView  dev )
-      ( Vulkan.vkDestroyImageView dev )
+      Vulkan.ImageViewCreateInfo
+        { Vulkan.next             = ()
+        , Vulkan.flags            = Vulkan.zero
+        , Vulkan.image            = image
+        , Vulkan.viewType         = viewType
+        , Vulkan.format           = fmt
+        , Vulkan.components       = components
+        , Vulkan.subresourceRange = subResourceRange
+        }
 
 cmdTransitionImageLayout
   :: MonadVulkan m
-  => Vulkan.VkCommandBuffer
-  -> Vulkan.VkImage
-  -> Vulkan.VkImageLayout
-  -> Vulkan.VkImageLayout
-  -> (Vulkan.VkPipelineStageFlags, Vulkan.VkAccessFlags)
-  -> (Vulkan.VkPipelineStageFlags, Vulkan.VkAccessFlags)
+  => Vulkan.CommandBuffer
+  -> Vulkan.Image
+  -> Vulkan.ImageLayout
+  -> Vulkan.ImageLayout
+  -> (Vulkan.PipelineStageFlags, Vulkan.AccessFlags)
+  -> (Vulkan.PipelineStageFlags, Vulkan.AccessFlags)
   -> m ()
 cmdTransitionImageLayout
   commandBuffer
@@ -562,30 +486,29 @@ cmdTransitionImageLayout
   oldLayout newLayout
   (srcStage, srcMask) (dstStage, dstMask)
   = let
-      subresourceRange :: Vulkan.VkImageSubresourceRange
+      subresourceRange :: Vulkan.ImageSubresourceRange
       subresourceRange =
-        Vulkan.createVk
-          (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-          &* Vulkan.set @"baseMipLevel"   0
-          &* Vulkan.set @"levelCount"     1
-          &* Vulkan.set @"baseArrayLayer" 0
-          &* Vulkan.set @"layerCount"     1
-          )
+        Vulkan.ImageSubresourceRange
+          { Vulkan.aspectMask     = Vulkan.IMAGE_ASPECT_COLOR_BIT
+          , Vulkan.baseMipLevel   = 0
+          , Vulkan.levelCount     = 1
+          , Vulkan.baseArrayLayer = 0
+          , Vulkan.layerCount     = 1
+          }
 
-      imageBarrier :: Vulkan.VkImageMemoryBarrier
+      imageBarrier :: Vulkan.ImageMemoryBarrier '[]
       imageBarrier =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
-          &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-          &* Vulkan.set @"srcAccessMask" srcMask
-          &* Vulkan.set @"dstAccessMask" dstMask
-          &* Vulkan.set @"oldLayout"     oldLayout
-          &* Vulkan.set @"newLayout"     newLayout
-          &* Vulkan.set @"image"               image
-          &* Vulkan.set @"subresourceRange"    subresourceRange
-          &* Vulkan.set @"srcQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-          &* Vulkan.set @"dstQueueFamilyIndex" Vulkan.VK_QUEUE_FAMILY_IGNORED
-          )
+        Vulkan.ImageMemoryBarrier
+          { Vulkan.next                = ()
+          , Vulkan.srcAccessMask       = srcMask
+          , Vulkan.dstAccessMask       = dstMask
+          , Vulkan.oldLayout           = oldLayout
+          , Vulkan.newLayout           = newLayout
+          , Vulkan.image               = image
+          , Vulkan.subresourceRange    = subresourceRange
+          , Vulkan.srcQueueFamilyIndex = Vulkan.QUEUE_FAMILY_IGNORED
+          , Vulkan.dstQueueFamilyIndex = Vulkan.QUEUE_FAMILY_IGNORED
+          }
 
     in cmdPipelineBarrier
         commandBuffer
@@ -593,388 +516,289 @@ cmdTransitionImageLayout
         dstStage
         []
         []
-        [ imageBarrier ]
+        [ Vulkan.SomeStruct imageBarrier ]
 
 createSampler
   :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> m Vulkan.VkSampler
-createSampler dev =
-  let
-    createInfo :: Vulkan.VkSamplerCreateInfo
+  => Vulkan.Device
+  -> m Vulkan.Sampler
+createSampler dev = snd <$> Vulkan.withSampler dev createInfo Nothing allocate
+  where
+    createInfo :: Vulkan.SamplerCreateInfo '[]
     createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"magFilter" Vulkan.VK_FILTER_NEAREST
-        &* Vulkan.set @"minFilter" Vulkan.VK_FILTER_NEAREST
-        &* Vulkan.set @"mipmapMode" Vulkan.VK_SAMPLER_MIPMAP_MODE_NEAREST
-        &* Vulkan.set @"addressModeU" Vulkan.VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
-        &* Vulkan.set @"addressModeV" Vulkan.VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
-        &* Vulkan.set @"addressModeW" Vulkan.VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
-        &* Vulkan.set @"mipLodBias" 0
-        &* Vulkan.set @"anisotropyEnable" Vulkan.VK_FALSE
-        &* Vulkan.set @"maxAnisotropy" 0
-        &* Vulkan.set @"compareEnable" Vulkan.VK_FALSE
-        &* Vulkan.set @"compareOp" Vulkan.VK_COMPARE_OP_ALWAYS
-        &* Vulkan.set @"minLod" 0
-        &* Vulkan.set @"maxLod" 1
-        &* Vulkan.set @"borderColor" Vulkan.VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
-        )
-
-  in managedVulkanResource createInfo
-       ( Vulkan.vkCreateSampler  dev )
-       ( Vulkan.vkDestroySampler dev )
+      Vulkan.SamplerCreateInfo
+        { Vulkan.next                    = ()
+        , Vulkan.flags                   = Vulkan.zero
+        , Vulkan.magFilter               = Vulkan.FILTER_NEAREST
+        , Vulkan.minFilter               = Vulkan.FILTER_NEAREST
+        , Vulkan.mipmapMode              = Vulkan.SAMPLER_MIPMAP_MODE_NEAREST
+        , Vulkan.addressModeU            = Vulkan.SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
+        , Vulkan.addressModeV            = Vulkan.SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
+        , Vulkan.addressModeW            = Vulkan.SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
+        , Vulkan.mipLodBias              = 0
+        , Vulkan.anisotropyEnable        = False
+        , Vulkan.maxAnisotropy           = 0
+        , Vulkan.compareEnable           = False
+        , Vulkan.compareOp               = Vulkan.COMPARE_OP_ALWAYS
+        , Vulkan.minLod                  = 0
+        , Vulkan.maxLod                  = 1
+        , Vulkan.borderColor             = Vulkan.BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
+        , Vulkan.unnormalizedCoordinates = False
+        }
 
 
 createCommandPool
   :: MonadVulkan m
-  => Vulkan.VkDevice
+  => Vulkan.Device
   -> Int
-  -> m Vulkan.VkCommandPool
-createCommandPool dev queueFamilyIndex =
-  let
-    createInfo :: Vulkan.VkCommandPoolCreateInfo
+  -> m ( ReleaseKey, Vulkan.CommandPool )
+createCommandPool dev queueFamilyIndex = Vulkan.withCommandPool dev createInfo Nothing allocate
+  where
+    createInfo :: Vulkan.CommandPoolCreateInfo
     createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"queueFamilyIndex" ( fromIntegral queueFamilyIndex )
-        )
-
-  in
-    managedVulkanResource createInfo
-      ( Vulkan.vkCreateCommandPool  dev )
-      ( Vulkan.vkDestroyCommandPool dev )
+      Vulkan.CommandPoolCreateInfo
+        { Vulkan.flags            = Vulkan.zero
+        , Vulkan.queueFamilyIndex = fromIntegral queueFamilyIndex
+        }
 
 
 allocateCommandBuffer
   :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> Vulkan.VkCommandPool
-  -> m ( ReleaseKey, Vulkan.VkCommandBuffer )
-allocateCommandBuffer dev commandPool =
-  let
-    allocInfo :: Vulkan.VkCommandBufferAllocateInfo
+  => Vulkan.Device
+  -> Vulkan.CommandPool
+  -> m ( ReleaseKey, Vulkan.CommandBuffer )
+allocateCommandBuffer dev commandPool = second Boxed.Vector.head <$> Vulkan.withCommandBuffers dev allocInfo allocate
+  where
+    allocInfo :: Vulkan.CommandBufferAllocateInfo
     allocInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType"        Vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO
-        &* Vulkan.set @"pNext"        Vulkan.vkNullPtr
-        &* Vulkan.set @"commandPool"  commandPool
-        &* Vulkan.set @"level"        Vulkan.VK_COMMAND_BUFFER_LEVEL_PRIMARY
-        &* Vulkan.set @"commandBufferCount" 1
-        )
-  in
-    allocateVulkanResource allocInfo
-      ( \ ptr _ -> Vulkan.vkAllocateCommandBuffers dev ptr )
-      ( \ a _ ->
-          Foreign.Marshal.withArray [ a ]
-            ( Vulkan.vkFreeCommandBuffers dev commandPool 1 )
-      )
+      Vulkan.CommandBufferAllocateInfo
+        { Vulkan.commandPool        = commandPool
+        , Vulkan.level              = Vulkan.COMMAND_BUFFER_LEVEL_PRIMARY
+        , Vulkan.commandBufferCount = 1
+        }
 
 
 cmdBeginRenderPass
   :: MonadIO m
-  => Vulkan.VkCommandBuffer
-  -> Vulkan.VkRenderPass
-  -> Vulkan.VkFramebuffer
-  -> [Vulkan.VkClearValue] -- indexed by framebuffer attachments
-  -> Vulkan.VkExtent2D
+  => Vulkan.CommandBuffer
+  -> Vulkan.RenderPass
+  -> Vulkan.Framebuffer
+  -> [Vulkan.ClearValue] -- indexed by framebuffer attachments
+  -> Vulkan.Extent2D
   -> m ()
 cmdBeginRenderPass commandBuffer renderPass framebuffer clearValues extent =
   let
-    zeroZero :: Vulkan.VkOffset2D
+    zeroZero :: Vulkan.Offset2D
     zeroZero =
-      Vulkan.createVk
-        (  Vulkan.set @"x" 0
-        &* Vulkan.set @"y" 0
-        )
+      Vulkan.Offset2D
+        { Vulkan.x = 0
+        , Vulkan.y = 0
+        }
 
-    renderArea :: Vulkan.VkRect2D
+    renderArea :: Vulkan.Rect2D
     renderArea =
-      Vulkan.createVk
-        (  Vulkan.set @"offset" zeroZero
-        &* Vulkan.set @"extent" extent
-        )
+      Vulkan.Rect2D
+        { Vulkan.offset = zeroZero
+        , Vulkan.extent = extent
+        }
 
-    beginInfo :: Vulkan.VkRenderPassBeginInfo
+    beginInfo :: Vulkan.RenderPassBeginInfo '[]
     beginInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType"       Vulkan.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
-        &* Vulkan.set @"pNext"       Vulkan.vkNullPtr
-        &* Vulkan.set @"renderPass"  renderPass
-        &* Vulkan.set @"framebuffer" framebuffer
-        &* Vulkan.set @"renderArea"  renderArea
-        &* Vulkan.setListCountAndRef
-                @"clearValueCount"
-                @"pClearValues"
-                clearValues
-        )
+      Vulkan.RenderPassBeginInfo
+        { Vulkan.next        = ()
+        , Vulkan.renderPass  = renderPass
+        , Vulkan.framebuffer = framebuffer
+        , Vulkan.renderArea  = renderArea
+        , Vulkan.clearValues = Boxed.Vector.fromList clearValues
+        }
   in
-    liftIO $
-      Vulkan.vkCmdBeginRenderPass
-        commandBuffer
-        ( Vulkan.unsafePtr beginInfo )
-        Vulkan.VK_SUBPASS_CONTENTS_INLINE
+    Vulkan.cmdBeginRenderPass
+      commandBuffer
+      beginInfo
+      Vulkan.SUBPASS_CONTENTS_INLINE
 
-cmdNextSubpass :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
-cmdNextSubpass commandBuffer =
-  liftIO $ Vulkan.vkCmdNextSubpass commandBuffer Vulkan.VK_SUBPASS_CONTENTS_INLINE
+cmdNextSubpass :: MonadIO m => Vulkan.CommandBuffer -> m ()
+cmdNextSubpass commandBuffer = Vulkan.cmdNextSubpass commandBuffer Vulkan.SUBPASS_CONTENTS_INLINE
 
 
-cmdEndRenderPass :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
-cmdEndRenderPass = liftIO . Vulkan.vkCmdEndRenderPass
+cmdEndRenderPass :: MonadIO m => Vulkan.CommandBuffer -> m ()
+cmdEndRenderPass =Vulkan.cmdEndRenderPass
 
 data SwapchainInfo (n :: Nat)
   = SwapchainInfo
-      { swapchain       :: Vulkan.VkSwapchainKHR
-      , swapchainImages :: V.Vector n Vulkan.VkImage
-      , swapchainExtent :: Vulkan.VkExtent2D
-      , surfaceFormat   :: Vulkan.VkSurfaceFormatKHR
+      { swapchain       :: Vulkan.SwapchainKHR
+      , swapchainImages :: V.Vector n Vulkan.Image
+      , swapchainExtent :: Vulkan.Extent2D
+      , surfaceFormat   :: Vulkan.SurfaceFormatKHR
       }
 
 acquireNextImage
   :: ( MonadIO m, KnownNat n )
-  => Vulkan.VkDevice
+  => Vulkan.Device
   -> SwapchainInfo n
-  -> Vulkan.VkSemaphore
+  -> Vulkan.Semaphore
   -> m (Finite n)
 acquireNextImage device (SwapchainInfo { swapchain }) signal
-  = liftIO . fmap fromIntegral
-  $ allocaAndPeek
-      ( Vulkan.vkAcquireNextImageKHR
-          device
-          swapchain
-          maxBound
-          signal
-          Vulkan.VK_NULL_HANDLE
-        >=> throwVkResult
-      )
+  = fromIntegral . snd <$> Vulkan.acquireNextImageKHR device swapchain maxBound signal Vulkan.NULL_HANDLE
 
 present
   :: ( MonadIO m, Integral i )
-  => Vulkan.VkQueue
-  -> Vulkan.VkSwapchainKHR
+  => Vulkan.Queue
+  -> Vulkan.SwapchainKHR
   -> i
-  -> [Vulkan.VkSemaphore]
+  -> [Vulkan.Semaphore]
   -> m ()
-present queue swapchain imageIndex wait
-  = let
-      presentInfo :: Vulkan.VkPresentInfoKHR
-      presentInfo =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
-          &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-          &* Vulkan.setListCountAndRef @"waitSemaphoreCount" @"pWaitSemaphores" wait
-          &* Vulkan.setListCountAndRef @"swapchainCount" @"pSwapchains" [ swapchain ]
-          &* Vulkan.setListRef @"pImageIndices" [ fromIntegral imageIndex ]
-          &* Vulkan.set @"pResults" Vulkan.vkNullPtr
-          )
-    in
-      liftIO $
-        Vulkan.vkQueuePresentKHR queue ( Vulkan.unsafePtr presentInfo )
-        >>= throwVkResult
+present queue swapchain imageIndex wait = void $ Vulkan.queuePresentKHR queue presentInfo
+  where
+    presentInfo :: Vulkan.PresentInfoKHR '[]
+    presentInfo =
+      Vulkan.PresentInfoKHR
+        { Vulkan.next           = ()
+        , Vulkan.waitSemaphores = Boxed.Vector.fromList wait
+        , Vulkan.swapchains     = Boxed.Vector.singleton swapchain
+        , Vulkan.imageIndices   = Boxed.Vector.singleton ( fromIntegral imageIndex )
+        , Vulkan.results        = Vulkan.zero
+        }
 
-getQueue :: MonadIO m => Vulkan.VkDevice -> Int -> m Vulkan.VkQueue
-getQueue device queueFamilyIndex
-  = liftIO $
-      allocaAndPeek
-        ( Vulkan.vkGetDeviceQueue
-            device
-            ( fromIntegral queueFamilyIndex )
-            0
-        )
+        
+
+getQueue :: MonadIO m => Vulkan.Device -> Int -> m Vulkan.Queue
+getQueue device queueFamilyIndex = Vulkan.getDeviceQueue device ( fromIntegral queueFamilyIndex ) 0
 
 
-createSemaphore :: MonadVulkan m => Vulkan.VkDevice -> m Vulkan.VkSemaphore
-createSemaphore device =
-  let
-    createInfo :: Vulkan.VkSemaphoreCreateInfo
-    createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        )
-  in
-    managedVulkanResource createInfo
-      ( Vulkan.vkCreateSemaphore  device )
-      ( Vulkan.vkDestroySemaphore device )
+createSemaphore :: MonadVulkan m => Vulkan.Device -> m Vulkan.Semaphore
+createSemaphore device = snd <$> Vulkan.withSemaphore device semaphoreCreateInfo Nothing allocate
+  where
+    semaphoreCreateInfo :: Vulkan.SemaphoreCreateInfo '[]
+    semaphoreCreateInfo =
+      Vulkan.SemaphoreCreateInfo
+        { Vulkan.next  = ()
+        , Vulkan.flags = Vulkan.zero
+        }
 
 
-createFence :: MonadVulkan m => Vulkan.VkDevice -> m Vulkan.VkFence
-createFence device =
+createFence :: MonadVulkan m => Vulkan.Device -> m Vulkan.Fence
+createFence device = snd <$> Vulkan.withFence device fenceCreateInfo Nothing allocate
 
-  let fenceCreateInfo :: Vulkan.VkFenceCreateInfo
-      fenceCreateInfo =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
-          &* Vulkan.set @"pNext" Vulkan.VK_NULL_HANDLE
-          &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-          )
-
-  in
-    managedVulkanResource fenceCreateInfo
-      ( Vulkan.vkCreateFence  device )
-      ( Vulkan.vkDestroyFence device )
+  where
+    fenceCreateInfo :: Vulkan.FenceCreateInfo '[]
+    fenceCreateInfo =
+      Vulkan.FenceCreateInfo
+        { Vulkan.next  = ()
+        , Vulkan.flags = Vulkan.zero
+        }
 
 
 data Wait a = WaitAll [a] | WaitAny [a]
   deriving ( Eq, Show )
 
-waitForFences :: MonadIO m => Vulkan.VkDevice -> Wait Vulkan.VkFence -> m ()
-waitForFences device fences = liftIO $
-  Foreign.Marshal.withArray fenceList $ \fencesPtr ->
-    Vulkan.vkWaitForFences device
-      ( fromIntegral $ length fenceList )
-      fencesPtr
-      waitAll
-      maxBound
-    >>= throwVkResult
+waitForFences :: MonadIO m => Vulkan.Device -> Wait Vulkan.Fence -> m ()
+waitForFences device fences = void $ Vulkan.waitForFences device ( Boxed.Vector.fromList fenceList ) waitAll maxBound
+  where
+    waitAll   :: Bool
+    fenceList :: [Vulkan.Fence]
+    (waitAll, fenceList) =
+      case fences of
+        WaitAll l -> ( True , l )
+        WaitAny l -> ( False, l )
 
-    where waitAll   :: Vulkan.VkBool32
-          fenceList :: [Vulkan.VkFence]
-          (waitAll, fenceList)
-            = case fences of
-                WaitAll l -> ( Vulkan.VK_TRUE , l )
-                WaitAny l -> ( Vulkan.VK_FALSE, l )
-
-cmdBindPipeline :: MonadVulkan m => Vulkan.VkCommandBuffer -> VkPipeline -> m ()
+cmdBindPipeline :: MonadVulkan m => Vulkan.CommandBuffer -> VkPipeline -> m ()
 cmdBindPipeline commandBuffer pipeline =
-  liftIO $
-    Vulkan.vkCmdBindPipeline
-      commandBuffer
-      ( bindPoint  pipeline )
-      ( vkPipeline pipeline )
+  Vulkan.cmdBindPipeline
+    commandBuffer
+    ( bindPoint  pipeline )
+    ( vkPipeline pipeline )
 
 cmdBindDescriptorSets
   :: MonadVulkan m
-  => Vulkan.VkCommandBuffer
-  -> Vulkan.VkPipelineLayout
+  => Vulkan.CommandBuffer
+  -> Vulkan.PipelineLayout
   -> VkPipeline
-  -> [ Vulkan.VkDescriptorSet ]
+  -> [ Vulkan.DescriptorSet ]
   -> m ()
 cmdBindDescriptorSets commandBuffer pipelineLayout pipeline descriptorSets =
-  liftIO $
-    Foreign.Marshal.withArray descriptorSets $ \descriptorSetsPtr ->
-      Vulkan.vkCmdBindDescriptorSets
-        commandBuffer
-        ( bindPoint pipeline )
-        pipelineLayout
-        0 -- no offset
-        ( fromIntegral $ length descriptorSets )
-        descriptorSetsPtr
-        0 -- no dynamic offset
-        Vulkan.vkNullPtr
+    Vulkan.cmdBindDescriptorSets
+      commandBuffer
+      ( bindPoint pipeline )
+      pipelineLayout
+      0 -- first set: set 0
+      ( Boxed.Vector.fromList descriptorSets )
+      Boxed.Vector.empty -- no dynamic offsets
 
-bindPoint :: VkPipeline -> Vulkan.VkPipelineBindPoint
-bindPoint GraphicsPipeline {} = Vulkan.VK_PIPELINE_BIND_POINT_GRAPHICS
-bindPoint ComputePipeline  {} = Vulkan.VK_PIPELINE_BIND_POINT_COMPUTE
+bindPoint :: VkPipeline -> Vulkan.PipelineBindPoint
+bindPoint GraphicsPipeline {} = Vulkan.PIPELINE_BIND_POINT_GRAPHICS
+bindPoint ComputePipeline  {} = Vulkan.PIPELINE_BIND_POINT_COMPUTE
 
 
 cmdPipelineBarrier
   :: MonadIO m
-  => Vulkan.VkCommandBuffer
-  -> Vulkan.VkPipelineStageFlags
-  -> Vulkan.VkPipelineStageFlags
-  -> [Vulkan.VkMemoryBarrier]
-  -> [Vulkan.VkBufferMemoryBarrier]
-  -> [Vulkan.VkImageMemoryBarrier]
+  => Vulkan.CommandBuffer
+  -> Vulkan.PipelineStageFlags
+  -> Vulkan.PipelineStageFlags
+  -> [Vulkan.MemoryBarrier]
+  -> [Vulkan.BufferMemoryBarrier]
+  -> [Vulkan.SomeStruct Vulkan.ImageMemoryBarrier]
   -> m ()
 cmdPipelineBarrier
   commandBuffer
   srcStageMask dstStageMask
   memoryBarriers bufferMemoryBarriers imageMemoryBarriers
-    = liftIO $
-        Foreign.Marshal.withArray memoryBarriers $ \memoryBarriersPtr ->
-          Foreign.Marshal.withArray bufferMemoryBarriers $ \bufferMemoryBarriersPtr ->
-            Foreign.Marshal.withArray imageMemoryBarriers $ \imageMemoryBarriersPtr ->
-              Vulkan.vkCmdPipelineBarrier
-                commandBuffer
-                srcStageMask
-                dstStageMask
-                Vulkan.VK_DEPENDENCY_BY_REGION_BIT
-                ( fromIntegral ( length memoryBarriers ) )
-                memoryBarriersPtr
-                ( fromIntegral ( length bufferMemoryBarriers) )
-                bufferMemoryBarriersPtr
-                ( fromIntegral ( length imageMemoryBarriers ) )
-                imageMemoryBarriersPtr
-
+    = Vulkan.cmdPipelineBarrier
+        commandBuffer
+        srcStageMask
+        dstStageMask
+        Vulkan.DEPENDENCY_BY_REGION_BIT
+        ( Boxed.Vector.fromList memoryBarriers )
+        ( Boxed.Vector.fromList bufferMemoryBarriers )
+        ( Boxed.Vector.fromList imageMemoryBarriers )
 
 
 assertSurfacePresentable
   :: MonadIO m
-  => Vulkan.VkPhysicalDevice
+  => Vulkan.PhysicalDevice
   -> Int
   -> SDL.Video.Vulkan.VkSurfaceKHR
   -> m ()
-assertSurfacePresentable physicalDevice queueFamilyIndex surface = liftIO do
-  bool <-
-    allocaAndPeek
-      ( Vulkan.vkGetPhysicalDeviceSurfaceSupportKHR
-          physicalDevice
-          ( fromIntegral queueFamilyIndex )
-          ( Vulkan.VkPtr surface )
-          >=> throwVkResult
-      )
+assertSurfacePresentable physicalDevice queueFamilyIndex surface = do
+  isPresentable <-
+    Vulkan.getPhysicalDeviceSurfaceSupportKHR
+      physicalDevice
+      ( fromIntegral queueFamilyIndex )
+      ( Vulkan.SurfaceKHR surface )
 
-  unless ( bool == Vulkan.VK_TRUE ) ( error "Unsupported surface" )
+  unless isPresentable ( error "Unsupported surface" )
 
 
 submitCommandBuffer
   :: MonadIO m
-  => Vulkan.VkQueue
-  -> Vulkan.VkCommandBuffer
-  -> [ ( Vulkan.VkSemaphore, Vulkan.VkPipelineStageFlags ) ]
-  -> [ Vulkan.VkSemaphore ]
-  -> Maybe Vulkan.VkFence
+  => Vulkan.Queue
+  -> Vulkan.CommandBuffer
+  -> [ ( Vulkan.Semaphore, Vulkan.PipelineStageFlags ) ]
+  -> [ Vulkan.Semaphore ]
+  -> Maybe Vulkan.Fence
   -> m ()
-submitCommandBuffer queue commandBuffer wait signal mbFence =
-  let
-    submitInfo :: Vulkan.VkSubmitInfo
+submitCommandBuffer queue commandBuffer wait signal mbFence = Vulkan.queueSubmit queue ( Boxed.Vector.singleton $ Vulkan.SomeStruct submitInfo ) ( fromMaybe Vulkan.NULL_HANDLE mbFence )
+  where
+    submitInfo :: Vulkan.SubmitInfo '[]
     submitInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_SUBMIT_INFO
-        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.setListCountAndRef
-              @"waitSemaphoreCount"
-              @"pWaitSemaphores"
-              ( map fst wait )
-        &* Vulkan.setListRef @"pWaitDstStageMask" ( map snd wait )
-        &* Vulkan.setListCountAndRef
-              @"commandBufferCount"
-              @"pCommandBuffers"
-              [ commandBuffer ]
-        &* Vulkan.setListCountAndRef
-           @"signalSemaphoreCount"
-           @"pSignalSemaphores"
-           signal
-        )
-  in liftIO $
-      Foreign.Marshal.withArray [ submitInfo ] $ \submits ->
-        Vulkan.vkQueueSubmit queue 1 submits (fromMaybe Vulkan.vkNullPtr mbFence)
-        >>= throwVkResult
+      Vulkan.SubmitInfo
+        { Vulkan.next             = ()
+        , Vulkan.waitSemaphores   = Boxed.Vector.fromList $ map fst wait
+        , Vulkan.waitDstStageMask = Boxed.Vector.fromList $ map snd wait
+        , Vulkan.commandBuffers   = Boxed.Vector.singleton ( Vulkan.commandBufferHandle commandBuffer )
+        , Vulkan.signalSemaphores = Boxed.Vector.fromList signal
+        }
 
-beginCommandBuffer :: MonadIO m => Vulkan.VkCommandBuffer -> m ()
-beginCommandBuffer commandBuffer =
-  let
-    commandBufferBeginInfo :: Vulkan.VkCommandBufferBeginInfo
+beginCommandBuffer :: MonadIO m => Vulkan.CommandBuffer -> m ()
+beginCommandBuffer commandBuffer = Vulkan.beginCommandBuffer commandBuffer commandBufferBeginInfo
+  where
+    commandBufferBeginInfo :: Vulkan.CommandBufferBeginInfo '[]
     commandBufferBeginInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"pInheritanceInfo" Vulkan.vkNullPtr
-        )
-  in liftIO $
-        Vulkan.vkBeginCommandBuffer
-          commandBuffer
-          ( Vulkan.unsafePtr commandBufferBeginInfo )
-          >>= throwVkResult
+      Vulkan.CommandBufferBeginInfo
+        { Vulkan.next            = ()
+        , Vulkan.flags           = Vulkan.zero
+        , Vulkan.inheritanceInfo = Nothing
+        }
 
-
-endCommandBuffer :: MonadVulkan m => Vulkan.VkCommandBuffer -> m ()
-endCommandBuffer = liftIO . ( Vulkan.vkEndCommandBuffer >=> throwVkResult )
+endCommandBuffer :: MonadVulkan m => Vulkan.CommandBuffer -> m ()
+endCommandBuffer = Vulkan.endCommandBuffer

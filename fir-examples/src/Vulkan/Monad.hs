@@ -20,14 +20,6 @@ module Vulkan.Monad where
 -- base
 import Control.Category
   ( (>>>) )
-import Control.Monad
-  ( (>=>) )
-import Data.Word
-  ( Word32 )
-import qualified Foreign
-import qualified Foreign.Marshal
-import Foreign.Ptr
-  ( Ptr )
 
 -- logging-effect
 import Control.Monad.Log
@@ -43,7 +35,6 @@ import Control.Monad.State.Class
 import Control.Monad.Trans.Resource
   ( MonadResource
   , ResourceT, runResourceT
-  , ReleaseKey, allocate
   )
 
 -- short-text
@@ -59,10 +50,6 @@ import Control.Monad.Trans.State.Strict
   ( StateT(..), evalStateT )
 import Control.Monad.Trans.Reader
   ( ReaderT(..) )
-
--- vulkan-api
-import qualified Graphics.Vulkan          as Vulkan
-import qualified Graphics.Vulkan.Core_1_0 as Vulkan
 
 ----------------------------------------------------------------------------
 -- Combination of effects needed.
@@ -115,79 +102,3 @@ showSeverity Warning       = "[WARN] "
 showSeverity Notice        = "(note) "
 showSeverity Informational = "(info) "
 showSeverity Debug         = "(debug)"
-
-----------------------------------------------------------------------------
--- Resource management.
-
-throwVkResult :: MonadFail m => Vulkan.VkResult -> m ()
-throwVkResult Vulkan.VK_SUCCESS = pure ()
-throwVkResult failure           = fail (show failure)
-
-managedVulkanResource
-  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
-  => info
-  -> ( Ptr info -> Ptr Vulkan.VkAllocationCallbacks -> Ptr x -> IO Vulkan.VkResult )
-  -> ( x -> Ptr Vulkan.VkAllocationCallbacks -> IO () )
-  -> m x
-managedVulkanResource info create destroy = snd <$> allocateVulkanResource info create destroy
-
-allocateVulkanResource
-  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
-  => info
-  -> ( Ptr info -> Ptr Vulkan.VkAllocationCallbacks -> Ptr x -> IO Vulkan.VkResult )
-  -> ( x -> Ptr Vulkan.VkAllocationCallbacks -> IO () )
-  -> m ( ReleaseKey, x )
-allocateVulkanResource info create destroy =
-  allocate
-    ( allocaAndPeek ( create ( Vulkan.unsafePtr info ) Vulkan.VK_NULL_HANDLE >=> throwVkResult ) )
-    ( \ x -> destroy x Vulkan.VK_NULL_HANDLE *> Vulkan.touchVkData info )
-
-allocaAndPeek
-  :: ( Foreign.Storable a, MonadIO m )
-  => ( Ptr a -> IO () )
-  -> m a
-allocaAndPeek f = liftIO $
-  Foreign.Marshal.alloca
-    ( \ptr -> f ptr *> Foreign.peek ptr )
-
-managedVulkanResources
-  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
-  => Int
-  -> info
-  -> ( Ptr info -> Ptr x -> IO Vulkan.VkResult )
-  -> ( Word32 -> Ptr x -> IO Vulkan.VkResult )
-  -> m [x]
-managedVulkanResources count info create destroy = snd <$> allocateVulkanResources count info create destroy
-
-allocateVulkanResources
-  :: ( MonadVulkan m, Foreign.Storable x, Vulkan.VulkanMarshal info )
-  => Int
-  -> info
-  -> ( Ptr info -> Ptr x -> IO Vulkan.VkResult )
-  -> ( Word32 -> Ptr x -> IO Vulkan.VkResult )
-  -> m (ReleaseKey, [x])
-allocateVulkanResources count info create destroy =
-  allocate
-    ( allocaAndPeekArray count ( create ( Vulkan.unsafePtr info ) >=> throwVkResult ) )
-    ( \xs -> Foreign.Marshal.withArray xs
-      ( \x -> ( destroy ( fromIntegral count ) x >>= throwVkResult ) *> Vulkan.touchVkData info )
-    )
-    
-allocaAndPeekArray
-  :: Foreign.Storable a
-  => Int
-  -> ( Ptr a -> IO () )
-  -> IO [ a ]
-allocaAndPeekArray n f =
-  Foreign.Marshal.allocaArray n
-    ( \ptr -> f ptr *> Foreign.Marshal.peekArray n ptr )
-
-fetchAll
-  :: ( Foreign.Storable a, Foreign.Storable b, Integral b )
-  => ( Ptr b -> Ptr a -> IO () )
-  -> IO [a]
-fetchAll f =
-  Foreign.Marshal.alloca \nPtr -> do
-    f nPtr Vulkan.vkNullPtr
-    n <- fromIntegral <$> Foreign.peek nPtr
-    allocaAndPeekArray n ( f nPtr )

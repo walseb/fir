@@ -2,10 +2,12 @@
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DuplicateRecordFields  #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE MagicHash              #-}
 {-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -44,17 +46,15 @@ import Data.Functor.Const
 import Data.Kind
   ( Type )
 import Data.Maybe
-  ( fromJust, listToMaybe )
+  ( fromJust, listToMaybe, maybeToList )
 import Data.Monoid
   ( Endo(Endo) )
-import Data.Proxy
-  ( Proxy(Proxy) )
 import Data.Word
   ( Word16, Word32 )
-import qualified Foreign.Marshal
-  ( withArray )
+import GHC.Exts
+  ( proxy# )
 import GHC.TypeNats
-  ( Nat, KnownNat, natVal )
+  ( Nat, KnownNat, natVal' )
 
 -- containers
 import qualified Data.Map.Strict as Map
@@ -74,6 +74,10 @@ import Data.Generics.Product.Constraints
 import Control.Monad.Log
   ( logDebug )
 
+-- resourcet
+import Control.Monad.Trans.Resource
+  ( allocate )
+
 -- text-short
 import Data.Text.Short
   ( ShortText )
@@ -88,16 +92,20 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
   ( evalStateT, get, put )
 
+-- vector
+import qualified Data.Vector as Boxed
+  ( Vector )
+import qualified Data.Vector as Boxed.Vector
+  ( empty, fromList, imap, replicate, toList )
+
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( Vector, fromList, index, ifoldl )
 
 -- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan                      as Vulkan
-import qualified Graphics.Vulkan.Core_1_0             as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create       as Vulkan
+import qualified Vulkan
+import qualified Vulkan.CStruct.Extends as Vulkan
+  ( SomeStruct(SomeStruct) )
 
 -- fir
 import FIR
@@ -145,7 +153,7 @@ data ResourceType where
 data family Resource ( res :: ResourceType ) ( use :: ResourceUsage n ) ( st :: ResourceInfo )
 
 data instance Resource res (DescriptorUse n) Named where
-  StageFlags :: KnownResourceType res => Vulkan.VkShaderStageFlags -> Resource res (DescriptorUse n) Named
+  StageFlags :: KnownResourceType res => Vulkan.ShaderStageFlags -> Resource res (DescriptorUse n) Named
 data instance Resource res InputUse Named = InputResource
 
 data instance Resource (Buffer Vertex  a) InputUse               (Specified PreInitialised) = VertexBuffer  [a]
@@ -154,18 +162,18 @@ data instance Resource (Buffer Uniform a) (DescriptorUse Single) (Specified PreI
 
 data instance Resource (Buffer bufType a) (DescriptorUse Single) (Specified Initialised)
   = BufferResource
-    { bufferObject :: Vulkan.VkBuffer
+    { bufferObject :: Vulkan.Buffer
     , pokeBuffer   :: a -> IO ()
     }
 data instance Resource (Buffer bufType a) InputUse (Specified Initialised)
   = InputBuffer
-    { inputBufferObject  :: Vulkan.VkBuffer
+    { inputBufferObject  :: Vulkan.Buffer
     , pokeInputBufferOff :: Int -> [a] -> IO ()
     , nbBufferElems      :: Int
     }
 
-data instance Resource ( Image Store  ) (DescriptorUse Single) (Specified st) = StorageImage Vulkan.VkImageView
-data instance Resource ( Image Sample ) (DescriptorUse Single) (Specified st) = SampledImage Vulkan.VkSampler Vulkan.VkImageView
+data instance Resource ( Image Store  ) (DescriptorUse Single) (Specified st) = StorageImage Vulkan.ImageView
+data instance Resource ( Image Sample ) (DescriptorUse Single) (Specified st) = SampledImage Vulkan.Sampler Vulkan.ImageView
 
 data instance Resource res (DescriptorUse Multiple :: ResourceUsage n) (Specified st)
   = Ixed ( V.Vector n ( Resource res (DescriptorUse Single :: ResourceUsage n) (Specified st) ) )
@@ -185,9 +193,9 @@ type SampledImages    i st = Descriptors ( Image Sample ) i st
 
 data PostInitialisationResult resources n
   = PostInitialisationResult
-      { resourceLayout       :: Vulkan.VkDescriptorSetLayout
-      , resourceDescriptors  :: V.Vector n Vulkan.VkDescriptorSet
-      , bindBuffersCommand   :: forall v. MonadVulkan v => Vulkan.VkCommandBuffer -> v ()
+      { resourceLayout       :: Vulkan.DescriptorSetLayout
+      , resourceDescriptors  :: V.Vector n Vulkan.DescriptorSet
+      , bindBuffersCommand   :: forall v. MonadVulkan v => Vulkan.CommandBuffer -> v ()
       , initialisedResources :: resources n Post
       }
 
@@ -204,14 +212,14 @@ initialiseResources
          ( resources n Post )
     , HasConstraints' ( CanUpdateResource n ) ( resources n Post )
     )
-  => Vulkan.VkPhysicalDevice
-  -> Vulkan.VkDevice
+  => Vulkan.PhysicalDevice
+  -> Vulkan.Device
   -> resources n Named
   -> resources n Pre
   -> m (PostInitialisationResult resources n)
 initialiseResources physicalDevice device resourceFlags resourcesPre = do
   let
-    descriptorTypesAndFlags :: [ (Vulkan.VkDescriptorType, Vulkan.VkShaderStageFlags) ]
+    descriptorTypesAndFlags :: [ (Vulkan.DescriptorType, Vulkan.ShaderStageFlags) ]
     descriptorTypesAndFlags =
       foldrC @HasDescriptorTypeAndFlags
         ( \ res flags -> case descriptorTypeAndFlags res of
@@ -221,10 +229,10 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
         resourceFlags
         []
 
-    descriptorTypes :: [ Vulkan.VkDescriptorType ]
+    descriptorTypes :: [ Vulkan.DescriptorType ]
     descriptorTypes = map fst descriptorTypesAndFlags
     n :: Int
-    n = fromIntegral ( natVal ( Proxy @n ) )
+    n = fromIntegral ( natVal' @n proxy# )
     nb :: ShortText
     nb = ShortText.pack ( show n )
 
@@ -236,7 +244,7 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
       *> createDescriptorSetLayout device descriptorTypesAndFlags
   descriptorSets      <-
     logDebug ( "Allocating " <> nb <> " descriptor sets" )
-      *> allocateDescriptorSets device descriptorPool descriptorSetLayout n
+      *> allocateDescriptorSets @n device descriptorPool descriptorSetLayout
 
   ( resourcesPost :: resources n Post )
      <- logDebug "Initialising resources" *>
@@ -244,19 +252,19 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
             ( initialiseResource physicalDevice device )
         ) resourcesPre
 
-  ( descriptors :: V.Vector n Vulkan.VkDescriptorSet ) <-
+  ( descriptors :: V.Vector n Vulkan.DescriptorSet ) <-
     ( logDebug "Updating descriptor sets" *> ) . ( `evalStateT` descriptorSets ) $ do
         ( theseDescriptorSets, nextDescriptorSets ) <- splitAt n <$> get
         put nextDescriptorSets
         let
-          descriptors :: V.Vector n Vulkan.VkDescriptorSet
+          descriptors :: V.Vector n Vulkan.DescriptorSet
           descriptors = fromJust $ V.fromList theseDescriptorSets
         lift ( updateDescriptorSets device descriptors resourcesPost )
         pure descriptors
 
   let
-    indexBuffers  :: [ ( Vulkan.VkBuffer, Vulkan.VkIndexType ) ]
-    vertexBuffers :: [ Vulkan.VkBuffer ]
+    indexBuffers  :: [ ( Vulkan.Buffer, Vulkan.IndexType ) ]
+    vertexBuffers :: [ Vulkan.Buffer ]
     (indexBuffers, vertexBuffers) =
       foldrC @(CanUpdateResource n)
         ( \ res ( indexBinds, vertexBinds) -> case bindingInformation @n res of
@@ -267,7 +275,7 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
         resourcesPost
         ( [], [] )
 
-    bindingCommand :: forall v. MonadVulkan v => Vulkan.VkCommandBuffer -> v ()
+    bindingCommand :: forall v. MonadVulkan v => Vulkan.CommandBuffer -> v ()
     bindingCommand = bufferBindingCommand ( listToMaybe indexBuffers ) vertexBuffers
 
   pure
@@ -282,84 +290,72 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
 
 createDescriptorSetLayout
   :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> [ ( Vulkan.VkDescriptorType, Vulkan.VkShaderStageFlags ) ]
-  -> m Vulkan.VkDescriptorSetLayout
-createDescriptorSetLayout device descriptorTypes =
-  managedVulkanResource createInfo
-    ( Vulkan.vkCreateDescriptorSetLayout  device )
-    ( Vulkan.vkDestroyDescriptorSetLayout device )
+  => Vulkan.Device
+  -> [ ( Vulkan.DescriptorType, Vulkan.ShaderStageFlags ) ]
+  -> m Vulkan.DescriptorSetLayout
+createDescriptorSetLayout device descriptorTypes = snd <$> Vulkan.withDescriptorSetLayout device createInfo Nothing allocate
 
       where
-        bindings :: [ Vulkan.VkDescriptorSetLayoutBinding ]
-        bindings = zip descriptorTypes [0..] <&> \ ( ( descType, descStageFlags ), i ) ->
-          Vulkan.createVk
-            (  Vulkan.set @"binding"            i
-            &* Vulkan.set @"descriptorType"     descType
-            &* Vulkan.set @"descriptorCount"    1
-            &* Vulkan.set @"stageFlags"         descStageFlags
-            &* Vulkan.set @"pImmutableSamplers" Vulkan.VK_NULL
-            )
-        createInfo :: Vulkan.VkDescriptorSetLayoutCreateInfo
+        bindings :: Boxed.Vector Vulkan.DescriptorSetLayoutBinding
+        bindings = ( `Boxed.Vector.imap` ( Boxed.Vector.fromList descriptorTypes ) ) \ i ( descType, descStageFlags ) ->
+          Vulkan.DescriptorSetLayoutBinding
+            { Vulkan.binding           = fromIntegral i
+            , Vulkan.descriptorType    = descType
+            , Vulkan.descriptorCount   = 1
+            , Vulkan.stageFlags        = descStageFlags
+            , Vulkan.immutableSamplers = Boxed.Vector.empty
+            }
+        createInfo :: Vulkan.DescriptorSetLayoutCreateInfo '[]
         createInfo =
-          Vulkan.createVk
-            (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
-            &* Vulkan.set @"pNext" Vulkan.VK_NULL
-            &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-            &* Vulkan.setListCountAndRef @"bindingCount" @"pBindings" bindings
-            )
+          Vulkan.DescriptorSetLayoutCreateInfo
+            { Vulkan.next     = ()
+            , Vulkan.flags    = Vulkan.zero
+            , Vulkan.bindings = bindings
+            }
 
 createDescriptorPool
   :: MonadVulkan m
-  => Vulkan.VkDevice
+  => Vulkan.Device
   -> Int
-  -> [ Vulkan.VkDescriptorType ]
-  -> m Vulkan.VkDescriptorPool
-createDescriptorPool device maxSets descTypes =
-  managedVulkanResource createInfo
-  ( Vulkan.vkCreateDescriptorPool  device )
-  ( Vulkan.vkDestroyDescriptorPool device )
+  -> [ Vulkan.DescriptorType ]
+  -> m Vulkan.DescriptorPool
+createDescriptorPool device maxSets descTypes = snd <$> Vulkan.withDescriptorPool device createInfo Nothing allocate
 
     where
-      poolSizes :: [ Vulkan.VkDescriptorPoolSize ]
+      poolSizes :: [ Vulkan.DescriptorPoolSize ]
       poolSizes =
         counts descTypes <&> \ ( descType, descCount ) ->
-          Vulkan.createVk
-          (  Vulkan.set @"type" descType
-          &* Vulkan.set @"descriptorCount" ( fromIntegral maxSets * descCount )
-          )
-      createInfo :: Vulkan.VkDescriptorPoolCreateInfo
+          Vulkan.DescriptorPoolSize
+          { Vulkan.type'           = descType
+          , Vulkan.descriptorCount = fromIntegral maxSets * descCount
+          }
+      createInfo :: Vulkan.DescriptorPoolCreateInfo '[]
       createInfo =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
-          &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"flags" Vulkan.VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
-          &* Vulkan.setListCountAndRef @"poolSizeCount" @"pPoolSizes" poolSizes
-          &* Vulkan.set @"maxSets" ( fromIntegral maxSets )
-          )
+        Vulkan.DescriptorPoolCreateInfo
+          { Vulkan.next      = ()
+          , Vulkan.flags     = Vulkan.DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
+          , Vulkan.poolSizes = Boxed.Vector.fromList poolSizes
+          , Vulkan.maxSets   = fromIntegral maxSets
+          }
 
 allocateDescriptorSets
-  :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> Vulkan.VkDescriptorPool
-  -> Vulkan.VkDescriptorSetLayout
-  -> Int
-  -> m [Vulkan.VkDescriptorSet]
-allocateDescriptorSets dev descriptorPool layout0 count =
-  managedVulkanResources count allocateInfo
-    ( Vulkan.vkAllocateDescriptorSets dev )
-    ( Vulkan.vkFreeDescriptorSets     dev descriptorPool )
-
-      where
-        allocateInfo :: Vulkan.VkDescriptorSetAllocateInfo
-        allocateInfo =
-          Vulkan.createVk
-            (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-            &* Vulkan.set @"pNext" Vulkan.VK_NULL
-            &* Vulkan.set @"descriptorPool" descriptorPool
-            &* Vulkan.setListCountAndRef @"descriptorSetCount" @"pSetLayouts"
-                 ( replicate count layout0 )
-            )
+  :: forall n m
+  .  ( KnownNat n, MonadVulkan m )
+  => Vulkan.Device
+  -> Vulkan.DescriptorPool
+  -> Vulkan.DescriptorSetLayout
+  -> m [ Vulkan.DescriptorSet ]
+allocateDescriptorSets dev descriptorPool layout0 = Boxed.Vector.toList . snd <$> Vulkan.withDescriptorSets dev allocateInfo allocate
+  where
+    count :: Int
+    count = fromIntegral ( natVal' @n proxy# )
+    allocateInfo :: Vulkan.DescriptorSetAllocateInfo '[]
+    allocateInfo =
+      Vulkan.DescriptorSetAllocateInfo
+        { Vulkan.next           = ()
+        , Vulkan.descriptorPool = descriptorPool
+        , Vulkan.setLayouts     = Boxed.Vector.replicate count layout0
+        }
 
 counts :: (Ord a, Num i) => [ a ] -> [ (a, i) ]
 counts = Map.toList . foldr ( \ a -> Map.insertWith (+) a 1 ) Map.empty
@@ -370,23 +366,18 @@ updateDescriptorSets
   .  ( MonadVulkan m
      , HasConstraints' ( CanUpdateResource n ) ( resources n Post )
      )
-  => Vulkan.VkDevice
-  -> V.Vector n Vulkan.VkDescriptorSet
+  => Vulkan.Device
+  -> V.Vector n Vulkan.DescriptorSet
   -> resources n Post
   -> m ()
 updateDescriptorSets device descriptorSets resourceSet =
-  liftIO $
-    Foreign.Marshal.withArray
-      writes $ \writesPtr ->
-        Vulkan.vkUpdateDescriptorSets device
-          ( fromIntegral $ length writes )
-          writesPtr
-          0 -- no descriptor copies
-          Vulkan.vkNullPtr
+  Vulkan.updateDescriptorSets device
+    writes
+    Boxed.Vector.empty -- no descriptor copies
     where
-      writes :: [ Vulkan.VkWriteDescriptorSet ]
-      writes = V.ifoldl descriptorSetWrites [] descriptorSets
-      descriptorSetWrites :: [ Vulkan.VkWriteDescriptorSet ] -> Finite n -> Vulkan.VkDescriptorSet -> [ Vulkan.VkWriteDescriptorSet ]
+      writes :: Boxed.Vector ( Vulkan.SomeStruct Vulkan.WriteDescriptorSet )
+      writes = Boxed.Vector.fromList $ V.ifoldl descriptorSetWrites [] descriptorSets
+      descriptorSetWrites :: [ Vulkan.SomeStruct Vulkan.WriteDescriptorSet ] -> Finite n -> Vulkan.DescriptorSet -> [ Vulkan.SomeStruct Vulkan.WriteDescriptorSet ]
       descriptorSetWrites writesAcc i descriptorSet
         = writesAcc ++
         ( zipWith (&) [0..] $
@@ -398,31 +389,23 @@ updateDescriptorSets device descriptorSets resourceSet =
 
 bufferBindingCommand
   :: MonadVulkan m
-  => Maybe ( Vulkan.VkBuffer, Vulkan.VkIndexType )
-  -> [ Vulkan.VkBuffer ]
-  -> Vulkan.VkCommandBuffer
+  => Maybe ( Vulkan.Buffer, Vulkan.IndexType )
+  -> [ Vulkan.Buffer ]
+  -> Vulkan.CommandBuffer
   -> m ()
 bufferBindingCommand mbIndexBuffer vertexBuffers commandBuffer = do
 
-  let
-    nbVertexBuffers :: Int
-    nbVertexBuffers = length vertexBuffers
-
-  liftIO $
-    Foreign.Marshal.withArray vertexBuffers $ \buffers ->
-      Foreign.Marshal.withArray ( replicate nbVertexBuffers 0 ) $ \offsets ->
-        Vulkan.vkCmdBindVertexBuffers
-          commandBuffer
-          0
-          ( fromIntegral nbVertexBuffers )
-          buffers
-          offsets
+  Vulkan.cmdBindVertexBuffers
+    commandBuffer
+    0
+    ( Boxed.Vector.fromList vertexBuffers )
+    ( pure 0 )
 
   case mbIndexBuffer of
     Nothing               -> pure ()
     Just ( buff, ixType ) ->
       liftIO $
-        Vulkan.vkCmdBindIndexBuffer
+        Vulkan.cmdBindIndexBuffer
           commandBuffer
           buff
           0 -- no offset
@@ -440,16 +423,16 @@ foldrC f s = coerce foldF
 
 -- Constraints used with a generic fold to obtain the resource types and flags.
 class KnownResourceType (res :: ResourceType) where
-  descriptorType :: Vulkan.VkDescriptorType
+  descriptorType :: Vulkan.DescriptorType
 instance KnownResourceType (Buffer Uniform a) where
-  descriptorType = Vulkan.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+  descriptorType = Vulkan.DESCRIPTOR_TYPE_UNIFORM_BUFFER
 instance KnownResourceType (Image Store) where
-  descriptorType = Vulkan.VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+  descriptorType = Vulkan.DESCRIPTOR_TYPE_STORAGE_IMAGE
 instance KnownResourceType (Image Sample) where
-  descriptorType = Vulkan.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+  descriptorType = Vulkan.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
 
 class HasDescriptorTypeAndFlags a where
-  descriptorTypeAndFlags :: a -> Maybe ( Vulkan.VkDescriptorType, Vulkan.VkShaderStageFlags )
+  descriptorTypeAndFlags :: a -> Maybe ( Vulkan.DescriptorType, Vulkan.ShaderStageFlags )
 instance ( KnownResourceType res )
   => HasDescriptorTypeAndFlags ( Resource res (DescriptorUse n) Named )
   where
@@ -461,8 +444,8 @@ instance HasDescriptorTypeAndFlags ( Resource res InputUse Named ) where
 class CanInitialiseResource a b | a -> b where
   initialiseResource
     :: MonadVulkan m
-    => Vulkan.VkPhysicalDevice
-    -> Vulkan.VkDevice
+    => Vulkan.PhysicalDevice
+    -> Vulkan.Device
     -> a
     -> m b
 
@@ -516,14 +499,14 @@ instance
     Ixed <$> traverse ( initialiseResource physicalDevice device ) ixData
 
 data BindingInformation
-  = BindIndexBuffer  Vulkan.VkBuffer Word32 Vulkan.VkIndexType
-  | BindVertexBuffer Vulkan.VkBuffer
+  = BindIndexBuffer  Vulkan.Buffer Word32 Vulkan.IndexType
+  | BindVertexBuffer Vulkan.Buffer
 
 -- Constraint used to turn resource into updating information:
 --    * update the descriptor set with descriptor write
 --    * keep track of how to bind resources.
 class CanUpdateResource n a where
-  descriptorWrites :: Vulkan.VkDescriptorSet -> Finite n -> a -> [ Word32 -> Vulkan.VkWriteDescriptorSet ]
+  descriptorWrites :: Vulkan.DescriptorSet -> Finite n -> a -> [ Word32 -> Vulkan.SomeStruct Vulkan.WriteDescriptorSet ]
   bindingInformation :: a -> Maybe BindingInformation
 
 
@@ -537,14 +520,14 @@ instance ValidIndexingType a => CanUpdateResource n ( Resource (Buffer Index a) 
     = Just (BindIndexBuffer inputBufferObject (fromIntegral nbBufferElems) ( indexType @a ) )
 
 class ValidIndexingType (i :: Type) where
-  indexType :: Vulkan.VkIndexType
+  indexType :: Vulkan.IndexType
 instance ValidIndexingType Word32 where
-  indexType = Vulkan.VK_INDEX_TYPE_UINT32
+  indexType = Vulkan.INDEX_TYPE_UINT32
 instance ValidIndexingType Word16 where
-  indexType = Vulkan.VK_INDEX_TYPE_UINT16
+  indexType = Vulkan.INDEX_TYPE_UINT16
 {-
 instance ValidIndexingType Word8 where
-  indexType = Vulkan.VK_INDEX_TYPE_UINT8_EXT
+  indexType = Vulkan.INDEX_TYPE_UINT8_EXT
 -}
 
 instance
@@ -552,18 +535,16 @@ instance
   => CanUpdateResource n
       ( Resource (Buffer bufType a) ( DescriptorUse Single :: ResourceUsage n ) (Specified Initialised) )
  where
-  descriptorWrites descriptorSet _ ( BufferResource buffer _ ) = (:[]) $ \bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType a) ) bindingNumber [bufferDesc] setImageInfo
+  descriptorWrites descriptorSet _ ( BufferResource buffer _ ) = (:[]) \ bindingNumber ->
+    mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType a) ) bindingNumber [bufferDesc] Nothing
       where
-        setImageInfo :: Vulkan.CreateVkStruct Vulkan.VkWriteDescriptorSet '["pImageInfo"] ()
-        setImageInfo = Vulkan.set @"pImageInfo" Vulkan.VK_NULL
-        bufferDesc :: Vulkan.VkDescriptorBufferInfo
+        bufferDesc :: Vulkan.DescriptorBufferInfo
         bufferDesc =
-          Vulkan.createVk
-            (  Vulkan.set @"buffer" buffer
-            &* Vulkan.set @"offset" 0
-            &* Vulkan.set @"range" ( fromIntegral Vulkan.VK_WHOLE_SIZE )
-            )
+          Vulkan.DescriptorBufferInfo
+            { Vulkan.buffer = buffer
+            , Vulkan.offset = 0
+            , Vulkan.range  = Vulkan.WHOLE_SIZE
+            }
   bindingInformation _ = Nothing
 
 
@@ -572,16 +553,15 @@ instance
       ( Resource ( Image Store ) ( DescriptorUse Single :: ResourceUsage n ) (Specified Initialised) )
   where
   descriptorWrites descriptorSet _ ( StorageImage imgView ) = (:[]) $ \bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Image Store) ) bindingNumber [] setImageInfo
+    mkDescriptorWrite descriptorSet ( descriptorType @(Image Store) ) bindingNumber [] ( Just imageInfo )
       where
+        imageInfo :: Vulkan.DescriptorImageInfo
         imageInfo =
-          Vulkan.createVk
-            (  Vulkan.set @"sampler"     Vulkan.VK_NULL
-            &* Vulkan.set @"imageView"   imgView
-            &* Vulkan.set @"imageLayout" Vulkan.VK_IMAGE_LAYOUT_GENERAL
-            )
-        setImageInfo :: Vulkan.CreateVkStruct Vulkan.VkWriteDescriptorSet '["pImageInfo"] ()
-        setImageInfo = Vulkan.setVkRef @"pImageInfo" imageInfo
+          Vulkan.DescriptorImageInfo
+            { Vulkan.sampler     = Vulkan.NULL_HANDLE
+            , Vulkan.imageView   = imgView
+            , Vulkan.imageLayout = Vulkan.IMAGE_LAYOUT_GENERAL
+            }
   bindingInformation _ = Nothing
 
 instance
@@ -589,16 +569,15 @@ instance
       ( Resource ( Image Sample ) ( DescriptorUse Single :: ResourceUsage n ) (Specified Initialised) )
   where
   descriptorWrites descriptorSet _ ( SampledImage sampler imgView ) = (:[]) $ \bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Image Sample) ) bindingNumber [] setImageInfo
+    mkDescriptorWrite descriptorSet ( descriptorType @(Image Sample) ) bindingNumber [] ( Just imageInfo )
       where
+        imageInfo :: Vulkan.DescriptorImageInfo
         imageInfo =
-          Vulkan.createVk
-            (  Vulkan.set @"sampler"     sampler
-            &* Vulkan.set @"imageView"   imgView
-            &* Vulkan.set @"imageLayout" Vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-            )
-        setImageInfo :: Vulkan.CreateVkStruct Vulkan.VkWriteDescriptorSet '["pImageInfo"] ()
-        setImageInfo = Vulkan.setVkRef @"pImageInfo" imageInfo
+          Vulkan.DescriptorImageInfo
+            { Vulkan.sampler     = sampler
+            , Vulkan.imageView   = imgView
+            , Vulkan.imageLayout = Vulkan.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            }
   bindingInformation _ = Nothing
 
 instance
@@ -613,22 +592,22 @@ instance
   bindingInformation _ = Nothing
 
 mkDescriptorWrite
-  :: Vulkan.VkDescriptorSet
-  -> Vulkan.VkDescriptorType
+  :: Vulkan.DescriptorSet
+  -> Vulkan.DescriptorType
   -> Word32
-  -> [Vulkan.VkDescriptorBufferInfo]
-  -> Vulkan.CreateVkStruct Vulkan.VkWriteDescriptorSet '["pImageInfo"] ()
-  -> Vulkan.VkWriteDescriptorSet
-mkDescriptorWrite descSet descType bindingNumber bufferInfo setImageInfo =
-  Vulkan.createVk
-    (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
-    &* Vulkan.set @"pNext" Vulkan.VK_NULL
-    &* Vulkan.set @"dstSet"             descSet
-    &* Vulkan.set @"dstBinding"         bindingNumber
-    &* Vulkan.set @"descriptorType"     descType
-    &* Vulkan.set @"pTexelBufferView"   Vulkan.VK_NULL
-    &* setImageInfo
-    &* Vulkan.setListRef @"pBufferInfo" bufferInfo
-    &* Vulkan.set @"descriptorCount"    1
-    &* Vulkan.set @"dstArrayElement"    0
-    )
+  -> [Vulkan.DescriptorBufferInfo]
+  -> Maybe Vulkan.DescriptorImageInfo
+  -> Vulkan.SomeStruct Vulkan.WriteDescriptorSet
+mkDescriptorWrite descSet descType bindingNumber bufferInfos imageInfo =
+  Vulkan.SomeStruct $
+    Vulkan.WriteDescriptorSet
+      { Vulkan.next             = ()
+      , Vulkan.dstSet           = descSet
+      , Vulkan.dstBinding       = bindingNumber
+      , Vulkan.descriptorType   = descType
+      , Vulkan.texelBufferView  = Boxed.Vector.empty
+      , Vulkan.imageInfo        = Boxed.Vector.fromList ( maybeToList imageInfo )
+      , Vulkan.bufferInfo       = Boxed.Vector.fromList bufferInfos
+      , Vulkan.descriptorCount  = 1
+      , Vulkan.dstArrayElement  = 0
+      }

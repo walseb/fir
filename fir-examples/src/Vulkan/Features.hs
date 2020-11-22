@@ -1,25 +1,18 @@
-{-# LANGUAGE BlockArguments   #-}
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE RecordWildCards  #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TypeApplications      #-}
 
 module Vulkan.Features where
 
 -- base
 import Data.Foldable
-  ( traverse_ )
-import Foreign.Ptr
-  ( Ptr )
+  ( foldl' )
 
--- containers
-import Data.Set
-  ( Set )
-import qualified Data.Set as Set
-  ( toList )
-
--- vulkan-api
-import qualified Graphics.Vulkan          as Vulkan
-import qualified Graphics.Vulkan.Core_1_0 as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir
 import FIR
@@ -28,47 +21,42 @@ import qualified FIR as SPIRV
 
 ----------------------------------------------------------------------------
 
-requiredFeatures :: ModuleRequirements -> IO (Vulkan.VkPhysicalDeviceFeatures)
-requiredFeatures ModuleRequirements { .. }
-  = Vulkan.newVkData \ptr -> do
-      Vulkan.clearStorable ptr
-      writeCapabilityFeatures requiredCapabilities ptr
+requiredFeatures :: ModuleRequirements -> Vulkan.PhysicalDeviceFeatures2 '[ Vulkan.PhysicalDeviceShaderFloat16Int8Features ] 
+requiredFeatures ( ModuleRequirements { requiredCapabilities } ) =
+  Vulkan.PhysicalDeviceFeatures2
+    { Vulkan.next     = ( shaderFloat16Int8Features, () )
+    , Vulkan.features = foldl' enableCapabilityFeature Vulkan.zero requiredCapabilities
+    }
+    where
+      shaderFloat16Int8Features :: Vulkan.PhysicalDeviceShaderFloat16Int8Features
+      shaderFloat16Int8Features =
+        Vulkan.PhysicalDeviceShaderFloat16Int8Features
+          { Vulkan.shaderFloat16 = SPIRV.Float16 `elem` requiredCapabilities
+          , Vulkan.shaderInt8    = SPIRV.Int8    `elem` requiredCapabilities
+          }
 
-writeCapabilityFeatures :: Set SPIRV.Capability -> Ptr Vulkan.VkPhysicalDeviceFeatures -> IO ()
-writeCapabilityFeatures caps ptr = traverse_ ( writeCapabilityFeature ptr ) ( Set.toList caps )
-
-writeCapabilityFeature :: Ptr Vulkan.VkPhysicalDeviceFeatures -> SPIRV.Capability -> IO ()
-writeCapabilityFeature ptr SPIRV.SampledCubeArray  = Vulkan.writeField @"imageCubeArray"     ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.ImageCubeArray    = Vulkan.writeField @"imageCubeArray"     ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.Geometry          = Vulkan.writeField @"geometryShader"     ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.Tessellation      = Vulkan.writeField @"tessellationShader" ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.SampleRateShading = Vulkan.writeField @"sampleRateShading"  ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.TessellationPointSize = Vulkan.writeField @"shaderTessellationAndGeometryPointSize" ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.GeometryPointSize     = Vulkan.writeField @"shaderTessellationAndGeometryPointSize" ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.ImageGatherExtended   = Vulkan.writeField @"shaderImageGatherExtended"              ptr Vulkan.VK_TRUE
+enableCapabilityFeature :: Vulkan.PhysicalDeviceFeatures -> SPIRV.Capability -> Vulkan.PhysicalDeviceFeatures
+enableCapabilityFeature feats SPIRV.SampledCubeArray                 = feats { Vulkan.imageCubeArray                           = True }
+enableCapabilityFeature feats SPIRV.ImageCubeArray                   = feats { Vulkan.imageCubeArray                           = True }
+enableCapabilityFeature feats SPIRV.Geometry                         = feats { Vulkan.geometryShader                           = True }
+enableCapabilityFeature feats SPIRV.Tessellation                     = feats { Vulkan.tessellationShader                       = True }
+enableCapabilityFeature feats SPIRV.SampleRateShading                = feats { Vulkan.sampleRateShading                        = True }
+enableCapabilityFeature feats SPIRV.TessellationPointSize            = feats { Vulkan.shaderTessellationAndGeometryPointSize   = True }
+enableCapabilityFeature feats SPIRV.GeometryPointSize                = feats { Vulkan.shaderTessellationAndGeometryPointSize   = True }
+enableCapabilityFeature feats SPIRV.ImageGatherExtended              = feats { Vulkan.shaderImageGatherExtended                = True }
 -- shaderStorageImageExtendedFormats
-writeCapabilityFeature ptr SPIRV.StorageImageMultisample           = Vulkan.writeField @"shaderStorageImageMultisample"           ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.StorageImageReadWithoutFormat     = Vulkan.writeField @"shaderStorageImageReadWithoutFormat"     ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.StorageImageWriteWithoutFormat    = Vulkan.writeField @"shaderStorageImageWriteWithoutFormat"    ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.UniformBufferArrayDynamicIndexing = Vulkan.writeField @"shaderUniformBufferArrayDynamicIndexing" ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.SampledImageArrayDynamicIndexing  = Vulkan.writeField @"shaderSampledImageArrayDynamicIndexing"  ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.StorageBufferArrayDynamicIndexing = Vulkan.writeField @"shaderStorageBufferArrayDynamicIndexing" ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.StorageImageArrayDynamicIndexing  = Vulkan.writeField @"shaderStorageImageArrayDynamicIndexing"  ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.ClipDistance    = Vulkan.writeField @"shaderClipDistance"      ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.CullDistance    = Vulkan.writeField @"shaderCullDistance"      ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.Float64         = Vulkan.writeField @"shaderFloat64"           ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.Int64           = Vulkan.writeField @"shaderInt64"             ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.Int16           = Vulkan.writeField @"shaderInt16"             ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.SparseResidency = Vulkan.writeField @"shaderResourceResidency" ptr Vulkan.VK_TRUE
-writeCapabilityFeature ptr SPIRV.MinLod          = Vulkan.writeField @"shaderResourceMinLod"    ptr Vulkan.VK_TRUE
-writeCapabilityFeature _ _ = pure ()
-
-{-
--- VkPhysicalDeviceShaderFloat16Int8FeaturesKHR not yet implemented in 'vulkan-api' package
-setCapabilityShaderFloat16Int8Feature
-  :: SPIRV.Capability
-  -> Ptr Vulkan.VkPhysicalDeviceShaderFloat16Int8FeaturesKHR
-  -> IO ()
-setCapabilityShaderFloat16Int8Feature Float16 ptr = Vulkan.writeField @"shaderFloat16" ptr Vulkan.VK_TRUE
-setCapabilityShaderFloat16Int8Feature Int8    ptr = Vulkan.writeField @"shaderInt8"    ptr Vulkan.VK_TRUE
--}
+enableCapabilityFeature feats SPIRV.StorageImageMultisample           = feats { Vulkan.shaderStorageImageMultisample           = True }
+enableCapabilityFeature feats SPIRV.StorageImageReadWithoutFormat     = feats { Vulkan.shaderStorageImageReadWithoutFormat     = True }
+enableCapabilityFeature feats SPIRV.StorageImageWriteWithoutFormat    = feats { Vulkan.shaderStorageImageWriteWithoutFormat    = True }
+enableCapabilityFeature feats SPIRV.UniformBufferArrayDynamicIndexing = feats { Vulkan.shaderUniformBufferArrayDynamicIndexing = True }
+enableCapabilityFeature feats SPIRV.SampledImageArrayDynamicIndexing  = feats { Vulkan.shaderSampledImageArrayDynamicIndexing  = True }
+enableCapabilityFeature feats SPIRV.StorageBufferArrayDynamicIndexing = feats { Vulkan.shaderStorageBufferArrayDynamicIndexing = True }
+enableCapabilityFeature feats SPIRV.StorageImageArrayDynamicIndexing  = feats { Vulkan.shaderStorageImageArrayDynamicIndexing  = True }
+enableCapabilityFeature feats SPIRV.ClipDistance                      = feats { Vulkan.shaderClipDistance                      = True }
+enableCapabilityFeature feats SPIRV.CullDistance                      = feats { Vulkan.shaderCullDistance                      = True }
+enableCapabilityFeature feats SPIRV.Float64                           = feats { Vulkan.shaderFloat64                           = True }
+enableCapabilityFeature feats SPIRV.Int64                             = feats { Vulkan.shaderInt64                             = True }
+enableCapabilityFeature feats SPIRV.Int16                             = feats { Vulkan.shaderInt16                             = True }
+enableCapabilityFeature feats SPIRV.SparseResidency                   = feats { Vulkan.shaderResourceResidency                 = True }
+enableCapabilityFeature feats SPIRV.MinLod                            = feats { Vulkan.shaderResourceMinLod                    = True }
+enableCapabilityFeature feats _                                       = feats

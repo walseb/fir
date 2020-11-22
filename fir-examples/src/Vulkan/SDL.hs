@@ -57,9 +57,8 @@ import Control.Monad.IO.Class
 -- vector
 import qualified Data.Vector.Storable as Vector
 
--- vulkan-api
-import qualified Graphics.Vulkan as Vulkan
-import qualified Graphics.Vulkan.Ext.VK_KHR_surface as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir-examples
 import Vulkan.Monad
@@ -118,12 +117,12 @@ setWindowIcon (SDL.Window window) iconPath = do
 createSurface
   :: MonadVulkan m
   => SDL.Window
-  -> Vulkan.VkInstance
+  -> Vulkan.Instance
   -> m SDL.Video.Vulkan.VkSurfaceKHR
-createSurface window vulkanInstance
-  = snd <$> allocate
-    ( SDL.Video.Vulkan.vkCreateSurface window ( Foreign.castPtr vulkanInstance ) )
-    ( \ surf -> Vulkan.vkDestroySurfaceKHR vulkanInstance ( Vulkan.VkPtr surf ) Vulkan.VK_NULL_HANDLE )
+createSurface window vulkanInstance =
+  snd <$> allocate
+    ( SDL.Video.Vulkan.vkCreateSurface window ( Foreign.castPtr $ Vulkan.instanceHandle vulkanInstance ) )
+    ( \ surf -> Vulkan.destroySurfaceKHR vulkanInstance ( Vulkan.SurfaceKHR surf ) Nothing )
 
 getNeededExtensions :: MonadIO m => SDL.Window -> m [CString]
 getNeededExtensions = SDL.Video.Vulkan.vkGetInstanceExtensions

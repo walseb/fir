@@ -1,6 +1,7 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE TypeApplications      #-}
 
 module FIR.Examples.Common where
 
@@ -14,23 +15,22 @@ import Data.Word
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( ReleaseKey, release )
+  ( ReleaseKey, allocate, release )
 
 -- transformers
 import Control.Monad.IO.Class
   ( liftIO )
 
+-- vector
+import qualified Data.Vector as Boxed.Vector
+  ( fromList, singleton )
+
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( Vector, unzip )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan as Vulkan
-import qualified Graphics.Vulkan.Core_1_0 as Vulkan
-import qualified Graphics.Vulkan.Ext.VK_KHR_swapchain as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir-examples
 import Vulkan.Attachment
@@ -44,18 +44,18 @@ import Vulkan.Screenshot
 
 recordSimpleIndexedDrawCall
   :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> Vulkan.VkCommandPool
-  -> Vulkan.VkFramebuffer
-  -> (Vulkan.VkRenderPass, [Vulkan.VkClearValue])
-  -> Vulkan.VkDescriptorSet
-  -> ( Vulkan.VkCommandBuffer -> m () )
-  -> ( Vulkan.VkImage, Vulkan.VkExtent2D)
-  -> Maybe (Vulkan.VkImage, Vulkan.VkExtent3D)
+  => Vulkan.Device
+  -> Vulkan.CommandPool
+  -> Vulkan.Framebuffer
+  -> (Vulkan.RenderPass, [Vulkan.ClearValue])
+  -> Vulkan.DescriptorSet
+  -> ( Vulkan.CommandBuffer -> m () )
+  -> ( Vulkan.Image, Vulkan.Extent2D)
+  -> Maybe (Vulkan.Image, Vulkan.Extent3D)
   -> Word32
-  -> Vulkan.VkPipelineLayout
+  -> Vulkan.PipelineLayout
   -> VkPipeline
-  -> m (ReleaseKey, Vulkan.VkCommandBuffer)
+  -> m (ReleaseKey, Vulkan.CommandBuffer)
 recordSimpleIndexedDrawCall
   dev commandPool framebuffer (renderPass, clearValues)
   descriptorSet cmdBindBuffers
@@ -74,7 +74,7 @@ recordSimpleIndexedDrawCall
     cmdBindDescriptorSets commandBuffer pipelineLayout pipeline [ descriptorSet ]
 
     liftIO $
-      Vulkan.vkCmdDrawIndexed
+      Vulkan.cmdDrawIndexed
         commandBuffer
         nbIndices
         1 -- instance count
@@ -87,11 +87,11 @@ recordSimpleIndexedDrawCall
     case mbScreenshotImage of
       Just (screenshotImage, extent3D) ->
         cmdTakeScreenshot
-          ( Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT )
+          ( Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, Vulkan.ACCESS_COLOR_ATTACHMENT_WRITE_BIT )
           commandBuffer extent3D
           ( swapchainImage,
-            ( Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-            , Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+            ( Vulkan.IMAGE_LAYOUT_PRESENT_SRC_KHR
+            , Vulkan.IMAGE_LAYOUT_PRESENT_SRC_KHR
             )
           )
           screenshotImage
@@ -104,15 +104,15 @@ recordSimpleIndexedDrawCall
 
 recordSimpleDispatch
   :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> Vulkan.VkCommandPool
-  -> Vulkan.VkDescriptorSet
-  -> ( Vulkan.VkImage, Vulkan.VkExtent2D)
-  -> Maybe (Vulkan.VkImage, Vulkan.VkExtent3D)
+  => Vulkan.Device
+  -> Vulkan.CommandPool
+  -> Vulkan.DescriptorSet
+  -> ( Vulkan.Image, Vulkan.Extent2D)
+  -> Maybe (Vulkan.Image, Vulkan.Extent3D)
   -> (Word32, Word32, Word32)
-  -> Vulkan.VkPipelineLayout
+  -> Vulkan.PipelineLayout
   -> VkPipeline
-  -> m (ReleaseKey, Vulkan.VkCommandBuffer)
+  -> m (ReleaseKey, Vulkan.CommandBuffer)
 recordSimpleDispatch
   dev commandPool
   descriptorSet
@@ -125,36 +125,36 @@ recordSimpleDispatch
     beginCommandBuffer commandBuffer
 
     cmdTransitionImageLayout commandBuffer swapchainImage
-      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-      Vulkan.VK_IMAGE_LAYOUT_GENERAL
-      ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
-      ( Vulkan.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.VK_ACCESS_SHADER_WRITE_BIT )
+      Vulkan.IMAGE_LAYOUT_UNDEFINED
+      Vulkan.IMAGE_LAYOUT_GENERAL
+      ( Vulkan.PIPELINE_STAGE_TOP_OF_PIPE_BIT, Vulkan.zero )
+      ( Vulkan.PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.ACCESS_SHADER_WRITE_BIT )
 
     cmdBindPipeline commandBuffer pipeline
     cmdBindDescriptorSets commandBuffer pipelineLayout pipeline [ descriptorSet ]
 
     liftIO $
-      Vulkan.vkCmdDispatch
+      Vulkan.cmdDispatch
         commandBuffer
         globalSize_x globalSize_y globalSize_z
 
     case mbScreenshotImage of
       Just (screenshotImage, extent3D)
         -> cmdTakeScreenshot
-              ( Vulkan.VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.VK_ACCESS_SHADER_WRITE_BIT )
+              ( Vulkan.PIPELINE_STAGE_COMPUTE_SHADER_BIT, Vulkan.ACCESS_SHADER_WRITE_BIT )
               commandBuffer extent3D
               ( swapchainImage,
-                ( Vulkan.VK_IMAGE_LAYOUT_GENERAL
-                , Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+                ( Vulkan.IMAGE_LAYOUT_GENERAL
+                , Vulkan.IMAGE_LAYOUT_PRESENT_SRC_KHR
                 )
               )
               screenshotImage
       Nothing
         -> cmdTransitionImageLayout commandBuffer swapchainImage
-              Vulkan.VK_IMAGE_LAYOUT_GENERAL
-              Vulkan.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-              ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
-              ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.VK_ZERO_FLAGS )
+              Vulkan.IMAGE_LAYOUT_GENERAL
+              Vulkan.IMAGE_LAYOUT_PRESENT_SRC_KHR
+              ( Vulkan.PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.zero )
+              ( Vulkan.PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.zero )
 
     endCommandBuffer commandBuffer
 
@@ -164,72 +164,59 @@ recordSimpleDispatch
 
 simpleRenderPass
   :: MonadVulkan m
-  => Vulkan.VkDevice
-  -> SubpassAttachments (Vulkan.VkAttachmentDescription, AttachmentType)
-  -> m Vulkan.VkRenderPass
-simpleRenderPass dev attachments =
-  let
+  => Vulkan.Device
+  -> SubpassAttachments (Vulkan.AttachmentDescription, AttachmentType)
+  -> m Vulkan.RenderPass
+simpleRenderPass dev attachments = snd <$> Vulkan.withRenderPass dev createInfo Nothing allocate
+  where
 
     attachmentReferences   :: SubpassAttachmentReferences
-    attachmentDescriptions :: [ Vulkan.VkAttachmentDescription ]
+    attachmentDescriptions :: [ Vulkan.AttachmentDescription ]
     ( attachmentReferences, attachmentDescriptions )
       = attachmentReferencesAndDescriptions attachments
 
-    subpass :: Vulkan.VkSubpassDescription
+    subpass :: Vulkan.SubpassDescription
     subpass = createSubpass attachmentReferences
 
-    dependency1 :: Vulkan.VkSubpassDependency
+    dependency1 :: Vulkan.SubpassDependency
     dependency1 =
-      Vulkan.createVk
-        (  Vulkan.set @"srcSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
-        &* Vulkan.set @"dstSubpass"    Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-        &* Vulkan.set @"srcAccessMask" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-        &* Vulkan.set @"dstAccessMask"
-              (    Vulkan.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
-               .|. Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+      Vulkan.SubpassDependency
+        { Vulkan.srcSubpass      = Vulkan.SUBPASS_EXTERNAL
+        , Vulkan.dstSubpass      = Vulkan.zero
+        , Vulkan.srcStageMask    = Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+        , Vulkan.srcAccessMask   = Vulkan.zero
+        , Vulkan.dstStageMask    = Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+        , Vulkan.dstAccessMask   =
+              (    Vulkan.ACCESS_COLOR_ATTACHMENT_READ_BIT
+               .|. Vulkan.ACCESS_COLOR_ATTACHMENT_WRITE_BIT
               )
-        )
+        , Vulkan.dependencyFlags = Vulkan.zero
+        }
 
-    dependency2 :: Vulkan.VkSubpassDependency
+    dependency2 :: Vulkan.SubpassDependency
     dependency2 =
-      Vulkan.createVk
-        (  Vulkan.set @"srcSubpass"    Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.set @"dstSubpass"    Vulkan.VK_SUBPASS_EXTERNAL
-        &* Vulkan.set @"srcStageMask"  Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-        &* Vulkan.set @"srcAccessMask"
-              (    Vulkan.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
-               .|. Vulkan.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+      Vulkan.SubpassDependency
+        { Vulkan.srcSubpass      = Vulkan.zero
+        , Vulkan.dstSubpass      = Vulkan.SUBPASS_EXTERNAL
+        , Vulkan.srcStageMask    = Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+        , Vulkan.srcAccessMask   =
+              (    Vulkan.ACCESS_COLOR_ATTACHMENT_READ_BIT
+               .|. Vulkan.ACCESS_COLOR_ATTACHMENT_WRITE_BIT
               )
-        &* Vulkan.set @"dstStageMask"  Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
-        &* Vulkan.set @"dstAccessMask" Vulkan.VK_ZERO_FLAGS
-        )
+        , Vulkan.dstStageMask    = Vulkan.PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+        , Vulkan.dstAccessMask   = Vulkan.zero
+        , Vulkan.dependencyFlags = Vulkan.zero
+        }
 
-    createInfo :: Vulkan.VkRenderPassCreateInfo
+    createInfo :: Vulkan.RenderPassCreateInfo '[]
     createInfo =
-      Vulkan.createVk
-        (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO
-        &* Vulkan.set @"pNext" Vulkan.vkNullPtr
-        &* Vulkan.set @"flags" Vulkan.VK_ZERO_FLAGS
-        &* Vulkan.setListCountAndRef
-              @"attachmentCount"
-              @"pAttachments"
-              attachmentDescriptions
-        &* Vulkan.setListCountAndRef
-              @"subpassCount"
-              @"pSubpasses"
-              [ subpass ]
-        &* Vulkan.setListCountAndRef
-              @"dependencyCount"
-              @"pDependencies"
-              [ dependency1, dependency2 ]
-        )
-  in
-    managedVulkanResource createInfo
-      ( Vulkan.vkCreateRenderPass  dev )
-      ( Vulkan.vkDestroyRenderPass dev )
-
+      Vulkan.RenderPassCreateInfo
+        { Vulkan.next         = ()
+        , Vulkan.flags        = Vulkan.zero
+        , Vulkan.attachments  = Boxed.Vector.fromList attachmentDescriptions
+        , Vulkan.subpasses    = Boxed.Vector.singleton subpass 
+        , Vulkan.dependencies = Boxed.Vector.fromList [ dependency1, dependency2 ]
+        }
 
 ----------------------------------------------------------------------------
 -- Specify the resource management that needs to take place
@@ -240,10 +227,10 @@ simpleRenderPass dev attachments =
 
 record2CommandBuffersFromShaders
   :: ( Traversable t, MonadVulkan m )
-  => ( t Vulkan.VkShaderModule -> m ( ReleaseKey, pipeline ) )
+  => ( t Vulkan.ShaderModule -> m ( ReleaseKey, pipeline ) )
   -> ( pipeline -> m ( V.Vector i ( ReleaseKey, commands ) ) )
   -> ( pipeline -> m ( V.Vector i ( ReleaseKey, commands ) ) )
-  -> t Vulkan.VkShaderModule
+  -> t Vulkan.ShaderModule
   -> m ( m (), ( V.Vector i commands, V.Vector i commands) )
 record2CommandBuffersFromShaders
   createPipeline

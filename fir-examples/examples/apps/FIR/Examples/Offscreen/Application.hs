@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DuplicateRecordFields      #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -20,6 +21,8 @@ module FIR.Examples.Offscreen.Application ( offscreen ) where
 -- base
 import Data.Bits
   ( (.|.) )
+import Data.String
+  ( IsString )
 import Data.Word
   ( Word32 )
 import GHC.Generics
@@ -39,15 +42,16 @@ import qualified Data.Text.Short as ShortText
 import Control.Monad.IO.Class
   ( liftIO )
 
+-- vector
+import qualified Data.Vector as Boxed.Vector
+  ( empty, fromList, singleton )
+
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( head )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan.Core_1_0       as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir
 import FIR
@@ -83,7 +87,7 @@ shaderCompilationResult
         ]
      )
 
-appName :: String
+appName :: IsString a => a
 appName = "fir-examples - Offscreen"
 shortName :: String
 shortName = "offscreen" -- output filename
@@ -174,12 +178,13 @@ offscreen = runVulkan () do
   -------------------------------------------
   -- Initialise Vulkan context.
 
-  features <- liftIO ( requiredFeatures reqs )
+  let
+    features = requiredFeatures reqs
   VulkanContext{..} <-
-    initialiseContext @Headless appName []
+    initialiseContext @Headless appName [] []
       RenderInfo
         { features
-        , queueType   = Vulkan.VK_QUEUE_GRAPHICS_BIT
+        , queueType   = Vulkan.QUEUE_GRAPHICS_BIT
         , surfaceInfo = ()
         }
 
@@ -187,38 +192,38 @@ offscreen = runVulkan () do
   -- Create images.
 
   let
-    colFmt :: Vulkan.VkFormat
-    colFmt = Vulkan.VK_FORMAT_B8G8R8A8_UNORM
+    colFmt :: Vulkan.Format
+    colFmt = Vulkan.FORMAT_B8G8R8A8_UNORM
 
-    depthFmt :: Vulkan.VkFormat
-    depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
+    depthFmt :: Vulkan.Format
+    depthFmt = Vulkan.FORMAT_D32_SFLOAT
 
     width, height :: Num a => a
     width  = 1920
     height = 1080
 
-    extent :: Vulkan.VkExtent2D
-    extent =
-      Vulkan.createVk
-        (  Vulkan.set @"width"  width
-        &* Vulkan.set @"height" height
-        )
+    extent :: Vulkan.Extent2D
+    extent
+      = Vulkan.Extent2D
+          { Vulkan.width  = width
+          , Vulkan.height = height
+          }
 
-    extent3D :: Vulkan.VkExtent3D
-    extent3D =
-      Vulkan.createVk
-        (  Vulkan.set @"width"  width
-        &* Vulkan.set @"height" height
-        &* Vulkan.set @"depth"  1
-        )
+    extent3D :: Vulkan.Extent3D
+    extent3D
+      = Vulkan.Extent3D
+          { Vulkan.width  = width
+          , Vulkan.height = height
+          , Vulkan.depth  = 1
+          }
 
     colorImageInfo, depthImageInfo :: ImageInfo
     colorImageInfo =
       Default2DImageInfo extent3D colFmt
-        ( Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT .|. Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT )
+        ( Vulkan.IMAGE_USAGE_COLOR_ATTACHMENT_BIT .|. Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT )
     depthImageInfo =
       Default2DImageInfo extent3D depthFmt
-        Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+        Vulkan.IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 
   (colorImage, _) <-
     createImage physicalDevice device
@@ -227,18 +232,18 @@ offscreen = runVulkan () do
   colorImageView <-
     createImageView
       device colorImage
-      Vulkan.VK_IMAGE_VIEW_TYPE_2D
+      Vulkan.IMAGE_VIEW_TYPE_2D
       colFmt
-      Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+      Vulkan.IMAGE_ASPECT_COLOR_BIT
 
   (depthImage, _) <-
     createImage physicalDevice device
       depthImageInfo
       [ ]
   depthImageView <- createImageView device depthImage
-    Vulkan.VK_IMAGE_VIEW_TYPE_2D
+    Vulkan.IMAGE_VIEW_TYPE_2D
     depthFmt
-    Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
+    Vulkan.IMAGE_ASPECT_DEPTH_BIT
 
   (screenshotImage, screenshotImageMemory) <-
     createScreenshotImage physicalDevice device
@@ -247,40 +252,34 @@ offscreen = runVulkan () do
   renderPass <- logDebug "Creating a render pass" *>
     simpleRenderPass device
       ( noAttachments
-        { colorAttachments = [ presentableColorAttachmentDescription colFmt ]
-        , mbDepthStencilAttachment = Just (depthAttachmentDescription depthFmt)
+        { colorAttachments = Boxed.Vector.singleton $ presentableColorAttachmentDescription colFmt
+        , mbDepthStencilAttachment = Just ( depthAttachmentDescription depthFmt )
         }
       )
   framebuffer <- createFramebuffer device renderPass extent [colorImageView, depthImageView]
 
   let
-    clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
+    
+    clearValues :: [ Vulkan.ClearValue ] -- in bijection with framebuffer attachments
     clearValues = [ pinkClear
-                    , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
-                    ]
+                  , Vulkan.DepthStencil depthStencilClear
+                  ]
       where
-        pink :: Vulkan.VkClearColorValue
-        pink =
-          Vulkan.createVk
-            (  Vulkan.setAt @"float32" @0 1.0
-            &* Vulkan.setAt @"float32" @1 0.5
-            &* Vulkan.setAt @"float32" @2 0.7
-            &* Vulkan.setAt @"float32" @3 1
-            )
+        pink :: Vulkan.ClearColorValue
+        pink = Vulkan.Float32 ( 1.0, 0.5, 0.7, 1.0 )
 
-        pinkClear :: Vulkan.VkClearValue
-        pinkClear = Vulkan.createVk ( Vulkan.set @"color"  pink )
+        pinkClear :: Vulkan.ClearValue
+        pinkClear = Vulkan.Color pink
 
-        depthStencilClear :: Vulkan.VkClearDepthStencilValue
-        depthStencilClear = Vulkan.createVk
-          ( Vulkan.set @"depth" 1 &* Vulkan.set @"stencil" 0 )
+        depthStencilClear :: Vulkan.ClearDepthStencilValue
+        depthStencilClear = Vulkan.ClearDepthStencilValue { Vulkan.depth = 1, Vulkan.stencil = 0 }
 
     -------------------------------------------
     -- Manage resources.
 
     resourceFlags :: ResourceSet 1 Named
     resourceFlags = ResourceSet
-      ( StageFlags Vulkan.VK_SHADER_STAGE_VERTEX_BIT )
+      ( StageFlags Vulkan.SHADER_STAGE_VERTEX_BIT )
       InputResource
       InputResource
 
@@ -292,11 +291,11 @@ offscreen = runVulkan () do
   -- Create command buffers and record commands into them.
 
 
-  commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
+  commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
   queue       <- getQueue device 0
 
   pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
-  let pipelineInfo = VkPipelineInfo extent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
+  let pipelineInfo = VkPipelineInfo extent Vulkan.SAMPLE_COUNT_1_BIT pipelineLayout
 
   shaders <- logDebug "Loading shaders" *> traverse (loadShader device) shaderPipeline
 
@@ -325,7 +324,6 @@ offscreen = runVulkan () do
 
   writeScreenshotData shortName device extent screenshotImageMemory
 
-  liftIO ( Vulkan.vkQueueWaitIdle queue )
-    >>= throwVkResult
+  Vulkan.queueWaitIdle queue
 
   pure ()

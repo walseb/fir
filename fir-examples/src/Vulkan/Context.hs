@@ -27,8 +27,10 @@ import GHC.TypeLits
   ( KnownNat )
 
 -- bytestring
+import Data.ByteString
+  ( ByteString )
 import qualified Data.ByteString.Short as ShortByteString
-  ( packCString )
+  ( packCString, fromShort )
 
 -- filepath
 import System.FilePath
@@ -45,7 +47,7 @@ import qualified SDL
 import Data.Text.Short
   ( ShortText )
 import qualified Data.Text.Short as ShortText
-  ( intercalate, fromShortByteString )
+  ( intercalate, fromShortByteString, toShortByteString )
 
 -- transformers
 import Control.Monad.IO.Class
@@ -53,12 +55,16 @@ import Control.Monad.IO.Class
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
-  ( withSizedList )
+  ( withSized )
 
 -- vulkan-api
-import qualified Graphics.Vulkan                      as Vulkan
-import qualified Graphics.Vulkan.Core_1_0             as Vulkan
-import qualified Graphics.Vulkan.Ext.VK_KHR_surface   as Vulkan
+import qualified Vulkan
+import qualified Vulkan.CStruct.Extends as Vulkan
+  ( Extendss, PokeChain )
+
+-- fir
+import qualified FIR as SPIRV
+  ( Extension )
 
 -- fir-examples
 import FIR.Examples.Paths
@@ -99,18 +105,22 @@ type family ContextSurfaceInfo ( ctx :: RenderingContext ) :: Type where
   ContextSurfaceInfo Headless      = ()
   ContextSurfaceInfo WithSwapchain = SurfaceInfo
 
-data RenderInfo ( ctx :: RenderingContext )
-  = RenderInfo
-  { features    :: Vulkan.VkPhysicalDeviceFeatures
-  , queueType   :: Vulkan.VkQueueFlags
-  , surfaceInfo :: ContextSurfaceInfo ctx
-  }
+data RenderInfo ( ctx :: RenderingContext ) where
+  RenderInfo
+    :: ( Vulkan.PokeChain fs
+       , Vulkan.Extendss Vulkan.DeviceCreateInfo fs
+       )
+    => { features    :: Vulkan.PhysicalDeviceFeatures2 fs
+       , queueType   :: Vulkan.QueueFlags
+       , surfaceInfo :: ContextSurfaceInfo ctx
+       }
+    -> RenderInfo ctx
 
 data SurfaceInfo
   = SurfaceInfo
   { surfaceWindow   :: SDL.Window
-  , preferredFormat :: Vulkan.VkSurfaceFormatKHR
-  , surfaceUsage    :: [ Vulkan.VkImageUsageFlags ]
+  , preferredFormat :: Vulkan.SurfaceFormatKHR
+  , surfaceUsage    :: [ Vulkan.ImageUsageFlags ]
   }
 
 data family ContextSwapchainInfo ( ctx :: RenderingContext ) :: Type
@@ -120,8 +130,8 @@ data instance ContextSwapchainInfo WithSwapchain where
 
 data VulkanContext ( ctx :: RenderingContext )
   = VulkanContext
-  { physicalDevice   :: Vulkan.VkPhysicalDevice
-  , device           :: Vulkan.VkDevice
+  { physicalDevice   :: Vulkan.PhysicalDevice
+  , device           :: Vulkan.Device
   , queueFamilyIndex :: Int
   , aSwapchainInfo   :: ContextSwapchainInfo ctx
   }
@@ -135,7 +145,7 @@ withSwapchainInfo
   -> r
 withSwapchainInfo ( ASwapchainInfo swapchain ) f = f swapchain
 
-initialiseWindow :: MonadVulkan m => WindowInfo -> m ( SDL.Window, [ CString ] )
+initialiseWindow :: MonadVulkan m => WindowInfo -> m ( SDL.Window, [ ByteString ] )
 initialiseWindow WindowInfo { .. } = do
   enableSDLLogging
   initializeSDL mouseMode
@@ -144,16 +154,16 @@ initialiseWindow WindowInfo { .. } = do
   neededExtensions <- logDebug "Loading needed extensions"     *> getNeededExtensions window
   extensionNames   <- traverse ( liftIO . peekCString ) neededExtensions
   logInfo $ "Needed instance extensions are: " <> ( ShortText.intercalate ", " extensionNames )
-  pure ( window, neededExtensions )
+  pure ( window, map ( ShortByteString.fromShort . ShortText.toShortByteString ) extensionNames )
 
 peekCString :: CString -> IO ShortText
 peekCString = fmap ( fromMaybe "???" . ShortText.fromShortByteString ) . ShortByteString.packCString
 
 initialiseContext
   :: forall ctx m. ( KnownRenderingContext ctx, MonadVulkan m )
-  => String -> [ CString ] -> RenderInfo ctx -> m ( VulkanContext ctx )
-initialiseContext appName neededExtensions RenderInfo { .. } = do
-  vkInstance       <- logDebug "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions
+  => ByteString -> [ ByteString ] -> [ SPIRV.Extension ] -> RenderInfo ctx -> m ( VulkanContext ctx )
+initialiseContext appName neededExtensions neededSPIRVExts RenderInfo { .. } = do
+  vkInstance       <- logDebug "Creating Vulkan instance"      *> createVulkanInstance appName neededExtensions neededSPIRVExts
   physicalDevice   <- logDebug "Creating physical device"      *> createPhysicalDevice vkInstance
   queueFamilyIndex <- logDebug "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice [queueType]
   ( device, aSwapchainInfo ) <- case renderingContext @ctx of
@@ -172,9 +182,9 @@ initialiseContext appName neededExtensions RenderInfo { .. } = do
           *> createSwapchain
                 physicalDevice device
                 surface surfaceFormat
-                ( foldr (.|.) Vulkan.VK_ZERO_FLAGS surfaceUsage )
-      swapchainImageList <- logDebug "Getting swapchain images" *> getSwapchainImages device swapchain
-      V.withSizedList swapchainImageList \ swapchainImages -> do
+                ( foldr (.|.) ( Vulkan.zero :: Vulkan.ImageUsageFlags ) surfaceUsage )
+      swapchainImageVec <- logDebug "Getting swapchain images" *> getSwapchainImages device swapchain
+      V.withSized swapchainImageVec \ swapchainImages -> do
         let swapchainInfo = SwapchainInfo {..}
         pure ( device, ASwapchainInfo swapchainInfo )
   pure ( VulkanContext {..} )

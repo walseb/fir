@@ -77,8 +77,8 @@ common vulkan-common
         >= 2.5.0 && <= 2.6
     , transformers
         ^>= 0.5.6.2
-    , vulkan-api
-        >= 1.1.4 && <= 1.4
+    , vulkan
+        >= 3.3 && < 3.7
 
 common apps-common
 
@@ -266,6 +266,33 @@ executable Hopf
 
   build-depends:
     hopf-shaders
+
+
+-----------------------------------
+-- Ising
+
+library ising-shaders
+
+  import: shaders-common
+
+  exposed-modules:
+    FIR.Examples.Ising.Shaders
+
+executable Ising
+
+  import: apps-common
+
+  main-is:
+    Main.hs
+
+  other-modules:
+    FIR.Examples.Ising.Application
+
+  hs-source-dirs:
+    examples/exes/Ising
+
+  build-depends:
+    ising-shaders
 
 
 -----------------------------------

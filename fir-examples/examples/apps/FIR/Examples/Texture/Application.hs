@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DuplicateRecordFields      #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -20,7 +21,7 @@ module FIR.Examples.Texture.Application (texture) where
 
 -- base
 import Control.Monad
-  ( (>=>), when )
+  ( when )
 import Data.Bits
   ( (.|.) )
 import Data.Coerce
@@ -32,6 +33,8 @@ import Data.Traversable
 import Data.Word
   ( Word8, Word32 )
 import qualified Foreign.Marshal
+import Foreign.Ptr
+  ( Ptr )
 import GHC.Generics
   ( Generic )
 
@@ -74,16 +77,16 @@ import Control.Monad.IO.Class
 import qualified Data.Vector.Storable as Vector
   ( unsafeWith )
 
+-- vector
+import qualified Data.Vector as Boxed.Vector
+  ( singleton )
+
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( fromTuple, zip, zip3, head, index )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan                as Vulkan
-import qualified Graphics.Vulkan.Core_1_0       as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir
 import FIR
@@ -173,27 +176,18 @@ nbIndices = fromIntegral $ length cubeIndices
 initialMVP :: M 4 4 Float
 initialMVP = modelViewProjection initialObserver Nothing
 
-clearValues :: [ Vulkan.VkClearValue ]
+clearValues :: [ Vulkan.ClearValue ]
 clearValues =
   [ tealClear
-  , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
+  , Vulkan.DepthStencil depthStencilClear
   ]
   where
-    teal :: Vulkan.VkClearColorValue
-    teal =
-      Vulkan.createVk
-        (  Vulkan.setAt @"float32" @0 0.1
-        &* Vulkan.setAt @"float32" @1 0.5
-        &* Vulkan.setAt @"float32" @2 0.7
-        &* Vulkan.setAt @"float32" @3 1
-        )
-
-    tealClear :: Vulkan.VkClearValue
-    tealClear = Vulkan.createVk ( Vulkan.set @"color" teal )
-
-    depthStencilClear :: Vulkan.VkClearDepthStencilValue
-    depthStencilClear = Vulkan.createVk
-      ( Vulkan.set @"depth" 1 &* Vulkan.set @"stencil" 0 )
+    teal :: Vulkan.ClearColorValue
+    teal = Vulkan.Float32 ( 0.1, 0.5, 0.7, 1.0 )
+    tealClear :: Vulkan.ClearValue
+    tealClear = Vulkan.Color teal
+    depthStencilClear :: Vulkan.ClearDepthStencilValue
+    depthStencilClear = Vulkan.ClearDepthStencilValue { Vulkan.depth = 1, Vulkan.stencil = 0 }
 
 ----------------------------------------------------------------------------
 -- Application.
@@ -223,26 +217,26 @@ texture = runVulkan initialState do
         , mouseMode  = SDL.RelativeLocation
         }
 
-  features <- liftIO ( requiredFeatures reqs )
   let
+    features = requiredFeatures reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
         , preferredFormat =
-            VkSurfaceFormatKHR
-              Vulkan.VK_FORMAT_B8G8R8A8_UNORM
-              Vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+            Vulkan.SurfaceFormatKHR
+              Vulkan.FORMAT_B8G8R8A8_UNORM
+              Vulkan.COLOR_SPACE_SRGB_NONLINEAR_KHR
         , surfaceUsage =
-            [ Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-            , Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+            [ Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT
+            , Vulkan.IMAGE_USAGE_COLOR_ATTACHMENT_BIT
             ]
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions
+    initialiseContext @WithSwapchain appName windowExtensions []
       RenderInfo
         { features
-        , queueType   = Vulkan.VK_QUEUE_GRAPHICS_BIT
+        , queueType   = Vulkan.QUEUE_GRAPHICS_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -250,28 +244,28 @@ texture = runVulkan initialState do
 
     let
       width, height :: Num a => a
-      width  = fromIntegral $ Vulkan.getField @"width"  swapchainExtent
-      height = fromIntegral $ Vulkan.getField @"height" swapchainExtent
+      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
 
-      extent3D :: Vulkan.VkExtent3D
+      extent3D :: Vulkan.Extent3D
       extent3D
-        = Vulkan.createVk
-            (  Vulkan.set @"width"  width
-            &* Vulkan.set @"height" height
-            &* Vulkan.set @"depth"  1
-            )
+        = Vulkan.Extent3D
+            { Vulkan.width  = width
+            , Vulkan.height = height
+            , Vulkan.depth  = 1
+            }
 
-      logoExtent3D :: Vulkan.VkExtent3D
+      logoExtent3D :: Vulkan.Extent3D
       logoExtent3D
-        = Vulkan.createVk
-            (  Vulkan.set @"width"  1024
-            &* Vulkan.set @"height" 1024
-            &* Vulkan.set @"depth"  1
-            )
+        = Vulkan.Extent3D
+            { Vulkan.width  = 1024
+            , Vulkan.height = 1024
+            , Vulkan.depth  = 1
+            }
 
-      colFmt, depthFmt :: Vulkan.VkFormat
-      colFmt   = Vulkan.getField @"format" surfaceFormat
-      depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
+      colFmt, depthFmt :: Vulkan.Format
+      colFmt   = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
+      depthFmt = Vulkan.FORMAT_D32_SFLOAT
 
     -------------------------------------------
     -- Create images.
@@ -282,25 +276,25 @@ texture = runVulkan initialState do
 
       logoStagingImageInfo, logoImageInfo, depthImageInfo :: ImageInfo
       logoStagingImageInfo =
-        ( Default2DImageInfo logoExtent3D Vulkan.VK_FORMAT_R8G8B8A8_UNORM
-            Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-        ) { imageLayout = Vulkan.VK_IMAGE_LAYOUT_PREINITIALIZED
-          , imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR
+        ( Default2DImageInfo logoExtent3D Vulkan.FORMAT_R8G8B8A8_UNORM
+            Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT
+        ) { imageLayout = Vulkan.IMAGE_LAYOUT_PREINITIALIZED
+          , imageTiling = Vulkan.IMAGE_TILING_LINEAR
           }
       logoImageInfo =
-        Default2DImageInfo logoExtent3D Vulkan.VK_FORMAT_R8G8B8A8_UNORM
-         (   Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT
-         .|. Vulkan.VK_IMAGE_USAGE_SAMPLED_BIT
+        Default2DImageInfo logoExtent3D Vulkan.FORMAT_R8G8B8A8_UNORM
+         (   Vulkan.IMAGE_USAGE_TRANSFER_DST_BIT
+         .|. Vulkan.IMAGE_USAGE_SAMPLED_BIT
          )
       depthImageInfo =
         Default2DImageInfo extent3D depthFmt
-          Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+          Vulkan.IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 
     (logoStagingImage, logoStagingImageMemory) <-
       createImage physicalDevice device
         logoStagingImageInfo
-        [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-        , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        [ Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT
+        , Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT
         ]
 
     logInfo "Loading logo."
@@ -312,17 +306,16 @@ texture = runVulkan initialState do
         Right (ImageRGBA8 img) -> img
         Right _ -> error "Logo not in the expected RGBA8 format."
 
-    logoStagingPtr :: Vulkan.Ptr Word8
-      <- coerce <$> allocaAndPeek
-                  ( Vulkan.vkMapMemory device logoStagingImageMemory
-                      0 (4 * 1024 * 1024) Vulkan.VK_ZERO_FLAGS
-                    >=> throwVkResult
-                  )
+    logoStagingPtr :: Ptr Word8
+      <- coerce <$>
+           ( Vulkan.mapMemory device logoStagingImageMemory
+               0 (4 * 1024 * 1024) Vulkan.zero
+           )
 
     liftIO $ Vector.unsafeWith (imageData logo) \logosrc ->
       Foreign.Marshal.copyBytes logoStagingPtr logosrc (4 * 1024 * 1024)
 
-    liftIO $ Vulkan.vkUnmapMemory device logoStagingImageMemory
+    liftIO $ Vulkan.unmapMemory device logoStagingImageMemory
 
     (logoImage, _) <-
       createImage physicalDevice device
@@ -332,13 +325,13 @@ texture = runVulkan initialState do
     logoImageView <-
       createImageView
         device logoImage
-        Vulkan.VK_IMAGE_VIEW_TYPE_2D
-        Vulkan.VK_FORMAT_R8G8B8A8_UNORM
-        Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+        Vulkan.IMAGE_VIEW_TYPE_2D
+        Vulkan.FORMAT_R8G8B8A8_UNORM
+        Vulkan.IMAGE_ASPECT_COLOR_BIT
 
     logoSampler <- createSampler device
 
-    commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
+    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
     queue       <- getQueue device 0
 
     ( _copyCommandBufferKey, logoCopyCommandBuffer ) <- allocateCommandBuffer device commandPool
@@ -346,56 +339,55 @@ texture = runVulkan initialState do
     beginCommandBuffer logoCopyCommandBuffer
 
     cmdTransitionImageLayout logoCopyCommandBuffer logoStagingImage
-      Vulkan.VK_IMAGE_LAYOUT_PREINITIALIZED
-      Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-      ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
-      ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
+      Vulkan.IMAGE_LAYOUT_PREINITIALIZED
+      Vulkan.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+      ( Vulkan.PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.zero )
+      ( Vulkan.PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.zero )
     cmdTransitionImageLayout logoCopyCommandBuffer logoImage
-      Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-      Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-      ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
-      ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
+      Vulkan.IMAGE_LAYOUT_UNDEFINED
+      Vulkan.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+      ( Vulkan.PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.zero )
+      ( Vulkan.PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.zero )
 
     let
-      noOffset :: Vulkan.VkOffset3D
+      noOffset :: Vulkan.Offset3D
       noOffset
-        = Vulkan.createVk
-            (  Vulkan.set @"x" 0
-            &* Vulkan.set @"y" 0
-            &* Vulkan.set @"z" 0
-            )
+        = Vulkan.Offset3D
+            { Vulkan.x = 0
+            , Vulkan.y = 0
+            , Vulkan.z = 0
+            }
 
-      layers :: Vulkan.VkImageSubresourceLayers
+      layers :: Vulkan.ImageSubresourceLayers
       layers
-        = Vulkan.createVk
-          (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-          &* Vulkan.set @"mipLevel"       0
-          &* Vulkan.set @"baseArrayLayer" 0
-          &* Vulkan.set @"layerCount"     1
-          )
-      logoImageCopy :: Vulkan.VkImageCopy
+        = Vulkan.ImageSubresourceLayers
+          { Vulkan.aspectMask     = Vulkan.IMAGE_ASPECT_COLOR_BIT
+          , Vulkan.mipLevel       = 0
+          , Vulkan.baseArrayLayer = 0
+          , Vulkan.layerCount     = 1
+          }
+      logoImageCopy :: Vulkan.ImageCopy
       logoImageCopy
-        = Vulkan.createVk
-          (  Vulkan.set @"srcSubresource" layers
-          &* Vulkan.set @"srcOffset"      noOffset
-          &* Vulkan.set @"dstSubresource" layers
-          &* Vulkan.set @"dstOffset"      noOffset
-          &* Vulkan.set @"extent"         logoExtent3D
-          )
+        = Vulkan.ImageCopy
+          { Vulkan.srcSubresource = layers
+          , Vulkan.srcOffset      = noOffset
+          , Vulkan.dstSubresource = layers
+          , Vulkan.dstOffset      = noOffset
+          , Vulkan.extent         = logoExtent3D
+          }
 
-    liftIO $ Vulkan.vkCmdCopyImage logoCopyCommandBuffer
+    Vulkan.cmdCopyImage logoCopyCommandBuffer
       logoStagingImage
-      Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+      Vulkan.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
       logoImage
-      Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-      1
-      ( Vulkan.unsafePtr logoImageCopy )
+      Vulkan.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+      ( Boxed.Vector.singleton logoImageCopy )
 
     cmdTransitionImageLayout logoCopyCommandBuffer logoImage
-      Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-      Vulkan.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-      ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
-      ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
+      Vulkan.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+      Vulkan.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+      ( Vulkan.PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.zero )
+      ( Vulkan.PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.zero )
 
     endCommandBuffer logoCopyCommandBuffer
 
@@ -411,8 +403,8 @@ texture = runVulkan initialState do
     renderPass <- logDebug "Creating a render pass" *>
       simpleRenderPass device
         ( noAttachments
-          { colorAttachments = [ presentableColorAttachmentDescription colFmt ]
-          , mbDepthStencilAttachment = Just (depthAttachmentDescription depthFmt)
+          { colorAttachments = Boxed.Vector.singleton $ presentableColorAttachmentDescription colFmt
+          , mbDepthStencilAttachment = Just ( depthAttachmentDescription depthFmt )
           }
         )
 
@@ -423,18 +415,18 @@ texture = runVulkan initialState do
             colorImageView
               <- createImageView
                     device swapchainImage
-                    Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                    Vulkan.IMAGE_VIEW_TYPE_2D
                     colFmt
-                    Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+                    Vulkan.IMAGE_ASPECT_COLOR_BIT
             (depthImage, _)
               <- createImage physicalDevice device
                     depthImageInfo
                     [ ]
             depthImageView
               <- createImageView device depthImage
-                    Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                    Vulkan.IMAGE_VIEW_TYPE_2D
                     depthFmt
-                    Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
+                    Vulkan.IMAGE_ASPECT_DEPTH_BIT
             let attachments =
                   V.fromTuple
                     ( (swapchainImage, colorImageView)
@@ -456,8 +448,8 @@ texture = runVulkan initialState do
 
       resourceFlags :: ResourceSet numImages Named
       resourceFlags = ResourceSet
-        ( StageFlags Vulkan.VK_SHADER_STAGE_VERTEX_BIT )
-        ( StageFlags Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT )
+        ( StageFlags Vulkan.SHADER_STAGE_VERTEX_BIT )
+        ( StageFlags Vulkan.SHADER_STAGE_FRAGMENT_BIT )
         InputResource
         InputResource
 
@@ -479,7 +471,7 @@ texture = runVulkan initialState do
     submitted    <- createSemaphore device
 
     pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
-    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
+    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.SAMPLE_COUNT_1_BIT pipelineLayout
 
     shaders <- logDebug "Loading shaders" *> traverse (\path -> (path, ) <$> loadShader device path) shaderPipeline
 
@@ -560,14 +552,13 @@ texture = runVulkan initialState do
       submitCommandBuffer
         queue
         commandBuffer
-        [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
+        [(nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
         [submitted]
         Nothing
 
       present queue swapchain nextImageIndex [submitted]
 
-      liftIO ( Vulkan.vkQueueWaitIdle queue )
-        >>= throwVkResult
+      Vulkan.queueWaitIdle queue
 
       when ( takeScreenshot action ) $
         writeScreenshotData shortName device swapchainExtent

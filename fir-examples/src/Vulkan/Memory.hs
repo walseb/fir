@@ -1,13 +1,15 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternSynonyms     #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PatternSynonyms       #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module Vulkan.Memory where
 
@@ -18,24 +20,20 @@ import Data.Bits
 import Data.Foldable
   ( for_ )
 import Data.Word
-  ( Word32 )
-import qualified Foreign
-import qualified Foreign.Marshal
+  ( Word32, Word64 )
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( ReleaseKey )
+  ( ReleaseKey, allocate )
 
--- transformers
-import Control.Monad.IO.Class
-  ( liftIO )
+-- vector
+import qualified Data.Vector as Boxed
+  ( Vector )
+import qualified Data.Vector as Boxed.Vector
+  ( (!?), imapMaybe )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan as Vulkan
-import qualified Graphics.Vulkan.Core_1_0 as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir-examples
 import Vulkan.Monad
@@ -44,67 +42,53 @@ import Vulkan.Monad
 
 allocateMemory
   :: MonadVulkan m
-  => Vulkan.VkPhysicalDevice
-  -> Vulkan.VkDevice
-  -> Vulkan.VkMemoryRequirements
-  -> [ Vulkan.VkMemoryPropertyFlags ]
-  -> m ( ReleaseKey, Vulkan.VkDeviceMemory )
+  => Vulkan.PhysicalDevice
+  -> Vulkan.Device
+  -> Vulkan.MemoryRequirements
+  -> [ Vulkan.MemoryPropertyFlags ]
+  -> m ( ReleaseKey, Vulkan.DeviceMemory )
 allocateMemory physicalDevice device memReqs requiredFlags = do
 
-    memoryProperties :: Vulkan.VkPhysicalDeviceMemoryProperties
-      <- allocaAndPeek
-          ( Vulkan.vkGetPhysicalDeviceMemoryProperties physicalDevice )
+    Vulkan.PhysicalDeviceMemoryProperties
+      { Vulkan.memoryTypes
+      } <- Vulkan.getPhysicalDeviceMemoryProperties physicalDevice
 
     let
-      memoryTypeCount :: Word32
-      memoryTypeCount = Vulkan.getField @"memoryTypeCount" memoryProperties
-
-    memoryTypes :: [ Vulkan.VkMemoryType ]
-      <- liftIO $
-        Foreign.Marshal.peekArray @Vulkan.VkMemoryType
-          ( fromIntegral memoryTypeCount )
-          ( Vulkan.unsafePtr memoryProperties
-              `Foreign.plusPtr`
-              Vulkan.fieldOffset @"memoryTypes" @Vulkan.VkPhysicalDeviceMemoryProperties
-          )
-
-    let
-      possibleMemoryTypeIndices :: [ Word32 ]
-      possibleMemoryTypeIndices = do
-
-        ( i, memoryType ) <- zip [ 0 .. ] memoryTypes
-
+      possibleMemoryTypeIndices :: Boxed.Vector Word32
+      possibleMemoryTypeIndices = ( `Boxed.Vector.imapMaybe` memoryTypes ) \ i_int memoryType -> do
+        let
+          i :: Word32
+          i = fromIntegral i_int
         guard
           ( testBit
-              ( Vulkan.getField @"memoryTypeBits" memReqs )
-              ( fromIntegral i )
+              ( ( Vulkan.memoryTypeBits :: Vulkan.MemoryRequirements -> Word32 ) memReqs )
+              i_int
           )
-
         for_ requiredFlags
-          ( \f ->
-              guard ( Vulkan.getField @"propertyFlags" memoryType .&. f > Vulkan.VK_ZERO_FLAGS )
+          ( \ f ->
+              guard ( Vulkan.propertyFlags memoryType .&. f > Vulkan.zero )
           )
-
         pure i
 
-    memoryTypeIndex :: Word32
-      <- case possibleMemoryTypeIndices of
-              [] -> error $  "No available memory types with requirements:\n"
-                          ++ show memReqs
-                          ++ "\nand with flags:\n"
-                          ++ show requiredFlags
-              ( i : _ ) -> pure i
+      memoryTypeIndex :: Word32
+      memoryTypeIndex =
+        case possibleMemoryTypeIndices Boxed.Vector.!? 0 of
+          Nothing ->
+            error
+              ( "No available memory types with requirements:\n"
+              ++ show memReqs
+              ++ "\nand with flags:\n"
+              ++ show requiredFlags
+              )
+          Just i -> i
 
     let
-      allocateInfo :: Vulkan.VkMemoryAllocateInfo
+      allocateInfo :: Vulkan.MemoryAllocateInfo '[]
       allocateInfo =
-        Vulkan.createVk
-          (  Vulkan.set @"sType" Vulkan.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
-          &* Vulkan.set @"pNext" Vulkan.VK_NULL
-          &* Vulkan.set @"allocationSize" ( Vulkan.getField @"size" memReqs )
-          &* Vulkan.set @"memoryTypeIndex" memoryTypeIndex
-          )
+        Vulkan.MemoryAllocateInfo
+          { Vulkan.next = ()
+          , Vulkan.allocationSize  = ( Vulkan.size :: Vulkan.MemoryRequirements -> Word64 ) memReqs
+          , Vulkan.memoryTypeIndex = memoryTypeIndex
+          }
 
-    allocateVulkanResource allocateInfo
-      ( Vulkan.vkAllocateMemory device )
-      ( Vulkan.vkFreeMemory device )
+    Vulkan.withMemory device allocateInfo Nothing allocate

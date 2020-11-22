@@ -74,7 +74,7 @@ import Control.Monad.IO.Unlift
   ( MonadUnliftIO, askRunInIO )
 
 -- vulkan-api
-import qualified Graphics.Vulkan as Vulkan
+import qualified Vulkan
 
 -- fir-examples
 import FIR.Examples.Paths
@@ -99,9 +99,9 @@ readTVarWithCleanup tvar = do
 shaderReloadWatcher
   :: forall t l r
   . ( Traversable t, MonadVulkan l, MonadUnliftIO l )
-  => Vulkan.VkDevice
-  -> t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) )
-  -> ( t Vulkan.VkShaderModule -> l ( l (), r ) )
+  => Vulkan.Device
+  -> t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) )
+  -> ( t Vulkan.ShaderModule -> l ( l (), r ) )
   -> l ( TVar ( ( l () , r ), l () ) )
 shaderReloadWatcher device shaders createFromShaders = do
   logDebug "Starting shader reload watcher."
@@ -130,9 +130,9 @@ shaderReloadWatcher device shaders createFromShaders = do
 resourceReloader
   :: forall t l r
   .  ( Traversable t, MonadVulkan l )
-  => Vulkan.VkDevice
-  -> t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) )
-  -> ( t Vulkan.VkShaderModule -> l ( l (), r ) )
+  => Vulkan.Device
+  -> t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) )
+  -> ( t Vulkan.ShaderModule -> l ( l (), r ) )
   -> TMVar (Set FilePath)
   -> TVar ( ( l () , r ), l () )
   -> l ()
@@ -141,7 +141,7 @@ resourceReloader device shaders createFromShaders modifiedFilesTMVar resourcesTV
     where
       -- Outer loop: wait for a file to have been modified.
       outerLoop
-        :: t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) )
+        :: t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) )
         -> l ()
       outerLoop oldShaders = do
         modifiedPaths <- liftIO . atomically $ takeTMVar modifiedFilesTMVar
@@ -164,7 +164,7 @@ resourceReloader device shaders createFromShaders modifiedFilesTMVar resourcesTV
 
       -- Inner loop: load new shaders and use them to create new resources.
       innerLoop
-        :: t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) )
+        :: t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) )
         -> Set FilePath
         -> l ()
       innerLoop oldShaders modifiedPaths = do
@@ -210,10 +210,10 @@ resourceReloader device shaders createFromShaders modifiedFilesTMVar resourcesTV
 
 loadNewShaders
   :: ( MonadVulkan l, Traversable t )
-  => Vulkan.VkDevice
-  -> t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) )
+  => Vulkan.Device
+  -> t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) )
   -> Set FilePath
-  -> l ( t ( FilePath, (ReleaseKey, Vulkan.VkShaderModule) ), [ ReleaseKey ] )
+  -> l ( t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) ), [ ReleaseKey ] )
 loadNewShaders device shaders modifiedPaths =
   ( `runStateT` [] ) $ for shaders \ oldShader@( path, ( oldKey, _ ) ) ->
     if any ( equalFilePath path ) modifiedPaths

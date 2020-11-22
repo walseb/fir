@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DuplicateRecordFields      #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -54,16 +55,16 @@ import qualified Data.Text.Short as ShortText
 import Control.Monad.IO.Class
   ( liftIO )
 
+-- vector
+import qualified Data.Vector as Boxed.Vector
+  ( singleton )
+
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( fromTuple, zip, zip3, head, index )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan                as Vulkan
-import qualified Graphics.Vulkan.Core_1_0       as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir
 import FIR
@@ -174,25 +175,18 @@ initialResourceSet = ResourceSet
     where
       initialMVP = modelViewProjection bezierInitialObserver Nothing
 
-clearValues :: [ Vulkan.VkClearValue ] -- in bijection with framebuffer attachments
+clearValues :: [ Vulkan.ClearValue ] -- in bijection with framebuffer attachments
 clearValues =
   [ tealClear
-  , Vulkan.createVk ( Vulkan.set @"depthStencil" depthStencilClear )
+  , Vulkan.DepthStencil depthStencilClear
   ]
   where
-    teal :: Vulkan.VkClearColorValue
-    teal =
-      Vulkan.createVk
-        (  Vulkan.setAt @"float32" @0 0.1
-        &* Vulkan.setAt @"float32" @1 0.5
-        &* Vulkan.setAt @"float32" @2 0.7
-        &* Vulkan.setAt @"float32" @3 1
-        )
-    tealClear :: Vulkan.VkClearValue
-    tealClear = Vulkan.createVk ( Vulkan.set @"color" teal )
-    depthStencilClear :: Vulkan.VkClearDepthStencilValue
-    depthStencilClear = Vulkan.createVk
-      ( Vulkan.set @"depth" 1 &* Vulkan.set @"stencil" 0 )
+    teal :: Vulkan.ClearColorValue
+    teal = Vulkan.Float32 ( 0.1, 0.5, 0.7, 1 )
+    tealClear :: Vulkan.ClearValue
+    tealClear = Vulkan.Color teal
+    depthStencilClear :: Vulkan.ClearDepthStencilValue
+    depthStencilClear = Vulkan.ClearDepthStencilValue { Vulkan.depth = 1, Vulkan.stencil = 0 }
 
 ----------------------------------------------------------------------------
 -- Application.
@@ -222,26 +216,26 @@ bezier = runVulkan bezierInitialState do
         , mouseMode  = SDL.RelativeLocation
         }
 
-  features <- liftIO ( requiredFeatures reqs )
   let
+    features = requiredFeatures reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
         , preferredFormat =
-            VkSurfaceFormatKHR
-              Vulkan.VK_FORMAT_B8G8R8A8_UNORM
-              Vulkan.VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+            Vulkan.SurfaceFormatKHR
+              Vulkan.FORMAT_B8G8R8A8_UNORM
+              Vulkan.COLOR_SPACE_SRGB_NONLINEAR_KHR
         , surfaceUsage =
-            [ Vulkan.VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-            , Vulkan.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+            [ Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT
+            , Vulkan.IMAGE_USAGE_COLOR_ATTACHMENT_BIT
             ]
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions
+    initialiseContext @WithSwapchain appName windowExtensions []
       RenderInfo
         { features
-        , queueType   = Vulkan.VK_QUEUE_GRAPHICS_BIT
+        , queueType   = Vulkan.QUEUE_GRAPHICS_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -253,31 +247,31 @@ bezier = runVulkan bezierInitialState do
     let
 
       width, height :: Num a => a
-      width  = fromIntegral $ Vulkan.getField @"width"  swapchainExtent
-      height = fromIntegral $ Vulkan.getField @"height" swapchainExtent
+      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
 
-      extent3D :: Vulkan.VkExtent3D
+      extent3D :: Vulkan.Extent3D
       extent3D
-        = Vulkan.createVk
-            (  Vulkan.set @"width"  width
-            &* Vulkan.set @"height" height
-            &* Vulkan.set @"depth"  1
-            )
+        = Vulkan.Extent3D
+            { Vulkan.width  = width
+            , Vulkan.height = height
+            , Vulkan.depth  = 1
+            }
 
-      colFmt, depthFmt :: Vulkan.VkFormat
-      colFmt   = Vulkan.getField @"format" surfaceFormat
-      depthFmt = Vulkan.VK_FORMAT_D32_SFLOAT
+      colFmt, depthFmt :: Vulkan.Format
+      colFmt   = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
+      depthFmt = Vulkan.FORMAT_D32_SFLOAT
 
       depthImageInfo :: ImageInfo
       depthImageInfo =
         Default2DImageInfo extent3D depthFmt
-          Vulkan.VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+          Vulkan.IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
 
     renderPass <- logDebug "Creating a render pass" *>
       simpleRenderPass device
         ( noAttachments
-          { colorAttachments = [ presentableColorAttachmentDescription colFmt ]
-          , mbDepthStencilAttachment = Just (depthAttachmentDescription depthFmt)
+          { colorAttachments = Boxed.Vector.singleton $ presentableColorAttachmentDescription colFmt
+          , mbDepthStencilAttachment = Just ( depthAttachmentDescription depthFmt )
           }
         )
 
@@ -288,18 +282,18 @@ bezier = runVulkan bezierInitialState do
           colorImageView
             <- createImageView
                   device swapchainImage
-                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                  Vulkan.IMAGE_VIEW_TYPE_2D
                   colFmt
-                  Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
+                  Vulkan.IMAGE_ASPECT_COLOR_BIT
           (depthImage, _)
             <- createImage physicalDevice device
                   depthImageInfo
                   [ ]
           depthImageView
             <- createImageView device depthImage
-                  Vulkan.VK_IMAGE_VIEW_TYPE_2D
+                  Vulkan.IMAGE_VIEW_TYPE_2D
                   depthFmt
-                  Vulkan.VK_IMAGE_ASPECT_DEPTH_BIT
+                  Vulkan.IMAGE_ASPECT_DEPTH_BIT
           let attachments =
                 V.fromTuple
                   ( (swapchainImage, colorImageView)
@@ -321,8 +315,8 @@ bezier = runVulkan bezierInitialState do
       resourceFlags :: ResourceSet numImages Named
       resourceFlags = ResourceSet
         ( StageFlags
-          (   Vulkan.VK_SHADER_STAGE_GEOMETRY_BIT
-          .|. Vulkan.VK_SHADER_STAGE_FRAGMENT_BIT
+          (   Vulkan.SHADER_STAGE_GEOMETRY_BIT
+          .|. Vulkan.SHADER_STAGE_FRAGMENT_BIT
           )
         )
         InputResource
@@ -335,14 +329,14 @@ bezier = runVulkan bezierInitialState do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    commandPool <- logDebug "Creating command pool" *> createCommandPool device queueFamilyIndex
+    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
     queue       <- getQueue device 0
 
     nextImageSem <- createSemaphore device
     submitted    <- createSemaphore device
 
     pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
-    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.VK_SAMPLE_COUNT_1_BIT pipelineLayout
+    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.SAMPLE_COUNT_1_BIT pipelineLayout
 
     shaders <- logDebug "Loading shaders" *> traverse (\path -> (path, ) <$> loadShader device path) shaderPipeline
 
@@ -423,14 +417,13 @@ bezier = runVulkan bezierInitialState do
       submitCommandBuffer
         queue
         commandBuffer
-        [(nextImageSem, Vulkan.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
+        [(nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)]
         [submitted]
         Nothing
 
       present queue swapchain nextImageIndex [submitted]
 
-      liftIO ( Vulkan.vkQueueWaitIdle queue )
-        >>= throwVkResult
+      Vulkan.queueWaitIdle queue
 
       when ( takeScreenshot action ) $
         writeScreenshotData shortName device swapchainExtent

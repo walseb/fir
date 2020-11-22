@@ -1,9 +1,10 @@
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
 
 module Vulkan.Screenshot
   ( createScreenshotImage
@@ -15,11 +16,11 @@ module Vulkan.Screenshot
 
 -- base
 import Control.Monad
-  ( (>=>), when )
+  ( when )
 import Data.Coerce
   ( coerce )
 import Data.Word
-  ( Word8 )
+  ( Word8, Word32 )
 import qualified Foreign
   ( peekArray )
 import Foreign.Ptr
@@ -40,14 +41,13 @@ import Control.Monad.IO.Class
   ( liftIO )
 
 -- vector
-import qualified Data.Vector.Storable as Vector
+import qualified Data.Vector          as Boxed.Vector
+  ( singleton )
+import qualified Data.Vector.Storable as Storable.Vector
+  ( fromList )
 
--- vulkan-api
-import Graphics.Vulkan.Marshal.Create
-  ( (&*) )
-import qualified Graphics.Vulkan                as Vulkan
-import qualified Graphics.Vulkan.Core_1_0       as Vulkan
-import qualified Graphics.Vulkan.Marshal.Create as Vulkan
+-- vulkan
+import qualified Vulkan
 
 -- fir-examples
 import FIR.Examples.Paths
@@ -59,115 +59,113 @@ import Vulkan.Monad
 
 createScreenshotImage
   :: MonadVulkan m
-  => Vulkan.VkPhysicalDevice
-  -> Vulkan.VkDevice
+  => Vulkan.PhysicalDevice
+  -> Vulkan.Device
   -> ImageInfo
-  -> m ( Vulkan.VkImage, Vulkan.VkDeviceMemory )
+  -> m ( Vulkan.Image, Vulkan.DeviceMemory )
 createScreenshotImage physicalDevice device imageInfo =
   createImage
     physicalDevice device
     imageInfo
-    [ Vulkan.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-    , Vulkan.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    [ Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT
+    , Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT
     ]
 
-screenshotImageInfo :: Vulkan.VkExtent3D -> Vulkan.VkFormat -> ImageInfo
+screenshotImageInfo :: Vulkan.Extent3D -> Vulkan.Format -> ImageInfo
 screenshotImageInfo swapchainExtent3D colFmt =
-  ( Default2DImageInfo swapchainExtent3D colFmt Vulkan.VK_IMAGE_USAGE_TRANSFER_DST_BIT )
-    { imageTiling = Vulkan.VK_IMAGE_TILING_LINEAR } -- host visible image needs linear tiling
+  ( Default2DImageInfo swapchainExtent3D colFmt Vulkan.IMAGE_USAGE_TRANSFER_DST_BIT )
+    { imageTiling = Vulkan.IMAGE_TILING_LINEAR } -- host visible image needs linear tiling
 
 cmdTakeScreenshot
   :: MonadVulkan m
-  => ( Vulkan.VkPipelineStageFlags, Vulkan.VkAccessFlags )
-  -> Vulkan.VkCommandBuffer
-  -> Vulkan.VkExtent3D
-  -> ( Vulkan.VkImage, (Vulkan.VkImageLayout, Vulkan.VkImageLayout) )
-  -> Vulkan.VkImage
+  => ( Vulkan.PipelineStageFlags, Vulkan.AccessFlags )
+  -> Vulkan.CommandBuffer
+  -> Vulkan.Extent3D
+  -> ( Vulkan.Image, (Vulkan.ImageLayout, Vulkan.ImageLayout) )
+  -> Vulkan.Image
   -> m ()
 cmdTakeScreenshot screenshotAfterFlags commandBuffer swapchainExtent3D
   (swapchainImage, (swapchainInitialLayout, swapchainFinalLayout) )
   screenshotImage
     = do
       -- transition swapchain image: transfer source
-      when ( swapchainInitialLayout /= Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ) do
+      when ( swapchainInitialLayout /= Vulkan.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ) do
         cmdTransitionImageLayout commandBuffer swapchainImage
           swapchainInitialLayout
-          Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+          Vulkan.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
           screenshotAfterFlags
-          ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
+          ( Vulkan.PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.zero )
       -- transition screenshot image: transfer destination
       cmdTransitionImageLayout commandBuffer screenshotImage
-        Vulkan.VK_IMAGE_LAYOUT_UNDEFINED
-        Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-        ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT , Vulkan.VK_ZERO_FLAGS )
-        ( Vulkan.VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.VK_ZERO_FLAGS )
+        Vulkan.IMAGE_LAYOUT_UNDEFINED
+        Vulkan.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+        ( Vulkan.PIPELINE_STAGE_TOP_OF_PIPE_BIT , Vulkan.zero )
+        ( Vulkan.PIPELINE_STAGE_ALL_COMMANDS_BIT, Vulkan.zero )
       -- perform the copy
-      liftIO $ Vulkan.vkCmdCopyImage commandBuffer
+      liftIO $ Vulkan.cmdCopyImage commandBuffer
         swapchainImage
-        Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+        Vulkan.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
         screenshotImage
-        Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-        1
-        ( Vulkan.unsafePtr imageCopy )
+        Vulkan.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+        ( Boxed.Vector.singleton imageCopy )
       -- transition screenshot image to general layout so that we can copy it to disk
       cmdTransitionImageLayout commandBuffer screenshotImage
-        Vulkan.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-        Vulkan.VK_IMAGE_LAYOUT_GENERAL
-        ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
-        ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.VK_ZERO_FLAGS )
-      when ( swapchainFinalLayout /= Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ) do
+        Vulkan.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+        Vulkan.IMAGE_LAYOUT_GENERAL
+        ( Vulkan.PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.zero )
+        ( Vulkan.PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.zero )
+      when ( swapchainFinalLayout /= Vulkan.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ) do
         cmdTransitionImageLayout commandBuffer swapchainImage
-          Vulkan.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+          Vulkan.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
           swapchainFinalLayout
-          ( Vulkan.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.VK_ZERO_FLAGS )
-          ( Vulkan.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.VK_ZERO_FLAGS )
+          ( Vulkan.PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, Vulkan.zero )
+          ( Vulkan.PIPELINE_STAGE_TOP_OF_PIPE_BIT   , Vulkan.zero )
 
         where
-          noOffset :: Vulkan.VkOffset3D
+          noOffset :: Vulkan.Offset3D
           noOffset
-            = Vulkan.createVk
-                (  Vulkan.set @"x" 0
-                &* Vulkan.set @"y" 0
-                &* Vulkan.set @"z" 0
-                )
-          layers :: Vulkan.VkImageSubresourceLayers
+            = Vulkan.Offset3D
+                { Vulkan.x = 0
+                , Vulkan.y = 0
+                , Vulkan.z = 0
+                }
+          layers :: Vulkan.ImageSubresourceLayers
           layers
-            = Vulkan.createVk
-              (  Vulkan.set @"aspectMask"     Vulkan.VK_IMAGE_ASPECT_COLOR_BIT
-              &* Vulkan.set @"mipLevel"       0
-              &* Vulkan.set @"baseArrayLayer" 0
-              &* Vulkan.set @"layerCount"     1
-              )
-          imageCopy :: Vulkan.VkImageCopy
+            = Vulkan.ImageSubresourceLayers
+              { Vulkan.aspectMask     = Vulkan.IMAGE_ASPECT_COLOR_BIT
+              , Vulkan.mipLevel       = 0
+              , Vulkan.baseArrayLayer = 0
+              , Vulkan.layerCount     = 1
+              }
+          imageCopy :: Vulkan.ImageCopy
           imageCopy
-            = Vulkan.createVk
-              (  Vulkan.set @"srcSubresource" layers
-              &* Vulkan.set @"srcOffset"      noOffset
-              &* Vulkan.set @"dstSubresource" layers
-              &* Vulkan.set @"dstOffset"      noOffset
-              &* Vulkan.set @"extent"         swapchainExtent3D
-              )
+            = Vulkan.ImageCopy
+              { Vulkan.srcSubresource = layers
+              , Vulkan.srcOffset      = noOffset
+              , Vulkan.dstSubresource = layers
+              , Vulkan.dstOffset      = noOffset
+              , Vulkan.extent         = swapchainExtent3D
+              }
 
 writeScreenshotData
   :: MonadVulkan m
   => FilePath
-  -> Vulkan.VkDevice
-  -> Vulkan.VkExtent2D
-  -> Vulkan.VkDeviceMemory
+  -> Vulkan.Device
+  -> Vulkan.Extent2D
+  -> Vulkan.DeviceMemory
   -> m ()
 writeScreenshotData screenshotPath device extent2D screenshotImageMemory = liftIO do
 
   memPtr :: Ptr Word8
-    <- coerce <$> allocaAndPeek
-          ( Vulkan.vkMapMemory device screenshotImageMemory
-              0 maxBound Vulkan.VK_ZERO_FLAGS
-            >=> throwVkResult
-          )
+    <- coerce <$>
+        ( Vulkan.mapMemory device screenshotImageMemory
+            0 maxBound Vulkan.zero
+        )
 
   let
     imageWidth, imageHeight :: Num a => a
-    imageWidth  = fromIntegral $ Vulkan.getField @"width"  extent2D
-    imageHeight = fromIntegral $ Vulkan.getField @"height" extent2D
+    imageWidth  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) extent2D
+    imageHeight = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) extent2D
     size = 4 * imageWidth * imageHeight
 
     -- image data is stored in BGRA component order,
@@ -178,10 +176,10 @@ writeScreenshotData screenshotPath device extent2D screenshotImageMemory = liftI
     bgraToRgba l = l
 
   imageData :: Image PixelRGBA8
-    <- Image imageWidth imageHeight . Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
+    <- Image imageWidth imageHeight . Storable.Vector.fromList . bgraToRgba <$> Foreign.peekArray size memPtr
 
   writePng
     ( screenshotDir </> screenshotPath <.> "png" )
     imageData
 
-  Vulkan.vkUnmapMemory device screenshotImageMemory
+  Vulkan.unmapMemory device screenshotImageMemory
