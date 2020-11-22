@@ -90,6 +90,9 @@ allTests
     , Folder "PrimOps"
           [ ( "Rounding", Validate)
           ]
+    , Folder "ProgramState"
+          [ ( "Shadowing", Validate)
+          ]
     , Folder "Small"
           [ ( "HalfArithmetic" , Validate )
           , ( "HalfInputOutput", Validate )

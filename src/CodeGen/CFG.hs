@@ -38,6 +38,10 @@ import Data.ByteString.Lazy
 import Data.Map
   ( Map )
 import qualified Data.Map.Strict as Map
+import Data.Set
+  ( Set )
+import qualified Data.Set as Set
+  ( fromList, member )
 
 -- lens
 import Control.Lens
@@ -88,6 +92,10 @@ import CodeGen.State
   , _localBindings, _localBinding
   , _spirvVersion
   )
+import Data.Type.Known
+  ( knownValue )
+import Data.Type.Map
+  ( Keys )
 import FIR.AST
   ( AST, Code
   , IfF(..), IfMF(..), SwitchF(..), SwitchMF(..)
@@ -95,9 +103,11 @@ import FIR.AST
   , pattern (:$), pattern Return
   )
 import FIR.AST.Type
-  ( Nullary )
+  ( Eff, Nullary )
 import FIR.Prim.Singletons
   ( IntegralTy, primTy )
+import FIR.ProgramState
+  ( Bindings )
 import qualified SPIRV.Control   as SPIRV
   ( SelectionControl, pattern NoSelectionControl
   , LoopControl, pattern NoLoopControl
@@ -245,7 +255,7 @@ selection cond x y = do
   (condID, condTy) <- codeGen cond
   ( whenAsserting . unless ( condTy == SPIRV.Boolean) )
     ( throwError
-    $  "codeGen: 'select' expected boolean conditional, but got "
+    $  "codeGen: ASSERT failed, 'select' expected boolean conditional, but got "
     <> ShortText.pack (show condTy)
     )
   o1 <- codeGen x
@@ -261,7 +271,7 @@ ifM cond bodyTrue bodyFalse
           (condID, condTy) <- locally (codeGen cond)
           ( whenAsserting . unless ( condTy == SPIRV.Boolean ) )
             ( throwError
-            $  "codeGen: 'if' expected boolean conditional, but got "
+            $  "codeGen: ASSERT failed, 'if' expected boolean conditional, but got "
             <> ShortText.pack (show condTy)
             )
           selectionMerge mergeBlockID SPIRV.NoSelectionControl
@@ -279,7 +289,7 @@ switch scrut def cases
   = branchingSelection switchHeader (UCode def : map snd cases)
       where
         switchHeader :: [ID] -> ID -> CGMonad ()
-        switchHeader [] _ = whenAsserting (throwError "codeGen: 'switch' statement missing default case")
+        switchHeader [] _ = whenAsserting (throwError "codeGen: ASSERT failed, 'switch' statement missing default case")
         switchHeader ( defaultBlockID : caseBlockIDs ) mergeBlockID = do
           (scrutID, _) <- locally (codeGen scrut)
           selectionMerge mergeBlockID SPIRV.NoSelectionControl
@@ -326,7 +336,7 @@ branchingSelection mkHeader cases = do
     [] -> throwError "codeGen: empty list of branches in conditional"
     (ty : tys)
       -> do ( whenAsserting . unless ( all (== ty) tys ) )
-              ( throwError "codeGen: branches of conditional return different types" )
+              ( throwError "codeGen: ASSERT failed, branches of conditional return different types" )
             pure ty
   if resType == SPIRV.Unit
   then pure (ID 0, resType) -- ID should never be used
@@ -406,7 +416,7 @@ while cond loopBody = do
   updatedState <- get
   ( whenAsserting . when ( condTy /= SPIRV.Boolean ) )
     ( throwError
-    $  "codeGen: 'while' expected boolean conditional, but got "
+    $  "codeGen: ASSERT failed, 'while' expected boolean conditional, but got "
     <> ShortText.pack (show condTy)
     )
   loopMerge mergeBlockID loopBlockID SPIRV.NoLoopControl
@@ -434,16 +444,57 @@ while cond loopBody = do
 -- code-generation for locally / embed
 
 instance CodeGen AST => CodeGen (LocallyF AST) where
-  codeGenArgs (Applied LocallyF (a `ConsAST` NilAST)) = locally (codeGen a)
+  codeGenArgs (Applied LocallyF (a `ConsAST` NilAST)) =
+    locally (codeGen a)
 instance CodeGen AST => CodeGen (EmbedF AST) where
-  codeGenArgs (Applied EmbedF   (a `ConsAST` NilAST)) = codeGen a
+  codeGenArgs (Applied EmbedF   ( ( a :: AST ( Eff i i a ) ) `ConsAST` NilAST)) =
+    embed ( Set.fromList $ knownValue @(Keys (Bindings i)) ) (codeGen a)
 
 locally :: CGMonad a -> CGMonad a
 locally action = do
   bindingsBefore <- use _localBindings
   res <- action
   bindingsAfter <- use _localBindings
+
   -- keep the updated values of local bindings,
   -- but only for bindings that were defined before the "locally" block
   assign _localBindings ( bindingsAfter `Map.intersection` bindingsBefore )
+
+  whenAsserting do
+    let
+      weirdos :: Map ShortText ( (ID, SPIRV.PrimTy), (ID, SPIRV.PrimTy) )
+      weirdos = Map.mapMaybe id
+              $ Map.intersectionWith ( \ ( id1, ty1 ) ( id2, ty2 ) -> if ty1 == ty2 then Nothing else Just ( ( id1, ty1 ), ( id2, ty2 ) ) )
+                bindingsBefore bindingsAfter
+    unless ( null weirdos ) $
+      throwError ( "'codeGen': ASSERT failed, error in code-generation for 'locally'\nweirdos = " <> ShortText.pack ( show weirdos ) )
+
   pure res
+
+embed :: Set ShortText -> CGMonad a -> CGMonad a
+embed innerStartNames action = do
+  bindingsBefore <- use _localBindings
+  assign _localBindings ( Map.restrictKeys bindingsBefore innerStartNames )
+  res <- action
+  bindingsAfter <- use _localBindings
+
+  -- discard the updated values of local bindings that shadowed previous bindings
+  let
+    newBindings :: Map ShortText (ID, SPIRV.PrimTy)
+    newBindings =
+      Map.mapWithKey
+        ( \ name aft -> case shadows name innerStartNames bindingsBefore of { Just bef -> bef; Nothing -> aft } )
+        (  bindingsAfter `Map.intersection` bindingsBefore
+        <> Map.withoutKeys bindingsBefore innerStartNames
+        )
+
+  assign _localBindings newBindings
+  pure res
+
+shadows :: ShortText -> Set ShortText -> Map ShortText (ID, SPIRV.PrimTy) -> Maybe (ID, SPIRV.PrimTy)
+shadows name innerStartNames prevs
+  | not ( name `Set.member` innerStartNames )
+  , Just prev <- Map.lookup name prevs
+  = Just prev
+  | otherwise
+  = Nothing

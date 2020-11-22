@@ -1,6 +1,9 @@
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
@@ -38,12 +41,15 @@ import GHC.TypeNats
   ( Nat )
 
 -- fir
+import Data.Type.Known
+  ( Known )
 import Data.Type.List
   ( Elem )
 import Data.Type.Map
   ( Map, (:->)((:->))
   , Insert, Remove
   , Lookup, Union
+  , Keys
   )
 import Data.Type.Ord
   ( POrd(Compare) )
@@ -59,6 +65,7 @@ import FIR.ProgramState
   , ProgramState(ProgramState)
   , Definedness(..), FunctionInfo(..)
   , EntryPointInfo(..), TLInterface
+  , Bindings
   )
 import FIR.Validation.Interface
   ( ValidInterface )
@@ -617,13 +624,16 @@ type family BuiltinDoesNotAppearBefore
 -------------------------------------------------
 -- * Constraints for 'FIR.Syntax.Program.embed'.
 
-type family Embeddable (i :: ProgramState) (j :: ProgramState) :: Constraint where
-  Embeddable ('ProgramState '[] 'TopLevel '[] _ _) _ = ()
-  Embeddable ('ProgramState i_bds i_ctx i_funs _ _) ('ProgramState j_bds i_ctx j_funs _ _)
+class      Known [Symbol] (Keys (Bindings i))                 => Embeddable (i :: ProgramState) (j :: ProgramState) where
+instance ( Known [Symbol] (Keys (Bindings i)), CanEmbed i j ) => Embeddable i j where
+
+type family CanEmbed (i :: ProgramState) (j :: ProgramState) :: Constraint where
+  CanEmbed ('ProgramState '[] 'TopLevel '[] _ _) _ = ()
+  CanEmbed ('ProgramState i_bds i_ctx i_funs _ _) ('ProgramState j_bds i_ctx j_funs _ _)
     = ( SubsetBindings  i_bds  j_bds
       , SubsetFunctions i_funs j_funs
       )
-  Embeddable ('ProgramState _ i_ctx _ _ _) ('ProgramState _ j_ctx _ _ _)
+  CanEmbed ('ProgramState _ i_ctx _ _ _) ('ProgramState _ j_ctx _ _ _)
     = TypeError
       (      Text "'embed': cannot embed computation with function context "
         :<>: ShowType i_ctx

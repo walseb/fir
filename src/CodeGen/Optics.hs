@@ -567,7 +567,7 @@ compositeExtractAll comp@(_,compTy) dict@ConsDict i
                   -> do
                         whenAsserting . unless ( expectedTy == extractedTy ) $
                           throwError $
-                            "'compositeExtractAll': assert failed\n"
+                            "'compositeExtractAll': ASSERT failed\n"
                             <> "expected type" <> ShortText.pack (show expectedTy)
                             <> ", but composite component " <> ShortText.pack (show i)
                             <> " has type " <> ShortText.pack (show extractedTy)
@@ -623,8 +623,17 @@ extractUsingGetter'
   => (ID, SPIRV.PrimTy) -> OpticalOperationTree -> CGMonad (ID, SPIRV.PrimTy)
 extractUsingGetter' base []
   = pure base
-extractUsingGetter' base ( Access _ (CTInds is) : ops )
+extractUsingGetter' base tree@( Access _ (CTInds is) : ops )
   = do
+      whenAsserting
+        case base of
+          ( _, SPIRV.Scalar _ ) ->
+            throwError
+              ( "extractUsingGetter': ASSERT failed, trying to extract from a scalar type\n\
+                \base = " <> ShortText.pack ( show base ) <> "\n\
+                \tree = " <> ShortText.pack ( show tree )
+              )
+          _ -> pure ()
       newBase <- compositeExtract base is
       extractUsingGetter' newBase ops
 extractUsingGetter' (baseID, baseTy) ops@( Access _ (RTInds _) : _ )

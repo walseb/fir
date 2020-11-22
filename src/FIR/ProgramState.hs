@@ -192,7 +192,7 @@ data ProgramState
       , backend     :: SPIRV.Backend
       }
 
-type family Bindings ( s :: ProgramState) :: BindingsMap where
+type family Bindings ( s :: ProgramState ) :: BindingsMap where
   Bindings ('ProgramState bds _ _ _ _) = bds
 
 type family FunctionInfos ( s :: ProgramState ) :: Map Symbol FunctionInfo where
