@@ -266,7 +266,7 @@ offscreen = runVulkan () do
                   ]
       where
         pink :: Vulkan.ClearColorValue
-        pink = Vulkan.Float32 ( 1.0, 0.5, 0.7, 1.0 )
+        pink = Vulkan.Float32 1.0 0.5 0.7 1.0
 
         pinkClear :: Vulkan.ClearValue
         pinkClear = Vulkan.Color pink

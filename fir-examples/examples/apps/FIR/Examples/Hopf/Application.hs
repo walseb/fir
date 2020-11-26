@@ -161,7 +161,7 @@ clearValues =
   ]
   where
     black :: Vulkan.ClearColorValue
-    black = Vulkan.Float32 ( 0, 0, 0 ,0 )
+    black = Vulkan.Float32 0 0 0 0
     blackClear :: Vulkan.ClearValue
     blackClear = Vulkan.Color black
     depthStencilClear :: Vulkan.ClearDepthStencilValue

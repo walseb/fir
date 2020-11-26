@@ -183,7 +183,7 @@ clearValues =
   ]
   where
     teal :: Vulkan.ClearColorValue
-    teal = Vulkan.Float32 ( 0.1, 0.5, 0.7, 1.0 )
+    teal = Vulkan.Float32 0.1 0.5 0.7 1.0
     tealClear :: Vulkan.ClearValue
     tealClear = Vulkan.Color teal
     depthStencilClear :: Vulkan.ClearDepthStencilValue

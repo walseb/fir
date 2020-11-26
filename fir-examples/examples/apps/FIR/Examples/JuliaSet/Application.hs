@@ -144,7 +144,7 @@ clearValue :: Vulkan.ClearValue
 clearValue = Vulkan.Color black
   where
     black :: Vulkan.ClearColorValue
-    black = Vulkan.Float32 ( 0, 0, 0, 0 )
+    black = Vulkan.Float32 0 0 0 0
 
 ----------------------------------------------------------------------------
 -- Application.

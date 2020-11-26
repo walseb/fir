@@ -32,7 +32,7 @@ import Data.Coerce
 import Data.Foldable
   ( toList, for_ )
 import Data.List
-  hiding ( transpose )
+  ( sortOn )
 import Data.Maybe
   ( fromMaybe, mapMaybe )
 import Data.Ord
