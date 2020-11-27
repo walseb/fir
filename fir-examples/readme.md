@@ -1,20 +1,21 @@
 # Examples
 
 - [Examples](#examples)
-  - [Installation instructions](#installation-instructions)
+  - [Installation instructions](#installation)
     - [Windows](#windows)
     - [Linux](#linux)
-    - [MacOS (via MoltenVK and nix)](#macos-via-moltenvk-and-nix)
-  - [Hot reloading](#hot-reloading)
-  - [Overview of examples](#overview-of-examples)
-    - [Kerr space-time](#kerr-space-time)
-    - [Full graphics pipeline](#full-graphics-pipeline)
-    - [FIR logo](#fir-logo)
-    - [Hopf fibration](#hopf-fibration)
-    - [Texture sampling](#texture-sampling)
-    - [Julia set](#julia-set)
-    - [Offscreen rendering](#offscreen-rendering)
-    - [Bézier curves](#b%c3%a9zier-curves)
+    - [MacOS (via MoltenVK and nix)](#darwin)
+  - [Hot reloading](#hotreloading)
+  - [Overview of examples](#overview)
+    - [Kerr space-time](#kerr)
+    - [Full graphics pipeline](#fullpipeline)
+    - [FIR logo](#logo)
+    - [Hopf fibration](#hopf)
+    - [Texture sampling](#texture)
+    - [Ising model](#ising)
+    - [Julia set](#julia)
+    - [Offscreen rendering](#offscreen)
+    - [Bézier curves](#bezier)
 
 
 <a name="installation"></a>
@@ -35,7 +36,7 @@ Once these dependencies are installed, you should be able to run:
 
 where *Example* is any one of the [examples](#overview).
 
-<a name="win"></a>
+<a name="windows"></a>
 ### Windows
 
 To keep track of external dependencies, we first need to install `pkg-config`.
@@ -172,6 +173,17 @@ Also illustrates how to specify location and component layout information in sha
 </div>
 
 Demonstrates how to sample a texture.
+
+<a name="ising"></a>
+### Ising model
+<div align="center">
+![Ising](../img/ising.png) <br>
+[Application](examples/apps/FIR/Examples/Ising/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Ising/Shaders.hs)
+</div>
+
+Simulation of a ferromagnetic Ising model. Mouse x-coordinate affects temperature, y-coordinate an externally applied magnetic field.
+
+Demonstrates usage of shared local memory in a compute shader, synchronised using a control barrier.
 
 <a name="julia"></a>
 ### Julia set

@@ -395,10 +395,16 @@ gradient t colors = locally do
 magneticColours :: Array 3 (V 4 Float)
 magneticColours =
   MkArray . fromJust . Vector.fromList $
+    [ V4 0.9 0.9  0.5  1
+    , V4 0.4 0.7  0.9  1
+    , V4 0.4 0.1  0.3  1
+    ]
+{-
     [ V4 0.9 0.3  0.25 1
     , V4 0.1 0.05 0.15 1
     , V4 0.2 0.3  0.8  1
     ]
+-}
 
 ------------------------------------------------
 -- compiling
