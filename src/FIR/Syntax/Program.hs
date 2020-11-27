@@ -642,9 +642,15 @@ controlBarrier :: forall (i :: ProgramState)
                -> Program i i ( Code () )
 controlBarrier controlScope memScope
   = primOp @i @SPIRV.ControlSync
-      ( Lit $ SPIRV.synchronisationScope controlScope :: Code Word32 )
-      ( Lit $ fromMaybe 0 $ SPIRV.synchronisationScope   . fst <$> memScope :: Code Word32 )
-      ( Lit $ fromMaybe 0 $ SPIRV.memorySemanticsBitmask . snd <$> memScope :: Code Word32 )
+      ( Lit $ controlScopeWord32 :: Code Word32 )
+      ( Lit $ fromMaybe controlScopeWord32 $ SPIRV.synchronisationScope   . fst <$> memScope :: Code Word32 )
+      --                ^^^^^^^^^^^^^^^^^^
+      -- can get validation errors if this is set to 0 (which is "CrossDevice" scope)
+      -- even though this field is supposed to be ignored if the memory semantics argument is 0
+      ( Lit $ fromMaybe 0                  $ SPIRV.memorySemanticsBitmask . snd <$> memScope :: Code Word32 )
+    where
+      controlScopeWord32 :: Word32
+      controlScopeWord32 = SPIRV.synchronisationScope controlScope 
 
 -- | Memory barrier: ensure ordering on memory accesses.
 memoryBarrier :: forall (i :: ProgramState)
