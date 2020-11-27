@@ -608,7 +608,8 @@ instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp SPIRV.DotV (V n a) whe
   type PrimOpAugType SPIRV.DotV (V n a) = Val (V n a) :--> Val (V n a) :--> Val a
   op = dot
   opName = SPIRV.VecOp SPIRV.DotV (val @n) (scalarTy @a)
-instance ( KnownNat n, ScalarTy a, Semiring a ) => PrimOp SPIRV.VMulK (V n a) where
+-- vector times scalar operation requires floating point type in SPIR-V
+instance ( KnownNat n, ScalarTy a, Semiring a, Floating a ) => PrimOp SPIRV.VMulK (V n a) where 
   type PrimOpAugType SPIRV.VMulK (V n a) = Val (V n a) :--> Val a :--> Val (V n a)
   op = (^*)
   opName = SPIRV.VecOp SPIRV.VMulK (val @n) (scalarTy @a)

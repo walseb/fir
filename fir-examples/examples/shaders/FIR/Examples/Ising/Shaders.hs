@@ -292,20 +292,13 @@ lookupNeighbourSpins sParity otherSpin ( Vec2 i_local_x i_local_y ) ( Vec2 i_glo
 
 pcg3d :: Code ( V 3 Word32 ) -> Program s s ( Code ( V 3 Word32 ) )
 pcg3d v = purely do
-  let
-    init :: Code ( V 3 Word32 ) -> Code ( V 3 Word32 )
-    init ( Vec3 x y z ) =
-      Vec3
-        ( 1664525 * x + 1013904223 )
-        ( 1664525 * y + 1013904223 )
-        ( 1664525 * z + 1013904223 )
-  ~( Vec3 x y z ) <- def @"v" @RW ( init v )
+  ~( Vec3 x y z ) <- def @"v" @RW ( 1664525 *^ v ^+^ pureAST 1013904223 )
   x <- def @"x" @RW ( x + y * z )
   y <- def @"y" @RW ( y + z * x )
   z <- def @"z" @RW ( z + x * y )
   let
     scramble :: Code ( V 3 Word32 ) -> Code ( V 3 Word32 )
-    scramble = fmapAST ( \ a -> a `xor` ( a `shiftR` ( 16 :: Code Word32 ) :: Code Word32 ) )
+    scramble = fmapAST ( \ a -> a `xor` ( a `shiftR` ( 16 :: Code Word32 ) ) )
   ~( Vec3 x y z ) <- ( put @"v" $ scramble ( Vec3 x y z ) ) *>> get @"v"
   x <- put @"x" ( x + y * z ) *>> get @"x"
   y <- put @"y" ( y + z * x ) *>> get @"y"
@@ -314,7 +307,7 @@ pcg3d v = purely do
 
 word32ToProbability :: Code Word32 -> Code Float
 word32ToProbability x =
-  fromIntegral ( x `shiftR` ( 8 :: Code Word32 ) :: Code Word32 ) * 5.960464832810452e-8
+  fromIntegral ( x `shiftR` ( 8 :: Code Word32 ) ) * 5.960464832810452e-8
 
 ------------------------------------------------
 -- Supersampling.

@@ -142,9 +142,10 @@ import FIR.Prim.Op
   ( PrimTyVal, Vectorise(Vectorise) )
 import FIR.Prim.Singletons
   ( PrimTy
-  , ScalarTy, IntegralTy
+  , SScalarTy(..), ScalarTy, IntegralTy
   , ScalarFromTy, TypeFromScalar
   , SPrimFunc(..), PrimFunc(..), DistDict(DistDict)
+  , scalarTySing
   )
 import FIR.Prim.Struct
   ( Struct((:&), End) )
@@ -909,7 +910,7 @@ class KnownASTOpticComponents ast_os os | ast_os -> os where
 instance  ( iss ~ jss, as ~ '[], bs ~ '[] )
        => KnownASTOpticComponents
             ( EndProd_ :: ProductComponents iss (Code s) as )
-            ( EndProd_ :: ProductComponents jss      s  bs )
+            ( EndProd_ :: ProductComponents jss       s  bs )
           where
 instance  ( KnownASTOptic o' o
           , KnownASTOpticComponents os' os
@@ -918,7 +919,7 @@ instance  ( KnownASTOptic o' o
           )
         => KnownASTOpticComponents
              ( (o' `ProductO` os') :: ProductComponents iss' (Code s) ( a' ': as' ) )
-             ( (o  `ProductO` os ) :: ProductComponents iss       s  ( a  ': as  ) )
+             ( (o  `ProductO` os ) :: ProductComponents iss        s  ( a  ': as  ) )
         where
 
 -----------------------------------------------
@@ -1091,7 +1092,13 @@ instance (ScalarTy a, Semiring a) => Semimodule Nat (Code (V 0 a)) where
 
   (^*) :: forall n. KnownNat n
        => Code (V n a) -> Code a -> Code (V n a)
-  (^*)  = primOp @(V n a) @SPIRV.VMulK
+  (^*)  = case scalarTySing @a of
+    SHalf   -> primOp @(V n a) @SPIRV.VMulK
+    SFloat  -> primOp @(V n a) @SPIRV.VMulK
+    SDouble -> primOp @(V n a) @SPIRV.VMulK
+    -- No "vector times scalar" operation in SPIR-V
+    -- for integral scalar types.
+    _  -> ( \ vec a -> toAST $ Prelude.fmap ( * a ) ( fromAST vec :: V n ( Code a ) ) )
 
 instance (ScalarTy a, Ring a) => LinearModule Nat (Code (V 0 a)) where
   (^-^) :: forall n. KnownNat n

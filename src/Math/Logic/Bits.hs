@@ -108,23 +108,25 @@ deriving via Base CULong  instance Bits CULong
 deriving via Base CLLong  instance Bits CLLong
 deriving via Base CULLong instance Bits CULLong
 
-type family Shift (bs :: (Type,Type)) = (arr :: Type) | arr -> bs where
-  Shift '(b,s) = b -> s -> b
+type family BitsType (bs :: (Type,Type)) :: Type where
+  BitsType '(b,_) = b
+type family ShiftType (bs :: (Type,Type)) :: Type where
+  ShiftType '(_,b) = b
 
-class BitShift (bs :: (Type,Type)) where
+class (bs ~ '(BitsType bs, ShiftType bs)) => BitShift (bs :: (Type,Type)) where
   -- | Shift the first argument left by the specified number of bits.
   --
   -- Ignores the sign of the shift argument (second argument).
   --
   -- This is a logical shift: least-significant bits are set to 0.
-  shiftL :: Shift bs -- b -> s -> b
+  shiftL :: BitsType bs -> ShiftType bs -> BitsType bs
   -- | Shift the first argument right by the specified number of bits.
   --
   -- Ignores the sign of the shift argument (second argument).
   --
   -- This is an arithmetic shift: most-significant bits are filled
   -- with the sign of the first argument.
-  shiftR :: Shift bs -- b -> s -> b
+  shiftR :: BitsType bs -> ShiftType bs -> BitsType bs
 
 instance (Base.Bits a, Prelude.Integral i)
   => BitShift '(Base a,i) where
