@@ -13,7 +13,7 @@ description:
   This package contains some example Vulkan scenes,
   using shaders compiled by __FIR__.
 
-  Depends on the 'vulkan-api' package for Vulkan bindings.
+  Depends on the 'vulkan' package for Vulkan bindings.
 
   See the root directory for more information about __FIR__,
   an EDSL for writing shaders that compile to __@SPIR-V@__.
