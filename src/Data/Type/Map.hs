@@ -107,3 +107,18 @@ type family InsertionSort (i :: [k :-> v]) :: Map k v where
 type family ZipValue (i :: [k]) (x :: v) :: Map k v where
   ZipValue '[]       _ = '[]
   ZipValue (a ': as) x = ( (a ':-> x) ': ZipValue as x )
+
+type family LookupAndLookup (key1 :: k1) (key2 :: k2) (map :: Map k1 (Map k2 v)) :: Maybe v where
+  LookupAndLookup key1 key2 map = LookupAndLookupFrom key2 (Lookup key1 map)
+
+type family LookupAndLookupFrom (key2 :: k2) (lk :: Maybe (Map k2 v)) :: Maybe b where
+  LookupAndLookupFrom _    Nothing    = Nothing
+  LookupAndLookupFrom key2 (Just map) = Lookup key2 map
+
+type family InsertWithInsert (key1 :: k1) (key2 :: k2) (val :: v) (map :: Map k1 (Map k2 v)) :: Map k1 (Map k2 v) where
+  InsertWithInsert key1 key2 val '[] = '[ key1 ':-> '[ key2 ':-> val ] ]
+  InsertWithInsert key1 key2 val ((key1 ':-> map) ': rest) = ( key1 ':-> Insert key2 val map ) ': rest
+  InsertWithInsert key1 key2 val ((key ':-> map) ': rest) =
+    If (key1 :< key)
+      ((key1 ':-> '[ key2 ':-> val ]) ': (key ':-> map) ': rest)
+      ((key ':-> map) ': InsertWithInsert key1 key2 val rest)

@@ -807,6 +807,10 @@ storeAtTypeThroughAccessChain _ _ _ SPIRV.Sampler           _
   = throwError "storeAtTypeThroughAccessChain: unexpected sampler type"
 storeAtTypeThroughAccessChain _ _ _ (SPIRV.SampledImage {}) _
   = throwError "storeAtTypeThroughAccessChain: unexpected sampled image type"
+storeAtTypeThroughAccessChain _ _ _ (SPIRV.AccelerationStructure) _
+  = throwError "storeAtTypeThroughAccessChain: unexpected acceleration structure type"
+storeAtTypeThroughAccessChain _ _ _ (SPIRV.RayQuery) _
+  = throwError "storeAtTypeThroughAccessChain: unexpected ray query type"
 
 successiveStores
   :: CodeGen AST

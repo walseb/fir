@@ -100,7 +100,7 @@ shaderCapabilities Stage.ComputeShader                = [ Shader       ]
 stageCapabilities :: Stage -> Set Capability
 stageCapabilities (ShaderStage s) = shaderCapabilities s
 stageCapabilities (MeshStage   _) = [ MeshShadingNV ]
-stageCapabilities (RayStage    _) = [ RayTracingNV  ]
+stageCapabilities (RayStage    _) = [ RayTracingKHR  ]
 
 executionModelCapabilities :: ExecutionModel -> Set Capability
 executionModelCapabilities (Stage s)    = stageCapabilities s
@@ -109,7 +109,7 @@ executionModelCapabilities Stage.Kernel = [ ComputeKernel ]
 stageExtensions :: Stage -> Set Extension
 stageExtensions (ShaderStage _) = [ ]
 stageExtensions (MeshStage   _) = [ SPV_NV_mesh_shader ]
-stageExtensions (RayStage    _) = [ SPV_NV_ray_tracing ]
+stageExtensions (RayStage    _) = [ SPV_KHR_ray_tracing ]
 
 executionModelExtensions :: ExecutionModel -> Set Extension
 executionModelExtensions (Stage s)    = stageExtensions s

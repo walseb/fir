@@ -93,7 +93,7 @@ type AllOpsF
      , MkVectorF, MatF, UnMatF, StructF, ArrayF, NilHListF, ConsHListF
      , IfF, IfMF, SwitchF, SwitchMF, WhileF
      , DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
-     , DebugPrintfF
+     , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF
      , ImgOpsF
      , UseF, AssignF, ViewF, SetF
      ]

@@ -32,7 +32,9 @@ import GHC.TypeNats
 import Data.Type.Error
   ( Assert )
 import Data.Type.Map
-  ( (:->)((:->)) )
+  ( (:->)((:->)), Lookup )
+import Data.Type.Maybe
+  ( SequenceMaybe )
 import Data.Type.String
   ( ShowNat )
 import {-# SOURCE #-} FIR.Pipeline
@@ -156,7 +158,7 @@ type family ValidPipelineInterface
           ( 'SPIRV.ShaderExecutionInfo info1
               :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader1))
           )
-          '( _, outputs1 )
+          ifaceVars1
           _
     )
     '( name2,
@@ -164,12 +166,12 @@ type family ValidPipelineInterface
           ( 'SPIRV.ShaderExecutionInfo info2
               :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader2))
           )
-          '( inputs2, _ )
+          ifaceVars2
           _
     )
       = ( MatchingInterface
-          name1 info1 outputs1
-          name2 info2 inputs2
+          name1 info1 ( SequenceMaybe ( Lookup SPIRV.Output ifaceVars1 ) )
+          name2 info2 ( SequenceMaybe ( Lookup SPIRV.Input  ifaceVars2 ) )
         , ValidSequence top
             name1 shader1 info1
             name2 shader2 info2
@@ -412,7 +414,7 @@ type family GetExecutionInfo
               ( state  :: ProgramState )
           :: SPIRV.ExecutionInfo Nat ('SPIRV.Stage ('SPIRV.ShaderStage shader))
           where
-  GetExecutionInfo shader name ('ProgramState _ _ _ eps _)
+  GetExecutionInfo shader name ('ProgramState _ _ _ eps _ _ _)
     = GetExecutionInfoOf shader name eps
 
 type family GetExecutionInfoOf
@@ -447,7 +449,7 @@ type family GetInterface
               ( state  :: ProgramState )
           :: TLInterface
           where
-  GetInterface shader name ('ProgramState _ _ _ eps _)
+  GetInterface shader name ('ProgramState _ _ _ eps _ _ _)
     = GetInterfaceOf shader name eps
 
 type family GetInterfaceOf

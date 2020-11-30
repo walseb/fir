@@ -140,7 +140,7 @@ import Data.Type.Known
 import Data.Type.List
   ( KnownLength(sLength), Postpend )
 import Data.Type.Map
-  ( (:->)((:->)) )
+  ( (:->)((:->)), Map )
 import FIR.AST
   ( AST, Code
   , Syntactic(Internal,toAST,fromAST)
@@ -179,6 +179,8 @@ import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, IntegralTy
   , KnownVars
   )
+import FIR.Prim.RayTracing
+  ( RayQueryState )
 import FIR.ProgramState
   ( FunctionInfo
   , FunctionContext(..)
@@ -248,7 +250,7 @@ embed p = fromAST ( Embed :$ toAST p )
 
 purely
   :: ( SyntacticVal r
-     , i ~ 'ProgramState '[] 'TopLevel '[] '[] bkend
+     , i ~ 'ProgramState '[] 'TopLevel '[] '[] '[] '[] bkend
      , Embeddable i k
      )
   => Program i j r -> Program k k r
@@ -398,8 +400,8 @@ entryPoint :: forall
              , stageInfo ~ GetExecutionInfo name stage i
              )
            => Program
-                ( EntryPointStartState name stageInfo i )
-                ( EntryPointEndState name stageInfo j_bds j_iface i )
+                ( EntryPointStartState name stageInfo               i )
+                ( EntryPointEndState   name stageInfo j_bds j_iface i )
                 ( Code () )
            -> Program
                 i
@@ -430,6 +432,8 @@ shader :: forall
             ( j_iface   :: TLInterface                   )
             ( funs      :: [Symbol :-> FunctionInfo   ]  )
             ( eps       :: [Symbol :-> EntryPointInfo ]  )
+            ( g_iface   :: TLInterface                   )
+            ( rayQs     :: Map Symbol RayQueryState      )
             ( bkend     :: SPIRV.Backend                 )
             ( i         :: ProgramState                  )
        . ( GHC.Stack.HasCallStack
@@ -437,18 +441,18 @@ shader :: forall
          , ValidDefinitions defs
          , GetExecutionInfo name stage i ~ stageInfo
          , funs ~ '[ ]
-         , i ~ 'ProgramState (StartBindings defs) 'TopLevel funs eps bkend
+         , i ~ 'ProgramState (StartBindings defs) 'TopLevel funs eps g_iface rayQs bkend
          , i ~ StartState defs
          , KnownSymbol name
          , stage ~ 'SPIRV.Stage ('SPIRV.ShaderStage shader)
          , Known SPIRV.Shader shader
          , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
          , EndBindings defs ~ StartBindings defs
-         , ValidEntryPoint name stageInfo ('ProgramState (EndBindings defs) 'TopLevel funs eps bkend) j_bds
+         , ValidEntryPoint name stageInfo ('ProgramState (EndBindings defs) 'TopLevel funs eps g_iface rayQs bkend) j_bds
          )
        => Program
-            ( EntryPointStartState name stageInfo i )
-            ( EntryPointEndState name stageInfo j_bds j_iface i )
+            ( EntryPointStartState name stageInfo               i )
+            ( EntryPointEndState   name stageInfo j_bds j_iface i )
             ( Code () )
        -> ShaderModule name shader defs (SetInterface name stageInfo j_iface i)
 shader

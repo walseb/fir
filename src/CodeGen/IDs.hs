@@ -104,6 +104,7 @@ import CodeGen.State
   , _userGlobal
   , _backend
   , _interfaceBinding
+  , _spirvVersion
   , requireCapabilities
   , addName, addMemberName
   , addDecorations
@@ -139,6 +140,7 @@ import qualified SPIRV.Requirements as SPIRV
 import qualified SPIRV.ScalarTy     as SPIRV
 import qualified SPIRV.Stage        as SPIRV
 import qualified SPIRV.Storage      as Storage
+import qualified SPIRV.Version      as SPIRV
 
 ----------------------------------------------------------------------------
 -- instructions generated along the way that need to be floated to the top
@@ -212,8 +214,10 @@ typeID ty = TyID <$>
               mkTyConInstruction ( Arg eltTyID EndArgs ) v
             )
 
-        SPIRV.Unit    -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
-        SPIRV.Boolean -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.Unit                  -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.Boolean               -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.AccelerationStructure -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
+        SPIRV.RayQuery              -> createID _knownPrimTy ( mkTyConInstruction EndArgs )
 
         SPIRV.Scalar (SPIRV.Integer s w)
           | SPIRV.Signed <- s
@@ -387,9 +391,14 @@ constID a =
 
         SRuntimeArray {} ->
             throwError
-              "constID: cannot construct run-time arrays.\n\
+              "'constID': cannot construct run-time arrays.\n\
               \Runtime arrays are only available through entry-point interfaces."
-        
+
+        SAccelerationStructure {} ->
+            throwError
+              "'constID': cannot construct acceleration structures.\n\
+              \Acceleration structures are an opaque type, and only available through entry-point interfaces."
+
         SArray {} ->
           createIDRec _knownAConstant
             ( traverse constID a )
@@ -491,7 +500,8 @@ globalID :: ( MonadState  CGState   m
             )
          => ShortText -> Maybe (ShortText, SPIRV.ExecutionModel) -> m ( Maybe (ID, SPIRV.PointerTy) )
 globalID globalName mbModel
-  = do mbGlobID <- view ( _userGlobal globalName )
+  = do ver <- view _spirvVersion
+       mbGlobID <- view ( _userGlobal globalName )
        case mbGlobID of
          Nothing
            -> pure Nothing
@@ -521,7 +531,9 @@ globalID globalName mbModel
                     )
                 case (mbModel, laidOutPtrTy) of
                   ( Just (model, modelName), SPIRV.PointerTy storage _ )
-                    | storage == Storage.Input || storage == Storage.Output
+                    |  ver >= SPIRV.Version 1 4
+                    || storage == Storage.Input
+                    || storage == Storage.Output
                       -> assign ( _interfaceBinding model modelName globalName ) ( Just ident )
                   _   -> pure ()
                 pure ( Just (ident, laidOutPtrTy) )

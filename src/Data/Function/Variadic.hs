@@ -35,6 +35,8 @@ import FIR.AST.Type
   ( AugType(Val, (:-->)) )
 import FIR.Prim.Array
   ( Array,RuntimeArray )
+import FIR.Prim.RayTracing
+  ( AccelerationStructure, RayQuery )
 import {-# SOURCE #-} FIR.Prim.Struct
   ( Struct )
 import Math.Linear
@@ -97,3 +99,5 @@ type family ListVariadic (as :: [Type]) (b :: Type) = (r :: Type) | r -> as b wh
   ListVariadic '[] (a1,a2,a3,a4,a5,a6,a7) = (a1,a2,a3,a4,a5,a6,a7)
   ListVariadic '[] (a1,a2,a3,a4,a5,a6,a7,a8) = (a1,a2,a3,a4,a5,a6,a7,a8)
   ListVariadic '[] (HList as) = HList as
+  ListVariadic '[] AccelerationStructure = AccelerationStructure
+  ListVariadic '[] RayQuery = RayQuery

@@ -151,6 +151,7 @@ library
       , CodeGen.Phi
       , CodeGen.Pointers
       , CodeGen.PrimOps
+      , CodeGen.RayTracing
       , CodeGen.State
       , Control.Arrow.Strength
       , Control.Monad.Indexed
@@ -189,6 +190,7 @@ library
       , FIR.Pipeline
       , FIR.Prim.Array
       , FIR.Prim.Image
+      , FIR.Prim.RayTracing
       , FIR.Prim.Singletons
       , FIR.Prim.Struct
       , FIR.Prim.Op
@@ -199,6 +201,7 @@ library
       , FIR.Syntax.Optics
       , FIR.Syntax.Option
       , FIR.Syntax.Program
+      , FIR.Syntax.RayTracing
       , FIR.Syntax.Swizzle
       , FIR.Syntax.Synonyms
       , FIR.Validation.Ambiguity

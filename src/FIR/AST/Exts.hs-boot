@@ -14,6 +14,12 @@ import FIR.AST.Type
 
 ------------------------------------------------------------
 
-data DebugPrintfF ( ast :: AugType -> Type ) ( t :: AugType )
+data DebugPrintfF     ( ast :: AugType -> Type ) ( t :: AugType )
+data TraceRayF        ( ast :: AugType -> Type ) ( t :: AugType )
+data ExecuteCallableF ( ast :: AugType -> Type ) ( t :: AugType )
+data RayQueryF        ( ast :: AugType -> Type ) ( t :: AugType )
 
-type role DebugPrintfF phantom nominal
+type role DebugPrintfF     phantom          nominal
+type role TraceRayF        representational nominal
+type role ExecuteCallableF representational nominal
+type role RayQueryF        representational nominal

@@ -30,6 +30,7 @@ module SPIRV.PrimOp
   , ConvPrimOp(..)
   , GeomPrimOp(..)
   , SyncPrimOp(..)
+  , RayPrimOp(..)
   , opAndReturnType, op
   ) where
 
@@ -65,6 +66,7 @@ data PrimOp where
   ConvOp  :: ConvPrimOp  -> ScalarTy         -> ScalarTy -> PrimOp
   GeomOp  :: GeomPrimOp                                  -> PrimOp
   SyncOp  :: SyncPrimOp                                  -> PrimOp
+  RayOp   :: RayPrimOp                                   -> PrimOp
   deriving stock Show
 
 data BoolPrimOp
@@ -174,6 +176,12 @@ data SyncPrimOp
   | MemorySync
   deriving stock Show
 
+data RayPrimOp
+  = RT_ReportIntersection
+  | RT_IgnoreIntersection
+  | RT_TerminateRay
+  deriving stock Show
+
 backendOp :: Backend -> Operation -> Operation -> Operation
 backendOp Vulkan o _ = o
 backendOp OpenCL _ o = o
@@ -207,6 +215,8 @@ opAndReturnType _ (GeomOp gOp)
   = geomOp gOp
 opAndReturnType _ (SyncOp sOp)
   = syncOp sOp
+opAndReturnType _ (RayOp rOp)
+  = rayOp rOp
 
 op :: Backend -> PrimOp -> Operation
 op bkend = fst . opAndReturnType bkend
@@ -378,3 +388,8 @@ geomOp EndGeometryPrimitive = ( EndPrimitive, Unit )
 syncOp :: SyncPrimOp -> (Operation, PrimTy)
 syncOp ControlSync = ( ControlBarrier, Unit )
 syncOp MemorySync  = ( MemoryBarrier , Unit )
+
+rayOp :: RayPrimOp -> (Operation, PrimTy)
+rayOp RT_ReportIntersection = ( ReportIntersection, Unit )
+rayOp RT_IgnoreIntersection = ( IgnoreIntersection, Unit )
+rayOp RT_TerminateRay       = ( TerminateRay, Unit )

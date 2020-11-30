@@ -428,6 +428,70 @@ pattern ReturnValue       :: Operation
 pattern ReturnValue       = Code 254
 pattern Unreachable       :: Operation
 pattern Unreachable       = Code 255
+-- ray tracing instructions
+pattern TraceRay                        :: Operation
+pattern TraceRay                        = Code 4445
+pattern ExecuteCallable                 :: Operation
+pattern ExecuteCallable                 = Code 4446
+pattern ConvertUToAccelerationStructure :: Operation
+pattern ConvertUToAccelerationStructure = Code 4447
+pattern IgnoreIntersection              :: Operation
+pattern IgnoreIntersection              = Code 4448
+pattern TerminateRay                    :: Operation
+pattern TerminateRay                    = Code 4449
+pattern ReportIntersection              :: Operation
+pattern ReportIntersection              = Code 5334
+pattern TypeAccelerationStructure       :: Operation
+pattern TypeAccelerationStructure       = Code 5341
+-- ray query instructions
+pattern TypeRayQuery                                                  :: Operation
+pattern TypeRayQuery                                                  = Code 4472
+pattern RayQueryInitialize                                            :: Operation
+pattern RayQueryInitialize                                            = Code 4473
+pattern RayQueryTerminate                                             :: Operation
+pattern RayQueryTerminate                                             = Code 4474
+pattern RayQueryGenerateIntersection                                  :: Operation
+pattern RayQueryGenerateIntersection                                  = Code 4475
+pattern RayQueryConfirmIntersection                                   :: Operation
+pattern RayQueryConfirmIntersection                                   = Code 4476
+pattern RayQueryProceed                                               :: Operation
+pattern RayQueryProceed                                               = Code 4477
+pattern RayQueryGetIntersectionType                                   :: Operation
+pattern RayQueryGetIntersectionType                                   = Code 4479
+pattern RayQueryGetRayTMin                                            :: Operation
+pattern RayQueryGetRayTMin                                            = Code 6016
+pattern RayQueryGetRayFlags                                           :: Operation
+pattern RayQueryGetRayFlags                                           = Code 6017
+pattern RayQueryGetIntersectionT                                      :: Operation
+pattern RayQueryGetIntersectionT                                      = Code 6018
+pattern RayQueryGetIntersectionInstanceCustomIndex                    :: Operation
+pattern RayQueryGetIntersectionInstanceCustomIndex                    = Code 6019
+pattern RayQueryGetIntersectionInstanceId                             :: Operation
+pattern RayQueryGetIntersectionInstanceId                             = Code 6020
+pattern RayQueryGetIntersectionInstanceShaderBindingTableRecordOffset :: Operation
+pattern RayQueryGetIntersectionInstanceShaderBindingTableRecordOffset = Code 6021
+pattern RayQueryGetIntersectionGeometryIndex                          :: Operation
+pattern RayQueryGetIntersectionGeometryIndex                          = Code 6022
+pattern RayQueryGetIntersectionPrimitiveIndex                         :: Operation
+pattern RayQueryGetIntersectionPrimitiveIndex                         = Code 6023
+pattern RayQueryGetIntersectionBarycentrics                           :: Operation
+pattern RayQueryGetIntersectionBarycentrics                           = Code 6024
+pattern RayQueryGetIntersectionFrontFace                              :: Operation
+pattern RayQueryGetIntersectionFrontFace                              = Code 6025
+pattern RayQueryGetIntersectionCandidateAABBOpaque                    :: Operation
+pattern RayQueryGetIntersectionCandidateAABBOpaque                    = Code 6026
+pattern RayQueryGetIntersectionObjectRayDirection                     :: Operation
+pattern RayQueryGetIntersectionObjectRayDirection                     = Code 6027
+pattern RayQueryGetIntersectionObjectRayOrigin                        :: Operation
+pattern RayQueryGetIntersectionObjectRayOrigin                        = Code 6028
+pattern RayQueryGetWorldRayDirection                                  :: Operation
+pattern RayQueryGetWorldRayDirection                                  = Code 6029
+pattern RayQueryGetWorldRayOrigin                                     :: Operation
+pattern RayQueryGetWorldRayOrigin                                     = Code 6030
+pattern RayQueryGetIntersectionObjectToWorld                          :: Operation
+pattern RayQueryGetIntersectionObjectToWorld                          = Code 6031
+pattern RayQueryGetIntersectionWorldToObject                          :: Operation
+pattern RayQueryGetIntersectionWorldToObject                          = Code 6032
 -- GLSL extended instructions
 pattern GLSL_Round         :: Operation
 pattern GLSL_Round         = ExtCode GLSL 1
@@ -815,6 +879,40 @@ showOperation Kill = "Kill"
 showOperation Return = "Return"
 showOperation ReturnValue = "ReturnValue"
 showOperation Unreachable = "Unreachable"
+-- ray tracing instructions
+showOperation TraceRay                        = "TraceRay"
+showOperation ExecuteCallable                 = "ExecuteCallable"
+showOperation ConvertUToAccelerationStructure = "ConvertUToAccelerationStructure"
+showOperation IgnoreIntersection              = "IgnoreIntersection"
+showOperation TerminateRay                    = "TerminateRay"
+showOperation ReportIntersection              = "ReportIntersection"
+showOperation TypeAccelerationStructure       = "TypeAccelerationStructure"
+-- ray query instructions
+showOperation TypeRayQuery                                                  = "TypeRayQuery"
+showOperation RayQueryInitialize                                            = "RayQueryInitialize"
+showOperation RayQueryTerminate                                             = "RayQueryTerminate"
+showOperation RayQueryGenerateIntersection                                  = "RayQueryGenerateIntersection"
+showOperation RayQueryConfirmIntersection                                   = "RayQueryConfirmIntersection"
+showOperation RayQueryProceed                                               = "RayQueryProceed"
+showOperation RayQueryGetIntersectionType                                   = "RayQueryGetIntersectionType"
+showOperation RayQueryGetRayTMin                                            = "RayQueryGetRayTMin"
+showOperation RayQueryGetRayFlags                                           = "RayQueryGetRayFlags"
+showOperation RayQueryGetIntersectionT                                      = "RayQueryGetIntersectionT"
+showOperation RayQueryGetIntersectionInstanceCustomIndex                    = "RayQueryGetIntersectionInstanceCustomIndex"
+showOperation RayQueryGetIntersectionInstanceId                             = "RayQueryGetIntersectionInstanceId"
+showOperation RayQueryGetIntersectionInstanceShaderBindingTableRecordOffset = "RayQueryGetIntersectionInstanceShaderBindingTableRecordOffset"
+showOperation RayQueryGetIntersectionGeometryIndex                          = "RayQueryGetIntersectionGeometryIndex"
+showOperation RayQueryGetIntersectionPrimitiveIndex                         = "RayQueryGetIntersectionPrimitiveIndex"
+showOperation RayQueryGetIntersectionBarycentrics                           = "RayQueryGetIntersectionBarycentrics"
+showOperation RayQueryGetIntersectionFrontFace                              = "RayQueryGetIntersectionFrontFace"
+showOperation RayQueryGetIntersectionCandidateAABBOpaque                    = "RayQueryGetIntersectionCandidateAABBOpaque"
+showOperation RayQueryGetIntersectionObjectRayDirection                     = "RayQueryGetIntersectionObjectRayDirection"
+showOperation RayQueryGetIntersectionObjectRayOrigin                        = "RayQueryGetIntersectionObjectRayOrigin"
+showOperation RayQueryGetWorldRayDirection                                  = "RayQueryGetWorldRayDirection"
+showOperation RayQueryGetWorldRayOrigin                                     = "RayQueryGetWorldRayOrigin"
+showOperation RayQueryGetIntersectionObjectToWorld                          = "RayQueryGetIntersectionObjectToWorld"
+showOperation RayQueryGetIntersectionWorldToObject                          = "RayQueryGetIntersectionWorldToObject"
+-- GLSL instructions
 showOperation GLSL_Round = "Round"
 showOperation GLSL_RoundEven = "RoundEven"
 showOperation GLSL_Trunc = "Trunc"
@@ -853,6 +951,7 @@ showOperation GLSL_UMax = "UMax"
 showOperation GLSL_SMax = "SMax"
 showOperation GLSL_Cross = "Cross"
 showOperation GLSL_Normalize = "Normalize"
+-- OpenCL instructions
 showOperation OpenCL_Acos      = "Acos"
 showOperation OpenCL_Acosh     = "Acosh"
 showOperation OpenCL_Asin      = "Asin"

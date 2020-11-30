@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
@@ -13,7 +14,7 @@
 {-|
 Module: FIR.AST.Exts
 
-Additional operations, such as Debug Printf.
+Additional operations, such as ray tracing operations and Debug Printf.
 -}
 
 module FIR.AST.Exts where
@@ -21,6 +22,14 @@ module FIR.AST.Exts where
 -- base
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy )
+import Data.Word
+  ( Word32 )
+
+-- containers
+import Data.Tree
+ ( Tree(Node) )
 
 -- haskus-utils-variant
 import Haskus.Utils.EGADT
@@ -39,14 +48,76 @@ import FIR.AST.Display
   ( Display(toTreeArgs), named )
 import FIR.AST.Type
   ( AugType(..), Eff
-  , Nullary, FunArgs
+  , Nullary, FunArgs, FunRes
   )
+import FIR.Prim.RayTracing
+  ( AccelerationStructure
+  , RayQuery(..), IntersectionType(..)
+  )
+import FIR.Prim.Singletons
+  ( PrimTy )
 import FIR.ProgramState
   ( ProgramState )
+import Math.Linear
+  ( V )
+import qualified SPIRV.Operation as SPIRV
+  ( Operation, showOperation )
 
 ------------------------------------------------------------
 
 pattern DebugPrintf formatString = VF ( DebugPrintfF formatString )
+pattern
+  TraceRay
+    { traceRayAccelerationStructure
+    , traceRayRayFlags
+    , traceRayCullMask
+    , traceRaySBTOffset
+    , traceRaySBTStride
+    , traceRayMissIndex
+    , traceRayRayOrigin
+    , traceRayRayTMin
+    , traceRayRayDirection
+    , traceRayRayTMax
+    , traceRayPayloadID
+    } = VF
+      ( TraceRayF
+          traceRayAccelerationStructure
+          traceRayRayFlags
+          traceRayCullMask
+          traceRaySBTOffset
+          traceRaySBTStride
+          traceRayMissIndex
+          traceRayRayOrigin
+          traceRayRayTMin
+          traceRayRayDirection
+          traceRayRayTMax
+          traceRayPayloadID
+      )
+pattern ExecuteCallable sbtIndex dataID = VF ( ExecuteCallableF sbtIndex dataID )
+pattern
+  RayQueryInitialize
+    { rayQueryRayQueryName
+    , rayQueryAccelerationStructure
+    , rayQueryRayFlags
+    , rayQueryCullMask
+    , rayQueryRayOrigin
+    , rayQueryRayTMin
+    , rayQueryRayDirection
+    , rayQueryRayTMax
+    } = VF
+      ( RayQueryInitializeF
+          rayQueryRayQueryName
+          rayQueryAccelerationStructure
+          rayQueryRayFlags
+          rayQueryCullMask
+          rayQueryRayOrigin
+          rayQueryRayTMin
+          rayQueryRayDirection
+          rayQueryRayTMax
+      )
+pattern RayQueryPrimOp px rayQueryOp rayQueryName mbIntersectionType =
+  VF ( RayQueryPrimOpF px rayQueryOp rayQueryName mbIntersectionType )
+
 
 -- | Printf debugging statement (SPIR-V non-semantic extension).
 data DebugPrintfF ( ast :: AugType -> Type ) ( t :: AugType ) where
@@ -59,9 +130,130 @@ type family PrintfAugType ( i :: ProgramState ) ( as :: [ Type ] ) = ( r :: AugT
   PrintfAugType i '[]         = Eff i i ()
   PrintfAugType i ( a ': as ) = Val a :--> PrintfAugType i as
 
+-- | Trace a ray into the given acceleration structure.
+data TraceRayF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  TraceRayF ::
+    { traceRayFAccelerationStructure :: ast ( Val AccelerationStructure )
+    , traceRayFRayFlags              :: ast ( Val Word32 )
+    , traceRayFCullMask              :: ast ( Val Word32 )
+    , traceRayFSBTOffset             :: ast ( Val Word32 )
+    , traceRayFSBTStride             :: ast ( Val Word32 )
+    , traceRayFMissIndex             :: ast ( Val Word32 )
+    , traceRayFRayOrigin             :: ast ( Val ( V 3 Float ) )
+    , traceRayFRayTMin               :: ast ( Val Float )
+    , traceRayFRayDirection          :: ast ( Val ( V 3 Float ) )
+    , traceRayFRayTMax               :: ast ( Val Float )
+    , traceRayFRayPayloadName        :: ShortText
+    } -> TraceRayF ast ( Eff i i () )
+
+-- | Invoke a callable shader.
+data ExecuteCallableF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  ExecuteCallableF ::
+    { executeCallableFSBTIndex :: ast ( Val Word32 )
+    , executeCallableFDataName :: ShortText
+    } -> ExecuteCallableF ast ( Eff i i () )
+
+data RayQueryF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  RayQueryInitializeF ::
+    { rayQueryFRayQueryName          :: RayQuery
+    , rayQueryFAccelerationStructure :: ast ( Val AccelerationStructure )
+    , rayQueryFRayFlags              :: ast ( Val Word32 )
+    , rayQueryFCullMask              :: ast ( Val Word32 )
+    , rayQueryFRayOrigin             :: ast ( Val ( V 3 Float ) )
+    , rayQueryFRayTMin               :: ast ( Val Float )
+    , rayQueryFRayDirection          :: ast ( Val ( V 3 Float ) )
+    , rayQueryFRayTMax               :: ast ( Val Float )
+    } -> RayQueryF ast ( Eff i j () )
+  RayQueryPrimOpF
+    :: ( All Nullary ( FunArgs opTy )
+       , FunRes opTy ~ Eff i i a
+       , PrimTy a
+       )
+    => Proxy a
+    -> SPIRV.Operation
+    -> RayQuery
+    -> Maybe IntersectionType
+    -> RayQueryF ast opTy
+
 ------------------------------------------------------------
 -- displaying
 
 instance Display ast => Display (DebugPrintfF ast) where
   toTreeArgs = named \(DebugPrintfF formatString) ->
-    "DebugPrintF \"" <> ShortText.unpack formatString <> "\""
+    "DebugPrintf \"" <> ShortText.unpack formatString <> "\""
+
+instance Display ast => Display (TraceRayF ast) where
+  toTreeArgs as (TraceRayF {..}) = do
+    accelerationStructure <- toTreeArgs [] traceRayFAccelerationStructure
+    rayFlags              <- toTreeArgs [] traceRayFRayFlags
+    cullMask              <- toTreeArgs [] traceRayFCullMask
+    sbtOffset             <- toTreeArgs [] traceRayFSBTOffset
+    sbtStride             <- toTreeArgs [] traceRayFSBTStride
+    missIndex             <- toTreeArgs [] traceRayFMissIndex
+    rayOrigin             <- toTreeArgs [] traceRayFRayOrigin
+    rayTMin               <- toTreeArgs [] traceRayFRayTMin
+    rayDirection          <- toTreeArgs [] traceRayFRayDirection
+    rayTMax               <- toTreeArgs [] traceRayFRayTMax
+    let
+      rayPayloadName = ShortText.unpack traceRayFRayPayloadName
+    pure $
+      Node "TraceRay"
+        ( accelerationStructure
+        : rayFlags
+        : cullMask
+        : sbtOffset
+        : sbtStride
+        : missIndex
+        : rayOrigin
+        : rayTMin
+        : rayDirection
+        : rayTMax
+        : Node rayPayloadName []
+        : as
+        )
+
+instance Display ast => Display (ExecuteCallableF ast) where
+  toTreeArgs as (ExecuteCallableF {..}) = do
+    sbtIndex <- toTreeArgs [] executeCallableFSBTIndex
+    let
+      callableDataName = ShortText.unpack executeCallableFDataName
+    pure $
+      Node "ExecuteCallable"
+        ( sbtIndex
+        : Node callableDataName []
+        : as
+        )
+
+instance Display ast => Display (RayQueryF ast) where
+  toTreeArgs as (RayQueryInitializeF {..}) = do
+    let
+      RayQuery rayQueryName = rayQueryFRayQueryName
+    accelerationStructure <- toTreeArgs [] rayQueryFAccelerationStructure
+    rayFlags              <- toTreeArgs [] rayQueryFRayFlags
+    cullMask              <- toTreeArgs [] rayQueryFCullMask
+    rayOrigin             <- toTreeArgs [] rayQueryFRayOrigin
+    rayTMin               <- toTreeArgs [] rayQueryFRayTMin
+    rayDirection          <- toTreeArgs [] rayQueryFRayDirection
+    rayTMax               <- toTreeArgs [] rayQueryFRayTMax
+    pure $
+      Node "RayQueryInitialize"
+        ( Node ( ShortText.unpack rayQueryName ) []
+        : accelerationStructure
+        : rayFlags
+        : cullMask
+        : rayOrigin
+        : rayTMin
+        : rayDirection
+        : rayTMax
+        : as
+        )
+  toTreeArgs as (RayQueryPrimOpF _ rayQueryOp (RayQuery rayQueryName) mbInterType) =
+    pure $
+      Node ( SPIRV.showOperation rayQueryOp )
+        ( Node ( ShortText.unpack rayQueryName ) []
+        : ( case mbInterType of
+             Nothing -> id
+             Just Candidate -> ( Node "Candidate" [] : )
+             Just Committed -> ( Node "Committed" [] : )
+          ) as
+        )

@@ -30,15 +30,21 @@ import Data.Kind
   ( Type )
 import GHC.TypeLits
   ( Symbol )
+import GHC.TypeNats
+  ( Nat )
 
 -- fir
 import Data.Type.Known
   ( Demotable(Demote), Known(known) )
+import Data.Type.List
+  ( Elem )
 import Data.Type.Map
   ( (:->)((:->)), Map )
 import FIR.AST.Type
   ( AugType(Val,(:-->)), UnderlyingType )
-import qualified SPIRV.Storage as SPIRV
+import qualified SPIRV.Decoration as SPIRV
+  ( Decoration(NonReadable, NonWritable) )
+import qualified SPIRV.Storage    as SPIRV
 
 ------------------------------------------------------------------------------------------------
 -- bindings: variables, functions, images
@@ -91,17 +97,41 @@ type family BindingAugType (bd :: Binding) :: AugType where
 ------------------------------------------------------------------------------------------------
 -- relation to SPIRV storage classes
 
-type family StoragePermissions (storage :: SPIRV.StorageClass) where
-  StoragePermissions SPIRV.UniformConstant = R
-  StoragePermissions SPIRV.Input           = R
-  StoragePermissions SPIRV.Uniform         = R
-  StoragePermissions SPIRV.Output          = W
-  StoragePermissions SPIRV.Workgroup       = RW
-  StoragePermissions SPIRV.CrossWorkgroup  = RW
-  StoragePermissions SPIRV.Private         = RW
-  StoragePermissions SPIRV.Function        = RW -- default value, specific functions can specialise this
-  StoragePermissions SPIRV.Generic         = RW
-  StoragePermissions SPIRV.PushConstant    = R
-  StoragePermissions SPIRV.AtomicCounter   = RW
-  StoragePermissions SPIRV.Image           = RW -- default
-  StoragePermissions SPIRV.StorageBuffer   = RW
+type family StoragePermissions (storage :: SPIRV.StorageClass) (decs :: [SPIRV.Decoration Nat]) :: Permissions where
+  StoragePermissions SPIRV.UniformConstant  _    = R
+  StoragePermissions SPIRV.Input            _    = R
+  StoragePermissions SPIRV.Uniform          _    = R
+  StoragePermissions SPIRV.Output           _    = W
+  StoragePermissions SPIRV.Workgroup        decs = PermissionsFromDecorations decs
+  StoragePermissions SPIRV.CrossWorkgroup   decs = PermissionsFromDecorations decs
+  StoragePermissions SPIRV.Private          decs = PermissionsFromDecorations decs
+  StoragePermissions SPIRV.Function         _    = RW -- default value, specific functions can specialise this
+  StoragePermissions SPIRV.Generic          decs = PermissionsFromDecorations decs
+  StoragePermissions SPIRV.PushConstant     _    = R
+  StoragePermissions SPIRV.AtomicCounter    decs = PermissionsFromDecorations decs
+  StoragePermissions SPIRV.Image            decs = PermissionsFromDecorations decs
+  StoragePermissions SPIRV.StorageBuffer    decs = RW
+  StoragePermissions ('SPIRV.RayStorage SPIRV.HitAttribute ) decs = RW
+  StoragePermissions ('SPIRV.RayStorage SPIRV.ShaderRecordBuffer ) _ = R
+  StoragePermissions ('SPIRV.RayStorage _ ) decs = PermissionsFromDecorations decs
+
+
+{-
+TODO:
+Variables with storage class HitAttribute:
+
+They can be written to only in Intersection execution model,
+and read from only in AnyHit and ClosestHit execution models.
+-}
+
+type family PermissionsFromDecorations (decs :: [SPIRV.Decoration Nat]) :: Permissions where
+  PermissionsFromDecorations decs =
+    PermissionsFromDecorations'
+      ( SPIRV.NonReadable `Elem` decs )
+      ( SPIRV.NonWritable `Elem` decs )
+
+type family PermissionsFromDecorations' (nonReadable :: Bool) (nonWritable :: Bool) :: Permissions where
+  PermissionsFromDecorations' True  True  = '[]
+  PermissionsFromDecorations' True  False = W
+  PermissionsFromDecorations' False True  = R
+  PermissionsFromDecorations' False False = RW

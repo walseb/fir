@@ -35,6 +35,9 @@ module FIR.Syntax.Synonyms
   , StorageBuffer, Private
   , Workgroup, CrossWorkgroup
   , AtomicCounter
+  , RayPayload, RayPayloadIn
+  , CallableData, CallableDataIn
+  , HitAttribute, ShaderRecordBuffer
 
   -- * Synonyms for function with given function control information
   , Function, Function'
@@ -174,16 +177,22 @@ type Float32 = Float
 type Float64 = Double
 
 -- synonyms for (decorated) globals
-type UniformConstant decs ty = Global Storage.UniformConstant decs ty
-type Input           decs ty = Global Storage.Input           decs ty
-type Output          decs ty = Global Storage.Output          decs ty
-type Uniform         decs ty = Global Storage.Uniform         decs ty
-type PushConstant    decs ty = Global Storage.PushConstant    decs ty
-type StorageBuffer   decs ty = Global Storage.StorageBuffer   decs ty
-type Private         decs ty = Global Storage.Private         decs ty
-type Workgroup       decs ty = Global Storage.Workgroup       decs ty
-type CrossWorkgroup  decs ty = Global Storage.CrossWorkgroup  decs ty
-type AtomicCounter   decs ty = Global Storage.AtomicCounter   decs ty
+type UniformConstant    decs ty = Global Storage.UniformConstant    decs ty
+type Input              decs ty = Global Storage.Input              decs ty
+type Output             decs ty = Global Storage.Output             decs ty
+type Uniform            decs ty = Global Storage.Uniform            decs ty
+type PushConstant       decs ty = Global Storage.PushConstant       decs ty
+type StorageBuffer      decs ty = Global Storage.StorageBuffer      decs ty
+type Private            decs ty = Global Storage.Private            decs ty
+type Workgroup          decs ty = Global Storage.Workgroup          decs ty
+type CrossWorkgroup     decs ty = Global Storage.CrossWorkgroup     decs ty
+type AtomicCounter      decs ty = Global Storage.AtomicCounter      decs ty
+type RayPayload         decs ty = Global ( 'Storage.RayStorage ( Storage.RayPayload   Storage.Lifetime ) ) decs ty
+type RayPayloadIn       decs ty = Global ( 'Storage.RayStorage ( Storage.RayPayload   Storage.Incoming ) ) decs ty
+type CallableData       decs ty = Global ( 'Storage.RayStorage ( Storage.CallableData Storage.Lifetime ) ) decs ty
+type CallableDataIn     decs ty = Global ( 'Storage.RayStorage ( Storage.CallableData Storage.Incoming ) ) decs ty
+type HitAttribute       decs ty = Global ( 'Storage.RayStorage Storage.HitAttribute                      ) decs ty
+type ShaderRecordBuffer decs ty = Global ( 'Storage.RayStorage Storage.ShaderRecordBuffer                ) decs ty
 
 -- synonym for function with no function control information
 type Function     as b = Def.Function NoFunctionControl as b

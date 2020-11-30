@@ -85,6 +85,22 @@ data Builtin
   | SubgroupLocalInvocationId
   | VertexIndex
   | InstanceIndex
+  --
+  | LaunchID
+  | LaunchSize
+  | WorldRayOrigin
+  | WorldRayDirection
+  | ObjectRayOrigin
+  | ObjectRayDirection
+  | RayTMin
+  | RayTMax
+  | InstanceCustomIndex
+  | ObjectToWorld
+  | WorldToObject
+  | HitT
+  | HitKind
+  | IncomingRayFlags
+  | RayGeometryIndex
   deriving stock ( Show, Eq, Ord )
 
 readBuiltin :: ShortText -> Maybe Builtin
@@ -137,6 +153,21 @@ readBuiltin "cl_NumWorkgroups"             = Just NumWorkgroups
 readBuiltin "cl_WorkgroupID"               = Just WorkgroupId
 readBuiltin "cl_GlobalOffset"              = Just GlobalOffset
 readBuiltin "cl_GlobalLinearID"            = Just GlobalLinearId
+readBuiltin "gl_LaunchID"                  = Just LaunchID
+readBuiltin "gl_LaunchSize"                = Just LaunchSize
+readBuiltin "gl_WorldRayOrigin"            = Just WorldRayOrigin
+readBuiltin "gl_WorldRayDirection"         = Just WorldRayDirection
+readBuiltin "gl_ObjectRayOrigin"           = Just ObjectRayOrigin
+readBuiltin "gl_ObjectRayDirection"        = Just ObjectRayDirection
+readBuiltin "gl_RayTMin"                   = Just RayTMin
+readBuiltin "gl_RayTMax"                   = Just RayTMax
+readBuiltin "gl_InstanceCustomIndex"       = Just InstanceCustomIndex
+readBuiltin "gl_ObjectToWorld"             = Just ObjectToWorld
+readBuiltin "gl_WorldToObject"             = Just WorldToObject
+readBuiltin "gl_HitT"                      = Just HitT
+readBuiltin "gl_HitKind"                   = Just HitKind
+readBuiltin "gl_IncomingRayFlags"          = Just IncomingRayFlags
+readBuiltin "gl_RayGeometryIndex"          = Just RayGeometryIndex
 readBuiltin _ = Nothing
 
 instance Put Builtin where
@@ -186,6 +217,22 @@ instance Put Builtin where
   put SubgroupLocalInvocationId = put @Word32 41
   put VertexIndex               = put @Word32 42
   put InstanceIndex             = put @Word32 43
+--
+  put LaunchID            = put @Word32 5319
+  put LaunchSize          = put @Word32 5320
+  put WorldRayOrigin      = put @Word32 5321
+  put WorldRayDirection   = put @Word32 5322
+  put ObjectRayOrigin     = put @Word32 5323
+  put ObjectRayDirection  = put @Word32 5324
+  put RayTMin             = put @Word32 5325
+  put RayTMax             = put @Word32 5326
+  put InstanceCustomIndex = put @Word32 5327
+  put ObjectToWorld       = put @Word32 5330
+  put WorldToObject       = put @Word32 5331
+  put HitT                = put @Word32 5332
+  put HitKind             = put @Word32 5333
+  put IncomingRayFlags    = put @Word32 5351
+  put RayGeometryIndex    = put @Word32 5352
 
 instance Demotable Builtin where
   type Demote Builtin = Builtin
@@ -271,3 +318,33 @@ instance Known Builtin VertexIndex where
   known = VertexIndex
 instance Known Builtin InstanceIndex where
   known = InstanceIndex
+instance Known Builtin LaunchID where
+  known = LaunchID
+instance Known Builtin LaunchSize where
+  known = LaunchSize
+instance Known Builtin WorldRayOrigin where
+  known = WorldRayOrigin
+instance Known Builtin WorldRayDirection where
+  known = WorldRayDirection
+instance Known Builtin ObjectRayOrigin where
+  known = ObjectRayOrigin
+instance Known Builtin ObjectRayDirection where
+  known = ObjectRayDirection
+instance Known Builtin RayTMin where
+  known = RayTMin
+instance Known Builtin RayTMax where
+  known = RayTMax
+instance Known Builtin InstanceCustomIndex where
+  known = InstanceCustomIndex
+instance Known Builtin ObjectToWorld where
+  known = ObjectToWorld
+instance Known Builtin WorldToObject where
+  known = WorldToObject
+instance Known Builtin HitT where
+  known = HitT
+instance Known Builtin HitKind where
+  known = HitKind
+instance Known Builtin IncomingRayFlags where
+  known = IncomingRayFlags
+instance Known Builtin RayGeometryIndex where
+  known = RayGeometryIndex

@@ -88,6 +88,8 @@ import FIR.Binding
   )
 import FIR.Prim.Array
   ( Array, RuntimeArray )
+import FIR.Prim.RayTracing
+  ( AccelerationStructure )
 import FIR.Prim.Struct
   ( Struct, FieldKind(NamedField), StructFieldKind(fieldKind) )
 import Math.Algebra.Class
@@ -186,6 +188,8 @@ data SPrimTy :: Type -> Type where
   SStruct :: forall (fld :: Type) (as :: [fld :-> Type])
           .  ( StructFieldKind fld, PrimTyMap as )
           => SPrimTy (Struct as)
+  SAccelerationStructure
+    :: SPrimTy AccelerationStructure
 
 data SPrimTyMap :: [fld :-> Type] -> Type where
   SNil  :: SPrimTyMap '[]
@@ -223,6 +227,7 @@ instance Show (SPrimTy ty) where
           "Struct '["
           ++ intercalate ", " ( showSPrimTyMap ( primTyMapSing @_ @as ) )
           ++ "]"
+  show SAccelerationStructure = "AccelerationStructure"
 
 showSPrimTyMap :: SPrimTyMap as -> [String]
 showSPrimTyMap SNil = []
@@ -243,6 +248,7 @@ data SKPrimTy :: Type -> Type where
   SKRuntimeArray
            :: SKPrimTy a -> SKPrimTy (RuntimeArray a)
   SKStruct :: SKPrimTyMap as -> SKPrimTy (Struct as)
+  SKAccelerationStructure :: SKPrimTy AccelerationStructure
 
 data SKPrimTyMap :: [fld :-> Type] -> Type where
   SKNil :: SKPrimTyMap '[]
@@ -283,6 +289,7 @@ type family PrimTySing (ty :: Type) :: SKPrimTy ty where
   PrimTySing (Array n a) = SKArray (PrimTySing a)
   PrimTySing (RuntimeArray a) = SKRuntimeArray (PrimTySing a)
   PrimTySing (Struct as) = SKStruct (MapPrimTySing as)
+  PrimTySing AccelerationStructure = SKAccelerationStructure
   PrimTySing ty
     = TypeError
         ( Text "Type " :<>: ShowType ty :<>: Text " is not a valid primitive type." )
@@ -318,6 +325,9 @@ instance PrimTy ()   where
 instance PrimTy Bool where
   type FieldsOfType Bool a = MonolithicFields Bool a
   primTySing = SBool
+instance PrimTy AccelerationStructure where
+  type FieldsOfType AccelerationStructure a = MonolithicFields AccelerationStructure a
+  primTySing = SAccelerationStructure
 
 instance ScalarTy Word8  where
   scalarTySing = SWord8
@@ -530,6 +540,7 @@ sPrimTy rtArr@SRuntimeArray = case rtArr of
 sPrimTy struct@SStruct = case struct of
   ( _ :: SPrimTy (Struct as) )
     -> SPIRV.Struct (sPrimTyMap (primTyMapSing @_ @as)) Set.empty SPIRV.NotForBuiltins
+sPrimTy SAccelerationStructure = SPIRV.AccelerationStructure
 
 sPrimTyMap :: forall (fld :: Type) (flds :: [fld :-> Type])
            .  SPrimTyMap flds

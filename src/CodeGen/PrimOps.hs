@@ -11,7 +11,9 @@ Module: CodeGen.PrimOps
 Code generation for primitive operations (e.g. arithmetic operations).
 -}
 
-module CodeGen.PrimOps (primOp) where
+module CodeGen.PrimOps
+  ( primOp, operationInstruction )
+  where
 
 -- base
 import Data.Proxy
@@ -50,6 +52,8 @@ import FIR.Prim.Op
 import qualified SPIRV.PrimOp       as SPIRV
 import qualified SPIRV.PrimTy       as SPIRV
 import qualified SPIRV.Requirements as SPIRV
+import qualified SPIRV.Operation  as SPIRV
+  ( Operation )
 
 ----------------------------------------------------------------------------
 -- primops
@@ -62,30 +66,30 @@ instance CodeGen AST => CodeGen (PrimOpF AST) where
 
 primOp :: SPIRV.PrimOp -> [ (ID, SPIRV.PrimTy) ] -> CGMonad (ID, SPIRV.PrimTy)
 primOp prim as = do
-
   bk <- view _backend
   let (op, retTy) = SPIRV.opAndReturnType bk prim
-
   requireCapabilities $ SPIRV.primOpCapabilities bk prim
+  operationInstruction op retTy ( map fst as )
 
-  case retTy of
-    SPIRV.Unit -> do
-      instruction
-        Instruction
-          { operation = op
-          , resTy = Nothing
-          , resID = Nothing
-          , args = toArgs (map fst as)
-          }
-      pure (ID 0, retTy) -- ID should not be used
-    _ -> do
-      resTyID <- typeID retTy
-      v <- fresh
-      instruction
-        Instruction
-          { operation = op
-          , resTy = Just resTyID
-          , resID = Just v
-          , args = toArgs (map fst as)
-          }
-      pure (v, retTy)
+operationInstruction :: SPIRV.Operation -> SPIRV.PrimTy -> [ ID ] -> CGMonad (ID, SPIRV.PrimTy)
+operationInstruction op retTy as = case retTy of
+  SPIRV.Unit -> do
+    instruction
+      Instruction
+        { operation = op
+        , resTy = Nothing
+        , resID = Nothing
+        , args = toArgs as
+        }
+    pure (ID 0, retTy) -- ID should not be used
+  _ -> do
+    resTyID <- typeID retTy
+    v <- fresh
+    instruction
+      Instruction
+        { operation = op
+        , resTy = Just resTyID
+        , resID = Just v
+        , args = toArgs as
+        }
+    pure (v, retTy)

@@ -32,10 +32,10 @@ module FIR.Prim.Op where
 
 -- base
 import Prelude
-  ( Maybe(..), Bool, (.)
-  , Functor(..)
-  , fromIntegral
-  , ($) )
+  ( Bool(..), Float, Functor(..), Maybe(..), Show(..)
+  , ($), (<>), (.)
+  , error, fromIntegral
+  )
 import Control.Applicative
   ( liftA2 )
 import Data.Kind
@@ -48,8 +48,6 @@ import GHC.TypeNats
   ( Nat, KnownNat, natVal )
 
 -- fir
-import Control.Monad.Indexed
-  ( (:=)(AtKey) )
 import Data.Constraint.All
   ( All )
 import FIR.AST.Type
@@ -87,6 +85,8 @@ import qualified SPIRV.PrimOp as SPIRV
 class All Nullary ( FunArgs (PrimOpAugType op a) ) => PrimOp (op :: opKind) (a :: k) | op -> k where
   type PrimOpAugType op a :: AugType
   op :: PrimOpType op a
+  op = error
+    ( "unsupported primitive operation " <> show ( opName @_ @_ @op @a ) )
   opName :: SPIRV.PrimOp
   opSing :: Maybe (SPrimOp a op)
   opSing = Nothing
@@ -418,23 +418,29 @@ instance ( ScalarTy a, ScalarTy b, Rounding '(a,b) ) => PrimOp SPIRV.CCeiling '(
 -- geometry primitive instructions
 instance PrimOp SPIRV.EmitGeometryVertex (i :: ProgramState) where
   type PrimOpAugType SPIRV.EmitGeometryVertex i = Eff i i ()
-  op = AtKey ()
   opName = SPIRV.GeomOp SPIRV.EmitGeometryVertex
 instance PrimOp SPIRV.EndGeometryPrimitive (i :: ProgramState) where
   type PrimOpAugType SPIRV.EndGeometryPrimitive i = Eff i i ()
-  op = AtKey ()
   opName = SPIRV.GeomOp SPIRV.EndGeometryPrimitive
 
 -- memory synchronisation instructions
 instance PrimOp SPIRV.ControlSync (i :: ProgramState) where
   type PrimOpAugType SPIRV.ControlSync i = Val Word32 :--> Val Word32 :--> Val Word32 :--> Eff i i ()
-  op _ _ _ = AtKey ()
   opName = SPIRV.SyncOp SPIRV.ControlSync
 instance PrimOp SPIRV.MemorySync (i :: ProgramState) where
   type PrimOpAugType SPIRV.MemorySync i = Val Word32 :--> Val Word32 :--> Eff i i ()
-  op _ _ = AtKey ()
   opName = SPIRV.SyncOp SPIRV.MemorySync
 
+-- ray tracing instructions
+instance PrimOp SPIRV.RT_ReportIntersection (i :: ProgramState) where
+  type PrimOpAugType SPIRV.RT_ReportIntersection i = Val Float :--> Val Word32 :--> Eff i i Bool
+  opName = SPIRV.RayOp SPIRV.RT_ReportIntersection
+instance PrimOp SPIRV.RT_IgnoreIntersection (i :: ProgramState) where
+  type PrimOpAugType SPIRV.RT_IgnoreIntersection i = Eff i i ()
+  opName = SPIRV.RayOp SPIRV.RT_IgnoreIntersection
+instance PrimOp SPIRV.RT_TerminateRay (i :: ProgramState) where
+  type PrimOpAugType SPIRV.RT_TerminateRay i = Eff i i ()
+  opName = SPIRV.RayOp SPIRV.RT_TerminateRay
 
 -- vector operations
 -- doing it by hand because I'm an idiot who doesn't know better

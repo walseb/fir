@@ -136,6 +136,10 @@ type family ValidateExecutionModes
     = If ( PertainTo k Kernel modes )
         ( Just (KernelInfo (LocalSizes k Kernel modes) ) )
         Nothing
+  ValidateExecutionModes k ( 'Stage ( 'RayStage rayShader ) ) modes
+    = If ( PertainTo k ( 'Stage ( 'RayStage rayShader ) ) modes )
+      ( Just ( 'RayShaderInfo ( MkRayShaderInfo rayShader ) ) )
+      Nothing
   ValidateExecutionModes k em _
     = TypeError ( Text "Unsupported " :<>: Text (NamedExecutionModel k em) )
 
@@ -152,7 +156,7 @@ type family Pertains (k :: Symbol) (em :: ExecutionModel) (mode :: m) (ok :: Boo
         :<>: ShowType mode :<>: Text "."
         )
 
-type family HasOneOf (k :: Symbol) (em :: ExecutionModel) (oneOf :: [ m ] ) (modes :: [ m ]) :: Bool where
+type family HasOneOf (k :: Symbol) (em :: ExecutionModel) (oneOf :: [ m ]) (modes :: [ m ]) :: Bool where
   HasOneOf k em oneOf modes
     = If ( IsJust ( LookupOneOf k em oneOf modes ) )
         True

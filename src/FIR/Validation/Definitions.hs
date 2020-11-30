@@ -51,6 +51,8 @@ import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Image
   ( Image )
+import FIR.Prim.RayTracing
+  ( AccelerationStructure )
 import FIR.Prim.Struct
   ( Struct )
 import FIR.ProgramState
@@ -64,7 +66,7 @@ import qualified SPIRV.Image
 import qualified SPIRV.Storage    as SPIRV
   ( StorageClass )
 import qualified SPIRV.Storage    as Storage
-  ( StorageClass(..) )
+  ( StorageClass(..), RayStorage(..), DataOrigin(..) )
 
 ------------------------------------------------------------------------
 
@@ -155,6 +157,11 @@ type family ValidGlobal
         ( Text "Uniform buffer named " :<>: ShowType name )
         decs
         (Array n (Struct as))
+  ValidGlobal name Storage.Uniform decs AccelerationStructure
+    = ValidUniformDecorations
+        ( Text "Acceleration structure named " :<>: ShowType name )
+        decs
+        AccelerationStructure
   ValidGlobal name Storage.Uniform _ ty
     = TypeError
         (    Text "Uniform buffer named " :<>: ShowType name
@@ -177,6 +184,11 @@ type family ValidGlobal
         :<>: Text " should be backed by a struct or array containing a struct;"
         :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
+  -- TODO: more validation for ray-tracing storage classes
+  ValidGlobal name ( 'Storage.RayStorage ('Storage.CallableData 'Storage.Lifetime) ) decs ty
+    = HasLocation name decs
+  ValidGlobal name ( 'Storage.RayStorage ('Storage.RayPayload   'Storage.Lifetime) ) decs ty
+    = HasLocation name decs
   ValidGlobal _ _ _ _ = ()
 
 type family ValidUniformDecorations
@@ -209,6 +221,17 @@ type family HasDescriptorSet
   HasDescriptorSet name '[]
     = TypeError
         ( name :<>: Text " is missing a 'DescriptorSet' decoration." )
+
+type family HasLocation
+              ( name :: Symbol                   )
+              ( decs :: [ SPIRV.Decoration Nat ] )
+              :: Constraint
+              where
+  HasLocation _    ( SPIRV.Location _ ': _ ) = ()
+  HasLocation name ( _ ': decs ) = HasLocation name decs
+  HasLocation name '[]
+    = TypeError
+        ( ShowType name :<>: Text " is missing a 'Location' decoration." )
 
 -- TODO: I'm not sure what the valid decorations are here...
 type family ValidImageDecorations

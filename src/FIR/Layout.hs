@@ -549,6 +549,7 @@ requiredAlignment :: MonadError ShortText m => SPIRV.StorageClass -> m ( SPIRV.P
 requiredAlignment Storage.Uniform       = pure extendedAlignment
 requiredAlignment Storage.StorageBuffer = pure baseAlignment
 requiredAlignment Storage.PushConstant  = pure baseAlignment
+requiredAlignment (Storage.RayStorage Storage.ShaderRecordBuffer ) = pure baseAlignment
 requiredAlignment storage
   = throwError
       ( "Layout: unsupported storage class " <> ShortText.pack (show storage) <> "." )
@@ -562,6 +563,7 @@ inferLayout :: MonadError ShortText m
 inferLayout _ _ storageClass ty
   | storageClass `notElem`
       [ Storage.Uniform, Storage.StorageBuffer, Storage.PushConstant
+      , Storage.RayStorage Storage.ShaderRecordBuffer
       , Storage.Input, Storage.Output
       ]
   = pure ty
@@ -594,6 +596,7 @@ inferLayout usage decs storageClass struct@(SPIRV.Struct as sdecs _)
       ali <- f struct
       laidOutMembers <- layoutStructMembersWith f ali as
       pure ( SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block (Set.union decs sdecs)) SPIRV.NotForBuiltins )
+inferLayout _ _ _ SPIRV.AccelerationStructure = pure SPIRV.AccelerationStructure
 inferLayout _ _ storageClass ty
   | storageClass `elem` [ Storage.Input, Storage.Output ]
   = pure ty

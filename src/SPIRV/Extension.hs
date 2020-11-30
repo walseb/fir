@@ -172,3 +172,5 @@ pattern SPV_KHR_physical_storage_buffer :: Extension
 pattern SPV_KHR_physical_storage_buffer = Extension "SPV_KHR_physical_storage_buffer"
 pattern SPV_KHR_non_semantic_info :: Extension
 pattern SPV_KHR_non_semantic_info = Extension "SPV_KHR_non_semantic_info"
+pattern SPV_KHR_ray_tracing :: Extension
+pattern SPV_KHR_ray_tracing = Extension "SPV_KHR_ray_tracing"

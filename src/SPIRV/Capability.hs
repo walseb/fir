@@ -210,11 +210,17 @@ pattern MultiViewport :: Capability
 pattern MultiViewport = Capability 57
 
 -- extensions
+pattern RayQueryKHR :: Capability
+pattern RayQueryKHR = Capability 4471
+
+pattern RayTraversalPrimitiveCullingKHR :: Capability
+pattern RayTraversalPrimitiveCullingKHR = Capability 4478
+
+pattern RayTracingKHR :: Capability
+pattern RayTracingKHR = Capability 4479
+
 pattern MeshShadingNV :: Capability
 pattern MeshShadingNV = Capability 5266
-
-pattern RayTracingNV :: Capability
-pattern RayTracingNV = Capability 5340
 
 showCapability :: Capability -> String
 showCapability Matrix = "Matrix"
@@ -273,6 +279,7 @@ showCapability GeometryStreams = "GeometryStreams"
 showCapability StorageImageReadWithoutFormat = "StorageImageReadWithoutFormat"
 showCapability StorageImageWriteWithoutFormat = "StorageImageWriteWithoutFormat"
 showCapability MultiViewport = "MultiViewport"
+showCapability RayTraversalPrimitiveCullingKHR = "RayTraversalPrimitiveCullingKHR"
+showCapability RayTracingKHR = "RayTracingKHR"
 showCapability MeshShadingNV = "MeshShadingNV"
-showCapability RayTracingNV  = "RayTracingNV"
 showCapability (Capability i) = show i

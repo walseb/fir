@@ -93,7 +93,7 @@ import qualified SPIRV.ScalarTy as SPIRV
 --
 -- Throws a type error if there is no image with given name.
 type family LookupImageProperties (k :: Symbol) (i :: ProgramState) :: ImageProperties where
-  LookupImageProperties k ('ProgramState i _ _ _ _)
+  LookupImageProperties k ('ProgramState i _ _ _ _ _ _)
     = ImagePropertiesFromLookup k i (Lookup k i)
 
 type family ImagePropertiesFromLookup

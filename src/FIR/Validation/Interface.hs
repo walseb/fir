@@ -33,7 +33,9 @@ import GHC.TypeNats
 
 -- fir
 import Data.Type.Map
-  ( (:->)((:->)) )
+  ( (:->)((:->)), Lookup )
+import Data.Type.Maybe
+  ( SequenceMaybe )
 import FIR.Prim.Struct
   ( LocationSlot(LocationSlot) )
 import FIR.ProgramState
@@ -56,9 +58,9 @@ import qualified SPIRV.Storage    as SPIRV
 ------------------------------------------------------------------------
 
 type family ValidInterface ( epName :: Symbol ) ( nfo :: EntryPointInfo ) :: Constraint where
-  ValidInterface epName ( 'EntryPointInfo xNfo '(inputs, outputs) _ )
-    = ( ValidLayout ( LocationSlotsFromDecorations epName xNfo SPIRV.Input  inputs  )
-      , ValidLayout ( LocationSlotsFromDecorations epName xNfo SPIRV.Output outputs )
+  ValidInterface epName ( 'EntryPointInfo xNfo globals _ )
+    = ( ValidLayout ( LocationSlotsFromDecorations epName xNfo SPIRV.Input  ( SequenceMaybe ( Lookup SPIRV.Input  globals ) ) )
+      , ValidLayout ( LocationSlotsFromDecorations epName xNfo SPIRV.Output ( SequenceMaybe ( Lookup SPIRV.Output globals ) ) )
       )
 
 type family LocationSlotsFromDecorations
@@ -75,7 +77,6 @@ type family LocationSlotsFromDecorations
     = AddLocationSlotIfNecessary varName ty decs emName em inOut
         ( Arrayness inOut decs xNfo )
         ( LocationSlotsFromDecorations emName xNfo inOut globals )
-
 
 type family AddLocationSlotIfNecessary
               ( varName   :: Symbol                        )

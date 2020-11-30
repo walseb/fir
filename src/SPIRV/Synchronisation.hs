@@ -44,6 +44,7 @@ data SynchronisationScope
   | Subgroup
   | Invocation
   | QueueFamily
+  | ShaderCall
   deriving stock ( Eq, Ord, Show, Enum, Bounded )
   deriving Put via ( PutWord32Enum SynchronisationScope )
 

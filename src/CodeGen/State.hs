@@ -154,6 +154,9 @@ data CGState
       -- | IDs of locally declared variables (floated to the top of the function definition).
       , localVariables      :: Map ID                                SPIRV.PointerTy
 
+      -- | IDs of locally declared ray query variables.
+      , rayQueries          :: Map ShortText                         ID
+
       -- | Pointer ID associated to a given ID.
       -- Used to keep track of auxiliary temporary pointers
       -- (e.g. a pointer created for a runtime access chain operation).
@@ -188,6 +191,7 @@ initialState CGContext { userCapabilities, userExtensions }
       , knownBindings       = Map.empty
       , localBindings       = Map.empty
       , localVariables      = Map.empty
+      , rayQueries          = Map.empty
       , temporaryPointers   = Map.empty
       }
 
@@ -249,7 +253,7 @@ emptyContext
       , userCapabilities = Set.empty
       , userExtensions   = Set.empty
       , userImages       = Map.empty
-      , spirvVersion     = SPIRV.Version 1 3
+      , spirvVersion     = SPIRV.Version 1 5
       , backend          = SPIRV.Vulkan
       , debugging        = False
       , asserting        = False
@@ -408,6 +412,12 @@ _localVariables = lens localVariables ( \s v -> s { localVariables = v } )
 
 _localVariable :: ID -> Lens' CGState (Maybe SPIRV.PointerTy)
 _localVariable v = _localVariables . at v
+
+_rayQueries :: Lens' CGState (Map ShortText ID)
+_rayQueries = lens rayQueries ( \s v -> s { rayQueries = v } )
+
+_rayQuery :: ShortText -> Lens' CGState (Maybe ID)
+_rayQuery v = _rayQueries . at v
 
 _temporaryPointers :: Lens' CGState (Map ID (ID, PointerState))
 _temporaryPointers = lens temporaryPointers ( \s v -> s { temporaryPointers = v } )

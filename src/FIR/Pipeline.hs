@@ -53,7 +53,7 @@ import Data.Type.Known
 import Data.Type.Map
   ( (:->) )
 import FIR.Definition
-  ( VariablesWithStorage )
+  ( Variables )
 import FIR.Module
   ( ShaderModule )
 import FIR.ProgramState
@@ -66,10 +66,9 @@ import FIR.Validation.Pipeline
   , GetVertexInputInfo
   , GetTopologyInfo
   )
-import qualified SPIRV.Image      as SPIRV
+import qualified SPIRV.Image as SPIRV
   ( ImageFormat )
-import qualified SPIRV.Stage      as SPIRV
-import qualified SPIRV.Storage    as SPIRV
+import qualified SPIRV.Stage as SPIRV
 
 --------------------------------------------------------------------------
 -- * Primitive topologies
@@ -180,9 +179,7 @@ data PipelineStages (info :: PipelineInfo) (stageData :: Type) where
                 '( name
                  , 'EntryPointInfo
                       ( GetExecutionInfo shader name endState )
-                      '( VariablesWithStorage SPIRV.Input  defs
-                       , VariablesWithStorage SPIRV.Output defs
-                       )
+                      ( Variables defs )
                       'Defined
                  )
               )

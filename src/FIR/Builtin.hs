@@ -46,6 +46,8 @@ import qualified Data.Text.Short as ShortText
   ( unpack )
 
 -- fir
+import Data.Type.List
+  ( type (:++:) )
 import Data.Type.Map
   ( (:->)((:->))
   , InsertionSort
@@ -61,7 +63,7 @@ import FIR.Prim.Singletons
 import FIR.Prim.Struct
   ( Struct )
 import Math.Linear
-  ( V )
+  ( V, M )
 import qualified SPIRV.Builtin       as SPIRV
   ( Builtin(TessLevelInner, TessLevelOuter)
   , readBuiltin
@@ -83,6 +85,7 @@ import SPIRV.Stage
   , GeometryInfo
   , FragmentInfo
   , ComputeInfo
+  , RayShader(..), RayShaderInfo(..)
   )
 
 --------------------------------------------------------------------------
@@ -179,6 +182,53 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        , "cl_GlobalOffset"       ':-> Var R (V 3 Word32)
        , "cl_GlobalLinearID"     ':-> Var R Word32
        ]
+  ModelBuiltins' ( 'RayShaderInfo ( _ :: RayShaderInfo rayShader ) )
+    = RayShaderBuiltins rayShader
+
+type family RayShaderBuiltins ( shader :: RayShader ) :: [ Symbol :-> Binding ] where
+  RayShaderBuiltins RayGenerationShader
+    = '[ "gl_LaunchID"   ':-> Var R (V 3 Word32)
+       , "gl_LaunchSize" ':-> Var R (V 3 Word32)
+       ]
+  RayShaderBuiltins IntersectionShader
+    = '[ "gl_LaunchID"            ':-> Var R (V 3 Word32)
+       , "gl_LaunchSize"          ':-> Var R (V 3 Word32)
+       , "gl_PrimitiveID"         ':-> Var R Word32
+       , "gl_InstanceID"          ':-> Var R Word32
+       , "gl_InstanceCustomIndex" ':-> Var R Word32
+       , "gl_GeometryIndex"       ':-> Var R Word32
+       , "gl_WorldRayOrigin"      ':-> Var R (V 3 Word32)
+       , "gl_WorldRayDirection"   ':-> Var R (V 3 Word32)
+       , "gl_ObjectRayOrigin"     ':-> Var R (V 3 Word32)
+       , "gl_ObjectRayDirection"  ':-> Var R (V 3 Word32)
+       , "gl_RayTMin"             ':-> Var R Float
+       , "gl_RayTMax"             ':-> Var R Float
+       , "gl_IncomingRayFlags"    ':-> Var R Word32
+       , "gl_HitT"                ':-> Var R Float
+       , "gl_HitKind"             ':-> Var R Word32
+       , "gl_ObjectToWorld"       ':-> Var R (M 3 4 Float)
+       , "gl_WorldToObject"       ':-> Var R (M 3 4 Float)
+       , "gl_ObjectToWorld3x4"    ':-> Var R (M 4 3 Float)
+       , "gl_WorldToObject3x4"    ':-> Var R (M 4 3 Float)
+       ]
+  RayShaderBuiltins AnyHitShader = RayShaderBuiltins IntersectionShader :++:
+      '[ "gl_HitT"    ':-> Var R Float
+       , "gl_HitKind" ':-> Var R Word32
+       ]
+  RayShaderBuiltins ClosestHitShader = RayShaderBuiltins AnyHitShader
+  RayShaderBuiltins MissShader
+    = '[ "gl_LaunchID"            ':-> Var R (V 3 Word32)
+       , "gl_LaunchSize"          ':-> Var R (V 3 Word32)
+       , "gl_WorldRayOrigin"      ':-> Var R (V 3 Word32)
+       , "gl_WorldRayDirection"   ':-> Var R (V 3 Word32)
+       , "gl_RayTMin"             ':-> Var R Float
+       , "gl_RayTMax"             ':-> Var R Float
+       , "gl_IncomingRayFlags"    ':-> Var R Word32
+       ]
+  RayShaderBuiltins CallableShader
+    = '[ "gl_LaunchID"            ':-> Var R (V 3 Word32)
+       , "gl_LaunchSize"          ':-> Var R (V 3 Word32)
+       ]
 
 shaderBuiltins :: ShaderInfo Word32 shader -> [ (ShortText, SPIRV.PointerTy) ]
 shaderBuiltins VertexShaderInfo
@@ -200,10 +250,19 @@ shaderBuiltins FragmentShaderInfo
 shaderBuiltins (ComputeShaderInfo _)
   = builtinPointer ( knownInterface @(ModelBuiltins' (ComputeInfo '(1,1,1))) ) -- yet another
 
+rayShaderBuiltins :: RayShaderInfo shader -> [ (ShortText, SPIRV.PointerTy) ]
+rayShaderBuiltins RayGenerationShaderInfo = builtinPointer ( knownInterface @(RayShaderBuiltins RayGenerationShader) )
+rayShaderBuiltins IntersectionShaderInfo  = builtinPointer ( knownInterface @(RayShaderBuiltins IntersectionShader) )
+rayShaderBuiltins AnyHitShaderInfo        = builtinPointer ( knownInterface @(RayShaderBuiltins AnyHitShader) )
+rayShaderBuiltins ClosestHitShaderInfo    = builtinPointer ( knownInterface @(RayShaderBuiltins ClosestHitShader) )
+rayShaderBuiltins MissShaderInfo          = builtinPointer ( knownInterface @(RayShaderBuiltins MissShader) )
+rayShaderBuiltins CallableShaderInfo      = builtinPointer ( knownInterface @(RayShaderBuiltins CallableShader) )
+
 modelBuiltins :: ExecutionInfo Word32 model -> [ (ShortText, SPIRV.PointerTy) ]
 modelBuiltins (ShaderExecutionInfo shaderInfo) = shaderBuiltins shaderInfo
 modelBuiltins (KernelInfo _)
   = builtinPointer ( knownInterface @(ModelBuiltins' (KernelInfo '(1,1,1))) ) -- dummy again
+modelBuiltins (RayShaderInfo rayInfo) = rayShaderBuiltins rayInfo
 
 builtinPointer
     :: [ (ShortText, (SPIRV.PrimTy, SPIRV.StorageClass)) ]

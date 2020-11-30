@@ -24,7 +24,7 @@ The library itself only has Haskell dependencies, so can easily be installed usi
  * For the package manager, we'll use [cabal](https://www.haskell.org/cabal/download.html), version 3.0 or greater, but other package managers will work too.
 
 To use FIR in a project, with the GHC and cabal executables added to PATH, we can create a new cabal project using `cabal init`. We then specify a dependency on FIR by adding `fir` to the `build-depends` field of the generated `projectName.cabal` file.
-We also need to tell cabal to fetch the project from this repository; this can be achieved by creating the following `cabal.project` file:
+To fetch the project from the GitLab repository rather than Hackage, create the following `cabal.project` file:
 
 ```
 packages: .

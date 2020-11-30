@@ -371,12 +371,33 @@ deriving stock instance Show n => Show (ShaderInfo n s)
 deriving stock instance Eq   n => Eq   (ShaderInfo n s)
 deriving stock instance Ord  n => Ord  (ShaderInfo n s)
 
+data RayShaderInfo (s :: RayShader) where
+  RayGenerationShaderInfo :: RayShaderInfo RayGenerationShader
+  IntersectionShaderInfo  :: RayShaderInfo IntersectionShader
+  AnyHitShaderInfo        :: RayShaderInfo AnyHitShader
+  ClosestHitShaderInfo    :: RayShaderInfo ClosestHitShader
+  MissShaderInfo          :: RayShaderInfo MissShader
+  CallableShaderInfo      :: RayShaderInfo CallableShader
+
+type family MkRayShaderInfo ( s :: RayShader ) :: RayShaderInfo s where
+  MkRayShaderInfo RayGenerationShader = RayGenerationShaderInfo
+  MkRayShaderInfo IntersectionShader = IntersectionShaderInfo
+  MkRayShaderInfo AnyHitShader = AnyHitShaderInfo
+  MkRayShaderInfo ClosestHitShader = ClosestHitShaderInfo
+  MkRayShaderInfo MissShader = MissShaderInfo
+  MkRayShaderInfo CallableShader = CallableShaderInfo
+
+deriving stock instance Show (RayShaderInfo s)
+deriving stock instance Eq   (RayShaderInfo s)
+deriving stock instance Ord  (RayShaderInfo s)
+
 data ExecutionInfo (n :: Type) (em :: ExecutionModel) where
   ShaderExecutionInfo :: ShaderInfo n s -> ExecutionInfo n ('Stage ('ShaderStage s))
   KernelInfo
     :: (n,n,n) -- kernel local size
     -> ExecutionInfo n Kernel
-  -- other infos not yet implemented
+  -- ray shaders don't need extra info (at least at the moment)
+  RayShaderInfo :: RayShaderInfo s -> ExecutionInfo n ('Stage ('RayStage s))
 
 type VertexInfo = 'ShaderExecutionInfo 'VertexShaderInfo
 type TessellationControlInfo i j m = 'ShaderExecutionInfo ( 'TessellationControlShaderInfo i j m)
@@ -404,6 +425,18 @@ modelOf (ShaderExecutionInfo (ComputeShaderInfo {}))
   = Stage (ShaderStage ComputeShader)
 modelOf (KernelInfo {})
   = Kernel
+modelOf (RayShaderInfo RayGenerationShaderInfo)
+  = Stage (RayStage RayGenerationShader)
+modelOf (RayShaderInfo IntersectionShaderInfo )
+  = Stage (RayStage IntersectionShader)
+modelOf (RayShaderInfo AnyHitShaderInfo)
+  = Stage (RayStage AnyHitShader)
+modelOf (RayShaderInfo ClosestHitShaderInfo)
+  = Stage (RayStage ClosestHitShader)
+modelOf (RayShaderInfo MissShaderInfo)
+  = Stage (RayStage MissShader)
+modelOf (RayShaderInfo CallableShaderInfo)
+  = Stage (RayStage CallableShader)
 
 
 instance Demotable (ShaderInfo Nat s) where
@@ -441,6 +474,23 @@ instance ( Known (Nat,Nat,Nat) ijk )
       => Known (ShaderInfo Nat ComputeShader) (ComputeShaderInfo ijk) where
   known = ComputeShaderInfo ( knownValue @ijk )
 
+
+instance Demotable (RayShaderInfo s) where
+  type Demote (RayShaderInfo s) = RayShaderInfo s
+
+instance Known ( RayShaderInfo RayGenerationShader ) RayGenerationShaderInfo where
+  known = RayGenerationShaderInfo
+instance Known ( RayShaderInfo IntersectionShader ) IntersectionShaderInfo where
+  known = IntersectionShaderInfo
+instance Known ( RayShaderInfo AnyHitShader ) AnyHitShaderInfo where
+  known = AnyHitShaderInfo
+instance Known ( RayShaderInfo ClosestHitShader ) ClosestHitShaderInfo where
+  known = ClosestHitShaderInfo
+instance Known ( RayShaderInfo MissShader ) MissShaderInfo where
+  known = MissShaderInfo
+instance Known ( RayShaderInfo CallableShader ) CallableShaderInfo where
+  known = CallableShaderInfo
+
 instance Demotable (ExecutionInfo Nat s) where
   type Demote (ExecutionInfo Nat s) = ExecutionInfo Word32 s
 
@@ -452,3 +502,8 @@ instance Known (ShaderInfo Nat s) info
 instance ( Known (Nat,Nat,Nat) ijk )
       => Known (ExecutionInfo Nat 'Kernel) (KernelInfo ijk) where
   known = KernelInfo ( knownValue @ijk)
+instance Known (RayShaderInfo s) info 
+      => Known (ExecutionInfo Nat ('Stage ('RayStage s)))
+           ('RayShaderInfo info)
+      where
+  known = RayShaderInfo ( knownValue @info )

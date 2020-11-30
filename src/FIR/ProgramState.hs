@@ -59,6 +59,8 @@ import FIR.Binding
   ( BindingsMap
   , Permissions
   )
+import FIR.Prim.RayTracing
+  ( RayQueryState )
 import FIR.Prim.Singletons
   ( KnownVars(knownVars) )
 import qualified SPIRV.Control    as SPIRV
@@ -66,6 +68,7 @@ import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.PrimTy     as SPIRV
   ( PrimTy )
 import qualified SPIRV.Stage      as SPIRV
+import qualified SPIRV.Storage    as SPIRV
 
 -------------------------------------------------------------------
 -- | Data (kind) used to keep track of function context at the type-level.
@@ -82,23 +85,14 @@ deriving stock instance ( Show lit, Show bindings, Show nat, Show mbIface )
                      => Show ( FunctionContext lit nat bindings mbIface )
 
 
-type InterfaceVariable nat ty = ( [SPIRV.Decoration nat], ty )
+type InterfaceVariable nat ty = ([SPIRV.Decoration nat], ty)
 type TLInterfaceVariable = InterfaceVariable Nat    Type
 type VLInterfaceVariable = InterfaceVariable Word32 SPIRV.PrimTy
-type Interface lit nat ty
-  = ( [ lit :-> InterfaceVariable nat ty ]
-    , [ lit :-> InterfaceVariable nat ty ]
-    )
 
 type TLInterface
-  = ( [ Symbol :-> TLInterfaceVariable ]
-    , [ Symbol :-> TLInterfaceVariable ]
-    )
+  = [ SPIRV.StorageClass :-> [ Symbol    :-> TLInterfaceVariable ] ]
 type VLInterface
-  = ( [ ShortText :-> VLInterfaceVariable ]
-    , [ ShortText :-> VLInterfaceVariable ]
-    )
-
+  = [ SPIRV.StorageClass :-> [ ShortText :-> VLInterfaceVariable ] ]
 
 -- | A type-level function context.
 type TLFunctionContext
@@ -189,30 +183,35 @@ data ProgramState
       , context     :: TLFunctionContext
       , functions   :: Map Symbol FunctionInfo
       , entryPoints :: Map Symbol EntryPointInfo
+      , interface   :: TLInterface
+      , rayQueries  :: Map Symbol RayQueryState
       , backend     :: SPIRV.Backend
       }
 
 type family Bindings ( s :: ProgramState ) :: BindingsMap where
-  Bindings ('ProgramState bds _ _ _ _) = bds
+  Bindings ('ProgramState bds _ _ _ _ _ _) = bds
 
 type family FunctionInfos ( s :: ProgramState ) :: Map Symbol FunctionInfo where
-  FunctionInfos ('ProgramState _ _ fs _ _) = fs
+  FunctionInfos ('ProgramState _ _ fs _ _ _ _) = fs
 
 type family EntryPointInfos ( s :: ProgramState ) :: Map Symbol EntryPointInfo where
-  EntryPointInfos ('ProgramState _ _ _ eps _) = eps
+  EntryPointInfos ('ProgramState _ _ _ eps _ _ _) = eps
 
 type family ExecutionContext ( s :: ProgramState ) :: Maybe SPIRV.ExecutionModel where
-  ExecutionContext ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _)
+  ExecutionContext ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _ _ _)
     = Just stage
   ExecutionContext _
     = Nothing
+
+type family RayQueries ( s :: ProgramState ) :: Map Symbol RayQueryState where
+  RayQueries ('ProgramState _ _ _ _ _ rayQueries _) = rayQueries
 
 executionContext :: VLFunctionContext -> Maybe (ShortText, SPIRV.ExecutionModel)
 executionContext (InEntryPoint stageName stageInfo _) = Just (stageName, SPIRV.modelOf stageInfo)
 executionContext _ = Nothing
 
 type family ExecutionContext' ( s :: ProgramState ) :: SPIRV.ExecutionModel where
-  ExecutionContext' ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _)
+  ExecutionContext' ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _ _ _)
     = stage
   ExecutionContext' _
     = TypeError
@@ -222,6 +221,6 @@ type family ExecutionInfoContext
                 ( s :: ProgramState )
               :: Maybe (SPIRV.ExecutionInfo Nat (ExecutionContext' s))
                 where
-  ExecutionInfoContext ('ProgramState _ ('InEntryPoint _ info _) _ _ _)
+  ExecutionInfoContext ('ProgramState _ ('InEntryPoint _ info _) _ _ _ _ _)
     = Just info
   ExecutionInfoContext _ = 'Nothing

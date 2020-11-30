@@ -99,6 +99,9 @@ data Parity = Even | Odd
 data SParity ( parity :: Parity ) where
   SEven :: SParity Even
   SOdd  :: SParity Odd
+parity :: SParity bool -> Parity
+parity SEven = Even
+parity SOdd  = Odd
 
 type IsingParameters =
   Struct 
@@ -181,7 +184,8 @@ stepShader sParity = Module $ entryPoint @"main" @Compute do
 
 
 updateSpin
-  :: SParity parity -> Code IsingParameters -> Code ( V 2 Word32 )
+  :: _
+  => SParity parity -> Code IsingParameters -> Code ( V 2 Word32 )
   -> Code Float -> Code ( V 4 Float ) -> Program _s _s ( Code Float )
 updateSpin sParity isingParameters ( Vec2 ix iy ) s ( Vec4 u l r d ) = locally do
   temperature   <- def @"temperature"   @R $ view @( Name "temperature"   ) isingParameters
@@ -211,7 +215,8 @@ updateSpin sParity isingParameters ( Vec2 ix iy ) s ( Vec4 u l r d ) = locally d
       else s
 
 lookupNeighbourSpins
-  :: SParity parity
+  :: _
+  => SParity parity
   -> Code Float
   -> Code ( V 2 Word32 ) -> Code ( V 2 Word32 )
   -> Program _s _s ( Code ( V 4 Float ) )
@@ -285,10 +290,10 @@ lookupNeighbourSpins sParity otherSpin ( Vec2 i_local_x i_local_y ) ( Vec2 i_glo
     lastColumn, lastRow :: Code Word32
     lastColumn = Lit . fromIntegral $ ( ( width * ss ) `div` 2 - 1 :: Int32 )
     lastRow    = Lit . fromIntegral $ ( height * ss - 1 :: Int32 )
-    readGlobalSpin :: Code ( V 2 Word32 ) -> Program _s _s ( Code Float )
-    readGlobalSpin = case sParity of
-      SEven -> imageRead @"oddSpins"
-      SOdd  -> imageRead @"evenSpins"
+    readGlobalSpin :: _ => Code ( V 2 Word32 ) -> Program _s _s ( Code Float )
+    readGlobalSpin = case parity sParity of
+      Even -> imageRead @"oddSpins"
+      Odd  -> imageRead @"evenSpins"
 
 pcg3d :: Code ( V 3 Word32 ) -> Program s s ( Code ( V 3 Word32 ) )
 pcg3d v = purely do

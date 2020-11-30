@@ -104,10 +104,8 @@ import Data.Type.Known
 import Data.Type.Map
   ( (:->)((:->))
   , Insert, Union
-  , Lookup
+  , InsertWithInsert
   )
-import Data.Type.Maybe
-  ( SequenceMaybe )
 import FIR.Binding
   ( Binding(Variable), StoragePermissions )
 import qualified FIR.Binding as Binding
@@ -152,8 +150,6 @@ import qualified SPIRV.Stage         as SPIRV
   ( ExecutionModel, ExecutionInfo, Backend, backendOf )
 import qualified SPIRV.Storage       as SPIRV
   ( StorageClass )
-import qualified SPIRV.Storage       as Storage
-  ( StorageClass(Input,Output) )
 
 --------------------------------------------------------------------------
 -- annotating top-level definitions with necessary information
@@ -335,7 +331,9 @@ type family StartStateFromTriage
         ( InsertionSortGlobals globals ) -- checks for duplicate globals
         ProgramState.TopLevel
         funs
-        ( EntryPointInfos globals eps ) -- validates entry points and checks for duplicates
+        ( EntryPointInfos globals eps )  -- validates entry points and checks for duplicates
+        globals
+        '[]                              -- no ray queries have been started
         ( EntryPointsBackend eps )
 
 -- | Perform triage of user-supplied definitions,
@@ -432,30 +430,25 @@ type family InsertMaybeEntryPointInfo
     = TypeError ( Text "Invalid entry point execution modes (unreachable)" )
   InsertMaybeEntryPointInfo k globals ('Just nfo) nfos
     = InsertEntryPointInfo k
-        ( 'EntryPointInfo nfo
-            '( SequenceMaybe (Lookup Storage.Input  globals)
-             , SequenceMaybe (Lookup Storage.Output globals)
-             )
-            'Declared )
+        ( 'EntryPointInfo nfo globals 'Declared )
         nfos
 
--- | Grabs the input/output variables in the given definition.
+-- | Grabs the variables in the given definition.
 --
 -- This is a workaround for the fact that shader interfaces are not kept track of
 -- at the type level.
 -- This is permissible as long as the interface for the entry-point consists precisely
 -- of the 'Input'/'Output' variables provided in the top-level annotation.
 -- See [FIR issue #51](https://gitlab.com/sheaf/fir/issues/51).
-type family VariablesWithStorage
-              ( storage :: SPIRV.StorageClass      )
-              ( defs    :: [Symbol :-> Definition] )
-            :: [ Symbol :-> TLInterfaceVariable ]
+type family Variables
+              ( defs :: [Symbol :-> Definition] )
+            :: [ SPIRV.StorageClass :-> [ Symbol :-> TLInterfaceVariable ] ]
             where
-  VariablesWithStorage storage '[] = '[]
-  VariablesWithStorage storage ( ( varName ':-> Global storage decs ty) ': defs )
-    = ( varName ':-> '(decs, ty) ) ': VariablesWithStorage storage defs
-  VariablesWithStorage storage ( _ ': defs )
-    = VariablesWithStorage storage defs
+  Variables '[] = '[]
+  Variables ( ( varName ':-> Global storage decs ty) ': defs )
+    = InsertWithInsert storage varName '(decs,ty) ( Variables defs )
+  Variables ( _ ': defs ) = Variables defs
+
 
 type family InsertionSortGlobals
                ( globals :: [ SPIRV.StorageClass :-> [ Symbol :-> TLInterfaceVariable ] ] )
@@ -473,15 +466,15 @@ type family InsertionSortGlobalsWith
   InsertionSortGlobalsWith _ '[] = '[]
   InsertionSortGlobalsWith storage ( ( k ':-> '( decs, ty ) ) ': globals )
     = Insert k
-        ( Variable (StoragePermissions storage) ty )
+        ( Variable (StoragePermissions storage decs) ty )
         ( InsertionSortGlobalsWith storage globals )
 
 
 type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   StartBindings '[]
     = '[]
-  StartBindings ((k ':-> Global storage _ ty) ': defs)
-    = Insert k (Variable (StoragePermissions storage) ty) (StartBindings defs)
+  StartBindings ((k ':-> Global storage decs ty) ': defs)
+    = Insert k (Variable (StoragePermissions storage decs) ty) (StartBindings defs)
   ---- ^^^^^ TODO: we probably don't want to add all of these storage classes to the list of bindings?
   StartBindings ((k ':-> _) ': defs)
     = StartBindings defs
@@ -489,8 +482,8 @@ type family StartBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Bi
 type family EndBindings (defs :: [ Symbol :-> Definition ]) :: [ Symbol :-> Binding ] where
   EndBindings '[]
     = '[]
-  EndBindings ((k ':-> Global storage _ ty) ': defs)
-    = Insert k (Variable (StoragePermissions storage) ty) (EndBindings defs)
+  EndBindings ((k ':-> Global storage decs ty) ': defs)
+    = Insert k (Variable (StoragePermissions storage decs) ty) (EndBindings defs)
   EndBindings ((k ':-> Function _ as b) ': defs)
     = Insert k (Binding.Function as b) (EndBindings defs)
   EndBindings (_ ': defs)

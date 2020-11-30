@@ -55,6 +55,10 @@ allTests
           , ( "ReadWrite", Validate )
           , ( "Sample"   , Validate )
           ]
+    , Folder "Inference"
+          [ ( "Ising1", Typecheck )
+          , ( "Ising2", Typecheck )
+          ]
     , Folder "Interface"
           [ ( "ComponentMismatch", Typecheck )
           , ( "ExtraOutput"      , Typecheck )
@@ -92,6 +96,9 @@ allTests
           ]
     , Folder "ProgramState"
           [ ( "Shadowing", Validate)
+          ]
+    , Folder "RayTracing"
+          [ ( "RayGeneration", Validate)
           ]
     , Folder "Small"
           [ ( "HalfArithmetic" , Validate )

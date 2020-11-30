@@ -127,12 +127,14 @@ module FIR
       ( Function
       , EntryPoint
       )
+  , module FIR.Prim.RayTracing
   , module FIR.Syntax.AST
   , module FIR.Syntax.IfThenElse
   , module FIR.Syntax.Images
   , module FIR.Syntax.Optics
   , module FIR.Syntax.Option
   , module FIR.Syntax.Program
+  , module FIR.Syntax.RayTracing
   , module FIR.Syntax.Swizzle
   , module FIR.Syntax.Synonyms
   , FIR.Layout.Layout(..)
@@ -175,6 +177,13 @@ module FIR
   , SPIRV.Stage.Compute
   , SPIRV.Stage.Shader(..)
   , SPIRV.Stage.ExecutionModel(Kernel)
+  , SPIRV.Stage.RayGeneration
+  , SPIRV.Stage.Intersection
+  , SPIRV.Stage.AnyHit
+  , SPIRV.Stage.ClosestHit
+  , SPIRV.Stage.Miss
+  , SPIRV.Stage.Callable
+  , SPIRV.Storage.DataOrigin(..)
   , module SPIRV.Synchronisation
   , SPIRV.Version.Version(..)
   -- image properties
@@ -311,6 +320,8 @@ import FIR.Module
 import FIR.Pipeline
 import FIR.Prim.Array
 import FIR.Prim.Image
+import FIR.Prim.RayTracing
+  hiding ( pattern RayQuery )
 import FIR.Prim.Singletons
 import FIR.Prim.Struct
 import FIR.ProgramState
@@ -320,6 +331,7 @@ import FIR.Syntax.Images
 import FIR.Syntax.Optics
 import FIR.Syntax.Option
 import FIR.Syntax.Program
+import FIR.Syntax.RayTracing
 import FIR.Syntax.Swizzle
 import FIR.Syntax.Synonyms
 import Instances.TH.Lift
@@ -337,6 +349,7 @@ import SPIRV.Extension
 import qualified SPIRV.Extension  as SPIRV
 import SPIRV.Image hiding ( LODOperand(..), Operand(..) )
 import SPIRV.Stage
+import SPIRV.Storage
 import SPIRV.Version
 import qualified SPIRV.Version    as SPIRV
 import SPIRV.Synchronisation

@@ -89,6 +89,8 @@ data PrimTy where
   Image        :: Image -> PrimTy
   Sampler      ::          PrimTy -- opaque
   SampledImage :: Image -> PrimTy
+  AccelerationStructure :: PrimTy -- opaque
+  RayQuery              :: PrimTy -- opaque
   deriving stock ( Show, Eq, Ord )
 
 -- newtype to deal with types that are known to be pointers,
@@ -117,6 +119,8 @@ tyOp Pointer            {} = TypePointer
 tyOp Image              {} = TypeImage
 tyOp Sampler               = TypeSampler
 tyOp SampledImage       {} = TypeSampledImage
+tyOp AccelerationStructure = TypeAccelerationStructure
+tyOp RayQuery              = TypeRayQuery
 
 scalars :: PrimTy -> [ ScalarTy ]
 scalars Unit                     = [ ]
@@ -132,6 +136,8 @@ scalars (Function as b)          = scalars b ++ ( scalars =<< as )
 scalars (Image img)              = [ texelComponent img ]
 scalars Sampler                  = [ ]
 scalars (SampledImage img)       = [ texelComponent img ]
+scalars AccelerationStructure    = []
+scalars RayQuery                 = []
 
 almostEqual :: PrimTy -> PrimTy -> Bool
 almostEqual (Vector n a) (Vector n' a')
