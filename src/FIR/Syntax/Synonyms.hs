@@ -72,6 +72,13 @@ module FIR.Syntax.Synonyms
   , pattern Mat22, pattern Mat23, pattern Mat24
   , pattern Mat32, pattern Mat33, pattern Mat34
   , pattern Mat42, pattern Mat43, pattern Mat44
+
+  -- * Ray tracing flags
+  , pattern RayFlagsNone, pattern RayFlagsOpaque, pattern RayFlagsNoOpaque
+  , pattern RayFlagsTerminateOnFirstHit, pattern RayFlagsSkipClosestHitShader
+  , pattern RayFlagsCullBackFacingTriangles, pattern RayFlagsCullFrontFacingTriangles
+  , pattern RayFlagsCullOpaque, pattern RayFlagsCullNoOpaque
+
   )
   where
 
@@ -756,3 +763,23 @@ pattern Mat44 a11 a12 a13 a14
               ( Vec4 a12 a22 a32 a42 )
               ( Vec4 a13 a23 a33 a43 )
               ( Vec4 a14 a24 a34 a44 )
+
+-- Ray flags.
+pattern RayFlagsNone :: Word32
+pattern RayFlagsNone = 0
+pattern RayFlagsOpaque :: Word32
+pattern RayFlagsOpaque = 1
+pattern RayFlagsNoOpaque :: Word32
+pattern RayFlagsNoOpaque = 2
+pattern RayFlagsTerminateOnFirstHit :: Word32
+pattern RayFlagsTerminateOnFirstHit = 4
+pattern RayFlagsSkipClosestHitShader :: Word32
+pattern RayFlagsSkipClosestHitShader = 8
+pattern RayFlagsCullBackFacingTriangles :: Word32
+pattern RayFlagsCullBackFacingTriangles = 16
+pattern RayFlagsCullFrontFacingTriangles :: Word32
+pattern RayFlagsCullFrontFacingTriangles = 32
+pattern RayFlagsCullOpaque :: Word32
+pattern RayFlagsCullOpaque = 64
+pattern RayFlagsCullNoOpaque :: Word32
+pattern RayFlagsCullNoOpaque = 128

@@ -30,7 +30,7 @@ import qualified SPIRV.Image    as Image
 import           SPIRV.Operation
   hiding ( Capability )
 import           SPIRV.PrimOp
-  ( PrimOp(MatOp), op )
+  ( PrimOp(..), op )
 import           SPIRV.PrimTy
   ( PrimTy, scalars )
 import qualified SPIRV.PrimTy   as PrimTy
@@ -49,6 +49,7 @@ primOpCapabilities :: Backend -> PrimOp -> Set Capability
 primOpCapabilities bk ( op bk -> SatConvertSToU ) = [ ComputeKernel ]
 primOpCapabilities bk ( op bk -> SatConvertUToS ) = [ ComputeKernel ]
 primOpCapabilities _  ( MatOp {}                ) = [ Matrix ]
+primOpCapabilities _  ( RayOp {}                ) = [ RayTracingKHR ]
 primOpCapabilities _  _                           = [ ]
 
 --------------------------------------------------------------------------

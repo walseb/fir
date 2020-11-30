@@ -16,7 +16,7 @@ import Data.Kind
 import Data.Proxy
   ( Proxy(..) )
 import Data.Word
-  ( Word32 )
+  ( Word32, Word64 )
 import GHC.TypeLits
   ( Symbol )
 import Unsafe.Coerce
@@ -133,6 +133,10 @@ executeCallable
   -> Program i i ( Code () )
 executeCallable bindingTableOffset = fromAST $
   ExecuteCallable bindingTableOffset ( knownValue @callableDataName )
+
+accelerationStructureFromDeviceAddress :: Code Word64 -> Code AccelerationStructure
+accelerationStructureFromDeviceAddress
+  = primOp @'() @'SPIRV.RT_AccelerationStructureFromDeviceAddress
 
 --------------------------------------------------------------------------
 -- ray query instructions

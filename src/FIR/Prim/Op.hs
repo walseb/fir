@@ -43,7 +43,7 @@ import Data.Kind
 import Data.Proxy
   ( Proxy(Proxy) )
 import Data.Word
-  ( Word32 )
+  ( Word32, Word64 )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal )
 
@@ -54,6 +54,8 @@ import FIR.AST.Type
   ( AugType(Val, (:-->)), Eff, FunArgs, UnderlyingType, Nullary
   , ApplyFAug
   )
+import FIR.Prim.RayTracing
+  ( AccelerationStructure )
 import FIR.Prim.Singletons
   ( PrimTy, ScalarTy
   , primTy, scalarTy
@@ -441,6 +443,9 @@ instance PrimOp SPIRV.RT_IgnoreIntersection (i :: ProgramState) where
 instance PrimOp SPIRV.RT_TerminateRay (i :: ProgramState) where
   type PrimOpAugType SPIRV.RT_TerminateRay i = Eff i i ()
   opName = SPIRV.RayOp SPIRV.RT_TerminateRay
+instance PrimOp SPIRV.RT_AccelerationStructureFromDeviceAddress '() where
+  type PrimOpAugType SPIRV.RT_AccelerationStructureFromDeviceAddress _ = Val Word64 :--> Val AccelerationStructure
+  opName = SPIRV.RayOp SPIRV.RT_AccelerationStructureFromDeviceAddress
 
 -- vector operations
 -- doing it by hand because I'm an idiot who doesn't know better
