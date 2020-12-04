@@ -45,7 +45,7 @@ module FIR.Syntax.Program
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
     -- *** Constants / variables
-  , def
+  , let', def
     -- *** Functions
   , fundef
     -- *** Entry points
@@ -153,7 +153,7 @@ import FIR.AST
   , pattern Locally, pattern Embed
   , pattern While, pattern SwitchM
   , pattern Return, pattern Bind
-  , pattern Def, pattern FunDef, pattern FunCall, pattern DefEntryPoint
+  , pattern Let, pattern Def, pattern FunDef, pattern FunCall, pattern DefEntryPoint
   , pattern Use, pattern Assign
   , pattern NilOps
   )
@@ -310,6 +310,13 @@ instance {-# OVERLAPPABLE #-} ( j ~ i ) => HasUndefined (Program i j a) where
 -- Stateful operations (with indexed monadic state)
 
 -- Defining functions and variables.
+
+-- | let binding.
+let' :: forall ( a :: Type ) ( i :: ProgramState )
+     . ( GHC.Stack.HasCallStack )
+     => Code a
+     -> Program i i (Code a)
+let' = fromAST Let
 
 -- | Define a new variable.
 --

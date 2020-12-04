@@ -160,20 +160,20 @@ dormandPrince
       h <- get @"h"
 
       y  <- get @"y"
-      k₁ <- def @"k₁" @R =<< f  t          y
-      k₂ <- def @"k₂" @R =<< f (t + c₂*h) (y ^+^ h*^(a₂₁*^k₁))
-      k₃ <- def @"k₃" @R =<< f (t + c₃*h) (y ^+^ h*^(a₃₁*^k₁ ^+^ a₃₂*^k₂))
-      k₄ <- def @"k₄" @R =<< f (t + c₄*h) (y ^+^ h*^(a₄₁*^k₁ ^+^ a₄₂*^k₂ ^+^ a₄₃*^k₃))
-      k₅ <- def @"k₅" @R =<< f (t + c₅*h) (y ^+^ h*^(a₅₁*^k₁ ^+^ a₅₂*^k₂ ^+^ a₅₃*^k₃ ^+^ a₅₄*^k₄))
-      k₆ <- def @"k₆" @R =<< f (t +    h) (y ^+^ h*^(a₆₁*^k₁ ^+^ a₆₂*^k₂ ^+^ a₆₃*^k₃ ^+^ a₆₄*^k₄ ^+^ a₆₅*^k₅))
-      k₇ <- def @"k₇" @R =<< f (t +    h) (y ^+^ h*^(a₇₁*^k₁             ^+^ a₇₃*^k₃ ^+^ a₇₄*^k₄ ^+^ a₇₅*^k₅ ^+^ a₇₆*^k₆))
+      k₁ <- let' =<< f  t          y
+      k₂ <- let' =<< f (t + c₂*h) (y ^+^ h*^(a₂₁*^k₁))
+      k₃ <- let' =<< f (t + c₃*h) (y ^+^ h*^(a₃₁*^k₁ ^+^ a₃₂*^k₂))
+      k₄ <- let' =<< f (t + c₄*h) (y ^+^ h*^(a₄₁*^k₁ ^+^ a₄₂*^k₂ ^+^ a₄₃*^k₃))
+      k₅ <- let' =<< f (t + c₅*h) (y ^+^ h*^(a₅₁*^k₁ ^+^ a₅₂*^k₂ ^+^ a₅₃*^k₃ ^+^ a₅₄*^k₄))
+      k₆ <- let' =<< f (t +    h) (y ^+^ h*^(a₆₁*^k₁ ^+^ a₆₂*^k₂ ^+^ a₆₃*^k₃ ^+^ a₆₄*^k₄ ^+^ a₆₅*^k₅))
+      k₇ <- let' =<< f (t +    h) (y ^+^ h*^(a₇₁*^k₁             ^+^ a₇₃*^k₃ ^+^ a₇₄*^k₄ ^+^ a₇₅*^k₅ ^+^ a₇₆*^k₆))
 
-      err <- def @"err" @R ( absV ( d₁*^k₁    ^+^ d₃*^k₃ ^+^ d₄*^k₄ ^+^ d₅*^k₅ ^+^ d₆*^k₆ ^+^ d₇*^k₇ ) )
-      y'  <- def @"y'"  @R        ( b₁*^k₁    ^+^ b₃*^k₃ ^+^ b₄*^k₄ ^+^ b₅*^k₅ ^+^ b₆*^k₆            )
+      err <- let' ( absV ( d₁*^k₁    ^+^ d₃*^k₃ ^+^ d₄*^k₄ ^+^ d₅*^k₅ ^+^ d₆*^k₆ ^+^ d₇*^k₇ ) )
+      y'  <- let'        ( b₁*^k₁    ^+^ b₃*^k₃ ^+^ b₄*^k₄ ^+^ b₅*^k₅ ^+^ b₆*^k₆            )
 
-      tols <- def @"tols" @R =<< tolFunction  t y
-      hMin <- def @"hMin" @R =<< hMinFunction t y
-      hMax <- def @"hMax" @R =<< hMaxFunction t y
+      tols <- let' =<< tolFunction  t y
+      hMin <- let' =<< hMinFunction t y
+      hMax <- let' =<< hMaxFunction t y
       let delta0
             = maxAdaptiveStepFactor err tols
             $ \errr tol -> 0.8 * ( tol / errr ) ** 0.2
@@ -194,7 +194,7 @@ dormandPrince
             { stepOrigin = (t, y )
             , stepSize   = (h, y')
             }
-        stepResult <- def @"stepResult" @R =<< nextStep stepData a
+        stepResult <- let' =<< nextStep stepData a
         put @"data" $ view @(Name "data") stepResult
         modify @"continue" ( && ( view @(Name "continue") stepResult ) )
         modify @"t" (+ h)

@@ -40,31 +40,31 @@ localGravitationalDopplerFactor
 localGravitationalDopplerFactor kerrInfo constants (Vec4 _ r cosθ _)
   = purely do
     -- black hole info
-    a   <- def @"a"   @R $ view @(Field "a" ) kerrInfo
-    a²  <- def @"a²"  @R $ view @(Field "a²") kerrInfo
+    a   <- let' $ view @(Field "a" ) kerrInfo
+    a²  <- let' $ view @(Field "a²") kerrInfo
 
     -- constants of motion
-    p_φ <- def @"p_φ" @R $ view @(Field "p_φ") constants
+    p_φ <- let' $ view @(Field "p_φ") constants
 
     -- 4-position
-    r²    <- def @"r²"    @R $ r * r
-    cos²θ <- def @"cos²θ" @R $ cosθ * cosθ
-    sin²θ <- def @"sin²θ" @R $ 1 - cos²θ
+    r²    <- let' $ r * r
+    cos²θ <- let' $ cosθ * cosθ
+    sin²θ <- let' $ 1 - cos²θ
 
     -- useful expressions
-    r²_p_a² <- def @"r²_p_a²" @R $  r² + a²
-    ρ² <- def @"ρ²" @R $ r² + a² * cos²θ
-    δ  <- def @"δ"  @R $ r * (r - 2) + a²
-    σ² <- def @"σ²" @R $ r²_p_a² * r²_p_a² - a² * δ * sin²θ
+    r²_p_a² <- let' $ r² + a²
+    ρ²      <- let' $ r² + a² * cos²θ
+    δ       <- let' $ r * (r - 2) + a²
+    σ²      <- let' $ r²_p_a² * r²_p_a² - a² * δ * sin²θ
 
     -- ADM formalism: lapse function and shift vector field
     -- reciprocal of lapse
-    _α <- def @"_α" @R $ sqrt σ² * invSqrt δ * invSqrt ρ²
+    _α <- let' $ sqrt σ² * invSqrt δ * invSqrt ρ²
     -- φ-component of shift vector (its only non-zero component)
-    βφ <- def @"βφ" @R $ - 2 * a * r / σ²
+    βφ <- let' $ - 2 * a * r / σ²
 
                  -- ( 1 - βφ * p_φ / ξ ) * _α
-    def @"res" @R $ ( 1 - βφ * p_φ     ) * _α
+    let' $ ( 1 - βφ * p_φ     ) * _α
     -- Note that, in the Schwarzschild metric, we have:
     --  α = sqrt ( 1 - 2 / r )
     --  β = 0
@@ -80,6 +80,6 @@ specialDopplerFactor
   -> Code (V 4 Float) -- observer velocity
   -> Program i i (Code Float)
 specialDopplerFactor kerrInfo pos v v_obs = purely do
-  num    <- ( def @"num"    @R . (1-) ) =<< spatialMetric kerrInfo pos v_obs v
-  denom² <- ( def @"denom²" @R . (1-) ) =<< spatialNorm   kerrInfo pos v_obs
-  def @"res" @R $ num * invSqrt denom²
+  num    <- ( let' . (1-) ) =<< spatialMetric kerrInfo pos v_obs v
+  denom² <- ( let' . (1-) ) =<< spatialNorm   kerrInfo pos v_obs
+  let' $ num * invSqrt denom²

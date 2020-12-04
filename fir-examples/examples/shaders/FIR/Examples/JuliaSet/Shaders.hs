@@ -160,7 +160,7 @@ fragment = shader do
 
 
     total <- #total
-    t <- def @"t" @R
+    t <- let'
         ( log ( fromIntegral total * xWidth * yWidth ) / log ( fromIntegral maxDepth ) :: Code Float )
 
     let col = gradient t (Lit sunset)

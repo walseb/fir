@@ -148,32 +148,32 @@ proj kerrInfo pos u v
 
 -- Normalise a vector with zero "t" component.
 normaliseSpatialComponents :: Code KerrInfo -> Code ( V 4 Float ) -> Code ( V 4 Float ) -> Program i i ( Code (V 4 Float ) )
-normaliseSpatialComponents kerrInfo pos v = purely do
-  nm <- def @"nm" @R =<< spatialNorm kerrInfo pos v
-  pure $ invSqrt (abs nm) *^ v
+normaliseSpatialComponents kerrInfo pos v = do
+  nm <- let' =<< spatialNorm kerrInfo pos v
+  let' ( invSqrt (abs nm) *^ v )
 
 -- Compute the spatial part of the metric (3+1 formalism).
 spatialMetric :: Code KerrInfo -> Code (V 4 Float) -> Code (V 4 Float) -> Code (V 4 Float) -> Program i i (Code Float)
-spatialMetric kerrInfo (Vec4 _ r cosθ _) (Vec4 _ dr₁ dθ₁ dφ₁) (Vec4 _ dr₂ dθ₂ dφ₂) = purely do
+spatialMetric kerrInfo (Vec4 _ r cosθ _) (Vec4 _ dr₁ dθ₁ dφ₁) (Vec4 _ dr₂ dθ₂ dφ₂) = do
   -- black hole info
-  a  <- def @"a"  @R $ view @(Field "a" ) kerrInfo
-  a² <- def @"a²" @R $ view @(Field "a²") kerrInfo
+  a  <- let' $ view @(Field "a" ) kerrInfo
+  a² <- let' $ view @(Field "a²") kerrInfo
 
   -- 4-position
-  r²    <- def @"r²"    @R $ r * r
-  cos²θ <- def @"cos²θ" @R $ cosθ * cosθ
+  r²    <- let' $ r * r
+  cos²θ <- let' $ cosθ * cosθ
 
-  δ       <- def @"δ"       @R $ r * (r - 2) + a²
-  ρ²      <- def @"ρ²"      @R $ r² + a² * cos²θ
-  sin²θ   <- def @"sin²θ"   @R $ 1 - cos²θ
+  δ       <- let' $ r * (r - 2) + a²
+  ρ²      <- let' $ r² + a² * cos²θ
+  sin²θ   <- let' $ 1 - cos²θ
 
-  two_a_r_sin²θ_by_ρ² <- def @"two_a_r_sin²θ_by_ρ²" @R $ 2 * a * r * sin²θ / ρ²
+  two_a_r_sin²θ_by_ρ² <- let' $ 2 * a * r * sin²θ / ρ²
 
-  dr² <- def @"dr²"    @R $ dr₁ * dr₂ * ρ² / δ
-  dθ² <- def @"dcosθ²" @R $ dθ₁ * dθ₂ * ρ²
-  dφ² <- def @"dφ²"    @R $ dφ₁ * dφ₂ * sin²θ * ( r² + a² + a * two_a_r_sin²θ_by_ρ² )
+  dr² <- let' $ dr₁ * dr₂ * ρ² / δ
+  dθ² <- let' $ dθ₁ * dθ₂ * ρ²
+  dφ² <- let' $ dφ₁ * dφ₂ * sin²θ * ( r² + a² + a * two_a_r_sin²θ_by_ρ² )
 
-  def @"spatialMetric" @R $ dr² + dθ² + dφ²
+  let' $ dr² + dθ² + dφ²
 
 spatialNorm :: Code KerrInfo -> Code (V 4 Float) -> Code (V 4 Float) -> Program i i (Code Float)
 spatialNorm kerrInfo pos v = spatialMetric kerrInfo pos v v

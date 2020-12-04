@@ -117,11 +117,11 @@ computeShader = Module $ entryPoint @"main" @Compute do
       -- Get the camera ray direction 4-vector for a given (anti-aliased) pixel.
       i <- get @"i"
       j <- get @"j"
-      c_right <- def @"c_right" @R $ x + ( ( i + 0.5 ) / xSamples - 0.5 ) / 960
-      c_up    <- def @"c_up"    @R $ y + ( ( j + 0.5 ) / ySamples - 0.5 ) / 960
+      c_right <- let' $ x + ( ( i + 0.5 ) / xSamples - 0.5 ) / 960
+      c_up    <- let' $ y + ( ( j + 0.5 ) / ySamples - 0.5 ) / 960
 
-      s₀ <- def @"s₀" @R =<< normaliseSpatialComponents kerrInfo x₀ ( fwd ^+^ (c_right *^ right) ^-^ (c_up *^ up) )
-      v₀ <- def @"v₀" @R $ time ^-^ s₀ -- (light-like vector because of assumptions and normalisation)
+      s₀ <- let' =<< normaliseSpatialComponents kerrInfo x₀ ( fwd ^+^ (c_right *^ right) ^-^ (c_up *^ up) )
+      v₀ <- let' $ time ^-^ s₀ -- (light-like vector because of assumptions and normalisation)
       -- Note that the direction is negated to obtain the direction of the photon
       -- instead of the direction the camera is pointing in.
 

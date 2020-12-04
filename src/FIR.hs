@@ -127,16 +127,6 @@ module FIR
       ( Function
       , EntryPoint
       )
-  , module FIR.Prim.RayTracing
-  , module FIR.Syntax.AST
-  , module FIR.Syntax.IfThenElse
-  , module FIR.Syntax.Images
-  , module FIR.Syntax.Optics
-  , module FIR.Syntax.Option
-  , module FIR.Syntax.Program
-  , module FIR.Syntax.RayTracing
-  , module FIR.Syntax.Swizzle
-  , module FIR.Syntax.Synonyms
   , FIR.Layout.Layout(..)
   , FIR.Layout.Poke(..)
   , FIR.Layout.pokeArray
@@ -149,6 +139,7 @@ module FIR
   , FIR.Prim.Image.ImageProperties(..)
   , FIR.Prim.Image.Image
   , FIR.Prim.Image.GatherInfo(..)
+  , module FIR.Prim.RayTracing
   , FIR.Prim.Singletons.PrimTy
   , FIR.Prim.Singletons.ScalarTy
   , FIR.Prim.Singletons.IntegralTy
@@ -156,6 +147,17 @@ module FIR
   , module FIR.Prim.Struct
   , FIR.ProgramState.ProgramState(ProgramState)
   , FIR.ProgramState.FunctionContext(TopLevel)
+  , module FIR.Syntax.AST
+  , module FIR.Syntax.IfThenElse
+  , module FIR.Syntax.Images
+  , module FIR.Syntax.Optics
+  , module FIR.Syntax.Option
+  , module FIR.Syntax.Program
+  , module FIR.Syntax.RayTracing
+  , module FIR.Syntax.Swizzle
+  , module FIR.Syntax.Synonyms
+  , module FIR.Validation.Bindings
+  , module FIR.Validation.Images
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Bits
@@ -334,6 +336,12 @@ import FIR.Syntax.Program
 import FIR.Syntax.RayTracing
 import FIR.Syntax.Swizzle
 import FIR.Syntax.Synonyms
+import FIR.Validation.Bindings
+  ( Has, CanGet, CanPut
+  , ValidFunDef, ValidEntryPoint
+  )
+import FIR.Validation.Images
+  ( ValidImageRead, ValidImageWrite )
 import Instances.TH.Lift
   ( ) -- Lift instances for ByteString, ShortText, Set
 import Math.Algebra.Class

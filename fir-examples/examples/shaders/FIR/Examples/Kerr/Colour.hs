@@ -38,13 +38,13 @@ toneMap (Vec4 r g b i) =
   in Vec4 (r * l) (g * l) (b * l) 1
 
 blackbodyColour :: Code Float -> Program s s (Code (V 4 Float))
-blackbodyColour t = purely do
-  t' <- def @"t'" @R $ ( max 0 . min 20000 $ t ) / 20000
+blackbodyColour t = do
+  t' <- let' $ ( max 0 . min 20000 $ t ) / 20000
   pure (gradient t' (Lit blackbodyTable))
 
 wavelengthColour :: Code Float -> Program s s (Code (V 4 Float))
-wavelengthColour λ = purely do
-  t <- def @"t" @R $ ( λ - 365 ) / 400
+wavelengthColour λ = do
+  t <- let' $ ( λ - 365 ) / 400
   pure ( gradient t (Lit wavelengthTable) )
 
 wavelengthTable :: Array 21 (V 4 Float)

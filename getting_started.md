@@ -275,12 +275,12 @@ As `let x = a in e` desugars to `(\x -> e) a`, `u` is inlined, which results in 
 ```
 
 This effect can compound rapidly with successive inlinings, so it is best to be careful.
-To circumvent this problem, we define variables that record the result of intermediate computations, as follows:
+To circumvent this problem, we can define variables that record the result of intermediate computations using `let'`, as follows:
 
 ```haskell
 shared :: Code Float -> Program _i _j (Code (V 3 Float))
 shared t = do
-  u <- def @"u" @R $ cos ( 2 * pi * t )
+  u <- let' $ cos ( 2 * pi * t )
   pure (Vec3 u u u)
 ```
 Usage of this function compiles to the appropriate SPIR-V code:

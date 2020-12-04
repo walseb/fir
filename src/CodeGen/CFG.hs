@@ -19,7 +19,7 @@ See also "CodeGen.Phi" for ϕ-functions necessary for such constructs when using
 -}
 
 module CodeGen.CFG
-  ( newBlock )
+  ( newBlock, locally, embed )
   where
 
 -- base

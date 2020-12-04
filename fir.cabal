@@ -215,6 +215,7 @@ library
       , FIR.Validation.Interface
       , FIR.Validation.Layout
       , FIR.Validation.Pipeline
+      , FIR.Validation.RayTracing
       , FIR.Temp
       , Instances.TH.Lift
       , Math.Algebra.Class

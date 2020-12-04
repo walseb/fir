@@ -180,8 +180,8 @@ geometry = shader do
     Vec3 nx0 ny0 nz0 = w *^ ( b  `cross` t0 )
     Vec3 nx1 ny1 nz1 = w *^ ( t1 `cross` b  )
 
-  n0 <- def @"n0" @R ( Vec4 nx0 ny0 nz0 0 )
-  n1 <- def @"n1" @R ( Vec4 nx1 ny1 nz1 0 )
+  n0 <- let' ( Vec4 nx0 ny0 nz0 0 )
+  n1 <- let' ( Vec4 nx1 ny1 nz1 0 )
 
 
   put @"out_color" col0
@@ -237,8 +237,8 @@ fragment = shader do
     side <- get @"in_side"
     -- stroke of effective width w_effective,
     -- with aa radius around the edges of 1 / aa_precision
-    overlap <- def @"overlap" @R ( (abs side - w_effective ) * aa_precision )
-    covered <- def @"covered" @R ( coverage overlap )
+    overlap <- let' ( (abs side - w_effective ) * aa_precision )
+    covered <- let' ( coverage overlap )
 
     ( put @"out_colour" . over @(Index 3) ( * covered ) ) =<< get @"in_colour"
 

@@ -67,12 +67,17 @@ import qualified SPIRV.Stage  as SPIRV
 
 ------------------------------------------------------------
 
+pattern Let                     = VF LetF
 pattern Def           k ps      = VF ( DefF           k ps )
 pattern FunDef        name as b = VF ( FunDefF        name as b )
 pattern FunCall       name as b = VF ( FunCallF       name as b )
 pattern DefEntryPoint name info = VF ( DefEntryPointF name info )
 pattern Locally                 = VF LocallyF
 pattern Embed                   = VF EmbedF
+
+-- | Let binding.
+data LetF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  LetF :: GHC.Stack.HasCallStack => LetF ast ( Val a :--> Eff i i a )
 
 -- | Defining a new constant/variable.
 data DefF ( ast :: AugType -> Type ) ( t :: AugType ) where
@@ -193,6 +198,8 @@ data EmbedF ( ast :: AugType -> Type ) ( t :: AugType ) where
 ------------------------------------------------------------
 -- displaying
 
+instance Display (LetF ast) where
+  toTreeArgs = named \ LetF -> "Let"
 instance Display (DefF ast) where
   toTreeArgs = named \(DefF k _) ->
     "Def @" ++ symbolVal k

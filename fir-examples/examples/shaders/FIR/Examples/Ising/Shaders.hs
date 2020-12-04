@@ -159,7 +159,7 @@ stepShader sParity = Module $ entryPoint @"main" @Compute do
     globalIndex
       <- use @( Name "gl_GlobalInvocationID" :.: Swizzle "xy" )
 
-    localArrayIndex  <- def @"localArrayIndex"  @R @Word32 $ i_local_x  + localSizeX * i_local_y
+    localArrayIndex  <- let' @Word32 $ i_local_x + localSizeX * i_local_y
 
     -- Read spins at current index, and write spins for lattice sites of opposite checkerboard colouring into local storage.
     evenSpin <- imageRead @"evenSpins" globalIndex
@@ -188,22 +188,22 @@ updateSpin
   => SParity parity -> Code IsingParameters -> Code ( V 2 Word32 )
   -> Code Float -> Code ( V 4 Float ) -> Program _s _s ( Code Float )
 updateSpin sParity isingParameters ( Vec2 ix iy ) s ( Vec4 u l r d ) = locally do
-  temperature   <- def @"temperature"   @R $ view @( Name "temperature"   ) isingParameters
-  interaction   <- def @"interaction"   @R $ view @( Name "interaction"   ) isingParameters
-  magneticField <- def @"magneticField" @R $ view @( Name "magneticField" ) isingParameters
-  time          <- def @"time"          @R $ view @( Name "time"          ) isingParameters
-  reset         <- def @"reset"         @R $ view @( Name "reset"         ) isingParameters
+  temperature   <- let' $ view @( Name "temperature"   ) isingParameters
+  interaction   <- let' $ view @( Name "interaction"   ) isingParameters
+  magneticField <- let' $ view @( Name "magneticField" ) isingParameters
+  time          <- let' $ view @( Name "time"          ) isingParameters
+  reset         <- let' $ view @( Name "reset"         ) isingParameters
 
   -- Generate a random probability using a hash function.
   -- The probabilities should be as decorrelated as possible
   --  - between different lattice sites (x and y indices as well as parity);
   --  - over time.
-  ~( Vec3 hx hy _ ) <- def @"hash3D" @R @( V 3 Word32 ) =<< pcg3d ( Vec3 ix iy ( floor $ time * 1000 ) )
-  prob <- def @"prob" @R @Float
+  ~( Vec3 hx hy _ ) <- let' @( V 3 Word32 ) =<< pcg3d ( Vec3 ix iy ( floor $ time * 1000 ) )
+  prob <- let' @Float
     ( word32ToProbability $ case sParity of { SEven -> hx; _ -> hy } )
 
   -- Change in Hamiltonian resuling from flipping the current spin.
-  delta <- def @"delta" @R $ 2 * s * ( magneticField + interaction * ( u + l + r + d ) )
+  delta <- let' $ 2 * s * ( magneticField + interaction * ( u + l + r + d ) )
   pure $
     if reset > 0 then ( if prob <= 0.5 then (-1) else 1 ) -- reset the grid
     else
@@ -284,7 +284,7 @@ lookupNeighbourSpins sParity otherSpin ( Vec2 i_local_x i_local_y ) ( Vec2 i_glo
           else Vec2 i_global_x         0
       readGlobalSpin neighbourGlobalIndex
 
-  def @"spins" @R ( Vec4 spinU spinL spinR spinD )
+  let' ( Vec4 spinU spinL spinR spinD )
 
   where
     lastColumn, lastRow :: Code Word32
@@ -379,12 +379,12 @@ gradient
   -> Code ( Array n ( V 4 Float ) )
   -> Program s s ( Code (V 4 Float) )
 gradient t colors = locally do
-  t'   <- def @"t"    @R         $ 0.5 * (t+1)
-  n    <- def @"n"    @R         $ Lit ( fromIntegral $ knownValue @n )
-  i    <- def @"i"    @R @Word32 $ floor ( (n-1) * t' )
-  s    <- def @"s"    @R         $ (n-1) * t' - fromIntegral i
-  cols <- def @"cols" @R         $ colors
-  res  <- def @"res"  @R
+  t'   <- let'         $ 0.5 * (t+1)
+  n    <- let'         $ Lit ( fromIntegral $ knownValue @n )
+  i    <- let' @Word32 $ floor ( (n-1) * t' )
+  s    <- let'         $ (n-1) * t' - fromIntegral i
+  cols <- let'         $ colors
+  res  <- let'
     (    ( (1-s) *^ ( view @(AnIndex _)  i    cols ) )
      ^+^ (    s  *^ ( view @(AnIndex _) (i+1) cols ) )
     )

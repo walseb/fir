@@ -19,7 +19,7 @@ import FIR.AST.Type
 import {-# SOURCE #-} FIR.AST.ControlFlow
   ( IfF, IfMF, SwitchF, SwitchMF, WhileF )
 import {-# SOURCE #-} FIR.AST.Effs
-  ( DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF )
+  ( LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF )
 import {-# SOURCE #-} FIR.AST.Exts
   ( DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF )
 import {-# SOURCE #-} FIR.AST.Images
@@ -43,7 +43,7 @@ type AllOpsF
      , PureF, ApF
      , MkVectorF, MatF, UnMatF, StructF, ArrayF, NilHListF, ConsHListF
      , IfF, IfMF, SwitchF, SwitchMF, WhileF
-     , DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
+     , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
      , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF
      , ImgOpsF
      , UseF, AssignF, ViewF, SetF

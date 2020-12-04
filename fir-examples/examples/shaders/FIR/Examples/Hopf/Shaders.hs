@@ -130,8 +130,8 @@ tessellationEvaluation = shader do
   ~(Vec3 u0 v0 _) <- get @"gl_TessCoord"
   mvp <- use @(Name "ubo" :.: Name "mvp")
 
-  u <- def @"u" @R ( u0 * 6.28318530718 )
-  v <- def @"v" @R ( v0 * 6.28318530718 )
+  u <- let' ( u0 * 6.28318530718 )
+  v <- let' ( v0 * 6.28318530718 )
 
   put @"out_col" =<< use @(Name "in_col" :.: Index 0)
 

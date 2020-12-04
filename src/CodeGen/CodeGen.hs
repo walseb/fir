@@ -71,7 +71,7 @@ import CodeGen.Applicative
 import CodeGen.Binary
   ( putModule )
 import CodeGen.CFG
-  ( ) -- CodeGen instances for If, IfM, Switch, SwitchM, While, Locally, Embed
+  ( locally ) -- + CodeGen instances for If, IfM, Switch, SwitchM, While, Locally, Embed
 import CodeGen.Composite
   ( ) -- CodeGen instances for MkVector, Mat, UnMat, Struct, Array, GradedMappend
 import CodeGen.Debug
@@ -109,7 +109,7 @@ import FIR.AST
   , pattern (:$), pattern Lam, pattern MkID
   , AppF(..), LamF(..), LitF(..), MkIDF(..), ValueF(..)
   , ReturnF(..), BindF(..)
-  , DefF(..), UnsafeCoerceF(..)
+  , LetF(..), DefF(..), UnsafeCoerceF(..)
   , NilHListF(..), ConsHListF(..)
   , UndefinedF(..)
   )
@@ -205,6 +205,9 @@ instance CodeGen AST => CodeGen (NilHListF AST) where
 
 instance CodeGen AST => CodeGen (ConsHListF AST) where
   codeGenArgs _ = throwError "codeGen: internal error, cannot generate code for 'ConsHList'"
+
+instance CodeGen AST => CodeGen (LetF AST) where
+  codeGenArgs (Applied LetF (a `ConsAST` NilAST)) = locally (codeGen a)
 
 instance CodeGen AST => CodeGen (DefF AST) where
   codeGenArgs (Applied (DefF (_ :: Proxy name) (_ :: Proxy ps)) (a `ConsAST` NilAST)) = do

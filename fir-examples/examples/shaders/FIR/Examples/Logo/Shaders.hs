@@ -86,10 +86,10 @@ intersectAABB
   AABB { low, high   }
     = locally do
         t1 :: Code (V 3 Float)
-          <- def @"t1" @R
+          <- let'
              $ ( \ s p i -> ( s - p ) * i :: Code Float ) <$$> low  <**> pos <**> invDir
         t2 :: Code (V 3 Float)
-          <- def @"t2" @R
+          <- let'
              $ ( \ s p i -> ( s - p ) * i :: Code Float ) <$$> high <**> pos <**> invDir
 
         let
@@ -109,13 +109,13 @@ intersectTriangle
   Ray { pos, dir }
   Triangle { v0, v1, v2 }
     = locally do
-        e1 <- def @"e1" @R $ v1 ^-^ v0
-        e2 <- def @"e2" @R $ v2 ^-^ v0
+        e1 <- let' $ v1 ^-^ v0
+        e2 <- let' $ v2 ^-^ v0
 
-        h  <- def @"h" @R $ dir `cross` e2
-        f  <- def @"f" @R $ recip (h `dot` e1)
-        s  <- def @"s" @R $ pos ^-^ v0
-        q  <- def @"q" @R $ s `cross` e1
+        h  <- let' $ dir `cross` e2
+        f  <- let' $ recip (h `dot` e1)
+        s  <- let' $ pos ^-^ v0
+        q  <- let' $ s `cross` e1
 
         let
           u = f * ( s   `dot` h )
@@ -245,7 +245,7 @@ computeShader = Module $ entryPoint @"main" @Compute do
 
     _ <- def @"col" @RW bgCol
 
-    invDir <- def @"invDir" @R ( recip @(Code Float) <$$> dir )
+    invDir <- let' ( recip @(Code Float) <$$> dir )
 
     -- anti-aliasing
     _ <- def @"i" @RW @Float 0
@@ -261,9 +261,9 @@ computeShader = Module $ entryPoint @"main" @Compute do
           dx = ( ( i + 0.5 ) / xSamples - 0.5 ) / 960
           dy = ( ( j + 0.5 ) / ySamples - 0.5 ) / 960
 
-        --dir    <- def @"dir"    @R $ normalise ( fwd ^+^ (x+dx) *^ right ^-^ (y+dy) *^ up )
-        --invDir <- def @"invDir" @R ( recip @(Code Float) <$$> dir )
-        pos <- def @"pos" @R ( pos0 ^+^ 5 *^ ( (x+dx) *^ right ^-^ (y+dy) *^ up ) )
+        --dir    <- let' $ normalise ( fwd ^+^ (x+dx) *^ right ^-^ (y+dy) *^ up )
+        --invDir <- let' ( recip @(Code Float) <$$> dir )
+        pos <- let' ( pos0 ^+^ 5 *^ ( (x+dx) *^ right ^-^ (y+dy) *^ up ) )
 
         let ray = Ray { pos, dir, invDir }
 
@@ -322,7 +322,6 @@ computeShader = Module $ entryPoint @"main" @Compute do
     imageWrite @"img"
       ( Vec2 i_x i_y )
       =<< get @"col"
-
 
 ------------------------------------------------
 -- compiling

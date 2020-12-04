@@ -117,7 +117,7 @@ tessellationEvaluation = shader do
   pos2 <- use @(Name "gl_in" :.: Index 2 :.: Name "gl_Position")
   orig <- use @(Name "ubo" :.: Name "origin")
 
-  t <- def @"t" @R $ 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
+  t <- let' $ 0.5 - (2*u - 1)**2 * (2*v - 1)**2 * (2*w - 1)**2
   put @"gl_Position"
     ( t *^ orig ^+^ (1-t) *^ ( u *^ pos0 ^+^ v *^ pos1 ^+^ w *^ pos2 ) )
 
@@ -145,7 +145,7 @@ geometry = shader do
   let
     Vec4 u1x u1y u1z _ = v1 ^-^ v0
     Vec4 u2x u2y u2z _ = v2 ^-^ v0
-  normal <- def @"normal'" @R $ normalise ( Vec3 u1x u1y u1z `cross` Vec3 u2x u2y u2z )
+  normal <- let' $ normalise ( Vec3 u1x u1y u1z `cross` Vec3 u2x u2y u2z )
   color  <- get @"in_color"
 
   put @"normal" normal

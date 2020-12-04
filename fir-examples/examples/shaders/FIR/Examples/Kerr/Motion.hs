@@ -45,37 +45,37 @@ initialiseMotion kerrInfo (Vec4 _ r cosθ _) (Vec4 vt vr vθ vφ_)
   = purely do
 
       -- black hole info
-      a  <- def @"a"  @R $ view @(Field "a" ) kerrInfo
-      a² <- def @"a²" @R $ view @(Field "a²") kerrInfo
+      a  <- let' $ view @(Field "a" ) kerrInfo
+      a² <- let' $ view @(Field "a²") kerrInfo
 
       -- 4-position
-      r²    <- def @"r²"    @R $ r * r
-      cos²θ <- def @"cos²θ" @R $ cosθ * cosθ
-      sin²θ <- def @"sin²θ" @R $ 1 - cos²θ
-      csc²θ <- def @"csc²θ" @R $ recip sin²θ
+      r²    <- let' $ r * r
+      cos²θ <- let' $ cosθ * cosθ
+      sin²θ <- let' $ 1 - cos²θ
+      csc²θ <- let' $ recip sin²θ
       
-      vφ  <- def @"vφ"  @R $ - vφ_ -- I have a sign error somewhere
+      vφ  <- let' $ - vφ_ -- I have a sign error somewhere
 
-      δ   <- def @"δ"   @R $ r * (r - 2) + a²
-      _δ  <- def @"_δ"  @R $ recip δ
-      ρ²  <- def @"ρ²"  @R $ r² + a² * cos²θ
-      _ρ² <- def @"_ρ²" @R $ recip ρ²
+      δ   <- let' $ r * (r - 2) + a²
+      _δ  <- let' $ recip δ
+      ρ²  <- let' $ r² + a² * cos²θ
+      _ρ² <- let' $ recip ρ²
 
       -- inner product of 4-momentum with -∂/∂t
-      two_a_r_sin²θ_by_ρ² <- def @"two_a_r_sin²θ_by_ρ²" @R $ 2 * a * r * sin²θ * _ρ²
-      ξ  <- def @"ξ"  @R $ vt * (1 - 2 * r * _ρ²) + vφ * two_a_r_sin²θ_by_ρ²
+      two_a_r_sin²θ_by_ρ² <- let' $ 2 * a * r * sin²θ * _ρ²
+      ξ  <- let' $ vt * (1 - 2 * r * _ρ²) + vφ * two_a_r_sin²θ_by_ρ²
 
       -- inner product of 4-momentum with ∂/∂φ
-      p_φ  <- def @"p_φ" @R $ ( vφ * sin²θ * ( a² + r² + a * two_a_r_sin²θ_by_ρ² ) - vt * two_a_r_sin²θ_by_ρ² ) / ξ
+      p_φ  <- let' $ ( vφ * sin²θ * ( a² + r² + a * two_a_r_sin²θ_by_ρ² ) - vt * two_a_r_sin²θ_by_ρ² ) / ξ
 
       -- inner product of 4-momentum with ∂/∂θ
-      p_θ <- def @"p_θ" @R $ ρ² * vθ / ξ
+      p_θ <- let' $ ρ² * vθ / ξ
 
       -- inner product of 4-momentum with ∂/∂r
-      p_r <- def @"p_r" @R $ vr * ρ² * _δ / ξ
+      p_r <- let' $ vr * ρ² * _δ / ξ
 
       -- Carter's constant
-      ϰ <- def @"ϰ" @R $ p_θ * p_θ + a² * sin²θ + p_φ * p_φ * csc²θ
+      ϰ <- let' $ p_θ * p_θ + a² * sin²θ + p_φ * p_φ * csc²θ
 
       pure $
         ( Struct ( p_φ :& ϰ :& End ), Vec2 p_r p_θ )
@@ -102,52 +102,52 @@ geodesicEquations kerrInfo constants _
   ( XP (Vec4 _ r cosθ _) (Vec2 p_r p_θ) ) = purely do
 
     -- black hole constants
-    a  <- def @"a"  @R $ view @(Field "a"  ) kerrInfo
-    a² <- def @"a²" @R $ view @(Field "a²" ) kerrInfo
+    a  <- let' $ view @(Field "a"  ) kerrInfo
+    a² <- let' $ view @(Field "a²" ) kerrInfo
 
     -- constants of motion
-    p_φ <- def @"p_φ" @R $ view @(Field "p_φ") constants
-    ϰ   <- def @"ϰ"   @R $ view @(Field "ϰ"  ) constants
+    p_φ <- let' $ view @(Field "p_φ") constants
+    ϰ   <- let' $ view @(Field "ϰ"  ) constants
 
     -- derived expressions involving canonical coordinates
-    r²    <- def @"r²"    @R $ r * r
-    cos²θ <- def @"cos²θ" @R $ cosθ * cosθ
-    sin²θ <- def @"sin²θ" @R $ 1 - cos²θ
-    sinθ  <- def @"sinθ"  @R $ sqrt  sin²θ
-    csc²θ <- def @"csc²θ" @R $ recip sin²θ
+    r²    <- let' $ r * r
+    cos²θ <- let' $ cosθ * cosθ
+    sin²θ <- let' $ 1 - cos²θ
+    sinθ  <- let' $ sqrt  sin²θ
+    csc²θ <- let' $ recip sin²θ
 
-    p_r²  <- def @"p_r²"  @R $ p_r * p_r
+    p_r²  <- let' $ p_r * p_r
 
     -- some common expressions
-    r²_p_a²   <- def @"r²_p_a²"   @R $ r² + a²
-    δ         <- def @"δ"         @R $ r²_p_a² - 2 * r
-    ρ²        <- def @"ρ²"        @R $ r² + a² * cos²θ
-    _δ        <- def @"_δ"        @R $ recip δ
-    _ρ²       <- def @"_ρ²"       @R $ recip ρ²
-    p_φ_csc²θ <- def @"p_φ_csc²θ" @R $ p_φ * csc²θ
+    r²_p_a²   <- let' $ r² + a²
+    δ         <- let' $ r²_p_a² - 2 * r
+    ρ²        <- let' $ r² + a² * cos²θ
+    _δ        <- let' $ recip δ
+    _ρ²       <- let' $ recip ρ²
+    p_φ_csc²θ <- let' $ p_φ * csc²θ
 
     -- geodesic equations, in Hamiltonian form
     -- ξ = specific energy (energy at infinity), assumed to be 1 here by previous normalisation
     -- μ = invariant mass, assumed to be 0 here (as solving geodesic equations for a photon)
 
                            --  ρ² * ξ + ( 2 * r * r²_p_a² * ξ - 2 * a * p_φ ) * _δ
-    t'    <- def @"t'"    @R $ ρ²     + ( 2 * r * r²_p_a²     - 2 * a * p_φ ) * _δ
+    t'    <- let' $ ρ²     + ( 2 * r * r²_p_a²     - 2 * a * p_φ ) * _δ
 
-    r'    <- def @"r'"    @R $ p_r * δ
+    r'    <- let' $ p_r * δ
 
-    cosθ' <- def @"cosθ'" @R $ - sinθ * p_θ
+    cosθ' <- let' $ - sinθ * p_θ
 
                             -- ( 2 * a * r * ξ  + ( ρ² - 2 * r ) * p_φ_csc²θ ) * _δ
-    φ'    <- def @"φ'"    @R $ ( 2 * a * r      + ( ρ² - 2 * r ) * p_φ_csc²θ ) * _δ
+    φ'    <- let' $ ( 2 * a * r      + ( ρ² - 2 * r ) * p_φ_csc²θ ) * _δ
 
                                   -- 2 * r * r²_p_a² * ξ² - 2 * a * p_φ * ξ + ( 1 - r ) * ( ϰ - μ² * r² )
-    pr'_term <- def @"pr'_term" @R $ 2 * r * r²_p_a²      - 2 * a * p_φ     + ( 1 - r ) *   ϰ
+    pr'_term <- let' $ 2 * r * r²_p_a²      - 2 * a * p_φ     + ( 1 - r ) *   ϰ
 
                             -- ( - r * μ² + pr'_term ) * _δ + 2 * p_r² * ( 1 - r )
-    pr'   <- def @"pr'"   @R $              pr'_term   * _δ + 2 * p_r² * ( 1 - r )
+    pr'   <- let' $              pr'_term   * _δ + 2 * p_r² * ( 1 - r )
 
                             -- sinθ * cosθ * ( p_φ_csc²θ * p_φ_csc²θ - a² * ( ξ² - μ² ) )
-    pθ'   <- def @"pθ'"   @R $ sinθ * cosθ * ( p_φ_csc²θ * p_φ_csc²θ - a²               )
+    pθ'   <- let' $ sinθ * cosθ * ( p_φ_csc²θ * p_φ_csc²θ - a²               )
 
     pure $
       XP

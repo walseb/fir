@@ -14,6 +14,7 @@ import FIR.AST.Type
 
 ------------------------------------------------------------
 
+data LetF           ( ast :: AugType -> Type ) ( t :: AugType )
 data DefF           ( ast :: AugType -> Type ) ( t :: AugType )
 data FunDefF        ( ast :: AugType -> Type ) ( t :: AugType )
 data FunCallF       ( ast :: AugType -> Type ) ( t :: AugType )
@@ -21,6 +22,7 @@ data DefEntryPointF ( ast :: AugType -> Type ) ( t :: AugType )
 data LocallyF       ( ast :: AugType -> Type ) ( t :: AugType )
 data EmbedF         ( ast :: AugType -> Type ) ( t :: AugType )
 
+type role LetF           phantom nominal
 type role DefF           phantom nominal
 type role FunDefF        phantom nominal
 type role FunCallF       phantom nominal
