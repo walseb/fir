@@ -79,6 +79,9 @@ module FIR.Syntax.Synonyms
   , pattern RayFlagsCullBackFacingTriangles, pattern RayFlagsCullFrontFacingTriangles
   , pattern RayFlagsCullOpaque, pattern RayFlagsCullNoOpaque
 
+  -- * Ray tracing hit kinds
+  , pattern HitKindFrontFacingTriangle, pattern HitKindBackFacingTriangle
+
   )
   where
 
@@ -783,3 +786,8 @@ pattern RayFlagsCullOpaque :: Word32
 pattern RayFlagsCullOpaque = 64
 pattern RayFlagsCullNoOpaque :: Word32
 pattern RayFlagsCullNoOpaque = 128
+
+pattern HitKindFrontFacingTriangle :: Word32
+pattern HitKindFrontFacingTriangle = 0xfe
+pattern HitKindBackFacingTriangle :: Word32
+pattern HitKindBackFacingTriangle = 0xff

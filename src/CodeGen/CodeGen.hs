@@ -89,7 +89,7 @@ import CodeGen.Pointers
 import CodeGen.PrimOps
   ( ) -- CodeGen instance for PrimOp
 import CodeGen.RayTracing
-  ( ) -- Codegen instances for TraceRay, ExecuteCallable
+  ( ) -- Codegen instances for TraceRay, ExecuteCallable, RayQuery
 import CodeGen.Monad
   ( CGMonad, runCGMonad
   , runExceptTPutM

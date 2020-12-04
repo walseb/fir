@@ -197,15 +197,13 @@ type family RayShaderBuiltins ( shader :: RayShader ) :: [ Symbol :-> Binding ] 
        , "gl_InstanceID"          ':-> Var R Word32
        , "gl_InstanceCustomIndex" ':-> Var R Word32
        , "gl_GeometryIndex"       ':-> Var R Word32
-       , "gl_WorldRayOrigin"      ':-> Var R (V 3 Word32)
-       , "gl_WorldRayDirection"   ':-> Var R (V 3 Word32)
-       , "gl_ObjectRayOrigin"     ':-> Var R (V 3 Word32)
-       , "gl_ObjectRayDirection"  ':-> Var R (V 3 Word32)
+       , "gl_WorldRayOrigin"      ':-> Var R (V 3 Float)
+       , "gl_WorldRayDirection"   ':-> Var R (V 3 Float)
+       , "gl_ObjectRayOrigin"     ':-> Var R (V 3 Float)
+       , "gl_ObjectRayDirection"  ':-> Var R (V 3 Float)
        , "gl_RayTMin"             ':-> Var R Float
        , "gl_RayTMax"             ':-> Var R Float
        , "gl_IncomingRayFlags"    ':-> Var R Word32
-       , "gl_HitT"                ':-> Var R Float
-       , "gl_HitKind"             ':-> Var R Word32
        , "gl_ObjectToWorld"       ':-> Var R (M 3 4 Float)
        , "gl_WorldToObject"       ':-> Var R (M 3 4 Float)
        , "gl_ObjectToWorld3x4"    ':-> Var R (M 4 3 Float)
@@ -219,8 +217,8 @@ type family RayShaderBuiltins ( shader :: RayShader ) :: [ Symbol :-> Binding ] 
   RayShaderBuiltins MissShader
     = '[ "gl_LaunchID"            ':-> Var R (V 3 Word32)
        , "gl_LaunchSize"          ':-> Var R (V 3 Word32)
-       , "gl_WorldRayOrigin"      ':-> Var R (V 3 Word32)
-       , "gl_WorldRayDirection"   ':-> Var R (V 3 Word32)
+       , "gl_WorldRayOrigin"      ':-> Var R (V 3 Float)
+       , "gl_WorldRayDirection"   ':-> Var R (V 3 Float)
        , "gl_RayTMin"             ':-> Var R Float
        , "gl_RayTMax"             ':-> Var R Float
        , "gl_IncomingRayFlags"    ':-> Var R Word32
