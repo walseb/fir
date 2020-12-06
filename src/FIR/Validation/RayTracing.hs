@@ -30,7 +30,7 @@ import GHC.TypeNats
 
 -- fir
 import Data.Type.Error
-  ( Try, And )
+  ( Try )
 import Data.Type.Map
   ( (:->)((:->)), Insert, LookupAndLookup )
 import Data.Type.Maybe
@@ -43,7 +43,6 @@ import FIR.ProgramState
   ( ProgramState(..), FunctionContext(..)
   , TLInterfaceVariable
   )
-import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.Stage      as SPIRV
 import qualified SPIRV.Storage    as SPIRV
 
@@ -102,10 +101,9 @@ type family HasRayPayloadBinding
       )
   HasRayPayloadBinding payload ( 'Just '( decs, ty ) ) =
     Try
-      (     PayloadLocation  payload decs
-      `And` ValidPayloadType payload ty
-      )
+      ( ValidPayloadType payload ty )
 
+{-
 type family PayloadLocation ( payload :: Symbol ) ( decs :: [ SPIRV.Decoration Nat ] ) :: Either ErrorMessage Constraint where
   PayloadLocation payload '[] = Left
     ( Text "Ray payload interface variable named " :<>: ShowType payload
@@ -113,6 +111,7 @@ type family PayloadLocation ( payload :: Symbol ) ( decs :: [ SPIRV.Decoration N
     )
   PayloadLocation _ ( SPIRV.Location _ ': _ ) = Right ( () :: Constraint )
   PayloadLocation payload ( _ ': decs ) = PayloadLocation payload decs
+-}
 
 type family ValidPayloadType ( payload :: Symbol ) ( ty :: Type ) :: Either ErrorMessage Constraint where
   ValidPayloadType _ _ = Right ( () :: Constraint ) -- TODO
@@ -170,10 +169,9 @@ type family HasCallableDataBinding
       )
   HasCallableDataBinding callable  ( 'Just '( decs, ty ) ) =
     Try
-      (     CallableDataLocation  callable decs
-      `And` ValidCallableDataType callable ty
-      )
+      ( ValidCallableDataType callable ty )
 
+{-
 type family CallableDataLocation ( payload :: Symbol ) ( decs :: [ SPIRV.Decoration Nat ] ) :: Either ErrorMessage Constraint where
   CallableDataLocation callable '[] = Left
     ( Text "Callable data interface variable named " :<>: ShowType callable
@@ -181,7 +179,7 @@ type family CallableDataLocation ( payload :: Symbol ) ( decs :: [ SPIRV.Decorat
     )
   CallableDataLocation _ ( SPIRV.Location _ ': _ ) = Right ( () :: Constraint )
   CallableDataLocation callable ( _ ': decs ) = CallableDataLocation callable decs
-
+-}
 
 type family ValidCallableDataType ( callable :: Symbol ) ( ty :: Type ) :: Either ErrorMessage Constraint where
   ValidCallableDataType _ _ = Right ( () :: Constraint ) -- TODO

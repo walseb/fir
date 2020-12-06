@@ -48,7 +48,7 @@ import FIR.Definition
   , TrieDefinitions
   )
 import FIR.Prim.Array
-  ( Array )
+  ( Array, RuntimeArray )
 import FIR.Prim.Image
   ( Image )
 import FIR.Prim.RayTracing
@@ -66,7 +66,7 @@ import qualified SPIRV.Image
 import qualified SPIRV.Storage    as SPIRV
   ( StorageClass )
 import qualified SPIRV.Storage    as Storage
-  ( StorageClass(..), RayStorage(..), DataOrigin(..) )
+  ( StorageClass(..) )
 
 ------------------------------------------------------------------------
 
@@ -178,6 +178,11 @@ type family ValidGlobal
           ( Text "Uniform storage buffer named " :<>: ShowType name )
           decs
           (Array n (Struct as))
+  ValidGlobal name Storage.StorageBuffer decs (RuntimeArray (Struct as))
+      = ValidUniformDecorations
+          ( Text "Uniform storage buffer named " :<>: ShowType name )
+          decs
+          (RuntimeArray (Struct as))
   ValidGlobal name Storage.StorageBuffer _ ty
     = TypeError
         (    Text "Uniform storage buffer named " :<>: ShowType name
@@ -185,10 +190,6 @@ type family ValidGlobal
         :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
   -- TODO: more validation for ray-tracing storage classes
-  ValidGlobal name ( 'Storage.RayStorage ('Storage.CallableData 'Storage.Lifetime) ) decs ty
-    = HasLocation name decs
-  ValidGlobal name ( 'Storage.RayStorage ('Storage.RayPayload   'Storage.Lifetime) ) decs ty
-    = HasLocation name decs
   ValidGlobal _ _ _ _ = ()
 
 type family ValidUniformDecorations

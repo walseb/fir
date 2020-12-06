@@ -13,6 +13,7 @@
 {-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE QuantifiedConstraints      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -38,7 +39,7 @@ module FIR.Syntax.AST
     switch
 
     -- functor/applicative for AST values
-  , ASTApplicative(pureAST, (<**>)), fmapAST, (<$$>)
+  , ASTApplicative(..), fmapAST, (<$$>)
 
     -- + orphan instances
   )
@@ -60,9 +61,11 @@ import qualified Prelude
 import Data.Int
   ( Int8, Int16, Int32, Int64 )
 import Data.Kind
-  ( Type )
+  ( Type, Constraint )
 import Data.Proxy
   ( Proxy(Proxy) )
+import Data.Typeable
+  ( Typeable )
 import Data.Word
   ( Word8, Word16, Word32, Word64 )
 import GHC.TypeLits
@@ -928,7 +931,8 @@ instance  ( KnownASTOptic o' o
 infixl 4 <$$>
 infixl 4 <**>
 
-class ASTApplicative f where
+class ( Typeable f, forall x. ASTApplicativeElt f x => PrimTy (f x) ) => ASTApplicative f where
+  type ASTApplicativeElt f (x :: Type) :: Constraint
   pureAST
     :: ( FunRes a ~ Val va, PrimTy va
        , All PrimTyVal (FunArgs a)
@@ -954,17 +958,19 @@ fmapAST f fa = fromAST ( pureAST (toAST f) <**> fa )
 
 
 instance KnownNat n => ASTApplicative (V n) where
+  type ASTApplicativeElt (V n) x = PrimTy x
   pureAST = Pure ( Proxy @(V n) )
   fab <**> fa = fromAST $ Ap ( Proxy @(V n) ) fab fa
 
 instance (KnownNat m, KnownNat n) => ASTApplicative (M m n) where
+  type ASTApplicativeElt (M m n) x = ( ScalarTy x, Ring x )
   pureAST = Pure ( Proxy @(M m n) )
   fab <**> fa = fromAST $ Ap ( Proxy @(M m n) ) fab fa
 
 instance KnownNat n => ASTApplicative (Array n) where
+  type ASTApplicativeElt (Array n) x = PrimTy x
   pureAST = Pure ( Proxy @(Array n) )
   fab <**> fa = fromAST $ Ap ( Proxy @(Array n) ) fab fa
-
 
 {-
 instance 

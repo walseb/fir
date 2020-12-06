@@ -56,7 +56,7 @@ import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimOp    as SPIRV
   ( RayPrimOp(..) )
 import qualified SPIRV.Stage     as SPIRV
-  ( AnyHit )
+  ( AnyHit, Intersection )
 
 --------------------------------------------------------------------------
 -- ray tracing instructions
@@ -106,7 +106,7 @@ traceRay accelerationStructure ( RayInfo { .. } ) ( RayShaderInfo { .. } ) = fro
 
 reportIntersection 
   :: forall (i :: ProgramState)
-  .  ( ExecutionContext i ~ Just SPIRV.AnyHit )
+  .  ( ExecutionContext i ~ Just SPIRV.Intersection )
   => Code Float -> Code Word32 -> Program i i ( Code Bool )
 reportIntersection = primOp @i @SPIRV.RT_ReportIntersection
 

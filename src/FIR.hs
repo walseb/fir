@@ -158,6 +158,7 @@ module FIR
   , module FIR.Syntax.Synonyms
   , module FIR.Validation.Bindings
   , module FIR.Validation.Images
+  , module FIR.Validation.RayTracing
   , module Math.Algebra.Class
   , module Math.Algebra.GradedSemigroup
   , module Math.Logic.Bits
@@ -342,6 +343,8 @@ import FIR.Validation.Bindings
   )
 import FIR.Validation.Images
   ( ValidImageRead, ValidImageWrite )
+import FIR.Validation.RayTracing
+  ( CanTraceRay, CanExecuteCallable )
 import Instances.TH.Lift
   ( ) -- Lift instances for ByteString, ShortText, Set
 import Math.Algebra.Class
