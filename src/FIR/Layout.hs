@@ -59,6 +59,8 @@ module FIR.Layout
   where
 
 -- base
+import Control.Arrow
+  ( first )
 import Control.Monad
   ( foldM_ )
 import Data.Int
@@ -114,6 +116,8 @@ import Data.Type.Ord
   ( POrd(Max) )
 import FIR.Prim.Array
   ( Array(..) )
+import FIR.Prim.RayTracing
+  ( AccelerationStructure(..) )
 import FIR.Prim.Singletons
   ( ScalarTy, PrimTyMap(..), SPrimTyMap(..)
   , SPrimTy(..)
@@ -279,6 +283,11 @@ instance TypeError ( Text "Cannot store Boolean types." ) => Poke Bool lay where
   type Alignment lay Bool = 4
   poke = error "unreachable"
 
+-- Acceleration structures are just represented as Word64 address
+instance Poke AccelerationStructure lay where
+  type SizeOf    lay AccelerationStructure = 8
+  type Alignment lay AccelerationStructure = 8
+  poke ptr ( AccelerationStructureFromWord64 word64 ) = poke @Word64 @lay ( castPtr ptr ) word64
 
 instance ( Poke a lay
          , ScalarTy a
@@ -522,6 +531,9 @@ scalarAlignment (SPIRV.Matrix      {entryTy}) = scalarAlignment (SPIRV.Scalar en
 scalarAlignment (SPIRV.Array         {eltTy}) = scalarAlignment eltTy
 scalarAlignment (SPIRV.RuntimeArray  {eltTy}) = scalarAlignment eltTy
 scalarAlignment (SPIRV.Struct       {eltTys}) = maxMemberAlignment scalarAlignment eltTys
+scalarAlignment SPIRV.AccelerationStructure   = 
+  throwError
+      ( "Layout: acceleration structure not permitted as a structure member" )
 scalarAlignment ty
   = throwError
       ( "Layout: cannot compute scalar alignment of type " <> ShortText.pack (show ty) <> "." )
@@ -535,6 +547,9 @@ baseAlignment (SPIRV.Array          {eltTy}) = baseAlignment eltTy
 baseAlignment (SPIRV.RuntimeArray   {eltTy}) = baseAlignment eltTy
 baseAlignment (SPIRV.Struct        {eltTys}) = maxMemberAlignment baseAlignment eltTys
 baseAlignment (SPIRV.Matrix {rows, entryTy}) = baseAlignment (SPIRV.Vector rows (SPIRV.Scalar entryTy)) -- assumed column-major
+baseAlignment SPIRV.AccelerationStructure    =
+  throwError
+      ( "Layout: acceleration structure not permitted as a structure member" )
 baseAlignment ty
   = throwError
       ( "Layout: cannot compute base alignment of type " <> ShortText.pack (show ty) <> "." )
@@ -549,7 +564,7 @@ requiredAlignment :: MonadError ShortText m => SPIRV.StorageClass -> m ( SPIRV.P
 requiredAlignment Storage.Uniform       = pure extendedAlignment
 requiredAlignment Storage.StorageBuffer = pure baseAlignment
 requiredAlignment Storage.PushConstant  = pure baseAlignment
-requiredAlignment (Storage.RayStorage Storage.ShaderRecordBuffer ) = pure baseAlignment
+requiredAlignment (Storage.RayStorage Storage.ShaderRecordBuffer) = pure baseAlignment
 requiredAlignment storage
   = throwError
       ( "Layout: unsupported storage class " <> ShortText.pack (show storage) <> "." )
@@ -574,7 +589,7 @@ inferLayout usage decs storageClass (SPIRV.Array lg (SPIRV.Struct as sdecs _) ad
   = do
       f <- requiredAlignment storageClass
       ali <- f (SPIRV.Struct as sdecs usage)
-      laidOutMembers <- layoutStructMembersWith f ali as
+      laidOutMembers <- fst <$> layoutStructMembersWith f ali 0 as
       let laidOutStruct = SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins
       pure ( SPIRV.Array lg laidOutStruct (Set.union decs adecs) SPIRV.NotForBuiltins )
 inferLayout _ decs storageClass (SPIRV.RuntimeArray (SPIRV.Struct as sdecs _) adecs _)
@@ -584,7 +599,7 @@ inferLayout _ decs storageClass (SPIRV.RuntimeArray (SPIRV.Struct as sdecs _) ad
   = do
     f <- requiredAlignment storageClass
     ali <- f (SPIRV.Struct as sdecs SPIRV.NotForBuiltins)
-    laidOutMembers <- layoutStructMembersWith f ali as
+    laidOutMembers <- fst <$> layoutStructMembersWith f ali 0 as
     let laidOutStruct = SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins
     pure ( SPIRV.RuntimeArray laidOutStruct (Set.union decs adecs) SPIRV.NotForBuiltins )
 inferLayout usage decs storageClass struct@(SPIRV.Struct as sdecs _)
@@ -594,7 +609,7 @@ inferLayout usage decs storageClass struct@(SPIRV.Struct as sdecs _)
   = do
       f <- requiredAlignment storageClass
       ali <- f struct
-      laidOutMembers <- layoutStructMembersWith f ali as
+      laidOutMembers <- fst <$> layoutStructMembersWith f ali 0 as
       pure ( SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block (Set.union decs sdecs)) SPIRV.NotForBuiltins )
 inferLayout _ _ _ SPIRV.AccelerationStructure = pure SPIRV.AccelerationStructure
 inferLayout _ _ storageClass ty
@@ -618,12 +633,12 @@ inferPointerLayout usage decs (SPIRV.PointerTy storageClass ty)
 
 
 layoutWith :: MonadError ShortText m
-           => ( SPIRV.PrimTy -> m Word32 ) -> SPIRV.PrimTy -> m SPIRV.PrimTy
-layoutWith _ ty@(SPIRV.Scalar {}) = pure ty
-layoutWith _ ty@(SPIRV.Vector {}) = pure ty
-layoutWith _ mat@(SPIRV.Matrix {})
+           => ( SPIRV.PrimTy -> m Word32 ) -> Word32 -> SPIRV.PrimTy -> m SPIRV.PrimTy
+layoutWith _ _ ty@(SPIRV.Scalar {}) = pure ty
+layoutWith _ _ ty@(SPIRV.Vector {}) = pure ty
+layoutWith _ _ mat@(SPIRV.Matrix {})
   = pure mat -- cannot decorate matrix directly, must do so indirectly using arrays and structs
-layoutWith f arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs usage) = do
+layoutWith f _ arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs usage) = do
   arrStride  <- f arr
   matStride  <- f mat
   pure ( SPIRV.Array l mat
@@ -633,11 +648,11 @@ layoutWith f arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs usage) = do
             )
             usage
         )
-layoutWith f arr@(SPIRV.Array l elt decs usage) = do
+layoutWith f off arr@(SPIRV.Array l elt decs usage) = do
   arrStride  <- f arr
-  laidOutElt <- layoutWith f elt
+  laidOutElt <- layoutWith f off elt
   pure ( SPIRV.Array l laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
-layoutWith f arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs usage) = do
+layoutWith f _ arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs usage) = do
   arrStride  <- f arr
   matStride  <- f mat
   pure ( SPIRV.RuntimeArray mat
@@ -647,64 +662,62 @@ layoutWith f arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs usage) = do
             )
             usage
         )
-layoutWith f arr@(SPIRV.RuntimeArray elt decs usage) = do
+layoutWith f off arr@(SPIRV.RuntimeArray elt decs usage) = do
   arrStride  <- f arr
-  laidOutElt <- layoutWith f elt
+  laidOutElt <- layoutWith f off elt
   pure ( SPIRV.RuntimeArray laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
-layoutWith f struct@(SPIRV.Struct as decs structUsage) = do
+layoutWith f off struct@(SPIRV.Struct as decs structUsage) = do
   ali <- f struct
-  laidOutMembers <- layoutStructMembersWith f ali as
+  laidOutMembers <- fst <$> layoutStructMembersWith f ali off as
   pure ( SPIRV.Struct laidOutMembers decs structUsage )
-layoutWith _ ty
+layoutWith _ _ ty
   = throwError ( "'layoutWith': unsupported type " <> ShortText.pack (show ty) <> "." )
 
 layoutStructMembersWith
     :: forall m. MonadError ShortText m
     => ( SPIRV.PrimTy -> m Word32 )
     -> Word32
+    -> Word32
     -> [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
-    -> m [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
-layoutStructMembersWith f ali as = fst <$> go 0 as
-  where
-    go :: Word32
-       ->     [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
-       -> m ( [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ], Word32 )
-    go offset []               = pure ( [], offset )
-    go offset ((name, ty, decs):nxt) = do
-        (newOffset, laidOutTy, newDecs)
-           <- case ty of
-                SPIRV.Matrix { cols } -> do
-                  stride <- f ty
-                  laidOutTy <- layoutWith f ty
-                  pure ( nextAligned (offset + cols * stride) ali
-                       , laidOutTy
-                       , Set.fromList [ SPIRV.Offset offset, SPIRV.MatrixStride stride, SPIRV.ColMajor ]
-                       )
-                SPIRV.Array { size } -> do
-                  eltAlignment <- f ty
-                  laidOutTy <- layoutWith f ty
-                  pure ( nextAligned (offset + size * eltAlignment) ali
-                       , laidOutTy
-                       , Set.singleton (SPIRV.Offset offset)
-                       )
-                SPIRV.RuntimeArray {} -> do
-                  laidOutTy <- layoutWith f ty
-                  pure ( maxBound -- should not come into play... we should be OK if this is the last struct member
-                       , laidOutTy
-                       , Set.singleton (SPIRV.Offset offset)
-                       )
-                SPIRV.Struct as' _ _ -> do
-                  ( _, totalSize ) <- go 0 as'
-                  laidOutTy <- layoutWith f ty
-                  pure ( nextAligned (offset + totalSize) ali
-                       , laidOutTy -- wasteful duplicated computation here
-                       , Set.singleton (SPIRV.Offset offset)
-                       )
-                _ -> do
-                  align     <- f ty
-                  laidOutTy <- layoutWith f ty
-                  pure ( nextAligned (offset + align) ali
-                       , laidOutTy
-                       , Set.singleton (SPIRV.Offset offset)
-                       )
-        ( , offset) . ( (name, laidOutTy, Set.union newDecs decs) : ) . fst <$> go newOffset nxt
+    -> m ( [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ], Word32 )
+layoutStructMembersWith _ _   offset []                     = pure ( [], offset )
+layoutStructMembersWith f ali offset ((name, ty, decs):nxt) = do
+  (newOffset, laidOutTy, newDecs)
+     <- case ty of
+          SPIRV.Matrix { cols } -> do
+            stride <- f ty
+            laidOutTy <- layoutWith f offset ty
+            pure ( nextAligned (offset + cols * stride) ali
+                 , laidOutTy
+                 , Set.fromList [ SPIRV.Offset offset, SPIRV.MatrixStride stride, SPIRV.ColMajor ]
+                 )
+          SPIRV.Array { size } -> do
+            eltAlignment <- f ty
+            laidOutTy <- layoutWith f offset ty
+            pure ( nextAligned (offset + size * eltAlignment) ali
+                 , laidOutTy
+                 , Set.singleton (SPIRV.Offset offset)
+                 )
+          SPIRV.RuntimeArray {} -> do
+            laidOutTy <- layoutWith f offset ty
+            pure ( maxBound -- should not come into play... we should be OK if this is the last struct member
+                 , laidOutTy
+                 , Set.singleton (SPIRV.Offset offset)
+                 )
+          SPIRV.Struct as' decs' usage' -> do
+            ( innerMembers, additionalOffset ) <- layoutStructMembersWith f ali 0 as'
+            let
+              laidOutTy :: SPIRV.PrimTy
+              laidOutTy = SPIRV.Struct innerMembers decs' usage'
+            pure ( nextAligned ( offset + additionalOffset ) ali
+                 , laidOutTy
+                 , Set.singleton (SPIRV.Offset offset)
+                 )
+          _ -> do
+            align     <- f ty
+            laidOutTy <- layoutWith f offset ty
+            pure ( nextAligned (offset + align) ali
+                 , laidOutTy
+                 , Set.singleton (SPIRV.Offset offset)
+                 )
+  first ( (name, laidOutTy, Set.union newDecs decs) : ) <$> layoutStructMembersWith f ali newOffset nxt

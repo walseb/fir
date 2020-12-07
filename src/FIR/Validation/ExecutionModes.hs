@@ -136,13 +136,9 @@ type family ValidateExecutionModes
     = If ( PertainTo k Kernel modes )
         ( Just (KernelInfo (LocalSizes k Kernel modes) ) )
         Nothing
-  ValidateExecutionModes k RayGeneration modes
-    = If ( PertainTo k RayGeneration modes )
-      ( Just ( 'RayShaderInfo ( RayGenerationShaderInfo ( LocalSizes k RayGeneration modes ) ) ) )
-      Nothing
   ValidateExecutionModes k ( 'Stage ( 'RayStage rayShader ) ) modes
     = If ( PertainTo k ( 'Stage ( 'RayStage rayShader ) ) modes )
-      ( Just ( 'RayShaderInfo ( MkSimpleRayShaderInfo rayShader ) ) )
+      ( Just ( 'RayShaderInfo ( MkRayShaderInfo rayShader ) ) )
       Nothing
   ValidateExecutionModes k em _
     = TypeError ( Text "Unsupported " :<>: Text (NamedExecutionModel k em) )

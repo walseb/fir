@@ -182,7 +182,7 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        , "cl_GlobalOffset"       ':-> Var R (V 3 Word32)
        , "cl_GlobalLinearID"     ':-> Var R Word32
        ]
-  ModelBuiltins' ( 'RayShaderInfo ( _ :: RayShaderInfo Nat rayShader ) )
+  ModelBuiltins' ( 'RayShaderInfo ( _ :: RayShaderInfo rayShader ) )
     = RayShaderBuiltins rayShader
 
 type family RayShaderBuiltins ( shader :: RayShader ) :: [ Symbol :-> Binding ] where
@@ -248,13 +248,13 @@ shaderBuiltins FragmentShaderInfo
 shaderBuiltins (ComputeShaderInfo _)
   = builtinPointer ( knownInterface @(ModelBuiltins' (ComputeInfo '(1,1,1))) ) -- yet another
 
-rayShaderBuiltins :: RayShaderInfo Word32 shader -> [ (ShortText, SPIRV.PointerTy) ]
-rayShaderBuiltins (RayGenerationShaderInfo {}) = builtinPointer ( knownInterface @(RayShaderBuiltins RayGenerationShader) )
-rayShaderBuiltins IntersectionShaderInfo       = builtinPointer ( knownInterface @(RayShaderBuiltins IntersectionShader) )
-rayShaderBuiltins AnyHitShaderInfo             = builtinPointer ( knownInterface @(RayShaderBuiltins AnyHitShader) )
-rayShaderBuiltins ClosestHitShaderInfo         = builtinPointer ( knownInterface @(RayShaderBuiltins ClosestHitShader) )
-rayShaderBuiltins MissShaderInfo               = builtinPointer ( knownInterface @(RayShaderBuiltins MissShader) )
-rayShaderBuiltins CallableShaderInfo           = builtinPointer ( knownInterface @(RayShaderBuiltins CallableShader) )
+rayShaderBuiltins :: RayShaderInfo shader -> [ (ShortText, SPIRV.PointerTy) ]
+rayShaderBuiltins RayGenerationShaderInfo = builtinPointer ( knownInterface @(RayShaderBuiltins RayGenerationShader) )
+rayShaderBuiltins IntersectionShaderInfo  = builtinPointer ( knownInterface @(RayShaderBuiltins IntersectionShader) )
+rayShaderBuiltins AnyHitShaderInfo        = builtinPointer ( knownInterface @(RayShaderBuiltins AnyHitShader) )
+rayShaderBuiltins ClosestHitShaderInfo    = builtinPointer ( knownInterface @(RayShaderBuiltins ClosestHitShader) )
+rayShaderBuiltins MissShaderInfo          = builtinPointer ( knownInterface @(RayShaderBuiltins MissShader) )
+rayShaderBuiltins CallableShaderInfo      = builtinPointer ( knownInterface @(RayShaderBuiltins CallableShader) )
 
 modelBuiltins :: ExecutionInfo Word32 model -> [ (ShortText, SPIRV.PointerTy) ]
 modelBuiltins (ShaderExecutionInfo shaderInfo) = shaderBuiltins shaderInfo

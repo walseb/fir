@@ -114,6 +114,8 @@ import FIR.Builtin
   ( modelBuiltins )
 import FIR.Layout
   ( inferPointerLayout )
+import FIR.Prim.RayTracing
+  ( AccelerationStructure(..) )
 import FIR.Prim.Singletons
   ( PrimTy(primTySing), primTy
   , SPrimTy(..)
@@ -395,9 +397,13 @@ constID a =
               \Runtime arrays are only available through entry-point interfaces."
 
         SAccelerationStructure {} ->
-            throwError
-              "'constID': cannot construct acceleration structures.\n\
-              \Acceleration structures are an opaque type, and only available through entry-point interfaces."
+          createIDRec _knownAConstant
+            ( constID ( case a of { AccelerationStructureFromWord64 handle -> handle } ) )
+            ( \ handleID ->
+              mkConstantInstruction
+                SPIRV.Op.ConvertUToAccelerationStructure
+                ( Arg handleID EndArgs )
+            )
 
         SArray {} ->
           createIDRec _knownAConstant

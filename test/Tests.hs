@@ -65,6 +65,9 @@ allTests
           , ( "InvalidComponent" , Typecheck )
           , ( "MissingInput"     , Typecheck )
           ]
+    , Folder "Layout"
+          [ ( "NestedUniform", Validate )
+          ]
     , Folder "Matrix"
           [ ( "Applicative", Validate )
           ]

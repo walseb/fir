@@ -371,24 +371,25 @@ deriving stock instance Show n => Show (ShaderInfo n s)
 deriving stock instance Eq   n => Eq   (ShaderInfo n s)
 deriving stock instance Ord  n => Ord  (ShaderInfo n s)
 
-data RayShaderInfo (n :: Type) (s :: RayShader) where
-  RayGenerationShaderInfo :: (n,n,n) -> RayShaderInfo n RayGenerationShader
-  IntersectionShaderInfo  ::            RayShaderInfo n IntersectionShader
-  AnyHitShaderInfo        ::            RayShaderInfo n AnyHitShader
-  ClosestHitShaderInfo    ::            RayShaderInfo n ClosestHitShader
-  MissShaderInfo          ::            RayShaderInfo n MissShader
-  CallableShaderInfo      ::            RayShaderInfo n CallableShader
+data RayShaderInfo (s :: RayShader) where
+  RayGenerationShaderInfo :: RayShaderInfo RayGenerationShader
+  IntersectionShaderInfo  :: RayShaderInfo IntersectionShader
+  AnyHitShaderInfo        :: RayShaderInfo AnyHitShader
+  ClosestHitShaderInfo    :: RayShaderInfo ClosestHitShader
+  MissShaderInfo          :: RayShaderInfo MissShader
+  CallableShaderInfo      :: RayShaderInfo CallableShader
 
-type family MkSimpleRayShaderInfo ( s :: RayShader ) :: RayShaderInfo Nat s where
-  MkSimpleRayShaderInfo IntersectionShader = IntersectionShaderInfo
-  MkSimpleRayShaderInfo AnyHitShader       = AnyHitShaderInfo
-  MkSimpleRayShaderInfo ClosestHitShader   = ClosestHitShaderInfo
-  MkSimpleRayShaderInfo MissShader         = MissShaderInfo
-  MkSimpleRayShaderInfo CallableShader     = CallableShaderInfo
+type family MkRayShaderInfo ( s :: RayShader ) :: RayShaderInfo s where
+  MkRayShaderInfo RayGenerationShader = RayGenerationShaderInfo
+  MkRayShaderInfo IntersectionShader  = IntersectionShaderInfo
+  MkRayShaderInfo AnyHitShader        = AnyHitShaderInfo
+  MkRayShaderInfo ClosestHitShader    = ClosestHitShaderInfo
+  MkRayShaderInfo MissShader          = MissShaderInfo
+  MkRayShaderInfo CallableShader      = CallableShaderInfo
 
-deriving stock instance Show n => Show (RayShaderInfo n s)
-deriving stock instance Eq   n => Eq   (RayShaderInfo n s)
-deriving stock instance Ord  n => Ord  (RayShaderInfo n s)
+deriving stock instance Show (RayShaderInfo s)
+deriving stock instance Eq   (RayShaderInfo s)
+deriving stock instance Ord  (RayShaderInfo s)
 
 data ExecutionInfo (n :: Type) (em :: ExecutionModel) where
   ShaderExecutionInfo :: ShaderInfo n s -> ExecutionInfo n ('Stage ('ShaderStage s))
@@ -396,7 +397,7 @@ data ExecutionInfo (n :: Type) (em :: ExecutionModel) where
     :: (n,n,n) -- kernel local size
     -> ExecutionInfo n Kernel
   -- ray shaders don't need extra info (at least at the moment)
-  RayShaderInfo :: RayShaderInfo n s -> ExecutionInfo n ('Stage ('RayStage s))
+  RayShaderInfo :: RayShaderInfo s -> ExecutionInfo n ('Stage ('RayStage s))
 
 type VertexInfo = 'ShaderExecutionInfo 'VertexShaderInfo
 type TessellationControlInfo i j m = 'ShaderExecutionInfo ( 'TessellationControlShaderInfo i j m)
@@ -424,7 +425,7 @@ modelOf (ShaderExecutionInfo (ComputeShaderInfo {}))
   = Stage (ShaderStage ComputeShader)
 modelOf (KernelInfo {})
   = Kernel
-modelOf (RayShaderInfo (RayGenerationShaderInfo {}))
+modelOf (RayShaderInfo RayGenerationShaderInfo)
   = Stage (RayStage RayGenerationShader)
 modelOf (RayShaderInfo IntersectionShaderInfo )
   = Stage (RayStage IntersectionShader)
@@ -474,20 +475,20 @@ instance ( Known (Nat,Nat,Nat) ijk )
   known = ComputeShaderInfo ( knownValue @ijk )
 
 
-instance Demotable (RayShaderInfo Nat s) where
-  type Demote (RayShaderInfo Nat s) = RayShaderInfo Word32 s
+instance Demotable (RayShaderInfo s) where
+  type Demote (RayShaderInfo s) = RayShaderInfo s
 
-instance ( Known (Nat,Nat,Nat) ijk ) => Known ( RayShaderInfo Nat RayGenerationShader ) ( RayGenerationShaderInfo ijk ) where
-  known = RayGenerationShaderInfo ( knownValue @ijk )
-instance Known ( RayShaderInfo Nat IntersectionShader ) IntersectionShaderInfo where
+instance Known ( RayShaderInfo RayGenerationShader ) RayGenerationShaderInfo where
+  known = RayGenerationShaderInfo
+instance Known ( RayShaderInfo IntersectionShader ) IntersectionShaderInfo where
   known = IntersectionShaderInfo
-instance Known ( RayShaderInfo Nat AnyHitShader ) AnyHitShaderInfo where
+instance Known ( RayShaderInfo AnyHitShader ) AnyHitShaderInfo where
   known = AnyHitShaderInfo
-instance Known ( RayShaderInfo Nat ClosestHitShader ) ClosestHitShaderInfo where
+instance Known ( RayShaderInfo ClosestHitShader ) ClosestHitShaderInfo where
   known = ClosestHitShaderInfo
-instance Known ( RayShaderInfo Nat MissShader ) MissShaderInfo where
+instance Known ( RayShaderInfo MissShader ) MissShaderInfo where
   known = MissShaderInfo
-instance Known ( RayShaderInfo Nat CallableShader ) CallableShaderInfo where
+instance Known ( RayShaderInfo CallableShader ) CallableShaderInfo where
   known = CallableShaderInfo
 
 instance Demotable (ExecutionInfo Nat s) where
@@ -501,7 +502,7 @@ instance Known (ShaderInfo Nat s) info
 instance ( Known (Nat,Nat,Nat) ijk )
       => Known (ExecutionInfo Nat 'Kernel) (KernelInfo ijk) where
   known = KernelInfo ( knownValue @ijk)
-instance Known (RayShaderInfo Nat s) info
+instance Known (RayShaderInfo s) info
       => Known (ExecutionInfo Nat ('Stage ('RayStage s)))
            ('RayShaderInfo info)
       where
