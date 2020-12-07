@@ -57,12 +57,14 @@ import FIR.Prim.Struct
   ( Struct )
 import FIR.ProgramState
   ( TLInterfaceVariable )
+import FIR.Validation.Images
+  ( ImageUsageFromProperties )
 import qualified SPIRV.Decoration as SPIRV
   ( Decoration(..) )
 import qualified SPIRV.Image      as SPIRV
   ( ImageUsage )
 import qualified SPIRV.Image
-  ( ImageUsage(Sampled, Storage) )
+  ( ImageUsage(..) )
 import qualified SPIRV.Storage    as SPIRV
   ( StorageClass )
 import qualified SPIRV.Storage    as Storage
@@ -121,12 +123,12 @@ type family ValidGlobal
               ( ty      :: Type                     )
               :: Constraint
               where
-  ValidGlobal name Storage.UniformConstant decs (Image ty)
+  ValidGlobal name Storage.UniformConstant decs (Image props)
     = ( ValidUniformDecorations
         ( Text "Image named " :<>: ShowType name )
         decs
-        (Image ty)
-      , ValidImageDecorations name SPIRV.Image.Sampled decs
+        (Image props)
+      , ValidImageDecorations name (ImageUsageFromProperties props) decs
       )
   ValidGlobal name Storage.UniformConstant _ nonImageTy
     = TypeError
@@ -134,12 +136,12 @@ type family ValidGlobal
         :<>: Text " expected to point to an image, but points to "
         :<>: ShowType nonImageTy :<>: Text " instead."
         )
-  ValidGlobal name Storage.Image decs (Image ty)
+  ValidGlobal name Storage.Image decs (Image props)
     = ( ValidUniformDecorations
         ( Text "Storage image named " :<>: ShowType name )
         decs
-        (Image ty)
-      , ValidImageDecorations name SPIRV.Image.Storage decs
+        (Image props)
+      , ValidImageDecorations name (ImageUsageFromProperties props) decs
       )
   ValidGlobal name Storage.Image  _ nonImageTy
     = TypeError
@@ -248,8 +250,8 @@ type family ValidImageDecorations
     = ValidImageDecorations name ty decs
   ValidImageDecorations name ty ( SPIRV.NonReadable ': decs )
     = ValidImageDecorations name ty decs
-  ValidImageDecorations name ty ( SPIRV.NonWritable ': decs )
-    = ValidImageDecorations name ty decs
+  ValidImageDecorations name SPIRV.Image.Storage ( SPIRV.NonWritable ': decs )
+    = ValidImageDecorations name SPIRV.Image.Storage decs
   ValidImageDecorations name _ ( dec ': _ )
     = TypeError
         (    Text "Unexpected decoration " :<>: ShowType dec

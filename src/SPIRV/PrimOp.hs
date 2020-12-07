@@ -391,7 +391,7 @@ syncOp ControlSync = ( ControlBarrier, Unit )
 syncOp MemorySync  = ( MemoryBarrier , Unit )
 
 rayOp :: RayPrimOp -> (Operation, PrimTy)
-rayOp RT_ReportIntersection                     = ( ReportIntersection, Unit )
+rayOp RT_ReportIntersection                     = ( ReportIntersection, Boolean )
 rayOp RT_IgnoreIntersection                     = ( IgnoreIntersection, Unit )
 rayOp RT_TerminateRay                           = ( TerminateRay, Unit )
 rayOp RT_AccelerationStructureFromDeviceAddress = ( ConvertUToAccelerationStructure, AccelerationStructure )

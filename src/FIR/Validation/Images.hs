@@ -20,6 +20,7 @@ using floating-point texel coordinates.
 
 module FIR.Validation.Images
   ( LookupImageProperties
+  , ImageUsageFromProperties
   , ValidImageRead, ValidImageWrite
   , ValidImageCoordinate, ValidImageGradCoordinate, ValidImageOffsetCoordinate 
   , ImageTexelType
@@ -112,6 +113,9 @@ type family ImagePropertiesFromLookup
                  :<>: Text " bound by name " :<>: ShowType k
                  :$$: Text "Expected an image."
                  )
+
+type family ImageUsageFromProperties ( props :: ImageProperties ) :: ImageUsage where
+  ImageUsageFromProperties ( Properties _ _ _ _ _ _ usage _ ) = usage
 
 -- | Check that we can read from an image.
 --
