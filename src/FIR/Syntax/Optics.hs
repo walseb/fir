@@ -64,6 +64,10 @@ import GHC.TypeLits.Compare
   ( (:<=?)(LE), (%<=?) )
 
 -- vector
+import qualified Data.Vector as Unsized.Vector
+  ( (!) )
+
+-- vector-sized
 import qualified Data.Vector.Sized as Vector
   ( index, (//) )
 
@@ -103,7 +107,7 @@ import Data.Type.Map
   , Key
   )
 import FIR.Prim.Array
-  ( Array(MkArray), RuntimeArray )
+  ( Array(..), RuntimeArray(..) )
 import FIR.Prim.Image
   ( Image, ImageProperties
   , ImageOperands, OperandName
@@ -467,11 +471,10 @@ instance ( KnownNat i
 instance ( KnownNat n, KnownNat i
          , empty ~ '[]
          , r ~ a
-         , TypeError ( Text "Cannot use 'view' on runtime array." )
+         , PrimTy a
          )
        => ReifiedGetter (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
-  view = error "unreachable"
-  --view (MkRuntimeArray arr) = arr `Vector.index` fromIntegral (natVal (Proxy @i))
+  view (MkRuntimeArray arr) = arr Unsized.Vector.! fromIntegral (natVal (Proxy @i))
 
 
 instance ( IntegralTy ty
@@ -494,12 +497,9 @@ instance ( IntegralTy ty
          , r ~ a
          )
       => Gettable (RTOptic_ :: Optic ix (RuntimeArray a) r) where
-instance ( IntegralTy ty, ix ~ '[ty], r ~ a
-         , TypeError ( Text "Cannot use 'view' on runtime array." )
-         )
+instance ( IntegralTy ty, ix ~ '[ty], r ~ a, PrimTy a )
       => ReifiedGetter (RTOptic_ :: Optic ix (RuntimeArray a) r) where
-  view = error "unreachable"
-  --view i (MkRuntimeArray arr) = arr `Vector.index` fromIntegral i
+  view i (MkRuntimeArray arr) = arr Unsized.Vector.! fromIntegral i
 
 instance
     TypeError (    Text "get: attempt to access array element \
