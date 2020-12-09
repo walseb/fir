@@ -148,8 +148,8 @@ type family ValidImageCoordinate
               ( ops       :: [ OperandName ] )
               ( coordType :: Type            )
               where
-  ValidImageCoordinate ( Properties coordKind _ dim _ arr _ _ _ ) ops coordType
-    = ValidCoordinateType "image coordinates" (ImageCoordinatesDim dim arr ops) coordKind coordType
+  ValidImageCoordinate ( Properties coordKind _ _ _ _ _ _ _ ) _ coordType
+    = ValidCoordinateType "image coordinates" 1 coordKind coordType
 
 type family ValidImageGradCoordinate
               ( props     :: ImageProperties )

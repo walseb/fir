@@ -46,7 +46,7 @@ import FIR.Validation.Images
   , NoDuplicate
   , NoMS, CanMultiSample
   , NoLODOps
-  , ValidImageCoordinate, ValidImageGradCoordinate, ValidImageOffsetCoordinate 
+  , ValidImageCoordinate, ValidImageGradCoordinate, ValidImageOffsetCoordinate
   )
 import qualified SPIRV.Image as SPIRV
 
@@ -104,9 +104,9 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
        , NoMS "Bias" props
        , NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.Bias)) ops
        , NoLODOps "Bias" '[SPIRV.LOD, SPIRV.Grad] ops
-       , ValidImageCoordinate props ops imgCoords
+       , ValidImageCoordinate props ops imgCoord
        )
-    => ast ( Val imgCoords ) -- ^ Bias.
+    => ast ( Val imgCoord ) -- ^ Bias.
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.Bias) ': ops) ) )
 
@@ -116,9 +116,9 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
        , NoMS "LOD" props
        , NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.LOD)) ops
        , NoLODOps "LOD" '[SPIRV.Bias, SPIRV.Grad, SPIRV.MinLOD] ops
-       , ValidImageCoordinate props ops imgCoords
+       , ValidImageCoordinate props ops imgCoord
        )
-     => ast ( Val imgCoords ) -- ^ LOD.
+     => ast ( Val imgCoord ) -- ^ LOD.
      -> ast ( Val ( ImageOperands props ops ) )
      -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.LOD ) ': ops) ) )
 
@@ -129,9 +129,9 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
        , NoMS "MinLOD" props
        , NoDuplicate (BaseOperand ('SPIRV.LODOperand SPIRV.MinLOD)) ops
        , NoLODOps "MinLOD" '[SPIRV.LOD, SPIRV.Bias] ops
-       , ValidImageCoordinate props ops imgCoords
+       , ValidImageCoordinate props ops imgCoord
        )
-    => ast ( Val imgCoords ) -- ^ Minimum LOD.
+    => ast ( Val imgCoord ) -- ^ Minimum LOD.
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand ('SPIRV.LODOperand SPIRV.MinLOD ) ': ops) ) )
 

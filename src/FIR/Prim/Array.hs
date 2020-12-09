@@ -46,13 +46,13 @@ import Data.Kind
 import GHC.TypeNats
   ( Nat, KnownNat, type (+) )
 
--- vector-sized
-import qualified Data.Vector.Sized as V
-  ( Vector, (++) )
-
 -- vector
 import qualified Data.Vector as Unsized
   ( Vector )
+
+-- vector-sized
+import qualified Data.Vector.Sized as V
+  ( Vector, (++) )
 
 -- fir
 import Math.Algebra.GradedSemigroup
