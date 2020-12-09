@@ -92,12 +92,12 @@ createArray :: forall n arrName ixName a i j ctx funs eps g_iface rayQs bkend.
              , CanPut ixName  j
              , CanGet arrName j
              , CanPut arrName j
-             , ValidDef ixName i
+             , ValidDef ixName i Word32
              )
           => ( Code Word32 -> Code a )
           -> AST ( Eff i i (Array n a) )
 createArray arrayFunction = toAST $ locally @i @j do
-  def @ixName @RW @Word32 @i 0
+  _ <- def @ixName @RW @Word32 @i 0
   while ( get @ixName < pure (Lit arrayLg) ) do
     i <- get @ixName
     assign @(Name arrName :.: AnIndex Word32)

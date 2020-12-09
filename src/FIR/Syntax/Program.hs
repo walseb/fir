@@ -313,7 +313,7 @@ instance {-# OVERLAPPABLE #-} ( j ~ i ) => HasUndefined (Program i j a) where
 
 -- | let binding.
 let' :: forall ( a :: Type ) ( i :: ProgramState )
-     . ( GHC.Stack.HasCallStack )
+     . ( GHC.Stack.HasCallStack, PrimTy a )
      => Code a
      -> Program i i (Code a)
 let' = fromAST Let
@@ -335,7 +335,7 @@ def :: forall
        , KnownSymbol k
        , Known Permissions ps
        , PrimTy a
-       , ValidDef k i
+       , ValidDef k i a
        )
     => Code a -- ^ Initial value.
     -> Program i (AddBinding k (Var ps a) i) (Code a)

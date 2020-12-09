@@ -41,6 +41,8 @@ type role SScalarTy nominal
 data SPrimTy :: Type -> Type where
 type role SPrimTy nominal
 
+type family HasOpaqueType (a :: Type) :: Bool where ..
+
 class ( Show ty
       , Eq ty, Ord ty, Typeable ty
       , ty ~ ListVariadic '[] ty
@@ -51,6 +53,7 @@ class ( Show ty
 
 class ( PrimTy ty
       , Put ty
+      , HasOpaqueType ty ~ False
       )
     => ScalarTy ty where
   scalarTySing :: SScalarTy ty

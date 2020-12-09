@@ -144,6 +144,7 @@ module FIR
   , FIR.Prim.Singletons.ScalarTy
   , FIR.Prim.Singletons.IntegralTy
   , FIR.Prim.Singletons.PrimTyMap
+  , FIR.Prim.Singletons.HasOpaqueType
   , module FIR.Prim.Struct
   , FIR.ProgramState.ProgramState(ProgramState)
   , FIR.ProgramState.FunctionContext(TopLevel)
@@ -178,8 +179,11 @@ module FIR
   , SPIRV.Stage.Geometry
   , SPIRV.Stage.Fragment
   , SPIRV.Stage.Compute
+  , SPIRV.Stage.Stage(..)
   , SPIRV.Stage.Shader(..)
-  , SPIRV.Stage.ExecutionModel(Kernel)
+  , SPIRV.Stage.RayShader(..)
+  , SPIRV.Stage.MeshShader(..)
+  , SPIRV.Stage.ExecutionModel(..)
   , SPIRV.Stage.RayGeneration
   , SPIRV.Stage.Intersection
   , SPIRV.Stage.AnyHit
@@ -253,6 +257,8 @@ module FIR
 import Data.String
   ( IsString(fromString) )
 import Prelude
+import Data.Foldable
+  ( foldl' )
 import Data.Functor
   ( ($>) )
 import Data.Word
@@ -476,7 +482,7 @@ instance ( KnownDefinitions defs )
 -- __Usage example__: in a module which imports this module and shaders
 -- @vertexShader@, @fragmentShader@ (bearing in mind the TH staging restriction), write:
 --
--- > shaderCompilationResult :: Either ShortText [(ShortText, ModuleRequirements)]
+-- > shaderCompilationResult :: Either ShortText ModuleRequirements
 -- > shaderCompilationResult =
 -- >   $( runCompilationsTH
 -- >        [ ("Vertex shader"  , compileTo vertPath [] vertexShader  )
@@ -487,15 +493,18 @@ instance ( KnownDefinitions defs )
 -- At compile-time, this will compile the vertexShader @vertexShader@ at filepath @vertPath@,
 -- and similarly for the fragment shader.
 -- These can then be loaded into Vulkan shader modules for use in rendering.
-runCompilationsTH :: [ ( ShortText, IO (Either ShortText ModuleRequirements) ) ] -> TH.Q TH.Exp
+runCompilationsTH
+  :: forall f. Traversable f
+  => f ( ShortText, IO (Either ShortText ModuleRequirements) )
+  -> TH.Q TH.Exp
 runCompilationsTH namedCompilations
   = TH.lift Prelude.=<< TH.runIO (combineCompilations namedCompilations)
     where
       combineCompilations
-        :: [ ( ShortText, IO (Either ShortText ModuleRequirements) ) ]
+        :: f ( ShortText, IO (Either ShortText ModuleRequirements) )
         -> IO (Either ShortText ModuleRequirements)
       combineCompilations
-        = fmap ( foldl ( \ b (n,a) -> combineResult n b a ) (Right mempty) )
+        = fmap ( foldl' ( \ b (n,a) -> combineResult n b a ) (Right mempty) )
         . traverse ( uncurry rightStrength )
 
       combineResult

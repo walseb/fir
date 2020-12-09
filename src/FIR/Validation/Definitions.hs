@@ -53,6 +53,8 @@ import FIR.Prim.Image
   ( Image )
 import FIR.Prim.RayTracing
   ( AccelerationStructure )
+import FIR.Prim.Singletons
+  ( HasOpaqueType )
 import FIR.Prim.Struct
   ( Struct )
 import FIR.ProgramState
@@ -150,15 +152,19 @@ type family ValidGlobal
         :<>: ShowType nonImageTy :<>: Text " instead."
         )
   ValidGlobal name Storage.Uniform decs (Struct as)
-    = ValidUniformDecorations
-        ( Text "Uniform buffer named " :<>: ShowType name )
-        decs
-        (Struct as)
+    = ( ValidUniformDecorations
+          ( Text "Uniform buffer named " :<>: ShowType name )
+          decs
+          (Struct as)
+      , NoOpaqueTypes name ( Text "buffer" ) as
+      )
   ValidGlobal name Storage.Uniform decs (Array n (Struct as))
-    = ValidUniformDecorations
-        ( Text "Uniform buffer named " :<>: ShowType name )
-        decs
-        (Array n (Struct as))
+    = ( ValidUniformDecorations
+          ( Text "Uniform buffer named " :<>: ShowType name )
+          decs
+          (Array n (Struct as))
+      , NoOpaqueTypes name ( Text "buffer" ) as
+      )
   ValidGlobal name Storage.Uniform decs AccelerationStructure
     = ValidUniformDecorations
         ( Text "Acceleration structure named " :<>: ShowType name )
@@ -167,28 +173,35 @@ type family ValidGlobal
   ValidGlobal name Storage.Uniform _ ty
     = TypeError
         (    Text "Uniform buffer named " :<>: ShowType name
-        :<>: Text " should be backed by a struct or array containing a struct;"
+        :<>: Text " should be backed by a struct or a fixed-size array containing a struct;"
         :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
   ValidGlobal name Storage.StorageBuffer decs (Struct as)
-      = ValidUniformDecorations
-          ( Text "Uniform storage buffer named " :<>: ShowType name )
-          decs
-          (Struct as)
+      = ( ValidUniformDecorations
+            ( Text "Uniform storage buffer named " :<>: ShowType name )
+            decs
+            (Struct as)
+        , NoOpaqueTypesExceptRuntimeArrayLast name as
+        )
   ValidGlobal name Storage.StorageBuffer decs (Array n (Struct as))
-      = ValidUniformDecorations
-          ( Text "Uniform storage buffer named " :<>: ShowType name )
-          decs
-          (Array n (Struct as))
-  ValidGlobal name Storage.StorageBuffer decs (RuntimeArray (Struct as))
-      = ValidUniformDecorations
-          ( Text "Uniform storage buffer named " :<>: ShowType name )
-          decs
-          (RuntimeArray (Struct as))
+      = ( ValidUniformDecorations
+            ( Text "Uniform storage buffer named " :<>: ShowType name )
+            decs
+            (Array n (Struct as))
+        , NoOpaqueTypes name ( Text "storage buffer" ) as
+        )
+  ValidGlobal name Storage.StorageBuffer decs (RuntimeArray a)
+    = TypeError
+        (    Text "Uniform storage buffer named " :<>: ShowType name
+        :<>: Text " should be backed by a struct or a fixed-size array containing a struct;"
+        :$$: Text "found type " :<>: ShowType (RuntimeArray a) :<>: Text " instead."
+        :$$: Text "To use a dynamically sized array in a storage buffer, define a structure"
+        :<>: Text " whose last member is a RuntimeArray."
+        )
   ValidGlobal name Storage.StorageBuffer _ ty
     = TypeError
         (    Text "Uniform storage buffer named " :<>: ShowType name
-        :<>: Text " should be backed by a struct or array containing a struct;"
+        :<>: Text " should be backed by a struct or fixed-size array containing a struct;"
         :$$: Text "found type " :<>: ShowType ty :<>: Text " instead."
         )
   -- TODO: more validation for ray-tracing storage classes
@@ -258,3 +271,49 @@ type family ValidImageDecorations
         :<>: Text " applied to image named " :<>: ShowType name
         :<>: Text "."
         )
+
+type family NoOpaqueTypes
+              ( name    :: Symbol              )
+              ( loc     :: ErrorMessage        )
+              ( as      :: [ Symbol :-> Type ] )
+            :: Constraint
+            where
+  NoOpaqueTypes _    _     '[] = ()
+  NoOpaqueTypes name loc ((k ':-> a) ': as) =
+    ErrorIfOpaque (HasOpaqueType a) name loc k a
+
+type family ErrorIfOpaque (hasOpaque :: Bool) (name :: Symbol) (loc :: ErrorMessage) (k :: Symbol) (a :: Type) :: Constraint where
+  ErrorIfOpaque True name loc k a =
+    TypeError
+      (    Text "Structure member " :<>: ShowType k :<>: Text " cannot appear"
+      :<>: Text " in " :<>: loc :<>: Text " named " :<>: ShowType name :<>: Text "."
+      :$$: Text "Its type " :<>: ShowType a 
+      :$$: Text "is opaque (or it contains an opaque type)."
+      )
+  ErrorIfOpaque _ _ _ _ _ = ()
+
+type family NoOpaqueTypesExceptRuntimeArrayLast ( name :: Symbol ) ( as :: [ Symbol :-> Type ] ) :: Constraint where
+  NoOpaqueTypesExceptRuntimeArrayLast _   '[] = ()
+  NoOpaqueTypesExceptRuntimeArrayLast name ( ( k ':-> RuntimeArray a ) ': '[] ) =
+    ErrorIfOpaqueRuntimeArray (HasOpaqueType a) name k a
+  NoOpaqueTypesExceptRuntimeArrayLast name ( ( k ':-> RuntimeArray a ) ': _ ) =
+    TypeError
+      (    Text "Unexpected runtime array named " :<>: ShowType k
+      :<>: Text " within storage buffer named " :<>: Text name :<>: Text "."
+      :$$: Text "Runtime arrays must appear last in the structure."
+      )
+  NoOpaqueTypesExceptRuntimeArrayLast name ( ( k ':-> a ) ': as ) =
+    ( NoOpaqueTypes name ( Text "storage buffer" ) '[ k ':-> a ]
+    , NoOpaqueTypesExceptRuntimeArrayLast name as
+    )
+
+type family ErrorIfOpaqueRuntimeArray (hasOpaque :: Bool) (name :: Symbol) (k :: Symbol) (a :: Type) :: Constraint where
+  ErrorIfOpaqueRuntimeArray True name k a =
+    TypeError
+      (    Text "Structure member " :<>: ShowType k :<>: Text " cannot appear"
+      :<>: Text " in storage buffer named " :<>: ShowType name :<>: Text "."
+      :$$: Text "It is a runtime array whose element type"
+      :$$: ShowType a
+      :$$: Text "is opaque, or contains an opaque type."
+      )
+  ErrorIfOpaqueRuntimeArray _ _ _ _ = ()

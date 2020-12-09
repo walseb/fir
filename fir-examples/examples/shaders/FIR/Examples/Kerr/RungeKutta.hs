@@ -128,7 +128,9 @@ data Parameters t y a
   }
 
 dormandPrince :: forall t y a s
-              .  ( PrimTy a, Integrable t y )
+              .  ( PrimTy a, HasOpaqueType a ~ False, HasOpaqueType y ~ False
+                 , Integrable t y
+                 )
               => Parameters t y a -> Program s s (Code a)
 dormandPrince
   Parameters

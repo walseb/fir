@@ -37,6 +37,8 @@ import Data.List
   ( intercalate )
 import Data.Proxy
   ( Proxy(Proxy) )
+import Data.Type.Bool
+  ( type (&&) )
 import Data.Type.Equality
   ( (:~:)(Refl) )
 import Data.Type.List
@@ -88,8 +90,10 @@ import FIR.Binding
   )
 import FIR.Prim.Array
   ( Array, RuntimeArray )
+import {-# SOURCE #-} FIR.Prim.Image
+  ( Image )
 import FIR.Prim.RayTracing
-  ( AccelerationStructure )
+  ( AccelerationStructure, RayQuery )
 import FIR.Prim.Struct
   ( Struct, FieldKind(NamedField), StructFieldKind(fieldKind) )
 import Math.Algebra.Class
@@ -196,6 +200,14 @@ data SPrimTyMap :: [fld :-> Type] -> Type where
   SCons :: (StructFieldKind fld, Known fld k, PrimTy a, PrimTyMap as)
         => SPrimTyMap ((k ':-> a) ': as)
 
+type family HasOpaqueType (a :: Type) :: Bool where
+  HasOpaqueType (Image _)                    = True
+  HasOpaqueType AccelerationStructure        = True
+  HasOpaqueType RayQuery                     = True
+  HasOpaqueType (RuntimeArray _)             = True
+  HasOpaqueType (Array _ a)                  = HasOpaqueType a
+  HasOpaqueType (Struct ((_ ':-> a) ': as )) = HasOpaqueType a && HasOpaqueType (Struct as)
+  HasOpaqueType _                            = False
 
 instance Show (SPrimTy ty) where
   show :: SPrimTy ty -> String
@@ -312,6 +324,7 @@ class ( Show ty                    -- for convenience
 
 class ( PrimTy ty
       , Put ty                     -- for serialisation
+      , HasOpaqueType ty ~ False
       ) => ScalarTy ty where
   scalarTySing :: SScalarTy ty
 

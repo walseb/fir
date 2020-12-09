@@ -60,6 +60,8 @@ import FIR.Binding
   )
 import FIR.Builtin
   ( ModelBuiltins )
+import FIR.Prim.Singletons
+  ( HasOpaqueType )
 import FIR.ProgramState
   ( FunctionContext(..)
   , ProgramState(ProgramState)
@@ -153,13 +155,24 @@ type family AddBinding
 -- | Check that it is valid to define a new variable with given name.
 --
 -- Throws a type error if a binding by this name already exists.
-type family ValidDef (k :: Symbol) (i :: ProgramState) :: Constraint where
-  ValidDef k ('ProgramState bds _ _ _ _ _ _) = NotAlreadyDefined k (Lookup k bds)
+type family ValidDef (k :: Symbol) (i :: ProgramState) (a :: Type) :: Constraint where
+  ValidDef k ('ProgramState bds _ _ _ _ _ _) a = 
+    ( NotAlreadyDefined k (Lookup k bds)
+    , NotOpaqueType (HasOpaqueType a) k a
+    )
 
 type family NotAlreadyDefined (k :: Symbol) (lookup :: Maybe Binding) :: Constraint where
   NotAlreadyDefined _ 'Nothing  = ()
   NotAlreadyDefined k ('Just _) = TypeError
     ( Text "'def': a binding by the name " :<>: ShowType k :<>: Text " already exists." )
+
+type family NotOpaqueType (hasOpaque :: Bool) (k :: Symbol) (a :: Type) :: Constraint where
+  NotOpaqueType True k a =
+    TypeError
+      (    Text "'def': cannot define new binding named " :<>: ShowType k :<>: Text ":"
+      :$$: ShowType a :<>: Text " is an opaque type (or it contains an opaque type)."
+      )
+  NotOpaqueType False _ _ = ()
 
 -------------------------------------------------
 -- * Constraints for 'FIR.Syntax.Program.fundef'

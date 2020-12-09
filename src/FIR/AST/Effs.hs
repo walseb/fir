@@ -92,7 +92,7 @@ data DefF ( ast :: AugType -> Type ) ( t :: AugType ) where
       , KnownSymbol k
       , Known Permissions ps
       , PrimTy a
-      , ValidDef k i
+      , ValidDef k i a
       )
     => Proxy k  -- ^ Variable name.
     -> Proxy ps -- ^ Permissions (read,write,...).
