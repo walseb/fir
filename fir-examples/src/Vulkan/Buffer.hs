@@ -46,7 +46,7 @@ createVertexBuffer
   => Vulkan.PhysicalDevice
   -> Vulkan.Device
   -> [ a ]
-  -> m (Vulkan.Buffer, Int -> [a] -> IO (), Int )
+  -> m (Vulkan.Buffer, Int -> [a] -> IO (), Int)
 createVertexBuffer
   = createBufferFromList @a @Locations
       Vulkan.BUFFER_USAGE_VERTEX_BUFFER_BIT
@@ -57,7 +57,7 @@ createIndexBuffer
   => Vulkan.PhysicalDevice
   -> Vulkan.Device
   -> [ a ]
-  -> m (Vulkan.Buffer, Int -> [a] -> IO (), Int )
+  -> m (Vulkan.Buffer, Int -> [a] -> IO (), Int)
 createIndexBuffer
   = createBufferFromList @a @Base
       Vulkan.BUFFER_USAGE_INDEX_BUFFER_BIT
@@ -68,7 +68,7 @@ createUniformBuffer
   => Vulkan.PhysicalDevice
   -> Vulkan.Device
   -> a
-  -> m (Vulkan.Buffer, a -> IO () )
+  -> m (Vulkan.Buffer, a -> IO ())
 createUniformBuffer
   = createBuffer @a @Extended
       Vulkan.BUFFER_USAGE_UNIFORM_BUFFER_BIT
@@ -100,7 +100,7 @@ createBufferFromList
   -> Vulkan.PhysicalDevice
   -> Vulkan.Device
   -> [ a ]
-  -> m (Vulkan.Buffer, Int -> [a] -> IO (), Int )
+  -> m (Vulkan.Buffer, Int -> [a] -> IO (), Int)
 createBufferFromList usage physicalDevice device elems = do
   ( buf, bufPtr ) <-
     createBufferFromPoke

@@ -144,9 +144,9 @@ nbIndices = fromIntegral (length toriVerts)
 
 initialResourceSet :: ResourceSet numImages Pre
 initialResourceSet = ResourceSet
-  ( UniformBuffer ( initialMVP :& initialOrig :& End ) )
-  ( VertexBuffer toriVerts   )
-  ( IndexBuffer  toriIndices )
+  ( BufferData ( initialMVP :& initialOrig :& End ) )
+  ( BufferData toriVerts   )
+  ( BufferData toriIndices )
     where
       initialMVP :: M 4 4 Float
       initialMVP = modelViewProjection initialObserver Nothing
@@ -314,8 +314,8 @@ hopf = runVulkan initialState do
           .|. Vulkan.SHADER_STAGE_TESSELLATION_EVALUATION_BIT
           )
         )
-        InputResource
-        InputResource
+        GeneralResource
+        GeneralResource
 
     PostInitialisationResult
       descriptorSetLayout descriptorSets cmdBindBuffers resources

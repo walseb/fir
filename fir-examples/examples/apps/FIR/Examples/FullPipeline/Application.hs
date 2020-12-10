@@ -172,9 +172,9 @@ nbIndices = fromIntegral ( length icosahedronIndices )
 
 initialResourceSet :: ResourceSet numImages Pre
 initialResourceSet = ResourceSet
-  ( UniformBuffer ( initialMVP :& initialOrig :& End ) )
-  ( VertexBuffer icosahedronVerts   )
-  ( IndexBuffer  icosahedronIndices )
+  ( BufferData ( initialMVP :& initialOrig :& End ) )
+  ( BufferData icosahedronVerts   )
+  ( BufferData icosahedronIndices )
       where
         initialMVP :: M 4 4 Float
         initialMVP = modelViewProjection initialObserver Nothing
@@ -325,8 +325,8 @@ fullPipeline = runVulkan initialState do
           .|. Vulkan.SHADER_STAGE_TESSELLATION_EVALUATION_BIT
           )
         )
-        InputResource
-        InputResource
+        GeneralResource
+        GeneralResource
 
     PostInitialisationResult
       descriptorSetLayout descriptorSets cmdBindBuffers resources

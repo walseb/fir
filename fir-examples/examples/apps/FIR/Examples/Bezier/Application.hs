@@ -169,9 +169,9 @@ lineWidths = V3 0.11 0.1 (recip 0.005)
 
 initialResourceSet :: ResourceSet numImages Pre
 initialResourceSet = ResourceSet
-  ( UniformBuffer ( initialMVP :& binormal :& lineWidths :& End ) )
-  ( VertexBuffer letterT )
-  ( IndexBuffer  letterT_indices )
+  ( BufferData ( initialMVP :& binormal :& lineWidths :& End ) )
+  ( BufferData letterT )
+  ( BufferData letterT_indices )
     where
       initialMVP = modelViewProjection bezierInitialObserver Nothing
 
@@ -319,8 +319,8 @@ bezier = runVulkan bezierInitialState do
           .|. Vulkan.SHADER_STAGE_FRAGMENT_BIT
           )
         )
-        InputResource
-        InputResource
+        GeneralResource
+        GeneralResource
 
     PostInitialisationResult
       descriptorSetLayout descriptorSets cmdBindBuffers resources

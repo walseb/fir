@@ -450,15 +450,15 @@ texture = runVulkan initialState do
       resourceFlags = ResourceSet
         ( StageFlags Vulkan.SHADER_STAGE_VERTEX_BIT )
         ( StageFlags Vulkan.SHADER_STAGE_FRAGMENT_BIT )
-        InputResource
-        InputResource
+        GeneralResource
+        GeneralResource
 
       initialResourceSet :: ResourceSet numImages Pre
       initialResourceSet = ResourceSet
-        ( UniformBuffer initialMVP )
+        ( BufferData   initialMVP )
         ( SampledImage logoSampler logoImageView )
-        ( VertexBuffer cubeVerts   )
-        ( IndexBuffer  cubeIndices )
+        ( BufferData   cubeVerts   )
+        ( BufferData   cubeIndices )
 
     PostInitialisationResult
       descriptorSetLayout descriptorSets cmdBindBuffers resources

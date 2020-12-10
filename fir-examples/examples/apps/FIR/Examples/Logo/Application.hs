@@ -242,7 +242,7 @@ logo = runVulkan initialStateLogo do
       initialResourceSet :: ResourceSet numImages Pre
       initialResourceSet =
         ResourceSet
-          { cameraResource   = UniformBuffer initialCamera
+          { cameraResource   = BufferData initialCamera
           , storageResources = Ixed $
               ( fmap ( StorageImage . snd ) swapchainImagesAndViews )
           }

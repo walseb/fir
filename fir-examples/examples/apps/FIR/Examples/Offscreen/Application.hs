@@ -151,13 +151,12 @@ nbIndices = fromIntegral $ length icosahedronIndices
 
 initialResourceSet :: ResourceSet 1 Pre
 initialResourceSet = ResourceSet
-  ( UniformBuffer initialMVP )
-  ( VertexBuffer icosahedronVerts   )
-  ( IndexBuffer  icosahedronIndices )
+  ( BufferData initialMVP )
+  ( BufferData icosahedronVerts   )
+  ( BufferData icosahedronIndices )
     where
       initialMVP :: M 4 4 Float
       initialMVP = modelViewProjection initialObserver Nothing
-
 
 ----------------------------------------------------------------------------
 -- Application.
@@ -280,8 +279,8 @@ offscreen = runVulkan () do
     resourceFlags :: ResourceSet 1 Named
     resourceFlags = ResourceSet
       ( StageFlags Vulkan.SHADER_STAGE_VERTEX_BIT )
-      InputResource
-      InputResource
+      GeneralResource
+      GeneralResource
 
   PostInitialisationResult
     descriptorSetLayout descriptorSets cmdBindBuffers _

@@ -267,9 +267,9 @@ kerr = runVulkan initialStateKerr do
       initialResourceSet :: ResourceSet numImages Pre
       initialResourceSet =
         ResourceSet
-          { cameraResource   = UniformBuffer initialCamera
-          , kerrInfoResource = UniformBuffer defaultKerrInfo
-          , diskInfoResource = UniformBuffer defaultDiskInfo
+          { cameraResource   = BufferData initialCamera
+          , kerrInfoResource = BufferData defaultKerrInfo
+          , diskInfoResource = BufferData defaultDiskInfo
           , storageResources = Ixed $
               ( fmap ( StorageImage . snd ) swapchainImagesAndViews )
           }

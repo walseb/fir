@@ -184,10 +184,9 @@ stepShader sParity = Module $ entryPoint @"main" @Compute do
 
 
 updateSpin
-  :: _
-  => SParity parity -> Code IsingParameters -> Code ( V 2 Word32 )
+  :: SParity parity -> Code IsingParameters -> Code ( V 2 Word32 )
   -> Code Float -> Code ( V 4 Float ) -> Program _s _s ( Code Float )
-updateSpin sParity isingParameters ( Vec2 ix iy ) s ( Vec4 u l r d ) = locally do
+updateSpin sParity isingParameters ( Vec2 ix iy ) s ( Vec4 u l r d ) = do
   temperature   <- let' $ view @( Name "temperature"   ) isingParameters
   interaction   <- let' $ view @( Name "interaction"   ) isingParameters
   magneticField <- let' $ view @( Name "magneticField" ) isingParameters
@@ -374,11 +373,11 @@ supersamplingLoop prog = locally do
 -- | Gradient for input values between -1 and 1.
 gradient
   :: forall n s
-  .  ( KnownNat n, _ )
+  .  KnownNat n
   => Code Float
   -> Code ( Array n ( V 4 Float ) )
   -> Program s s ( Code (V 4 Float) )
-gradient t colors = locally do
+gradient t colors = do
   t'   <- let'         $ 0.5 * (t+1)
   n    <- let'         $ Lit ( fromIntegral $ knownValue @n )
   i    <- let' @Word32 $ floor ( (n-1) * t' )

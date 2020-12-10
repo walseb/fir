@@ -136,9 +136,9 @@ nbIndices = 6
 
 initialResourceSet :: ResourceSet numImages Pre
 initialResourceSet = ResourceSet
-  ( UniformBuffer ( V2 0 0 ) )
-  ( VertexBuffer viewportVertices  )
-  ( IndexBuffer  viewportIndices   )
+  ( BufferData ( V2 0 0 ) )
+  ( BufferData viewportVertices  )
+  ( BufferData viewportIndices   )
 
 clearValue :: Vulkan.ClearValue
 clearValue = Vulkan.Color black
@@ -252,8 +252,8 @@ juliaSet = runVulkan initialState do
       resourceFlags :: ResourceSet numImages Named
       resourceFlags = ResourceSet
         ( StageFlags Vulkan.SHADER_STAGE_FRAGMENT_BIT )
-        InputResource
-        InputResource
+        GeneralResource
+        GeneralResource
 
     PostInitialisationResult
       descriptorSetLayout descriptorSets cmdBindBuffers resources

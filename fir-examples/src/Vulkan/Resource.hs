@@ -29,8 +29,13 @@ module Vulkan.Resource
   , Descriptor, Descriptors
   , IndexBuffer, VertexBuffer
   , UniformBuffer, UniformBuffers
+  , StorageBuffer, StorageBuffers
   , StorageImage, StorageImages
   , SampledImage, SampledImages
+  , ShaderBindingTableBuffer
+  , AccelerationStructureStorageBuffer
+  , AccelerationStructureBuildInputBuffer
+  , ShaderDeviceAddressBuffer
   , initialiseResources
   ) where
 
@@ -50,7 +55,7 @@ import Data.Maybe
 import Data.Monoid
   ( Endo(Endo) )
 import Data.Word
-  ( Word16, Word32 )
+  ( Word8, Word16, Word32 )
 import GHC.Exts
   ( proxy# )
 import GHC.TypeNats
@@ -109,7 +114,7 @@ import qualified Vulkan.CStruct.Extends as Vulkan
 
 -- fir
 import FIR
-  ( Poke, Layout(Base, Extended, Locations) )
+  ( Poke, Layout(..) )
 
 -- fir-examples
 import Vulkan.Buffer
@@ -129,65 +134,86 @@ data ResourceInfo
 type Pre  = Specified PreInitialised
 type Post = Specified Initialised
 
-data DescriptorCount (n :: Nat)
+data ResourceCount
   = Single
-  | Multiple
+  | Multiple Nat
 
-data ResourceUsage (n :: Nat)
-  = DescriptorUse ( DescriptorCount n )
-  | InputUse
+data ResourceUsage
+  = DescriptorUse
+  | GeneralUse
 
-data BufferType
+data BufferUsage
   = Vertex
   | Index
   | Uniform
+  | Storage
+  | ShaderBindingTable
+  | AccelerationStructureStorage
+  | AccelerationStructureBuildInput
+  | ShaderDeviceAddress
+
+data Arrayness
+  = Simple
+  | Arrayed
 
 data ImageType
   = Store
   | Sample
 
 data ResourceType where
-  Buffer :: BufferType -> Type -> ResourceType
+  Buffer :: BufferUsage -> Arrayness -> Layout -> Type -> ResourceType
   Image  :: ImageType -> ResourceType
 
-data family Resource ( res :: ResourceType ) ( use :: ResourceUsage n ) ( st :: ResourceInfo )
+-- Resources.
+data family Resource ( res :: ResourceType ) ( use :: ResourceUsage ) ( ct :: ResourceCount ) ( st :: ResourceInfo )
 
-data instance Resource res (DescriptorUse n) Named where
-  StageFlags :: KnownResourceType res => Vulkan.ShaderStageFlags -> Resource res (DescriptorUse n) Named
-data instance Resource res InputUse Named = InputResource
+data instance Resource res DescriptorUse ct Named where
+  StageFlags :: KnownDescriptorType res => Vulkan.ShaderStageFlags -> Resource res DescriptorUse ct Named
+data instance Resource res GeneralUse ct Named = GeneralResource
 
-data instance Resource (Buffer Vertex  a) InputUse               (Specified PreInitialised) = VertexBuffer  [a]
-data instance Resource (Buffer Index   a) InputUse               (Specified PreInitialised) = IndexBuffer   [a]
-data instance Resource (Buffer Uniform a) (DescriptorUse Single) (Specified PreInitialised) = UniformBuffer  a
+type family BufferData (arr :: Arrayness) (a :: Type) :: Type where
+  BufferData Simple  a = a
+  BufferData Arrayed a = [a]
+data instance Resource (Buffer bufTy arr lay a) use Single (Specified PreInitialised)
+  = BufferData { bufferData :: BufferData arr a }
 
-data instance Resource (Buffer bufType a) (DescriptorUse Single) (Specified Initialised)
+data instance Resource (Buffer bufTy Simple lay a) use Single (Specified Initialised)
   = BufferResource
     { bufferObject :: Vulkan.Buffer
     , pokeBuffer   :: a -> IO ()
     }
-data instance Resource (Buffer bufType a) InputUse (Specified Initialised)
-  = InputBuffer
-    { inputBufferObject  :: Vulkan.Buffer
-    , pokeInputBufferOff :: Int -> [a] -> IO ()
-    , nbBufferElems      :: Int
+data instance Resource (Buffer bufTy Arrayed lay a) use Single (Specified Initialised)
+  = BufferResourceArr
+    { bufferObjectArrayed :: Vulkan.Buffer
+    , pokeBufferOff       :: Int -> [a] -> IO ()
+    , nbBufferElems       :: Int
     }
 
-data instance Resource ( Image Store  ) (DescriptorUse Single) (Specified st) = StorageImage Vulkan.ImageView
-data instance Resource ( Image Sample ) (DescriptorUse Single) (Specified st) = SampledImage Vulkan.Sampler Vulkan.ImageView
+data instance Resource (Image Store ) use Single (Specified st) = StorageImage Vulkan.ImageView
+data instance Resource (Image Sample) use Single (Specified st) = SampledImage Vulkan.Sampler Vulkan.ImageView
 
-data instance Resource res (DescriptorUse Multiple :: ResourceUsage n) (Specified st)
-  = Ixed ( V.Vector n ( Resource res (DescriptorUse Single :: ResourceUsage n) (Specified st) ) )
+data instance Resource res use (Multiple n) (Specified st)
+  = Ixed ( V.Vector n ( Resource res use Single (Specified st) ) )
 
-type Descriptor   res i st = Resource res ( DescriptorUse Single   :: ResourceUsage i ) st
-type Descriptors  res i st = Resource res ( DescriptorUse Multiple :: ResourceUsage i ) st
-type UniformBuffer  a i st = Descriptor  ( Buffer Uniform a ) i st
-type UniformBuffers a i st = Descriptors ( Buffer Uniform a ) i st
-type VertexBuffer   a i st = Resource ( Buffer Vertex a ) ( InputUse :: ResourceUsage i ) st
-type IndexBuffer    a i st = Resource ( Buffer Index  a ) ( InputUse :: ResourceUsage i ) st
+type Descriptor   res (i :: Nat) st = Resource res DescriptorUse Single       st
+type Descriptors  res (i :: Nat) st = Resource res DescriptorUse (Multiple i) st
+
+type UniformBuffer  a i st = Descriptor  ( Buffer Uniform Simple  Extended a ) i st
+type UniformBuffers a i st = Descriptors ( Buffer Uniform Simple  Extended a ) i st
+type StorageBuffer  a i st = Descriptor  ( Buffer Storage Arrayed Base     a ) i st
+type StorageBuffers a i st = Descriptors ( Buffer Storage Arrayed Base     a ) i st
 type StorageImage     i st = Descriptor  ( Image Store  ) i st
 type StorageImages    i st = Descriptors ( Image Store  ) i st
 type SampledImage     i st = Descriptor  ( Image Sample ) i st
 type SampledImages    i st = Descriptors ( Image Sample ) i st
+
+type VertexBuffer   a (i :: Nat) st = Resource ( Buffer Vertex Arrayed Locations a ) GeneralUse Single st
+type IndexBuffer    a (i :: Nat) st = Resource ( Buffer Index  Arrayed Base      a ) GeneralUse Single st
+
+type ShaderBindingTableBuffer              a (i :: Nat) st = Resource ( Buffer ShaderBindingTable              Arrayed Base a ) GeneralUse Single st
+type AccelerationStructureStorageBuffer    a (i :: Nat) st = Resource ( Buffer AccelerationStructureStorage    Arrayed Base a ) GeneralUse Single st
+type AccelerationStructureBuildInputBuffer a (i :: Nat) st = Resource ( Buffer AccelerationStructureBuildInput Arrayed Base a ) GeneralUse Single st
+type ShaderDeviceAddressBuffer             a (i :: Nat) st = Resource ( Buffer ShaderDeviceAddress             Arrayed Base a ) GeneralUse Single st
 
 ----------------------------------------------------------------------------
 
@@ -266,7 +292,7 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
     indexBuffers  :: [ ( Vulkan.Buffer, Vulkan.IndexType ) ]
     vertexBuffers :: [ Vulkan.Buffer ]
     (indexBuffers, vertexBuffers) =
-      foldrC @(CanUpdateResource n)
+      foldrC @( CanUpdateResource n )
         ( \ res ( indexBinds, vertexBinds) -> case bindingInformation @n res of
           Just (BindIndexBuffer  buf _ ty) -> ( ( buf, ty ) : indexBinds, vertexBinds )
           Just (BindVertexBuffer buf     ) -> ( indexBinds, buf : vertexBinds )
@@ -381,7 +407,7 @@ updateDescriptorSets device descriptorSets resourceSet =
       descriptorSetWrites writesAcc i descriptorSet
         = writesAcc ++
         ( zipWith (&) [0..] $
-          foldrC @(CanUpdateResource n)
+          foldrC @( CanUpdateResource n )
             ( \ res descs -> descriptorWrites descriptorSet i res ++ descs )
             resourceSet
             []
@@ -422,22 +448,24 @@ foldrC f s = coerce foldF
       foldF = constraints' @c ( \ a -> Const ( Endo ( f a ) ) ) s
 
 -- Constraints used with a generic fold to obtain the resource types and flags.
-class KnownResourceType (res :: ResourceType) where
+class KnownDescriptorType (res :: ResourceType) where
   descriptorType :: Vulkan.DescriptorType
-instance KnownResourceType (Buffer Uniform a) where
+instance KnownDescriptorType (Buffer Uniform arr lay a) where
   descriptorType = Vulkan.DESCRIPTOR_TYPE_UNIFORM_BUFFER
-instance KnownResourceType (Image Store) where
+instance KnownDescriptorType (Buffer Storage arr lay a) where
+  descriptorType = Vulkan.DESCRIPTOR_TYPE_STORAGE_BUFFER
+instance KnownDescriptorType (Image Store) where
   descriptorType = Vulkan.DESCRIPTOR_TYPE_STORAGE_IMAGE
-instance KnownResourceType (Image Sample) where
+instance KnownDescriptorType (Image Sample) where
   descriptorType = Vulkan.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
 
 class HasDescriptorTypeAndFlags a where
   descriptorTypeAndFlags :: a -> Maybe ( Vulkan.DescriptorType, Vulkan.ShaderStageFlags )
-instance ( KnownResourceType res )
-  => HasDescriptorTypeAndFlags ( Resource res (DescriptorUse n) Named )
+instance ( KnownDescriptorType res )
+  => HasDescriptorTypeAndFlags ( Resource res DescriptorUse ct Named )
   where
-  descriptorTypeAndFlags (StageFlags flags) = Just ( descriptorType @res , flags )
-instance HasDescriptorTypeAndFlags ( Resource res InputUse Named ) where
+  descriptorTypeAndFlags (StageFlags flags) = Just ( descriptorType @res, flags )
+instance HasDescriptorTypeAndFlags ( Resource res GeneralUse ct Named ) where
   descriptorTypeAndFlags _ = Nothing
 
 -- Constraint used to initialise a set of resources.
@@ -449,51 +477,59 @@ class CanInitialiseResource a b | a -> b where
     -> a
     -> m b
 
-instance Poke a Base =>
+instance ( lay ~ Base, arr ~ Arrayed, Poke a lay ) =>
   CanInitialiseResource
-    ( Resource (Buffer Index a) ( InputUse :: ResourceUsage ix ) (Specified PreInitialised) )
-    ( Resource (Buffer Index a) ( InputUse :: ResourceUsage ix ) (Specified Initialised   ) )
+    ( Resource (Buffer Index arr lay a) GeneralUse Single (Specified PreInitialised) )
+    ( Resource (Buffer Index arr lay a) GeneralUse Single (Specified Initialised   ) )
   where
-  initialiseResource physicalDevice device ( IndexBuffer bufferData ) = do
+  initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
     ( buf, pokeFn, nbElems ) <- createIndexBuffer physicalDevice device bufferData
-    pure (InputBuffer buf pokeFn nbElems)
-instance Poke a Extended =>
+    pure (BufferResourceArr buf pokeFn nbElems)
+instance ( lay ~ Locations, arr ~ Arrayed, Poke a lay ) =>
   CanInitialiseResource
-    ( Resource (Buffer Uniform a) ( DescriptorUse Single :: ResourceUsage ix ) (Specified PreInitialised) )
-    ( Resource (Buffer Uniform a) ( DescriptorUse Single :: ResourceUsage ix ) (Specified Initialised   ) )
+    ( Resource (Buffer Vertex arr lay a) GeneralUse Single (Specified PreInitialised) )
+    ( Resource (Buffer Vertex arr lay a) GeneralUse Single (Specified Initialised   ) )
   where
-  initialiseResource physicalDevice device ( UniformBuffer bufferData ) = do
-    uncurry BufferResource <$> createUniformBuffer physicalDevice device bufferData
-instance Poke a Locations =>
-  CanInitialiseResource
-    ( Resource (Buffer Vertex a) ( InputUse :: ResourceUsage ix ) (Specified PreInitialised) )
-    ( Resource (Buffer Vertex a) ( InputUse :: ResourceUsage ix ) (Specified Initialised   ) )
-  where
-  initialiseResource physicalDevice device ( VertexBuffer bufferData ) = do
+  initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
     ( buf, pokeFn, nbElems ) <- createVertexBuffer physicalDevice device bufferData
-    pure (InputBuffer buf pokeFn nbElems)
+    pure (BufferResourceArr buf pokeFn nbElems)
+instance ( lay ~ Extended, arr ~ Simple, Poke a lay ) =>
+  CanInitialiseResource
+    ( Resource (Buffer Uniform arr lay a) DescriptorUse Single (Specified PreInitialised) )
+    ( Resource (Buffer Uniform arr lay a) DescriptorUse Single (Specified Initialised   ) )
+  where
+  initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
+    uncurry BufferResource <$> createUniformBuffer physicalDevice device bufferData
+instance ( lay ~ Base, arr ~ Arrayed, Poke a lay ) =>
+  CanInitialiseResource
+    ( Resource (Buffer Storage arr lay a) DescriptorUse Single (Specified PreInitialised) )
+    ( Resource (Buffer Storage arr lay a) DescriptorUse Single (Specified Initialised   ) )
+  where
+  initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
+    ( buf, pokeFn, nbElems ) <- createBufferFromList @a @lay Vulkan.BUFFER_USAGE_STORAGE_BUFFER_BIT physicalDevice device bufferData
+    pure (BufferResourceArr buf pokeFn nbElems)
 
 instance
   CanInitialiseResource
-    ( Resource ( Image Store ) ( DescriptorUse Single :: ResourceUsage ix ) ( Specified PreInitialised ) )
-    ( Resource ( Image Store ) ( DescriptorUse Single :: ResourceUsage ix ) ( Specified Initialised    ) )
+    ( Resource ( Image Store ) DescriptorUse Single ( Specified PreInitialised ) )
+    ( Resource ( Image Store ) DescriptorUse Single ( Specified Initialised    ) )
   where
   initialiseResource _ _ ( StorageImage imgView ) = pure ( StorageImage imgView )
 
 instance
   CanInitialiseResource
-    ( Resource ( Image Sample ) ( DescriptorUse Single :: ResourceUsage ix ) ( Specified PreInitialised ) )
-    ( Resource ( Image Sample ) ( DescriptorUse Single :: ResourceUsage ix ) ( Specified Initialised    ) )
+    ( Resource ( Image Sample ) DescriptorUse Single ( Specified PreInitialised ) )
+    ( Resource ( Image Sample ) DescriptorUse Single ( Specified Initialised    ) )
   where
   initialiseResource _ _ ( SampledImage sampler imgView ) = pure ( SampledImage sampler imgView )
 
 instance
   ( CanInitialiseResource
-      ( Resource res ( DescriptorUse Single :: ResourceUsage n ) ( Specified PreInitialised ) )
-      ( Resource res ( DescriptorUse Single :: ResourceUsage n ) ( Specified Initialised    ) )
+      ( Resource res DescriptorUse Single ( Specified PreInitialised ) )
+      ( Resource res DescriptorUse Single ( Specified Initialised    ) )
   ) => CanInitialiseResource
-        ( Resource res ( DescriptorUse Multiple :: ResourceUsage n ) ( Specified PreInitialised ) )
-        ( Resource res ( DescriptorUse Multiple :: ResourceUsage n ) ( Specified Initialised    ) )
+        ( Resource res DescriptorUse ( Multiple n ) ( Specified PreInitialised ) )
+        ( Resource res DescriptorUse ( Multiple n ) ( Specified Initialised    ) )
   where
   initialiseResource physicalDevice device (Ixed ixData) =
     Ixed <$> traverse ( initialiseResource physicalDevice device ) ixData
@@ -506,18 +542,20 @@ data BindingInformation
 --    * update the descriptor set with descriptor write
 --    * keep track of how to bind resources.
 class CanUpdateResource n a where
-  descriptorWrites :: Vulkan.DescriptorSet -> Finite n -> a -> [ Word32 -> Vulkan.SomeStruct Vulkan.WriteDescriptorSet ]
+  descriptorWrites   :: Vulkan.DescriptorSet -> Finite n -> a -> [ Word32 -> Vulkan.SomeStruct Vulkan.WriteDescriptorSet ]
   bindingInformation :: a -> Maybe BindingInformation
 
 
-instance CanUpdateResource n ( Resource (Buffer Vertex a) InputUse ( Specified Initialised ) ) where
+instance ( arr ~ Arrayed )
+       => CanUpdateResource n ( Resource (Buffer Vertex arr lay a) GeneralUse Single ( Specified Initialised ) ) where
   descriptorWrites _ _ _ = []
-  bindingInformation InputBuffer { inputBufferObject }
-    = Just (BindVertexBuffer inputBufferObject)
-instance ValidIndexingType a => CanUpdateResource n ( Resource (Buffer Index a) InputUse ( Specified Initialised ) ) where
+  bindingInformation ( BufferResourceArr { bufferObjectArrayed } )
+    = Just (BindVertexBuffer bufferObjectArrayed)
+instance ( arr ~ Arrayed, ValidIndexingType a )
+      => CanUpdateResource n ( Resource (Buffer Index arr lay a) GeneralUse Single ( Specified Initialised ) ) where
   descriptorWrites _ _ _ = []
-  bindingInformation InputBuffer { inputBufferObject, nbBufferElems }
-    = Just (BindIndexBuffer inputBufferObject (fromIntegral nbBufferElems) ( indexType @a ) )
+  bindingInformation ( BufferResourceArr { bufferObjectArrayed, nbBufferElems } )
+    = Just (BindIndexBuffer bufferObjectArrayed (fromIntegral nbBufferElems) ( indexType @a ) )
 
 class ValidIndexingType (i :: Type) where
   indexType :: Vulkan.IndexType
@@ -525,23 +563,38 @@ instance ValidIndexingType Word32 where
   indexType = Vulkan.INDEX_TYPE_UINT32
 instance ValidIndexingType Word16 where
   indexType = Vulkan.INDEX_TYPE_UINT16
-{-
 instance ValidIndexingType Word8 where
   indexType = Vulkan.INDEX_TYPE_UINT8_EXT
--}
 
 instance
-  KnownResourceType (Buffer bufType a)
+  KnownDescriptorType (Buffer bufType Simple lay a)
   => CanUpdateResource n
-      ( Resource (Buffer bufType a) ( DescriptorUse Single :: ResourceUsage n ) (Specified Initialised) )
+      ( Resource (Buffer bufType Simple lay a) DescriptorUse Single (Specified Initialised) )
  where
-  descriptorWrites descriptorSet _ ( BufferResource buffer _ ) = (:[]) \ bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType a) ) bindingNumber [bufferDesc] Nothing
+  descriptorWrites descriptorSet _ ( BufferResource { bufferObject } ) = (:[]) \ bindingNumber ->
+    mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType Simple lay a) ) bindingNumber [bufferDesc] Nothing
       where
         bufferDesc :: Vulkan.DescriptorBufferInfo
         bufferDesc =
           Vulkan.DescriptorBufferInfo
-            { Vulkan.buffer = buffer
+            { Vulkan.buffer = bufferObject
+            , Vulkan.offset = 0
+            , Vulkan.range  = Vulkan.WHOLE_SIZE
+            }
+  bindingInformation _ = Nothing
+
+instance
+  KnownDescriptorType (Buffer bufType Arrayed lay a)
+  => CanUpdateResource n
+      ( Resource (Buffer bufType Arrayed lay a) DescriptorUse Single (Specified Initialised) )
+ where
+  descriptorWrites descriptorSet _ ( BufferResourceArr { bufferObjectArrayed } ) = (:[]) \ bindingNumber ->
+    mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType Arrayed lay a) ) bindingNumber [bufferDesc] Nothing
+      where
+        bufferDesc :: Vulkan.DescriptorBufferInfo
+        bufferDesc =
+          Vulkan.DescriptorBufferInfo
+            { Vulkan.buffer = bufferObjectArrayed
             , Vulkan.offset = 0
             , Vulkan.range  = Vulkan.WHOLE_SIZE
             }
@@ -550,7 +603,7 @@ instance
 
 instance
   CanUpdateResource n
-      ( Resource ( Image Store ) ( DescriptorUse Single :: ResourceUsage n ) (Specified Initialised) )
+      ( Resource ( Image Store ) DescriptorUse Single (Specified Initialised) )
   where
   descriptorWrites descriptorSet _ ( StorageImage imgView ) = (:[]) $ \bindingNumber ->
     mkDescriptorWrite descriptorSet ( descriptorType @(Image Store) ) bindingNumber [] ( Just imageInfo )
@@ -566,7 +619,7 @@ instance
 
 instance
   CanUpdateResource n
-      ( Resource ( Image Sample ) ( DescriptorUse Single :: ResourceUsage n ) (Specified Initialised) )
+      ( Resource ( Image Sample ) DescriptorUse Single (Specified Initialised) )
   where
   descriptorWrites descriptorSet _ ( SampledImage sampler imgView ) = (:[]) $ \bindingNumber ->
     mkDescriptorWrite descriptorSet ( descriptorType @(Image Sample) ) bindingNumber [] ( Just imageInfo )
@@ -582,10 +635,10 @@ instance
 
 instance
      ( CanUpdateResource n
-        ( Resource res ( DescriptorUse Single :: ResourceUsage n ) ( Specified Initialised ) )
+        ( Resource res DescriptorUse Single ( Specified Initialised ) )
      )
   => CanUpdateResource n
-        ( Resource res ( DescriptorUse Multiple :: ResourceUsage n ) ( Specified Initialised) )
+        ( Resource res DescriptorUse ( Multiple n ) ( Specified Initialised) )
   where
   descriptorWrites descriptorSet i ( Ixed res ) =
     descriptorWrites descriptorSet i (res `V.index` i)

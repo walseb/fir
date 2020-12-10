@@ -295,7 +295,7 @@ ising = runVulkan initialState do
       initialResourceSet :: ResourceSet numImages Pre
       initialResourceSet =
         ResourceSet
-          { stateResource    = UniformBuffer ( 1 :& 1 :& 0 :& startTime :& 1 :& End )
+          { stateResource    = BufferData ( 1 :& 1 :& 0 :& startTime :& 1 :& End )
           , outputImage      = Ixed $ fmap ( StorageImage . snd ) swapchainImagesAndViews
           , evenCheckerboard = Ixed $
               fmap

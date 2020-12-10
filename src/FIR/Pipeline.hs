@@ -29,6 +29,7 @@ module FIR.Pipeline
   ( PipelineInfo(..)
   , PipelineStages(..), pipelineStages
   , ShaderPipeline(..), pipelineShaders
+  , ShaderGroup(..)
   , PrimitiveConnectedness(..)
   , PrimitiveTopology(..)
   , BindingStrides
@@ -222,3 +223,19 @@ pipelineStages = reverse . go []
 
 pipelineShaders :: ShaderPipeline stageData -> [(SPIRV.Shader, stageData)]
 pipelineShaders (ShaderPipeline stages) = pipelineStages stages
+
+--------------------------------------------------------------------------
+-- * Ray-tracing shader groups
+
+-- | Utility datatype used to organise ray-tracing shaders into groups,
+-- to facilitate creation of a Vulkan ray-tracing pipeline.
+data ShaderGroup a
+  = RaygenGroup   a
+  | MissGroup     a
+  | CallableGroup a
+  | HitGroup
+    { intersection :: Maybe a
+    , closestHit   :: Maybe a
+    , anyHit       :: Maybe a
+    }
+  deriving stock ( Show, Eq, Functor, Foldable, Traversable )
