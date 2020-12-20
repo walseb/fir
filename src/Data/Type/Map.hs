@@ -17,6 +17,8 @@ module Data.Type.Map where
 -- base 
 import Data.Type.Bool
   ( If )
+import Data.Type.Ord
+  (Compare)
 import GHC.TypeLits
   ( TypeError, ErrorMessage(..) )
 
@@ -87,9 +89,30 @@ type family InsertOverwriting (s :: k) (t :: v) (i :: Map k v) :: Map k v where
       ( (k ':-> v) ': (l ':-> a) ': b )
       ( (l ':-> a) ': InsertOverwriting k v b )
 
+type family InsertWithAppend ( key :: k ) ( val :: v ) ( map :: Map k [v] ) :: Map k [v] where
+  InsertWithAppend key val '[] = '[ key ':-> '[ val ] ]
+  InsertWithAppend key val ( ( k ':-> vals ) ': kvs ) =
+    InsertWithAppendWithComparison key val k vals kvs ( Compare key k )
+
+type family InsertWithAppendWithComparison ( key :: k ) ( val :: v ) ( key' :: k ) ( vals :: [v] ) ( rest :: Map k [v] ) ( comp :: Ordering ) :: Map k [v] where
+  InsertWithAppendWithComparison key val key' vals rest LT =
+    ( ( key ':-> '[val] ) ': ( key' ':-> vals ) ': rest )
+  InsertWithAppendWithComparison key val key' vals rest EQ =
+    ( ( key ':-> ( val ': vals ) ) ': rest )
+  InsertWithAppendWithComparison key val key' vals rest GT =
+    ( ( key' ':-> vals ) ': InsertWithAppend key val rest )
+
+
 type family Union (i :: Map k v) (j :: Map k v) :: Map k v where
   Union i '[]                = i
   Union i ( (k ':-> a) ': b) = Union (Insert k a i) b
+
+type family UnionWithAppend (i :: Map k [v]) (j :: Map k [v]) :: Map k [v] where
+  UnionWithAppend i '[] = i
+  UnionWithAppend '[] i = i
+  UnionWithAppend ((k1 ':-> '[]) ': kvs1) i = UnionWithAppend kvs1 i
+  UnionWithAppend ((k1 ':-> val ': vals1) ': kvs1) ( ( k2 ':-> vals2 ) ': kvs2 ) =
+    UnionWithAppend  ((k1 ':-> vals1) ': kvs1) (InsertWithAppendWithComparison k1 val k2 vals2 kvs2 (Compare k1 k2))
 
 type family Delete (s :: k) (is :: Map k v) :: Map k v where
   Delete _ '[]                 = '[]

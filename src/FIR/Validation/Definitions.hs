@@ -40,8 +40,9 @@ import GHC.TypeNats
   ( Nat )
 
 -- fir
+import Data.Type.Maybe
 import Data.Type.Map
-  ( (:->)((:->)) )
+  (Map, UnionWithAppend, (:->)((:->)), InsertWithAppend )
 import FIR.Definition
   ( Definition(..)
   , TriagedDefinitions
@@ -80,12 +81,59 @@ import qualified SPIRV.Storage    as Storage
 -- as other kinds of validation are performed elsewhere.
 -- See for instance 'FIR.Definition.StartState'.
 type ValidDefinitions ( defs :: [ Symbol :-> Definition ] )
-  = ( ValidTriagedDefinitions ( TrieDefinitions defs ) :: Constraint )
+  = ( ValidTriagedDefinitions ( TrieDefinitions defs ) :: Constraint)
+
+-- | Validate that descriptor set and bindings don't overlap
+type family NonOverlappingDescriptors ( globs :: [ SPIRV.StorageClass :-> [ Symbol :-> TLInterfaceVariable ] ] )
+              :: Constraint
+              where
+  NonOverlappingDescriptors list = EnsureNoDuplicates (BuildDescriptorList list)
+
+type family BuildDescriptorList  ( globs :: [ SPIRV.StorageClass :-> [ Symbol :-> TLInterfaceVariable ] ] ) :: Map (Nat, Nat) [Symbol]
+  where
+    BuildDescriptorList '[] = '[]
+    BuildDescriptorList  ( (storage ':-> vars) ': globs ) = UnionWithAppend (GetDescriptor vars)  (BuildDescriptorList globs)
+
+type family AppendMaybeDescriptor ( mbDescNo :: Maybe Nat ) ( mbBdNo :: Maybe Nat ) ( name :: Symbol ) ( bds :: Map (Nat,Nat) [Symbol] ) :: Map (Nat,Nat) [Symbol] where
+  AppendMaybeDescriptor ( Just descNo ) mbBdNo name bds = InsertWithAppend '( descNo, FromMaybe mbBdNo 0 ) name bds
+  -- Ignore bindings which don't have a "DescriptorSet" decoration.
+  AppendMaybeDescriptor _ _ _ bds = bds
+
+type family GetDescriptor  ( globs :: [ Symbol :-> TLInterfaceVariable ] ) :: Map (Nat, Nat) [Symbol]
+  where
+    GetDescriptor '[] = '[]
+    GetDescriptor  ( (k ':-> '( decs, ty )) ': globs ) =
+      AppendMaybeDescriptor ( ExtractDescriptorSet decs ) ( ExtractBinding decs ) k ( GetDescriptor globs )
+
+type family ExtractDescriptorSet  ( decs :: [ SPIRV.Decoration Nat ] ) :: Maybe Nat
+  where
+    ExtractDescriptorSet '[] = 'Nothing
+    ExtractDescriptorSet  (SPIRV.DescriptorSet n ': globs) = 'Just n
+    ExtractDescriptorSet  (_ ': globs) = ExtractDescriptorSet globs
+
+type family ExtractBinding  ( decs :: [ SPIRV.Decoration Nat ] ) :: Maybe Nat
+  where
+    ExtractBinding '[] = 'Nothing
+    ExtractBinding  (SPIRV.Binding n ': globs) = 'Just n
+    ExtractBinding  (_ ': globs) = ExtractBinding globs    
+
+type family EnsureNoDuplicates (as :: Map (Nat,Nat) [Symbol]) :: Constraint where
+  EnsureNoDuplicates '[] = ()
+  EnsureNoDuplicates ( ( '( descNo, bdNo ) ':-> names ) ': bds ) = ( NoDuplicates descNo bdNo names, EnsureNoDuplicates bds )
+
+type family NoDuplicates ( descNo :: Nat ) ( bdNo :: Nat ) ( names :: [Symbol] ) :: Constraint where
+  NoDuplicates _ _ '[] = ()
+  NoDuplicates _ _ '[_] = ()
+  NoDuplicates descNo bdNo names = TypeError
+    (    Text "More than one descriptor with DescriptorSet " :<>: ShowType descNo
+    :<>: Text " and Binding " :<>: ShowType bdNo :<>: Text ":"
+    :$$: ShowType names
+    )
 
 
 type family ValidTriagedDefinitions ( defs :: TriagedDefinitions ) :: Constraint where
   ValidTriagedDefinitions '( _, _, globs )
-    = ( ValidGlobals globs )
+    = ( ValidGlobals globs, NonOverlappingDescriptors globs)
   --   * not validating functions: no validation necessary
   --   * not validating entry points: validation is done
   --   as part of computation of entry point info

@@ -5,7 +5,8 @@ test\Tests\Definitions\Descriptors.hs:28:11: error:
     * In the expression:
         Module
           do entryPoint
-               @"main" @Vertex
+               @"main"
+               @Vertex
                do xy <- use @(Name "desc1" :.: Name "v")
                   abcd <- imageRead @"desc2" xy
                   ....
@@ -13,7 +14,8 @@ test\Tests\Definitions\Descriptors.hs:28:11: error:
           program
             = Module
                 do entryPoint
-                     @"main" @Vertex
+                     @"main"
+                     @Vertex
                      do xy <- use @(Name "desc1" :.: Name "v")
                         ....
    |
