@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveLift                 #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PatternSynonyms            #-}
 
 {-|
@@ -16,6 +17,8 @@ See the SPIR-V specification, section 3.31 __Capability__.
 module SPIRV.Capability where
 
 -- base
+import Data.String
+  ( IsString(..) )
 import Data.Word
   ( Word32 )
 
@@ -222,7 +225,7 @@ pattern RayTracingKHR = Capability 4479
 pattern MeshShadingNV :: Capability
 pattern MeshShadingNV = Capability 5266
 
-showCapability :: Capability -> String
+showCapability :: IsString string => Capability -> string
 showCapability Matrix = "Matrix"
 showCapability Shader = "Shader"
 showCapability Geometry = "Geometry"
@@ -282,4 +285,4 @@ showCapability MultiViewport = "MultiViewport"
 showCapability RayTraversalPrimitiveCullingKHR = "RayTraversalPrimitiveCullingKHR"
 showCapability RayTracingKHR = "RayTracingKHR"
 showCapability MeshShadingNV = "MeshShadingNV"
-showCapability (Capability i) = show i
+showCapability (Capability i) = fromString ( show i )

@@ -118,6 +118,7 @@ import FIR.Prim.Singletons
   , ScalarTy(scalarTySing), SScalarTy
   , PrimTyMap
   , SPrimTy(SStruct)
+  , HasOpaqueType
   )
 import FIR.ProgramState
   ( ProgramState )
@@ -399,6 +400,7 @@ instance forall (k :: Symbol) (i :: ProgramState) empty js ks a b (o2 :: Optic j
          , ks ~ js
          , a ~ Binding.Has k i -- this is the additional line that helps type inference
          , Binding.CanGet k i
+         , NoOpaqueTypes "'get'/'use'" k b ( HasOpaqueType b )
          ) => Gettable ( ((Field_ (k :: Symbol) :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
 instance forall (k :: Symbol) (i :: ProgramState) empty js ks a b (o2 :: Optic js a b).
@@ -408,8 +410,17 @@ instance forall (k :: Symbol) (i :: ProgramState) empty js ks a b (o2 :: Optic j
          , ks ~ js
          , a ~ Binding.Has k i -- ditto
          , Binding.CanPut k i
+         , NoOpaqueTypes "'put'/'assign'" k b ( HasOpaqueType b )
          ) => Settable ( ((Field_ (k :: Symbol) :: Optic empty i a) `ComposeO` o2) :: Optic ks i b )
          where
+
+type family NoOpaqueTypes ( msg :: Symbol ) ( k :: Symbol ) ( b :: Type ) ( hasOpaque :: Bool ) :: Constraint where
+  NoOpaqueTypes _   _ _ False = ( () :: Constraint )
+  NoOpaqueTypes msg k b True  = TypeError
+    (    Text msg :<>: Text ": cannot focus on type "
+    :$$: Text "  " :<>: ShowType b
+    :$$: Text "within binding named " :<>: ShowType k :<>: Text ", as it is (or contains) an opaque type."
+    )
 
 ----------------------------------------------------------------------
 

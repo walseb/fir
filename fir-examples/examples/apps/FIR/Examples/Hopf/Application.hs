@@ -84,7 +84,6 @@ import FIR.Examples.RenderState
 import Vulkan.Attachment
 import Vulkan.Backend
 import Vulkan.Context
-import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.Resource
@@ -196,7 +195,7 @@ hopf = runVulkan initialState do
         }
 
   let
-    features = requiredFeatures reqs
+    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -211,10 +210,9 @@ hopf = runVulkan initialState do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
+    initialiseContext @WithSwapchain Normal appName vulkanReqs
       RenderInfo
-        { features
-        , queueType   = Vulkan.QUEUE_GRAPHICS_BIT
+        { queueType   = Vulkan.QUEUE_GRAPHICS_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -272,7 +270,7 @@ hopf = runVulkan initialState do
                 colFmt
                 Vulkan.IMAGE_ASPECT_COLOR_BIT
         (msImage, _)
-          <- createImage physicalDevice device msImageInfo []
+          <- createImage physicalDevice device msImageInfo Vulkan.zero
         msImageView
           <- createImageView device msImage
                 Vulkan.IMAGE_VIEW_TYPE_2D
@@ -281,7 +279,7 @@ hopf = runVulkan initialState do
         (depthImage, _)
           <- createImage physicalDevice device
                 depthImageInfo
-                [ ]
+                Vulkan.zero
         depthImageView
           <- createImageView device depthImage
                 Vulkan.IMAGE_VIEW_TYPE_2D
@@ -327,8 +325,8 @@ hopf = runVulkan initialState do
     commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
     queue       <- getQueue device 0
 
-    nextImageSem <- createSemaphore device
-    submitted    <- createSemaphore device
+    (_, nextImageSem ) <- createSemaphore device
+    (_, submitted    ) <- createSemaphore device
 
     pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.SAMPLE_COUNT_8_BIT pipelineLayout

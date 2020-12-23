@@ -17,6 +17,8 @@ module Vulkan.Screenshot
 -- base
 import Control.Monad
   ( when )
+import Data.Bits
+  ( (.|.) )
 import Data.Coerce
   ( coerce )
 import Data.Word
@@ -67,9 +69,7 @@ createScreenshotImage physicalDevice device imageInfo =
   createImage
     physicalDevice device
     imageInfo
-    [ Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT
-    , Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT
-    ]
+    ( Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT .|. Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT )
 
 screenshotImageInfo :: Vulkan.Extent3D -> Vulkan.Format -> ImageInfo
 screenshotImageInfo swapchainExtent3D colFmt =

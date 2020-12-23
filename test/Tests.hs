@@ -25,7 +25,8 @@ runAllTestsFromFolder = flip runTestsFromFolder allTests
 allTests :: [ Folder (String, Test) ]
 allTests
   = [ Folder "Array"
-          [ ( "Applicative", Validate )
+          [ ( "Applicative", Validate  )
+          , ( "Runtime"    , Typecheck )
           ]
     , Folder "Bits"
           [ ( "Bits"   , Validate )

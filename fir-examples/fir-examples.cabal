@@ -78,7 +78,7 @@ common vulkan-common
     , transformers
         ^>= 0.5.6.2
     , vulkan
-        >= 3.7 && < 3.8
+        >= 3.8 && < 3.9
 
 common apps-common
 
@@ -116,6 +116,13 @@ common shaders-common
         fir
       , fir-examples-paths
 
+common extras-common
+
+   build-depends:
+        containers
+         ^>= 0.6.2.1
+      , generic-lens
+          >= 1.2.0.1 && < 2.0
 
 ----------------------------------------------------------------
 -- Shared library components used by all the examples.
@@ -140,7 +147,7 @@ library fir-examples-paths
 
 library
 
-    import: vulkan-common
+    import: vulkan-common, extras-common
 
     hs-source-dirs:
         src
@@ -158,11 +165,11 @@ library
       , Vulkan.Backend
       , Vulkan.Buffer
       , Vulkan.Context
-      , Vulkan.Features
       , Vulkan.Formats
       , Vulkan.Memory
       , Vulkan.Monad
       , Vulkan.Pipeline
+      , Vulkan.RayTracing
       , Vulkan.Resource
       , Vulkan.Screenshot
       , Vulkan.SDL
@@ -170,19 +177,16 @@ library
     build-depends:
         fir
       , fir-examples-paths
-      , containers
-          ^>= 0.6.2.1
       , fsnotify
           ^>= 0.3.0.1
-      , generic-lens
-          >= 1.2.0.1 && < 2.0
       , mtl
           ^>= 2.2.2
       , stm
           ^>= 2.5.0.0
       , unliftio-core
           >= 0.1.2.0 && < 0.3
-
+      , vulkan-utils
+          >= 0.4 && < 0.5
 
 ----------------------------------------------------------------
 -- Examples.
@@ -412,6 +416,59 @@ executable Offscreen
   build-depends:
     offscreen-shaders
 
+
+-----------------------------------
+-- Ray tracing
+
+library raytracing-shaders
+
+  import: shaders-common
+
+  exposed-modules:
+    -- Shader module needs to be first.
+      FIR.Examples.RayTracing.Shaders
+    , FIR.Examples.RayTracing.Camera
+    , FIR.Examples.RayTracing.Colour
+    , FIR.Examples.RayTracing.Estimator
+    , FIR.Examples.RayTracing.Geometry
+    , FIR.Examples.RayTracing.Luminaire
+    , FIR.Examples.RayTracing.Material
+    , FIR.Examples.RayTracing.QuasiRandom
+    , FIR.Examples.RayTracing.Rays
+    , FIR.Examples.RayTracing.Types
+
+  build-depends:
+    bifunctors
+      >= 5.5.4 && < 5.6
+
+executable RayTracing
+
+  import: apps-common, extras-common
+
+  main-is:
+    Main.hs
+
+  other-modules:
+      FIR.Examples.RayTracing.Application
+    , FIR.Examples.RayTracing.BuildScene
+    , FIR.Examples.RayTracing.Scene
+    , FIR.Examples.RayTracing.Scenes.CornellBox
+
+  hs-source-dirs:
+    examples/exes/RayTracing
+
+  build-depends:
+      raytracing-shaders
+    , constraints-extras
+        >= 0.3.0.2 && < 0.4
+    , dependent-map
+        >= 0.4.0.0 && < 0.5
+    , some
+        >= 1.0.0.3 && < 1.1
+    , unordered-containers
+        >= 0.2.13 && < 0.3
+    , vector-builder
+        >= 0.3.8 && < 0.4
 
 -----------------------------------
 -- Texture

@@ -6,7 +6,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE UnicodeSyntax       #-}
 
 module FIR.Examples.Kerr.Colour
   ( blackbodyColour, wavelengthColour, starTemperature, toneMap )

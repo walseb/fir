@@ -99,7 +99,6 @@ import FIR.Examples.Reload
 import FIR.Examples.RenderState
 import Vulkan.Backend
 import Vulkan.Context
-import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.Resource
@@ -125,6 +124,7 @@ initialObserverKerr =
     { position = V3 23 0 3.1
     , angles   = V2 (pi/2) (-0.14)
     , clock    = 0
+    , frame    = 0
     }
 
 initialStateKerr :: RenderState
@@ -188,7 +188,7 @@ kerr = runVulkan initialStateKerr do
         }
 
   let
-    features = requiredFeatures reqs
+    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -204,10 +204,9 @@ kerr = runVulkan initialStateKerr do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
+    initialiseContext @WithSwapchain Normal appName vulkanReqs
       RenderInfo
-        { features
-        , queueType   = Vulkan.QUEUE_COMPUTE_BIT
+        { queueType   = Vulkan.QUEUE_COMPUTE_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -285,8 +284,8 @@ kerr = runVulkan initialStateKerr do
     commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
     queue       <- getQueue device 0
 
-    nextImageSem <- createSemaphore device
-    submitted    <- createSemaphore device
+    (_, nextImageSem ) <- createSemaphore device
+    (_, submitted    ) <- createSemaphore device
 
     pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
 
@@ -345,7 +344,7 @@ kerr = runVulkan initialStateKerr do
       ----------------
       -- simulation
 
-      Observer { position = oldPos, angles = oldAngs, clock = oldClock } <- use _observer
+      Observer { position = oldPos, angles = oldAngs, clock = oldClock, frame = oldFrame } <- use _observer
       let
         newAngs@(V2 x y) = oldAngs ^+^ fmap getSum (look action)
         mov = case fmap getSum (movement action) of
@@ -353,7 +352,7 @@ kerr = runVulkan initialStateKerr do
         ori    = axisAngle (V3 0 0 1) x FIR.* axisAngle (V3 1 0 0) y
         newPos = oldPos ^+^ rotate ori mov
         newClock = oldClock + 1
-        newObs = Observer { position = newPos, angles = newAngs, clock = newClock }
+        newObs = Observer { position = newPos, angles = newAngs, clock = newClock, frame = oldFrame + 1 }
 
       assign _observer newObs
       let cam = boyerLindquistCamera newObs

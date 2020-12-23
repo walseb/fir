@@ -87,7 +87,6 @@ import FIR.Examples.Reload
 import FIR.Examples.RenderState
 import Vulkan.Backend
 import Vulkan.Context
-import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.Resource
@@ -154,7 +153,7 @@ ising = runVulkan initialState do
         }
 
   let
-    features = requiredFeatures reqs
+    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -170,10 +169,9 @@ ising = runVulkan initialState do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
+    initialiseContext @WithSwapchain Normal appName vulkanReqs
       RenderInfo
-        { features
-        , queueType   = Vulkan.QUEUE_COMPUTE_BIT
+        { queueType   = Vulkan.QUEUE_COMPUTE_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -240,7 +238,7 @@ ising = runVulkan initialState do
         ( evenImage, evenImageMemory ) <-
           createImage
             physicalDevice device checkerboardImageInfo
-            []
+            Vulkan.zero
         evenImageView
           <- createImageView
                 device evenImage
@@ -250,7 +248,7 @@ ising = runVulkan initialState do
         ( oddImage, oddImageMemory ) <-
           createImage
             physicalDevice device checkerboardImageInfo
-            []
+            Vulkan.zero
         oddImageView
           <- createImageView
                 device oddImage
@@ -314,8 +312,8 @@ ising = runVulkan initialState do
     -------------------------------------------
     -- Create a command buffer and record the commands into it.
 
-    nextImageSem <- createSemaphore device
-    submitted    <- createSemaphore device
+    (_, nextImageSem ) <- createSemaphore device
+    (_, submitted    ) <- createSemaphore device
 
     pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout,descriptorSetLayout]
 

@@ -481,7 +481,7 @@ instance PrimTy a => PrimTy (RuntimeArray a) where
   type FieldsOfType (RuntimeArray a) ty = HomogeneousFields RuntimeArray a ty
   primTySing = SRuntimeArray
 
-class StructFieldKind fld => PrimTyMap (as :: [fld :-> Type]) where
+class    (Typeable as, StructFieldKind fld) => PrimTyMap (as :: [fld :-> Type]) where
   primTyMapSing :: SPrimTyMap as
 
 instance StructFieldKind fld => PrimTyMap ('[] :: [fld :-> Type]) where
@@ -492,6 +492,7 @@ instance forall ( fld :: Type           )
                 ( a   :: Type           )
                 ( as  :: [fld :-> Type] )
       . ( StructFieldKind fld
+        , Typeable k
         , Known fld k
         , PrimTy a
         , PrimTyMap as
@@ -499,8 +500,7 @@ instance forall ( fld :: Type           )
        => PrimTyMap ((k ':-> a) ': as) where
   primTyMapSing = SCons
 
-instance ( Typeable fld, Typeable as, PrimTyMap as )
-       => PrimTy (Struct (as :: [fld :-> Type])) where
+instance PrimTyMap as => PrimTy (Struct (as :: [fld :-> Type])) where
   type FieldsOfType (Struct as) ty = StructFieldsStartingAt 0 as ty
   primTySing = SStruct
 

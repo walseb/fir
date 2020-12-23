@@ -1,14 +1,17 @@
-{-# LANGUAGE BlockArguments      #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module Vulkan.Context where
 
@@ -18,7 +21,7 @@ import Data.Bits
 import Data.Foldable
   ( toList )
 import Data.Maybe
-  ( fromMaybe, fromJust )
+  ( fromMaybe )
 import Data.Kind
   ( Type )
 import Foreign.C.String
@@ -31,14 +34,8 @@ import GHC.TypeLits
 -- bytestring
 import Data.ByteString
   ( ByteString )
-import qualified Data.ByteString as ByteString
-  ( intercalate )
 import qualified Data.ByteString.Short as ShortByteString
-  ( packCString, fromShort, toShort )
-
--- containers
-import Data.Set
-  ( Set )
+  ( packCString )
 
 -- filepath
 import System.FilePath
@@ -55,30 +52,40 @@ import qualified SDL
 import Data.Text.Short
   ( ShortText )
 import qualified Data.Text.Short as ShortText
-  ( intercalate, fromShortByteString, toShortByteString )
+  ( intercalate, fromShortByteString, toByteString )
 
 -- transformers
 import Control.Monad.IO.Class
   ( liftIO )
 
+-- vector
+import qualified Data.Vector as Boxed.Vector
+  ( singleton )
+
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( withSized )
 
--- vulkan-api
+-- vulkan
 import qualified Vulkan
 import qualified Vulkan.CStruct.Extends as Vulkan
-  ( Extendss, PokeChain )
+  ( SomeStruct(..) )
+import qualified Vulkan.Requirement as Vulkan
+
+-- vulkan-utils
+import qualified Vulkan.Utils.Initialization as Vulkan.Utils
+  ( createInstanceFromRequirements, createDebugInstanceFromRequirements
+  , createDeviceFromRequirements
+  )
 
 -- fir
-import qualified FIR as SPIRV
-  ( Extension )
+import FIR
+  ( ModuleRequirements(..), Extension(..), showCapability )
 
 -- fir-examples
 import FIR.Examples.Paths
   ( assetDir )
 import Vulkan.Backend
-import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.SDL
 
@@ -100,6 +107,49 @@ instance KnownRenderingContext Headless where
 instance KnownRenderingContext WithSwapchain where
   renderingContext = SWithSwapchain
 
+data InstanceType
+  = Normal
+  | Debug
+  deriving stock Show
+
+data VulkanRequirements =
+  VulkanRequirements
+    { instanceRequirements :: [ Vulkan.InstanceRequirement ]
+    , deviceRequirements   :: [ Vulkan.DeviceRequirement   ]
+    }
+
+vulkanRequirements :: ModuleRequirements -> VulkanRequirements
+vulkanRequirements ( ModuleRequirements { requiredCapabilities, requiredExtensions } ) =
+  VulkanRequirements
+    { instanceRequirements = instReqs2
+    , deviceRequirements   = devReqs2
+    }
+  where
+    ( instReqs1, devReqs1 ) = goCaps ( toList requiredCapabilities ) []        []
+    ( instReqs2, devReqs2 ) = goExts ( toList requiredExtensions   ) instReqs1 devReqs1
+    goCaps []             instReqs devReqs = ( instReqs, devReqs )
+    goCaps ( cap : caps ) instReqs devReqs = ( inst <> instReqs', dev <> devReqs' )
+      where
+        ( inst, dev ) = Vulkan.spirvCapabilityRequirements ( showCapability cap )
+        ( instReqs', devReqs' ) = goCaps caps instReqs devReqs
+    goExts []                       instReqs devReqs = ( instReqs, devReqs )
+    goExts ( Extension ext : exts ) instReqs devReqs = ( inst <> instReqs', dev <> devReqs' )
+      where
+        ( inst, dev ) = Vulkan.spirvExtensionRequirements ( ShortText.toByteString ext )
+        ( instReqs', devReqs' ) = goExts exts instReqs devReqs
+
+addInstanceExtensions :: [ ByteString ] -> VulkanRequirements -> VulkanRequirements
+addInstanceExtensions extNames ( VulkanRequirements instReqs devReqs ) =
+  VulkanRequirements ( map mkExtensionRequirement extNames <> instReqs ) devReqs
+    where
+      mkExtensionRequirement :: ByteString -> Vulkan.InstanceRequirement
+      mkExtensionRequirement extName =
+        Vulkan.RequireInstanceExtension
+          { Vulkan.instanceExtensionLayerName  = Nothing
+          , Vulkan.instanceExtensionName       = extName
+          , Vulkan.instanceExtensionMinVersion = 0
+          }
+
 ----------------------------------------------------------------------------
 
 data WindowInfo
@@ -116,11 +166,7 @@ type family ContextSurfaceInfo ( ctx :: RenderingContext ) :: Type where
 
 data RenderInfo ( ctx :: RenderingContext ) where
   RenderInfo
-    :: ( Vulkan.PokeChain fs
-       , Vulkan.Extendss Vulkan.DeviceCreateInfo fs
-       )
-    => { features    :: Vulkan.PhysicalDeviceFeatures2 fs
-       , queueType   :: Vulkan.QueueFlags
+    :: { queueType   :: Vulkan.QueueFlags
        , surfaceInfo :: ContextSurfaceInfo ctx
        }
     -> RenderInfo ctx
@@ -155,7 +201,7 @@ withSwapchainInfo
 withSwapchainInfo ( ASwapchainInfo swapchain ) f = f swapchain
 
 initialiseWindow :: MonadVulkan m => WindowInfo -> m ( SDL.Window, [ ByteString ] )
-initialiseWindow WindowInfo { .. } = do
+initialiseWindow ( WindowInfo { height, width, windowName, mouseMode } ) = do
   enableSDLLogging
   initializeSDL mouseMode
   window           <- logDebug "Creating SDL window"           *> createWindow width height windowName
@@ -163,39 +209,41 @@ initialiseWindow WindowInfo { .. } = do
   neededExtensions <- logDebug "Loading needed extensions"     *> getNeededExtensions window
   extensionNames   <- traverse ( liftIO . peekCString ) neededExtensions
   logInfo $ "Needed instance extensions are: " <> ( ShortText.intercalate ", " extensionNames )
-  pure ( window, map ( ShortByteString.fromShort . ShortText.toShortByteString ) extensionNames )
+  pure ( window, map ShortText.toByteString extensionNames )
 
 peekCString :: CString -> IO ShortText
 peekCString = fmap ( fromMaybe "???" . ShortText.fromShortByteString ) . ShortByteString.packCString
 
 initialiseContext
   :: forall ctx m. ( KnownRenderingContext ctx, MonadVulkan m )
-  => ByteString -> [ ByteString ] -> Set SPIRV.Extension -> RenderInfo ctx -> m ( VulkanContext ctx )
-initialiseContext appName neededInstanceExtensions neededSPIRVExts RenderInfo { .. } = do
-  vkInstance       <- logDebug "Creating Vulkan instance"      *> createVulkanInstance appName neededInstanceExtensions neededSPIRVExts
+  => InstanceType -> ByteString -> VulkanRequirements -> RenderInfo ctx -> m ( VulkanContext ctx )
+initialiseContext instanceType appName  ( VulkanRequirements { instanceRequirements, deviceRequirements } ) ( RenderInfo { queueType, surfaceInfo } ) = do
+  logDebug "Creating Vulkan instance"
+  vkInstanceInfo   <- vulkanInstanceInfo appName
+  vkInstance       <- case instanceType of
+    Normal -> Vulkan.Utils.createInstanceFromRequirements      instanceRequirements [] vkInstanceInfo
+    Debug  -> Vulkan.Utils.createDebugInstanceFromRequirements instanceRequirements [] vkInstanceInfo
   physicalDevice   <- logDebug "Creating physical device"      *> createPhysicalDevice vkInstance
   queueFamilyIndex <- logDebug "Finding suitable queue family" *> findQueueFamilyIndex physicalDevice [queueType]
   let
-    deviceExtensions :: [ ByteString ]
-    deviceExtensions = requiredDeviceExtensions =<< toList neededSPIRVExts
+    queueCreateInfo :: Vulkan.DeviceQueueCreateInfo '[]
+    queueCreateInfo = Vulkan.zero
+      { Vulkan.queueFamilyIndex = fromIntegral queueFamilyIndex
+      , Vulkan.queuePriorities  = Boxed.Vector.singleton ( 1.0 :: Float )
+      }
+    logicalDeviceCreateInfo :: Vulkan.DeviceCreateInfo '[]
+    logicalDeviceCreateInfo = Vulkan.zero { Vulkan.queueCreateInfos = Boxed.Vector.singleton ( Vulkan.SomeStruct queueCreateInfo ) }
   ( device, aSwapchainInfo ) <- case renderingContext @ctx of
     SHeadless      -> do
-      let
-        usedDeviceExts :: [ ByteString ]
-        usedDeviceExts = deviceExtensions
-      logInfo $ "Needed device extensions are: " <>
-        ( fromJust . ShortText.fromShortByteString . ShortByteString.toShort $ ByteString.intercalate ", " usedDeviceExts )
       device <- logDebug "Creating logical device" *>
-        createLogicalDevice physicalDevice queueFamilyIndex usedDeviceExts features
+        Vulkan.Utils.createDeviceFromRequirements deviceRequirements [] physicalDevice logicalDeviceCreateInfo
       pure ( device, NoSwapchain )
     SWithSwapchain -> do
       let
-        usedDeviceExts :: [ ByteString ]
-        usedDeviceExts = ( Vulkan.KHR_SWAPCHAIN_EXTENSION_NAME : deviceExtensions )
-      logInfo $ "Needed device extensions are: " <>
-        ( fromJust . ShortText.fromShortByteString . ShortByteString.toShort $ ByteString.intercalate ", " usedDeviceExts )
+        swapchainDeviceRequirements :: [ Vulkan.DeviceRequirement ]
+        swapchainDeviceRequirements = Vulkan.RequireDeviceExtension Nothing Vulkan.KHR_SWAPCHAIN_EXTENSION_NAME 0 : deviceRequirements
       device <- logDebug "Creating logical device" *>
-        createLogicalDevice physicalDevice queueFamilyIndex usedDeviceExts features
+        Vulkan.Utils.createDeviceFromRequirements swapchainDeviceRequirements [] physicalDevice logicalDeviceCreateInfo
       let SurfaceInfo {..} = surfaceInfo
       surface <- logDebug "Creating SDL surface" *> createSurface surfaceWindow vkInstance
       assertSurfacePresentable physicalDevice queueFamilyIndex surface

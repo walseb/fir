@@ -64,6 +64,7 @@ data PrimOp where
   VecOp   :: VecPrimOp   -> Word32           -> ScalarTy -> PrimOp
   MatOp   :: MatPrimOp   -> Word32 -> Word32 -> ScalarTy -> PrimOp
   ConvOp  :: ConvPrimOp  -> ScalarTy         -> ScalarTy -> PrimOp
+  CastOp  ::                                    PrimTy   -> PrimOp
   GeomOp  :: GeomPrimOp                                  -> PrimOp
   SyncOp  :: SyncPrimOp                                  -> PrimOp
   RayOp   :: RayPrimOp                                   -> PrimOp
@@ -200,6 +201,8 @@ opAndReturnType bk (OrdOp ordOp s)
   = orderOp bk ordOp s
 opAndReturnType _ (BitOp bitOp s)
   = bitwiseOp bitOp s
+opAndReturnType _ (CastOp s)
+  = castOp s
 opAndReturnType bk (NumOp numOp s)
   = second Scalar (numericOp bk numOp s)
 opAndReturnType bk (FloatOp flOp s)
@@ -264,6 +267,9 @@ bitwiseOp BitNot s = (Not       , Scalar s)
 bitwiseOp BitShiftRightLogical    s = (ShiftRightLogical   , Scalar s)
 bitwiseOp BitShiftRightArithmetic s = (ShiftRightArithmetic, Scalar s)
 bitwiseOp BitShiftLeft            s = (ShiftLeftLogical    , Scalar s)
+
+castOp :: PrimTy -> (Operation, PrimTy)
+castOp s = (BitCast, s)
 
 numericOp :: Backend -> NumPrimOp -> ScalarTy -> (Operation, ScalarTy)
 -- additive monoid

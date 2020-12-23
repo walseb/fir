@@ -38,7 +38,7 @@ import           SPIRV.ScalarTy
   ( ScalarTy, Width(..) )
 import qualified SPIRV.ScalarTy as ScalarTy
 import           SPIRV.Stage
-  ( ExecutionModel(Stage), Stage(..), Shader, Backend )
+  ( ExecutionModel(Stage), Stage(..), Shader, Backend(..) )
 import qualified SPIRV.Stage    as Stage
   ( ExecutionModel(..), Shader(..) )
 
@@ -101,7 +101,7 @@ shaderCapabilities Stage.ComputeShader                = [ Shader       ]
 stageCapabilities :: Stage -> Set Capability
 stageCapabilities (ShaderStage s) = shaderCapabilities s
 stageCapabilities (MeshStage   _) = [ MeshShadingNV ]
-stageCapabilities (RayStage    _) = [ RayTracingKHR  ]
+stageCapabilities (RayStage    _) = [ RayTracingKHR ]
 
 executionModelCapabilities :: ExecutionModel -> Set Capability
 executionModelCapabilities (Stage s)    = stageCapabilities s
@@ -142,13 +142,17 @@ msCapabilities _                  = [ ]
 
 -- lod capability from image operand bitmask
 -- (note that the bitmask is shifted up one byte from what SPIR-V uses)
-lodCapabilities :: Word32 -> Set Capability
-lodCapabilities bm
+lodCapabilities :: Backend -> Word32 -> Set Capability
+lodCapabilities bk bm
   -- uses the LOD operand
-  | bm `testBit` 9  = [ ComputeKernel, ImageBasic, ImageMipmap ]
+  | bm `testBit` 9
+  && bk == SPIRV.Stage.OpenCL
+  = [ ImageBasic, ImageMipmap ]
   -- uses the MinLOD opeand
-  | bm `testBit` 15 = [ Shader, MinLod ]
-  | otherwise       = [ ]
+  | bm `testBit` 15
+  = [ MinLod ]
+  | otherwise
+  = [ ]
 
 -- whether the ImageGatherExtended capability is required
 gatherCapabilities :: Word32 -> Set Capability

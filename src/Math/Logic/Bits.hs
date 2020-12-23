@@ -36,6 +36,7 @@ regarding the limitations of the standard type classes.
 module Math.Logic.Bits
   ( Bits(..)
   , BitShift(..)
+  , BitCast(..)
   , zipBits2
   )
   where
@@ -43,7 +44,7 @@ module Math.Logic.Bits
 -- base
 import Prelude
   ( Bool(..)
-  , Int, Word
+  , Int, Word, Float, Double
   , ($)
   )
 import qualified Prelude
@@ -57,6 +58,10 @@ import Data.Kind
 import Data.Word
   ( Word8,Word16,Word32,Word64 )
 import Foreign.C.Types
+import GHC.Float
+  ( castWord32ToFloat , castFloatToWord32
+  , castWord64ToDouble, castDoubleToWord64
+  )
 
 -- fir
 import Deriving.Base
@@ -156,6 +161,19 @@ deriving via (forall (s :: Type). '(Base CULong ,s)) instance (Integral s, Prelu
 deriving via (forall (s :: Type). '(Base CLLong ,s)) instance (Integral s, Prelude.Integral s) => BitShift '(CLLong ,s)
 deriving via (forall (s :: Type). '(Base CULLong,s)) instance (Integral s, Prelude.Integral s) => BitShift '(CULLong,s)
 
+class BitCast a b where
+  bitcast :: a -> b
+
+--instance BitCast Word16 Half where
+instance BitCast Word32 Float where
+  bitcast = castWord32ToFloat
+instance BitCast Word64 Double where
+  bitcast = castWord64ToDouble
+--instance BitCast Half   Word16 where
+instance BitCast Float  Word32 where
+  bitcast = castFloatToWord32
+instance BitCast Double Word64 where
+  bitcast = castDoubleToWord64
 
 zipBits2 :: Bits a
          => (Bool -> Bool -> Bool)

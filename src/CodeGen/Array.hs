@@ -24,13 +24,17 @@ module CodeGen.Array
 
 -- base
 import Prelude
-  ( ($) )
+  ( ($), Bool(..) )
+import Data.Type.Equality
+  ( (:~:)(Refl) )
 import Data.Word
   ( Word32 )
 import GHC.TypeLits
   ( KnownSymbol )
 import GHC.TypeNats
   ( KnownNat )
+import Unsafe.Coerce
+  ( unsafeCoerce )
 
 -- fir
 import Control.Monad.Indexed
@@ -57,7 +61,7 @@ import FIR.Binding
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Singletons
-  ( PrimTy )
+  ( PrimTy, HasOpaqueType )
 import FIR.ProgramState
   ( ProgramState(ProgramState) )
 import FIR.Syntax.AST
@@ -96,13 +100,15 @@ createArray :: forall n arrName ixName a i j ctx funs eps g_iface rayQs bkend.
              )
           => ( Code Word32 -> Code a )
           -> AST ( Eff i i (Array n a) )
-createArray arrayFunction = toAST $ locally @i @j do
-  _ <- def @ixName @RW @Word32 @i 0
-  while ( get @ixName < pure (Lit arrayLg) ) do
-    i <- get @ixName
-    assign @(Name arrName :.: AnIndex Word32)
-      i (arrayFunction i)
-    put @ixName (i+1)
-  get @arrName
-    where arrayLg :: Word32
-          arrayLg = knownValue @n
+createArray arrayFunction
+  | Refl <- ( unsafeCoerce Refl :: HasOpaqueType a :~: False ) -- bypass validity check
+  = toAST $ locally @i @j do
+      _ <- def @ixName @RW @Word32 @i 0
+      while ( get @ixName < pure (Lit arrayLg) ) do
+        i <- get @ixName
+        assign @(Name arrName :.: AnIndex Word32)
+          i (arrayFunction i)
+        put @ixName (i+1)
+      get @arrName
+        where arrayLg :: Word32
+              arrayLg = knownValue @n

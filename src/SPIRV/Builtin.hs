@@ -97,7 +97,7 @@ data Builtin
   | InstanceCustomIndex
   | ObjectToWorld
   | WorldToObject
-  | HitT
+--  | HitT -- this only exists in the NV ray tracing extension, before it became an alias of RayTMax
   | HitKind
   | IncomingRayFlags
   | RayGeometryIndex
@@ -164,7 +164,7 @@ readBuiltin "gl_RayTMax"                   = Just RayTMax
 readBuiltin "gl_InstanceCustomIndex"       = Just InstanceCustomIndex
 readBuiltin "gl_ObjectToWorld"             = Just ObjectToWorld
 readBuiltin "gl_WorldToObject"             = Just WorldToObject
-readBuiltin "gl_HitT"                      = Just HitT
+readBuiltin "gl_HitT"                      = Just RayTMax -- NOT "HitT" which only exists in the NV extension
 readBuiltin "gl_HitKind"                   = Just HitKind
 readBuiltin "gl_IncomingRayFlags"          = Just IncomingRayFlags
 readBuiltin "gl_RayGeometryIndex"          = Just RayGeometryIndex
@@ -229,7 +229,7 @@ instance Put Builtin where
   put InstanceCustomIndex = put @Word32 5327
   put ObjectToWorld       = put @Word32 5330
   put WorldToObject       = put @Word32 5331
-  put HitT                = put @Word32 5332
+--put HitT                = put @Word32 5332
   put HitKind             = put @Word32 5333
   put IncomingRayFlags    = put @Word32 5351
   put RayGeometryIndex    = put @Word32 5352
@@ -340,8 +340,8 @@ instance Known Builtin ObjectToWorld where
   known = ObjectToWorld
 instance Known Builtin WorldToObject where
   known = WorldToObject
-instance Known Builtin HitT where
-  known = HitT
+--instance Known Builtin HitT where
+--  known = HitT
 instance Known Builtin HitKind where
   known = HitKind
 instance Known Builtin IncomingRayFlags where

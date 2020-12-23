@@ -87,7 +87,6 @@ import FIR.Examples.Reload
 import FIR.Examples.RenderState
 import Vulkan.Backend
 import Vulkan.Context
-import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.Resource
@@ -129,6 +128,7 @@ initialObserverLogo =
     { position = V3 0 0 10
     , angles   = V2 (5*pi/4) (pi/5)
     , clock    = 0
+    , frame    = 0
     }
 
 initialStateLogo :: RenderState
@@ -166,7 +166,7 @@ logo = runVulkan initialStateLogo do
         }
 
   let
-    features = requiredFeatures reqs
+    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -182,10 +182,9 @@ logo = runVulkan initialStateLogo do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
+    initialiseContext @WithSwapchain Normal appName vulkanReqs
       RenderInfo
-        { features
-        , queueType   = Vulkan.QUEUE_COMPUTE_BIT
+        { queueType   = Vulkan.QUEUE_COMPUTE_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -257,8 +256,8 @@ logo = runVulkan initialStateLogo do
     commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
     queue       <- getQueue device 0
 
-    nextImageSem <- createSemaphore device
-    submitted    <- createSemaphore device
+    (_, nextImageSem ) <- createSemaphore device
+    (_, submitted    ) <- createSemaphore device
 
     pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
 

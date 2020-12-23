@@ -32,14 +32,13 @@ module Vulkan.Resource
   , StorageBuffer, StorageBuffers
   , StorageImage, StorageImages
   , SampledImage, SampledImages
-  , ShaderBindingTableBuffer
-  , AccelerationStructureStorageBuffer
-  , AccelerationStructureBuildInputBuffer
-  , ShaderDeviceAddressBuffer
+  , TopLevelAS, TopLevelASes
   , initialiseResources
   ) where
 
 -- base
+import Data.Bits
+  ( (.|.) )
 import Data.Coerce
   ( coerce )
 import Data.Function
@@ -101,20 +100,20 @@ import Control.Monad.Trans.State.Strict
 import qualified Data.Vector as Boxed
   ( Vector )
 import qualified Data.Vector as Boxed.Vector
-  ( empty, fromList, imap, replicate, toList )
+  ( empty, fromList, imap, replicate, singleton, toList )
 
 -- vector-sized
 import qualified Data.Vector.Sized as V
   ( Vector, fromList, index, ifoldl )
 
--- vulkan-api
+-- vulkan
 import qualified Vulkan
 import qualified Vulkan.CStruct.Extends as Vulkan
   ( SomeStruct(SomeStruct) )
 
 -- fir
 import FIR
-  ( Poke, Layout(..) )
+  ( Array, Layout(..), PrimTy, Poke )
 
 -- fir-examples
 import Vulkan.Buffer
@@ -147,10 +146,6 @@ data BufferUsage
   | Index
   | Uniform
   | Storage
-  | ShaderBindingTable
-  | AccelerationStructureStorage
-  | AccelerationStructureBuildInput
-  | ShaderDeviceAddress
 
 data Arrayness
   = Simple
@@ -163,6 +158,7 @@ data ImageType
 data ResourceType where
   Buffer :: BufferUsage -> Arrayness -> Layout -> Type -> ResourceType
   Image  :: ImageType -> ResourceType
+  TLAS   :: ResourceType
 
 -- Resources.
 data family Resource ( res :: ResourceType ) ( use :: ResourceUsage ) ( ct :: ResourceCount ) ( st :: ResourceInfo )
@@ -192,6 +188,8 @@ data instance Resource (Buffer bufTy Arrayed lay a) use Single (Specified Initia
 data instance Resource (Image Store ) use Single (Specified st) = StorageImage Vulkan.ImageView
 data instance Resource (Image Sample) use Single (Specified st) = SampledImage Vulkan.Sampler Vulkan.ImageView
 
+data instance Resource TLAS use Single (Specified st) = TopLevelAS Vulkan.AccelerationStructureKHR
+
 data instance Resource res use (Multiple n) (Specified st)
   = Ixed ( V.Vector n ( Resource res use Single (Specified st) ) )
 
@@ -206,14 +204,11 @@ type StorageImage     i st = Descriptor  ( Image Store  ) i st
 type StorageImages    i st = Descriptors ( Image Store  ) i st
 type SampledImage     i st = Descriptor  ( Image Sample ) i st
 type SampledImages    i st = Descriptors ( Image Sample ) i st
+type TopLevelAS       i st = Descriptor  TLAS             i st
+type TopLevelASes     i st = Descriptors TLAS             i st
 
 type VertexBuffer   a (i :: Nat) st = Resource ( Buffer Vertex Arrayed Locations a ) GeneralUse Single st
 type IndexBuffer    a (i :: Nat) st = Resource ( Buffer Index  Arrayed Base      a ) GeneralUse Single st
-
-type ShaderBindingTableBuffer              a (i :: Nat) st = Resource ( Buffer ShaderBindingTable              Arrayed Base a ) GeneralUse Single st
-type AccelerationStructureStorageBuffer    a (i :: Nat) st = Resource ( Buffer AccelerationStructureStorage    Arrayed Base a ) GeneralUse Single st
-type AccelerationStructureBuildInputBuffer a (i :: Nat) st = Resource ( Buffer AccelerationStructureBuildInput Arrayed Base a ) GeneralUse Single st
-type ShaderDeviceAddressBuffer             a (i :: Nat) st = Resource ( Buffer ShaderDeviceAddress             Arrayed Base a ) GeneralUse Single st
 
 ----------------------------------------------------------------------------
 
@@ -458,6 +453,8 @@ instance KnownDescriptorType (Image Store) where
   descriptorType = Vulkan.DESCRIPTOR_TYPE_STORAGE_IMAGE
 instance KnownDescriptorType (Image Sample) where
   descriptorType = Vulkan.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+instance KnownDescriptorType TLAS where
+  descriptorType = Vulkan.DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR
 
 class HasDescriptorTypeAndFlags a where
   descriptorTypeAndFlags :: a -> Maybe ( Vulkan.DescriptorType, Vulkan.ShaderStageFlags )
@@ -477,7 +474,7 @@ class CanInitialiseResource a b | a -> b where
     -> a
     -> m b
 
-instance ( lay ~ Base, arr ~ Arrayed, Poke a lay ) =>
+instance ( lay ~ Base, arr ~ Arrayed, Poke a lay, PrimTy a, Poke (Array 1 a) Base ) =>
   CanInitialiseResource
     ( Resource (Buffer Index arr lay a) GeneralUse Single (Specified PreInitialised) )
     ( Resource (Buffer Index arr lay a) GeneralUse Single (Specified Initialised   ) )
@@ -485,7 +482,7 @@ instance ( lay ~ Base, arr ~ Arrayed, Poke a lay ) =>
   initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
     ( buf, pokeFn, nbElems ) <- createIndexBuffer physicalDevice device bufferData
     pure (BufferResourceArr buf pokeFn nbElems)
-instance ( lay ~ Locations, arr ~ Arrayed, Poke a lay ) =>
+instance ( lay ~ Locations, arr ~ Arrayed, Poke a lay, PrimTy a ) =>
   CanInitialiseResource
     ( Resource (Buffer Vertex arr lay a) GeneralUse Single (Specified PreInitialised) )
     ( Resource (Buffer Vertex arr lay a) GeneralUse Single (Specified Initialised   ) )
@@ -493,20 +490,25 @@ instance ( lay ~ Locations, arr ~ Arrayed, Poke a lay ) =>
   initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
     ( buf, pokeFn, nbElems ) <- createVertexBuffer physicalDevice device bufferData
     pure (BufferResourceArr buf pokeFn nbElems)
-instance ( lay ~ Extended, arr ~ Simple, Poke a lay ) =>
+instance ( lay ~ Extended, arr ~ Simple, Poke a lay, PrimTy a ) =>
   CanInitialiseResource
     ( Resource (Buffer Uniform arr lay a) DescriptorUse Single (Specified PreInitialised) )
     ( Resource (Buffer Uniform arr lay a) DescriptorUse Single (Specified Initialised   ) )
   where
   initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
     uncurry BufferResource <$> createUniformBuffer physicalDevice device bufferData
-instance ( lay ~ Base, arr ~ Arrayed, Poke a lay ) =>
+instance ( lay ~ Base, arr ~ Arrayed, Poke a lay, Poke ( Array 1 a ) lay ) =>
   CanInitialiseResource
     ( Resource (Buffer Storage arr lay a) DescriptorUse Single (Specified PreInitialised) )
     ( Resource (Buffer Storage arr lay a) DescriptorUse Single (Specified Initialised   ) )
   where
   initialiseResource physicalDevice device ( BufferData { bufferData } ) = do
-    ( buf, pokeFn, nbElems ) <- createBufferFromList @a @lay Vulkan.BUFFER_USAGE_STORAGE_BUFFER_BIT physicalDevice device bufferData
+    ( buf, pokeFn, nbElems ) <-
+      createBufferFromList @a @lay
+        Vulkan.BUFFER_USAGE_STORAGE_BUFFER_BIT
+        ( Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT .|. Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT )
+        Vulkan.zero
+        physicalDevice device bufferData
     pure (BufferResourceArr buf pokeFn nbElems)
 
 instance
@@ -522,6 +524,13 @@ instance
     ( Resource ( Image Sample ) DescriptorUse Single ( Specified Initialised    ) )
   where
   initialiseResource _ _ ( SampledImage sampler imgView ) = pure ( SampledImage sampler imgView )
+
+instance
+  CanInitialiseResource
+    ( Resource TLAS DescriptorUse Single ( Specified PreInitialised ) )
+    ( Resource TLAS DescriptorUse Single ( Specified Initialised    ) )
+  where
+  initialiseResource _ _ ( TopLevelAS tlas ) = pure ( TopLevelAS tlas )
 
 instance
   ( CanInitialiseResource
@@ -572,7 +581,7 @@ instance
       ( Resource (Buffer bufType Simple lay a) DescriptorUse Single (Specified Initialised) )
  where
   descriptorWrites descriptorSet _ ( BufferResource { bufferObject } ) = (:[]) \ bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType Simple lay a) ) bindingNumber [bufferDesc] Nothing
+    Vulkan.SomeStruct $ mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType Simple lay a) ) bindingNumber [bufferDesc] Nothing
       where
         bufferDesc :: Vulkan.DescriptorBufferInfo
         bufferDesc =
@@ -589,7 +598,7 @@ instance
       ( Resource (Buffer bufType Arrayed lay a) DescriptorUse Single (Specified Initialised) )
  where
   descriptorWrites descriptorSet _ ( BufferResourceArr { bufferObjectArrayed } ) = (:[]) \ bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType Arrayed lay a) ) bindingNumber [bufferDesc] Nothing
+    Vulkan.SomeStruct $ mkDescriptorWrite descriptorSet ( descriptorType @(Buffer bufType Arrayed lay a) ) bindingNumber [bufferDesc] Nothing
       where
         bufferDesc :: Vulkan.DescriptorBufferInfo
         bufferDesc =
@@ -606,7 +615,7 @@ instance
       ( Resource ( Image Store ) DescriptorUse Single (Specified Initialised) )
   where
   descriptorWrites descriptorSet _ ( StorageImage imgView ) = (:[]) $ \bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Image Store) ) bindingNumber [] ( Just imageInfo )
+    Vulkan.SomeStruct $ mkDescriptorWrite descriptorSet ( descriptorType @(Image Store) ) bindingNumber [] ( Just imageInfo )
       where
         imageInfo :: Vulkan.DescriptorImageInfo
         imageInfo =
@@ -622,7 +631,7 @@ instance
       ( Resource ( Image Sample ) DescriptorUse Single (Specified Initialised) )
   where
   descriptorWrites descriptorSet _ ( SampledImage sampler imgView ) = (:[]) $ \bindingNumber ->
-    mkDescriptorWrite descriptorSet ( descriptorType @(Image Sample) ) bindingNumber [] ( Just imageInfo )
+    Vulkan.SomeStruct $ mkDescriptorWrite descriptorSet ( descriptorType @(Image Sample) ) bindingNumber [] ( Just imageInfo )
       where
         imageInfo :: Vulkan.DescriptorImageInfo
         imageInfo =
@@ -631,6 +640,21 @@ instance
             , Vulkan.imageView   = imgView
             , Vulkan.imageLayout = Vulkan.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
             }
+  bindingInformation _ = Nothing
+
+instance
+  CanUpdateResource n
+      ( Resource TLAS DescriptorUse Single (Specified Initialised) )
+  where
+  descriptorWrites descriptorSet _ ( TopLevelAS tlas ) = (:[]) $ \bindingNumber ->
+    Vulkan.SomeStruct $
+      ( mkDescriptorWrite descriptorSet ( descriptorType @TLAS ) bindingNumber [] Nothing
+        :: Vulkan.WriteDescriptorSet '[] )
+        { Vulkan.next = ( accelWrite, () ) }
+      where
+        accelWrite :: Vulkan.WriteDescriptorSetAccelerationStructureKHR
+        accelWrite = Vulkan.WriteDescriptorSetAccelerationStructureKHR
+          { Vulkan.accelerationStructures = Boxed.Vector.singleton tlas }
   bindingInformation _ = Nothing
 
 instance
@@ -650,9 +674,8 @@ mkDescriptorWrite
   -> Word32
   -> [Vulkan.DescriptorBufferInfo]
   -> Maybe Vulkan.DescriptorImageInfo
-  -> Vulkan.SomeStruct Vulkan.WriteDescriptorSet
+  -> Vulkan.WriteDescriptorSet '[]
 mkDescriptorWrite descSet descType bindingNumber bufferInfos imageInfo =
-  Vulkan.SomeStruct $
     Vulkan.WriteDescriptorSet
       { Vulkan.next             = ()
       , Vulkan.dstSet           = descSet

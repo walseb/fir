@@ -34,6 +34,10 @@ import Data.Ord
 import Data.Word
   ( Word32 )
 
+-- lens
+import Control.Lens
+  ( view )
+
 -- mtl
 import Control.Monad.Except
   ( throwError )
@@ -56,7 +60,7 @@ import CodeGen.Instruction
 import CodeGen.Monad
   ( CGMonad, MonadFresh(fresh) )
 import CodeGen.State
-  ( requireCapabilities )
+  ( _backend, requireCapabilities )
 import Data.Type.Known
   ( Known, knownValue )
 import FIR.AST
@@ -329,12 +333,13 @@ requireImageCapabilities
   -> CGMonad ()
 requireImageCapabilities sampling bm dim arrayness ms mbFmt
   = do
+      bk <- view _backend
       traverse_ requireCapabilities
         ( SPIRV.formatCapabilities <$> mbFmt )
-      requireCapabilities ( SPIRV.msCapabilities     ms )
-      requireCapabilities ( SPIRV.lodCapabilities    bm )
-      requireCapabilities ( SPIRV.gatherCapabilities bm )
-      requireCapabilities ( SPIRV.dimCapabilities    sampling dim arrayness )
+      requireCapabilities ( SPIRV.msCapabilities        ms )
+      requireCapabilities ( SPIRV.lodCapabilities    bk bm )
+      requireCapabilities ( SPIRV.gatherCapabilities    bm )
+      requireCapabilities ( SPIRV.dimCapabilities sampling dim arrayness )
 
 --------------------------------------------------------------------------
 -- dealing with operands

@@ -132,11 +132,16 @@ type family ValidGlobal
         (Image props)
       , ValidImageDecorations name (ImageUsageFromProperties props) decs
       )
-  ValidGlobal name Storage.UniformConstant _ nonImageTy
+  ValidGlobal name Storage.UniformConstant decs AccelerationStructure
+    = ValidUniformDecorations
+        ( Text "Acceleration structure named " :<>: ShowType name )
+        decs
+        AccelerationStructure
+  ValidGlobal name Storage.UniformConstant _ otherTy
     = TypeError
         (    Text "Uniform constant global named " :<>: ShowType name
-        :<>: Text " expected to point to an image, but points to "
-        :<>: ShowType nonImageTy :<>: Text " instead."
+        :<>: Text " points to unexpected type "
+        :<>: ShowType otherTy :<>: Text "."
         )
   ValidGlobal name Storage.Image decs (Image props)
     = ( ValidUniformDecorations
@@ -165,11 +170,6 @@ type family ValidGlobal
           (Array n (Struct as))
       , NoOpaqueTypes name ( Text "buffer" ) as
       )
-  ValidGlobal name Storage.Uniform decs AccelerationStructure
-    = ValidUniformDecorations
-        ( Text "Acceleration structure named " :<>: ShowType name )
-        decs
-        AccelerationStructure
   ValidGlobal name Storage.Uniform _ ty
     = TypeError
         (    Text "Uniform buffer named " :<>: ShowType name

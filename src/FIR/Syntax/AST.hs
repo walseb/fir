@@ -171,7 +171,7 @@ import Math.Linear
   , buildV
   )
 import Math.Logic.Bits
-  ( Bits(..), BitShift(..) )
+  ( Bits(..), BitShift(..), BitCast(..) )
 import Math.Logic.Class
   ( Eq(..), Boolean(..), Ord(..) )
 import qualified SPIRV.ScalarTy as SPIRV
@@ -232,7 +232,7 @@ switch scrut cases val = fromAST $ Switch (toAST scrut) (toAST val) (map ( \ (x 
 -- $bitwise
 -- Instances for:
 --
--- 'Bits', 'BitShift' (note: not 'Data.Bits.Bits').
+-- 'Bits', 'BitShift' (note: not 'Data.Bits.Bits'), 'BitCast'.
 
 instance (ScalarTy a, Bits a) => Bits (Code a) where
   (.&.)      = primOp @a @SPIRV.BitAnd
@@ -245,6 +245,10 @@ instance (ScalarTy a, ScalarTy s, BitShift '(a,s))
   => BitShift '(Code a, Code s) where
   shiftL = primOp @'(a,s) @SPIRV.BitShiftLeft
   shiftR = primOp @'(a,s) @SPIRV.BitShiftRightArithmetic
+
+instance (ScalarTy a, ScalarTy b, BitCast a b)
+  => BitCast (Code a) (Code b) where
+  bitcast = primOp @'(a,b) @SPIRV.CastOp
 
 -- * Numeric operations
 -- 

@@ -70,7 +70,6 @@ import FIR.Examples.RenderState
 import Vulkan.Attachment
 import Vulkan.Backend
 import Vulkan.Context
-import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.Resource
@@ -178,12 +177,11 @@ offscreen = runVulkan () do
   -- Initialise Vulkan context.
 
   let
-    features = requiredFeatures reqs
+    vulkanReqs = vulkanRequirements reqs
   VulkanContext{..} <-
-    initialiseContext @Headless appName [] ( requiredExtensions reqs )
+    initialiseContext @Headless Normal appName vulkanReqs
       RenderInfo
-        { features
-        , queueType   = Vulkan.QUEUE_GRAPHICS_BIT
+        {  queueType   = Vulkan.QUEUE_GRAPHICS_BIT
         , surfaceInfo = ()
         }
 
@@ -227,7 +225,7 @@ offscreen = runVulkan () do
   (colorImage, _) <-
     createImage physicalDevice device
       colorImageInfo
-      [ ]
+      Vulkan.zero
   colorImageView <-
     createImageView
       device colorImage
@@ -238,7 +236,7 @@ offscreen = runVulkan () do
   (depthImage, _) <-
     createImage physicalDevice device
       depthImageInfo
-      [ ]
+      Vulkan.zero
   depthImageView <- createImageView device depthImage
     Vulkan.IMAGE_VIEW_TYPE_2D
     depthFmt
@@ -310,7 +308,7 @@ offscreen = runVulkan () do
           nbIndices
           pipelineLayout pipeline
 
-  fence <- createFence device
+  ( _ , fence ) <- createFence device
 
   submitCommandBuffer
     queue

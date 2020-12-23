@@ -105,7 +105,6 @@ import FIR.Examples.Texture.Shaders
 import Vulkan.Attachment
 import Vulkan.Backend
 import Vulkan.Context
-import Vulkan.Features
 import Vulkan.Monad
 import Vulkan.Pipeline
 import Vulkan.Resource
@@ -218,7 +217,7 @@ texture = runVulkan initialState do
         }
 
   let
-    features = requiredFeatures reqs
+    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -233,10 +232,9 @@ texture = runVulkan initialState do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain appName windowExtensions ( requiredExtensions reqs )
+    initialiseContext @WithSwapchain Normal appName vulkanReqs
       RenderInfo
-        { features
-        , queueType   = Vulkan.QUEUE_GRAPHICS_BIT
+        { queueType   = Vulkan.QUEUE_GRAPHICS_BIT
         , surfaceInfo = surfaceInfo
         }
 
@@ -293,9 +291,7 @@ texture = runVulkan initialState do
     (logoStagingImage, logoStagingImageMemory) <-
       createImage physicalDevice device
         logoStagingImageInfo
-        [ Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT
-        , Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT
-        ]
+        ( Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT .|. Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT )
 
     logInfo "Loading logo."
 
@@ -320,7 +316,7 @@ texture = runVulkan initialState do
     (logoImage, _) <-
       createImage physicalDevice device
         logoImageInfo
-        [ ]
+        Vulkan.zero
 
     logoImageView <-
       createImageView
@@ -421,7 +417,7 @@ texture = runVulkan initialState do
             (depthImage, _)
               <- createImage physicalDevice device
                     depthImageInfo
-                    [ ]
+                    Vulkan.zero
             depthImageView
               <- createImageView device depthImage
                     Vulkan.IMAGE_VIEW_TYPE_2D
@@ -467,8 +463,8 @@ texture = runVulkan initialState do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    nextImageSem <- createSemaphore device
-    submitted    <- createSemaphore device
+    (_, nextImageSem ) <- createSemaphore device
+    (_, submitted    ) <- createSemaphore device
 
     pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
     let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.SAMPLE_COUNT_1_BIT pipelineLayout

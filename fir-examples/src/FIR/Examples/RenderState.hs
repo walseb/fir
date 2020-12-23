@@ -127,6 +127,7 @@ data Observer = Observer
   { position :: V 3 Float
   , angles   :: V 2 Float
   , clock    :: Float
+  , frame    :: Word32
   } deriving Show
 
 
@@ -146,6 +147,7 @@ initialObserver
       { position = V3 0 0 (-6)
       , angles   = pure 0
       , clock    = 0
+      , frame    = 0
       }
 
 p, n :: Float
@@ -218,12 +220,13 @@ interpretInput Input { .. } =
   in Action { .. }
 
 move :: Observer -> Action -> (Observer, Quaternion Float)
-move  Observer { position = oldPosition, angles = oldAngles, clock = oldClock }
+move  Observer { position = oldPosition, angles = oldAngles, clock = oldClock, frame = oldFrame }
       Action   { .. }
   = let angles@(V2 x y) = oldAngles ^+^ fmap getSum look
         orientation = axisAngle (V3 0 (-1) 0) x * axisAngle (V3 1 0 0) y
         position = oldPosition ^+^ rotate orientation (fmap getSum movement)
         clock = oldClock
+        frame = oldFrame + 1
     in ( Observer { .. }, orientation )
 
 modelViewProjection :: Observer -> Maybe (Quaternion Float) -> M 4 4 Float

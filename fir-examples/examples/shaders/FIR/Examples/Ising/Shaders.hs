@@ -50,7 +50,6 @@ import Data.Text.Short
 
 -- fir
 import FIR
---import FIR.Syntax.DebugPrintf
 import Math.Linear
 
 -- fir-examples
@@ -214,7 +213,8 @@ updateSpin sParity isingParameters ( Vec2 ix iy ) s ( Vec4 u l r d ) = do
       else s
 
 lookupNeighbourSpins
-  :: _
+  :: forall parity _s
+  .  _
   => SParity parity
   -> Code Float
   -> Code ( V 2 Word32 ) -> Code ( V 2 Word32 )
@@ -311,7 +311,7 @@ pcg3d v = purely do
 
 word32ToProbability :: Code Word32 -> Code Float
 word32ToProbability x =
-  fromIntegral ( x `shiftR` ( 8 :: Code Word32 ) ) * 5.960464832810452e-8
+  bitcast ( ( x `shiftR` ( 9 :: Code Word32 ) ) .|. 0x3f800000 ) - 1.0
 
 ------------------------------------------------
 -- Supersampling.

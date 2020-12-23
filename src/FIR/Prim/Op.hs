@@ -68,7 +68,7 @@ import Math.Linear
   , Matrix(..)
   )
 import Math.Logic.Bits
-  ( Bits(..), BitShift(..) )
+  ( Bits(..), BitShift(..), BitCast(..) )
 import Math.Logic.Class
   ( Boolean(..), Eq(..), Ord(..) )
 import Math.Algebra.Class
@@ -195,7 +195,7 @@ instance (ScalarTy a, Bits a) => PrimOp SPIRV.BitNot (a :: Type) where
   vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.BitNot a)
   vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
 -- no logical right bit shift
-instance forall (b :: Type) (s :: Type). (ScalarTy b, PrimTy s,  BitShift '(b,s))
+instance forall (b :: Type) (s :: Type). (ScalarTy b, PrimTy s, BitShift '(b,s))
         => PrimOp SPIRV.BitShiftRightArithmetic '(b,s) where
   type PrimOpAugType SPIRV.BitShiftRightArithmetic '(b,s) = Val b :--> Val s :--> Val b
   op = shiftR
@@ -209,6 +209,14 @@ instance forall (b :: Type) (s :: Type). (ScalarTy b, PrimTy s, BitShift '(b,s))
   opName = SPIRV.BitOp SPIRV.BitShiftLeft (scalarTy @b)
   vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.BitShiftLeft '(b,s))
   vectorisation = Just $ VecPrimOpType (Proxy @'(V n b, V n s))
+
+-- bitcast operation
+instance (ScalarTy a, ScalarTy b, BitCast a b) => PrimOp SPIRV.CastOp '(a,b) where
+  type PrimOpAugType SPIRV.CastOp '(a,b) = Val a :--> Val b
+  op = bitcast
+  opName = SPIRV.CastOp (primTy @b)
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.CastOp '(a,b))
+  vectorisation = Just $ VecPrimOpType (Proxy @'(V n a, V n b))
 
 -- numeric operations
 instance (ScalarTy a, AdditiveMonoid a) => PrimOp SPIRV.Add (a :: Type) where
@@ -471,6 +479,11 @@ instance ( KnownNat n, ScalarTy a, Bits a ) => PrimOp ('Vectorise SPIRV.BitNot) 
   op = fmap complement
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitNot @a)) (val @n) (scalarTy @a)
 
+instance ( KnownNat n, ScalarTy a, ScalarTy b, BitCast a b ) => PrimOp ('Vectorise SPIRV.CastOp) '(V n a, V n b) where
+  type PrimOpAugType ('Vectorise SPIRV.CastOp) '(V n a, V n b) = Val (V n a) :--> Val (V n b)
+  op = fmap bitcast
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CastOp @'(a,b))) (val @n) (scalarTy @b)
+
 instance ( KnownNat n, ScalarTy b, PrimTy s, BitShift '(b,s) ) => PrimOp ('Vectorise SPIRV.BitShiftRightArithmetic) '(V n b, V n s) where
   type PrimOpAugType ('Vectorise SPIRV.BitShiftRightArithmetic) '(V n b, V n s) = Val (V n b) :--> Val (V n s) :--> Val (V n b)
   op = liftA2 shiftR
@@ -653,7 +666,7 @@ instance ( KnownNat i, KnownNat j, KnownNat k, ScalarTy a, Floating a ) => PrimO
 instance ( KnownNat i, KnownNat j, ScalarTy a, Floating a ) => PrimOp SPIRV.Transp '(a,i,j) where
   type PrimOpAugType SPIRV.Transp '(a,i,j) = Val (M i j a) :--> Val (M j i a)
   op = transpose
-  opName = SPIRV.MatOp SPIRV.Transp (val @i) (val @j) (scalarTy @a)
+  opName = SPIRV.MatOp SPIRV.Transp (val @j) (val @i) (scalarTy @a)
 instance ( KnownNat i, ScalarTy a, Floating a ) => PrimOp SPIRV.Det '(a,i) where
   type PrimOpAugType SPIRV.Det '(a,i) = Val (M i i a) :--> Val a
   op = determinant

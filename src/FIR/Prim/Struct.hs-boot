@@ -17,6 +17,8 @@ module FIR.Prim.Struct where
 -- base
 import Data.Kind
   ( Type )
+import Data.Typeable
+  ( Typeable )
 import GHC.TypeLits
   ( Symbol )
 import GHC.TypeNats
@@ -44,9 +46,9 @@ data FieldKind (fld :: Type) where
   LocationField :: FieldKind (LocationSlot Nat)
   OtherField    :: FieldKind fld
 
-class Show (Demote fld) => StructFieldKind fld where
+class (Show (Demote fld), Typeable fld) => StructFieldKind fld where
   fieldKind :: FieldKind fld
 
 instance StructFieldKind Symbol where
 instance StructFieldKind (LocationSlot Nat) where
-instance {-# OVERLAPPABLE #-} Show (Demote fld) => StructFieldKind fld where
+instance {-# OVERLAPPABLE #-} (Show (Demote fld), Typeable fld) => StructFieldKind fld where

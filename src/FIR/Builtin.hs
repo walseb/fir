@@ -206,13 +206,9 @@ type family RayShaderBuiltins ( shader :: RayShader ) :: [ Symbol :-> Binding ] 
        , "gl_IncomingRayFlags"    ':-> Var R Word32
        , "gl_ObjectToWorld"       ':-> Var R (M 3 4 Float)
        , "gl_WorldToObject"       ':-> Var R (M 3 4 Float)
-       , "gl_ObjectToWorld3x4"    ':-> Var R (M 4 3 Float)
-       , "gl_WorldToObject3x4"    ':-> Var R (M 4 3 Float)
        ]
   RayShaderBuiltins AnyHitShader = RayShaderBuiltins IntersectionShader :++:
-      '[ "gl_HitT"    ':-> Var R Float
-       , "gl_HitKind" ':-> Var R Word32
-       ]
+      '[ "gl_HitKind" ':-> Var R Word32 ]
   RayShaderBuiltins ClosestHitShader = RayShaderBuiltins AnyHitShader
   RayShaderBuiltins MissShader
     = '[ "gl_LaunchID"            ':-> Var R (V 3 Word32)

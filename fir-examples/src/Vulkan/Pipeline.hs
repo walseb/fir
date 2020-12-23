@@ -237,8 +237,9 @@ data VkPipelineInfo
 
 
 data VkPipeline
-  = GraphicsPipeline { vkPipeline :: Vulkan.Pipeline }
-  | ComputePipeline  { vkPipeline :: Vulkan.Pipeline }
+  = GraphicsPipeline   { vkPipeline :: Vulkan.Pipeline }
+  | ComputePipeline    { vkPipeline :: Vulkan.Pipeline }
+  | RayTracingPipeline { vkPipeline :: Vulkan.Pipeline }
 
 createGraphicsPipeline
   :: MonadVulkan m

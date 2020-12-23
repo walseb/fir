@@ -227,7 +227,7 @@ import Math.Linear
   , V, M
   )
 import Math.Logic.Bits
-  ( Bits(..), BitShift(..) )
+  ( Bits(..), BitShift(..), BitCast(..) )
 import Math.Logic.Class
   ( Eq(..), Boolean(..), Ord(..) )
 import qualified SPIRV.PrimOp          as SPIRV
@@ -819,6 +819,9 @@ instance ( ScalarTy a, ScalarTy s
   shiftL a s = shiftL @'(Program i j x, Program i i (Code s)) a (ixPure s)
   shiftR a s = shiftR @'(Program i j x, Program i i (Code s)) a (ixPure s)
 
+instance (ScalarTy a, ScalarTy b, BitCast a b, i1 ~ j1, i2 ~ j2, i1 ~ i2, x ~ Code a, y ~ Code b)
+  => BitCast (Program i1 j1 x) (Program i2 j2 y) where
+  bitcast = ixFmap bitcast
 
 -- Numeric operations
 

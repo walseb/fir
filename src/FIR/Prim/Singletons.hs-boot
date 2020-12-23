@@ -69,7 +69,7 @@ data SPrimTyMap :: [fld :-> Type] -> Type where
         => SPrimTyMap ((k ':-> a) ': as)
 type role SPrimTyMap nominal
 
-class StructFieldKind fld => PrimTyMap (as :: [fld :-> Type]) where
+class    (Typeable as, StructFieldKind fld) => PrimTyMap (as :: [fld :-> Type]) where
   primTyMapSing :: SPrimTyMap as
 
 instance StructFieldKind fld => PrimTyMap ('[] :: [fld :-> Type]) where
@@ -79,6 +79,7 @@ instance forall ( fld :: Type           )
                 ( a   :: Type           )
                 ( as  :: [fld :-> Type] )
       . ( StructFieldKind fld
+        , Typeable k
         , Known fld k
         , PrimTy a
         , PrimTyMap as

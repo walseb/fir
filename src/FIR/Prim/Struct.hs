@@ -130,13 +130,13 @@ data FieldKind (fld :: Type) where
   LocationField :: FieldKind (LocationSlot Nat)
   OtherField    :: FieldKind fld
 
-class Show (Demote fld) => StructFieldKind fld where
+class (Show (Demote fld), Typeable fld) => StructFieldKind fld where
   fieldKind :: FieldKind fld
 instance StructFieldKind Symbol where
   fieldKind = NamedField
 instance StructFieldKind (LocationSlot Nat) where
   fieldKind = LocationField
-instance {-# OVERLAPPABLE #-} Show (Demote fld) => StructFieldKind fld where
+instance {-# OVERLAPPABLE #-} (Show (Demote fld), Typeable fld) => StructFieldKind fld where
   fieldKind = OtherField
 
 class HasStructField k a as | k as -> a where

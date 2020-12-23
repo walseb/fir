@@ -34,7 +34,7 @@ import Data.Foldable
 import Data.List
   ( sortOn )
 import Data.Maybe
-  ( fromMaybe, mapMaybe )
+  ( fromMaybe )
 import Data.Ord
   ( Down(..) )
 import Data.Semigroup
@@ -49,10 +49,6 @@ import GHC.TypeNats
 -- bytestring
 import Data.ByteString
   ( ByteString )
-
--- containers
-import Data.Set
-  ( Set )
 
 -- finite-typelits
 import Data.Finite
@@ -90,10 +86,7 @@ import qualified Data.Vector.Sized as V
 -- vulkan
 import qualified Vulkan
 import qualified Vulkan.CStruct.Extends as Vulkan
-  ( Extendss, PokeChain, SomeStruct(SomeStruct) )
-
--- fir
-import qualified FIR as SPIRV
+  ( SomeStruct(SomeStruct) )
 
 -- fir-examples
 import Vulkan.Memory
@@ -107,14 +100,12 @@ data ValidationLayerName
   | Khronos
   deriving stock ( Eq, Show )
 
-createVulkanInstance
+vulkanInstanceInfo
  :: forall m
  .  MonadVulkan m
  => ByteString
- -> [ ByteString ]
- -> Set SPIRV.Extension
- -> m Vulkan.Instance
-createVulkanInstance appName neededVulkanExtensionNames neededSPIRVExtensions = do
+ -> m ( Vulkan.InstanceCreateInfo '[] )
+vulkanInstanceInfo appName = do
 
   ( availableLayers :: Boxed.Vector Vulkan.LayerProperties ) <- snd <$> Vulkan.enumerateInstanceLayerProperties
 
@@ -130,15 +121,6 @@ createVulkanInstance appName neededVulkanExtensionNames neededSPIRVExtensions = 
               _                                     -> Nothing
         )
       $ availableLayers
-
-    validationFeatures :: [ Vulkan.ValidationFeatureEnableEXT ]
-    validationFeatures
-      = mapMaybe
-        ( \case
-              SPIRV.SPV_KHR_non_semantic_info -> Just Vulkan.VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
-              _                               -> Nothing
-        )
-      $ toList neededSPIRVExtensions
 
     enabledLayers :: [ ByteString ]
     enabledLayers = case validationLayer of
@@ -156,28 +138,21 @@ createVulkanInstance appName neededVulkanExtensionNames neededSPIRVExtensions = 
         , Vulkan.apiVersion         = Vulkan.API_VERSION_1_2
         }
 
-    validationFeaturesExt :: Vulkan.ValidationFeaturesEXT
-    validationFeaturesExt =
-      Vulkan.ValidationFeaturesEXT
-        { Vulkan.enabledValidationFeatures  = Boxed.Vector.fromList validationFeatures
-        , Vulkan.disabledValidationFeatures = Boxed.Vector.empty
-        }
-
-    createInfo :: Vulkan.InstanceCreateInfo '[ Vulkan.ValidationFeaturesEXT ]
+    createInfo :: Vulkan.InstanceCreateInfo '[]
     createInfo =
       Vulkan.InstanceCreateInfo
-        { Vulkan.next                  = ( validationFeaturesExt, () )
+        { Vulkan.next                  = ()
         , Vulkan.flags                 = Vulkan.zero
         , Vulkan.applicationInfo       = Just appInfo
-        , Vulkan.enabledLayerNames     = Boxed.Vector.fromList enabledLayers
-        , Vulkan.enabledExtensionNames = Boxed.Vector.fromList neededVulkanExtensionNames
+        , Vulkan.enabledLayerNames     = Boxed.Vector.fromList ( "VK_LAYER_NV_nomad_release_public_2020_6_1" : enabledLayers )
+        , Vulkan.enabledExtensionNames = mempty
         }
 
   case validationLayer of
     Nothing -> logInfo "Validation layer unavailable. Is the Vulkan SDK installed?"
     Just _  -> logInfo ( "Enabled validation layers " <> ShortText.pack ( show enabledLayers ) )
 
-  snd <$> Vulkan.withInstance createInfo Nothing allocate
+  pure createInfo
 
 
 createPhysicalDevice :: MonadIO m => Vulkan.Instance -> m Vulkan.PhysicalDevice
@@ -223,43 +198,6 @@ findQueueFamilyIndex physicalDevice requiredFlags = do
   case capableFamilyIndices Boxed.Vector.!? 0 of
     Nothing -> error "No queue family has sufficient capabilities"
     Just i  -> pure i
-
-createLogicalDevice
-  :: forall fs m
-  .  ( MonadVulkan m
-     , Vulkan.PokeChain fs
-     , Vulkan.Extendss Vulkan.DeviceCreateInfo fs
-     )
-  => Vulkan.PhysicalDevice
-  -> Int
-  -> [ ByteString ]
-  -> Vulkan.PhysicalDeviceFeatures2 fs
-  -> m Vulkan.Device
-createLogicalDevice physicalDevice queueFamilyIndex deviceExtensions
-  ( Vulkan.PhysicalDeviceFeatures2 { Vulkan.next = extras, Vulkan.features = features } ) =
-    snd <$> Vulkan.withDevice physicalDevice deviceCreateInfo Nothing allocate
-      where
-        queueCreateInfo :: Vulkan.DeviceQueueCreateInfo '[]
-        queueCreateInfo =
-          Vulkan.DeviceQueueCreateInfo
-            { Vulkan.next             = ()
-            , Vulkan.flags            = Vulkan.zero
-            , Vulkan.queueFamilyIndex = fromIntegral queueFamilyIndex
-            , Vulkan.queuePriorities  = Boxed.Vector.singleton ( 1.0 :: Float )
-            }
-
-        features2 :: Vulkan.PhysicalDeviceFeatures2 '[]
-        features2 = Vulkan.PhysicalDeviceFeatures2 { Vulkan.next = (), Vulkan.features = features }
-        deviceCreateInfo :: Vulkan.DeviceCreateInfo ( Vulkan.PhysicalDeviceFeatures2 '[] ': fs )
-        deviceCreateInfo =
-          Vulkan.DeviceCreateInfo
-            { Vulkan.next                  = ( features2, extras )
-            , Vulkan.flags                 = Vulkan.zero
-            , Vulkan.queueCreateInfos      = Boxed.Vector.singleton ( Vulkan.SomeStruct queueCreateInfo )
-            , Vulkan.enabledLayerNames     = Boxed.Vector.empty
-            , Vulkan.enabledExtensionNames = Boxed.Vector.fromList deviceExtensions
-            , Vulkan.enabledFeatures       = Nothing
-            }
 
 chooseSwapchainFormat
   :: MonadIO m
@@ -405,7 +343,7 @@ createImage
   => Vulkan.PhysicalDevice
   -> Vulkan.Device
   -> ImageInfo
-  -> [ Vulkan.MemoryPropertyFlags ]
+  -> Vulkan.MemoryPropertyFlags
   -> m (Vulkan.Image, Vulkan.DeviceMemory)
 createImage physicalDevice device ImageInfo { .. } reqs
   = let createInfo :: Vulkan.ImageCreateInfo '[]
@@ -428,7 +366,7 @@ createImage physicalDevice device ImageInfo { .. } reqs
     in do
       ( _, image ) <- Vulkan.withImage device createInfo Nothing allocate
       memReqs      <- Vulkan.getImageMemoryRequirements device image
-      ( _, memory ) <- allocateMemory physicalDevice device memReqs reqs
+      ( _, memory ) <- allocateMemory physicalDevice device memReqs reqs Vulkan.zero
       Vulkan.bindImageMemory device image memory 0
       pure (image, memory)
 
@@ -669,8 +607,8 @@ getQueue :: MonadIO m => Vulkan.Device -> Int -> m Vulkan.Queue
 getQueue device queueFamilyIndex = Vulkan.getDeviceQueue device ( fromIntegral queueFamilyIndex ) 0
 
 
-createSemaphore :: MonadVulkan m => Vulkan.Device -> m Vulkan.Semaphore
-createSemaphore device = snd <$> Vulkan.withSemaphore device semaphoreCreateInfo Nothing allocate
+createSemaphore :: MonadVulkan m => Vulkan.Device -> m ( ReleaseKey, Vulkan.Semaphore )
+createSemaphore device = Vulkan.withSemaphore device semaphoreCreateInfo Nothing allocate
   where
     semaphoreCreateInfo :: Vulkan.SemaphoreCreateInfo '[]
     semaphoreCreateInfo =
@@ -680,8 +618,8 @@ createSemaphore device = snd <$> Vulkan.withSemaphore device semaphoreCreateInfo
         }
 
 
-createFence :: MonadVulkan m => Vulkan.Device -> m Vulkan.Fence
-createFence device = snd <$> Vulkan.withFence device fenceCreateInfo Nothing allocate
+createFence :: MonadVulkan m => Vulkan.Device -> m ( ReleaseKey, Vulkan.Fence )
+createFence device = Vulkan.withFence device fenceCreateInfo Nothing allocate
 
   where
     fenceCreateInfo :: Vulkan.FenceCreateInfo '[]
@@ -729,9 +667,9 @@ cmdBindDescriptorSets commandBuffer pipelineLayout pipeline descriptorSets =
       Boxed.Vector.empty -- no dynamic offsets
 
 bindPoint :: VkPipeline -> Vulkan.PipelineBindPoint
-bindPoint GraphicsPipeline {} = Vulkan.PIPELINE_BIND_POINT_GRAPHICS
-bindPoint ComputePipeline  {} = Vulkan.PIPELINE_BIND_POINT_COMPUTE
-
+bindPoint ( GraphicsPipeline   {} ) = Vulkan.PIPELINE_BIND_POINT_GRAPHICS
+bindPoint ( ComputePipeline    {} ) = Vulkan.PIPELINE_BIND_POINT_COMPUTE
+bindPoint ( RayTracingPipeline {} ) = Vulkan.PIPELINE_BIND_POINT_RAY_TRACING_KHR
 
 cmdPipelineBarrier
   :: MonadIO m
@@ -769,7 +707,7 @@ assertSurfacePresentable physicalDevice queueFamilyIndex surface = do
       ( fromIntegral queueFamilyIndex )
       ( Vulkan.SurfaceKHR surface )
 
-  unless isPresentable ( error "Unsupported surface" )
+  unless isPresentable ( error "Surface is not presentable" )
 
 
 submitCommandBuffer

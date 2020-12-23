@@ -73,7 +73,7 @@ import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Unlift
   ( MonadUnliftIO, askRunInIO )
 
--- vulkan-api
+-- vulkan
 import qualified Vulkan
 
 -- fir-examples

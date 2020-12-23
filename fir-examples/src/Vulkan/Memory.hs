@@ -17,8 +17,7 @@ module Vulkan.Memory where
 import Control.Monad
   ( guard )
 import Data.Bits
-import Data.Foldable
-  ( for_ )
+  ( (.&.), testBit )
 import Data.Word
   ( Word32, Word64 )
 
@@ -45,9 +44,10 @@ allocateMemory
   => Vulkan.PhysicalDevice
   -> Vulkan.Device
   -> Vulkan.MemoryRequirements
-  -> [ Vulkan.MemoryPropertyFlags ]
+  -> Vulkan.MemoryPropertyFlags
+  -> Vulkan.MemoryAllocateFlags
   -> m ( ReleaseKey, Vulkan.DeviceMemory )
-allocateMemory physicalDevice device memReqs requiredFlags = do
+allocateMemory physicalDevice device memReqs memFlags allocateFlags = do
 
     Vulkan.PhysicalDeviceMemoryProperties
       { Vulkan.memoryTypes
@@ -64,10 +64,7 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
               ( ( Vulkan.memoryTypeBits :: Vulkan.MemoryRequirements -> Word32 ) memReqs )
               i_int
           )
-        for_ requiredFlags
-          ( \ f ->
-              guard ( Vulkan.propertyFlags memoryType .&. f > Vulkan.zero )
-          )
+        guard ( Vulkan.propertyFlags memoryType .&. memFlags >= memFlags )
         pure i
 
       memoryTypeIndex :: Word32
@@ -78,15 +75,21 @@ allocateMemory physicalDevice device memReqs requiredFlags = do
               ( "No available memory types with requirements:\n"
               ++ show memReqs
               ++ "\nand with flags:\n"
-              ++ show requiredFlags
+              ++ show memFlags
               )
           Just i -> i
 
     let
-      allocateInfo :: Vulkan.MemoryAllocateInfo '[]
+      allocateFlagsInfo :: Vulkan.MemoryAllocateFlagsInfo
+      allocateFlagsInfo =
+        Vulkan.MemoryAllocateFlagsInfo
+          { Vulkan.flags      = allocateFlags
+          , Vulkan.deviceMask = 0 
+          }
+      allocateInfo :: Vulkan.MemoryAllocateInfo '[ Vulkan.MemoryAllocateFlagsInfo ]
       allocateInfo =
         Vulkan.MemoryAllocateInfo
-          { Vulkan.next = ()
+          { Vulkan.next            = ( allocateFlagsInfo, () )
           , Vulkan.allocationSize  = ( Vulkan.size :: Vulkan.MemoryRequirements -> Word64 ) memReqs
           , Vulkan.memoryTypeIndex = memoryTypeIndex
           }

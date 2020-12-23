@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise       #-}
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 
 {-# LANGUAGE AllowAmbiguousTypes   #-}
@@ -12,6 +13,7 @@
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -67,6 +69,10 @@ import Data.Int
   ( Int8, Int16, Int32, Int64 )
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy(..) )
+import Data.Type.Equality
+  ( (:~:)(Refl) )
 import Data.Word
   ( Word8, Word16, Word32, Word64 )
 import Foreign.Ptr
@@ -74,18 +80,24 @@ import Foreign.Ptr
 import qualified Foreign.Storable as Storable
   ( poke )
 import GHC.TypeLits
-  ( Symbol
+  ( Symbol, SomeSymbol(..)
   , TypeError, ErrorMessage(..)
+  , someSymbolVal
   )
 import GHC.TypeNats
-  ( Nat, KnownNat
-  , type (<=), type (+), type (-), type (*)
+  ( Nat, KnownNat, SomeNat(..)
+  , type (<=), type (<=?), type (+), type (-), type (*)
   , Div, Mod
+  , someNatVal
   )
+import Numeric.Natural
+  ( Natural )
+import Unsafe.Coerce
+  ( unsafeCoerce )
 
 -- containers
 import qualified Data.Set as Set
-  ( singleton, fromList, insert, union )
+  ( empty, fromList, insert, singleton, union )
 
 -- half
 import Numeric.Half
@@ -128,9 +140,11 @@ import qualified FIR.Prim.Singletons as Prim
 import FIR.Prim.Struct
   ( Struct(..)
   , LocationSlot(LocationSlot)
-  , FieldKind(LocationField)
+  , FieldKind(..)
   , StructFieldKind(fieldKind)
   )
+import Math.Algebra.Class
+  ( AdditiveGroup, Semiring )
 import Math.Linear
   ( V, M(unM) )
 import qualified SPIRV.Decoration as SPIRV
@@ -181,43 +195,36 @@ type family NextAlignedWithRemainder
   NextAlignedWithRemainder size _   0   = size
   NextAlignedWithRemainder size ali rem = size + (ali - rem)
 
-type family SumRoundedUpSizes (lay :: Layout) (ali :: Nat) (as :: [fld :-> Type]) :: Nat where
-  SumRoundedUpSizes _   _   '[]                    = 0
-  SumRoundedUpSizes lay ali ( ( _ ':-> a ) ': as ) =
-    NextAligned (SizeOf lay a) ali + SumRoundedUpSizes lay ali as
+type family SumRoundedUpSizes (lay :: Layout) (as :: [fld :-> Type]) (acc :: Nat) :: Nat where
+  SumRoundedUpSizes _   '[]                    acc = acc
+  SumRoundedUpSizes lay ( ( _ ':-> a ) ': as ) acc = SumRoundedUpSizes lay as ( NextAligned acc ( Alignment lay a ) + SizeOf lay a )
 
 type family MaximumAlignment (lay :: Layout) (as :: [fld :-> Type]) :: Nat where
-  MaximumAlignment _        '[]                    = 1
-  MaximumAlignment Extended ( ( _ ':-> a ) ': as ) = MaximumAlignmentHelper Extended a as `RoundUp` 16
-  MaximumAlignment lay      ( ( _ ':-> a ) ': as ) = MaximumAlignmentHelper lay      a as
-
-type family MaximumAlignmentHelper (lay :: Layout) (a :: Type) (as :: [fld :-> Type]) :: Nat where
-  MaximumAlignmentHelper lay a '[] = Alignment lay a
-  MaximumAlignmentHelper lay a ( (_ ':-> b ) ': bs )
-    = Max (Alignment lay a) (MaximumAlignmentHelper lay b bs)
+  MaximumAlignment _   '[]                    = 1
+  MaximumAlignment lay ( ( _ ':-> a ) ': as ) = Max ( Alignment lay a ) ( MaximumAlignment lay as )
 
 roundUp :: Integral a => a -> a -> a
 roundUp n r = (n + r) - ( 1 + ( (n + r - 1) `mod` r ) )
 
 -- | Write elements to an array, whose start is given by a pointer.
-pokeArray :: forall a lay. Poke a lay => Ptr a -> [a] -> IO ()
+pokeArray :: forall a lay. ( Poke a lay, Poke (Array 1 a) lay ) => Ptr a -> [a] -> IO ()
 pokeArray ptr = pokeArrayOff @a @lay ptr 0
 
 -- | Write elements to an array, starting from the given index offset.
-pokeArrayOff :: forall a lay. Poke a lay => Ptr a -> Int -> [a] -> IO ()
+pokeArrayOff :: forall a lay. ( Poke a lay, Poke (Array 1 a) lay ) => Ptr a -> Int -> [a] -> IO ()
 pokeArrayOff ptr off vals0
   | off < 0   = pure ()
   | otherwise = go ( ptr `plusPtr` ( sz * off ) ) vals0
   where
     sz :: Int
-    sz = fromIntegral ( sizeOf @a @lay )
+    sz = fromIntegral $ nextAligned (sizeOf @a @lay) (alignment @(Array 1 a) @lay)
     go :: Ptr a -> [a] -> IO ()
     go _    []         = pure ()
     go ptr' (val:vals) = do
       poke @a @lay ptr' val
       go ( ptr' `plusPtr` sz ) vals
 
-nextAligned :: Word32 -> Word32 -> Word32
+nextAligned :: Integral a => a -> a -> a
 nextAligned size ali
   = case size `mod` ali of
          0 -> size
@@ -351,9 +358,11 @@ instance ( Poke (V m a) Locations
     colSize :: Int
     colSize = fromIntegral ( sizeOf @(V m a) @Locations ) `roundUp` 16
 
-instance (Poke a Base, Prim.PrimTy a, KnownNat n, 1 <= n)
+instance ( Poke a Base, Prim.PrimTy a, KnownNat n, 1 <= n
+         , KnownNat ( SizeOf Base ( Array n a ) )
+         )
        => Poke (Array n a) Base where
-  type SizeOf Base (Array n a) = n * SizeOf Base a
+  type SizeOf Base (Array n a) = n * ( NextAligned ( SizeOf Base a ) ( Alignment Base (Array n a) ) )
   type Alignment Base (Array n a) = Alignment Base a
   poke ptr (MkArray arr)
     = foldM_
@@ -367,12 +376,12 @@ instance (Poke a Base, Prim.PrimTy a, KnownNat n, 1 <= n)
 instance ( Poke a Extended
          , Prim.PrimTy a
          , KnownNat n, 1 <= n
-         , KnownNat (SizeOf Extended (Array n a))
-         , KnownNat (Alignment Extended (Array n a))
+         , KnownNat ( SizeOf    Extended ( Array n a ) )
+         , KnownNat ( Alignment Extended ( Array n a ) )
          )
        => Poke (Array n a) Extended where
   type SizeOf Extended (Array n a)
-    = n * NextAligned (SizeOf Extended a) (Alignment Extended (Array n a))
+    = n * ( NextAligned ( SizeOf Extended a ) ( Alignment Extended (Array n a) ) )
   type Alignment Extended (Array n a)
     = Alignment Extended a `RoundUp` 16
   poke ptr (MkArray arr)
@@ -406,15 +415,17 @@ instance ( Poke (Value x) lay ) => Pokeable (lay :: Layout) (x :: fld :-> Type) 
 structPoke :: forall (fld :: Type) (lay :: Layout) (as :: [fld :-> Type]).
               ( PrimTyMap as, All (Pokeable lay) as )
            => Word32 -> Ptr (Struct as) -> Struct as -> IO ()
-structPoke ali ptr struct = case primTyMapSing @_ @as of
+structPoke currOff ptr struct = case primTyMapSing @_ @as of
   SNil -> pure ()
   scons@SCons -> case scons of
     ( _ :: SPrimTyMap ((k ':-> b) ': bs) ) ->
       case (struct, allDict @(Pokeable lay) @as) of
-        ( b :& bs, ConsDict ) ->
-          let off = fromIntegral $ nextAligned (sizeOf @b @lay) ali
-          in  poke @b @lay (castPtr ptr) b *> structPoke @fld @lay @bs ali (ptr `plusPtr` off) bs
-
+        ( b :& bs, ConsDict ) -> do
+          let
+            off :: Word32
+            off = nextAligned currOff ( alignment @b @lay )
+          poke @b @lay ( castPtr ptr `plusPtr` ( fromIntegral off ) ) b
+          structPoke @fld @lay @bs ( off + sizeOf @b @lay ) ( castPtr ptr ) bs
 
 instance ( PrimTyMap as
          , All (Pokeable Base) as
@@ -422,11 +433,10 @@ instance ( PrimTyMap as
          , KnownNat (Alignment Base (Struct as))
          ) => Poke (Struct as) Base where
   type SizeOf Base (Struct as)
-    = SumRoundedUpSizes Base (MaximumAlignment Base as) as
+    = SumRoundedUpSizes Base as 0
   type Alignment Base (Struct as)
     = MaximumAlignment Base as
-  poke = structPoke @_ @Base @as (alignment @(Struct as) @Base)
-
+  poke = structPoke @_ @Base @as 0
 
 instance ( PrimTyMap as
          , All (Pokeable Extended) as
@@ -434,10 +444,10 @@ instance ( PrimTyMap as
          , KnownNat (Alignment Extended (Struct as))
          ) => Poke (Struct as) Extended where
   type SizeOf Extended (Struct as)
-    = SumRoundedUpSizes Extended (MaximumAlignment Extended as) as
+    = SumRoundedUpSizes Extended as 0 `RoundUp` 16
   type Alignment Extended (Struct as)
-    = MaximumAlignment Extended as
-  poke = structPoke @_ @Extended @as (alignment @(Struct as) @Extended)
+    = MaximumAlignment Extended as `RoundUp` 16
+  poke = structPoke @_ @Extended @as 0
 
 instance
   ( TypeError
@@ -517,57 +527,15 @@ type family SumSizeOfLocations (as :: [LocationSlot Nat :-> Type]) :: Nat where
     = ( SizeOf Locations a `RoundUp` 16 ) + SumSizeOfLocations as
 
 --------------------------------------------------------------------------------------------
+-- Computing layout decorations necessary for SPIR-V.
 
-maxMemberAlignment
-   :: MonadError e m
-   => ( SPIRV.PrimTy -> m Word32 ) -> [(ignore1, SPIRV.PrimTy, ignore2)] -> m Word32
-maxMemberAlignment f as = foldr ( \ a b -> max <$> ( f . ( \(_,ty,_) -> ty ) ) a <*> b ) (pure 0) as
-
-scalarAlignment :: MonadError ShortText m => SPIRV.PrimTy -> m Word32
-scalarAlignment (SPIRV.Scalar (SPIRV.Integer  _ w)) = pure (SPIRV.width w `quot` 8)
-scalarAlignment (SPIRV.Scalar (SPIRV.Floating   w)) = pure (SPIRV.width w `quot` 8)
-scalarAlignment (SPIRV.Vector        {eltTy}) = scalarAlignment eltTy
-scalarAlignment (SPIRV.Matrix      {entryTy}) = scalarAlignment (SPIRV.Scalar entryTy)
-scalarAlignment (SPIRV.Array         {eltTy}) = scalarAlignment eltTy
-scalarAlignment (SPIRV.RuntimeArray  {eltTy}) = scalarAlignment eltTy
-scalarAlignment (SPIRV.Struct       {eltTys}) = maxMemberAlignment scalarAlignment eltTys
-scalarAlignment SPIRV.AccelerationStructure   = 
-  throwError
-      ( "Layout: acceleration structure not permitted as a structure member" )
-scalarAlignment ty
-  = throwError
-      ( "Layout: cannot compute scalar alignment of type " <> ShortText.pack (show ty) <> "." )
-
-baseAlignment :: MonadError ShortText m => SPIRV.PrimTy -> m Word32
-baseAlignment sc@SPIRV.Scalar {} = scalarAlignment sc
-baseAlignment (SPIRV.Vector   {size, eltTy})
-  | size == 0 = throwError "Layout: cannot compute base alignment of empty vector."
-  | otherwise = ( 2 ^ ceiling @Float @Word32 (logBase 2 (fromIntegral size)) * ) <$> scalarAlignment eltTy
-baseAlignment (SPIRV.Array          {eltTy}) = baseAlignment eltTy
-baseAlignment (SPIRV.RuntimeArray   {eltTy}) = baseAlignment eltTy
-baseAlignment (SPIRV.Struct        {eltTys}) = maxMemberAlignment baseAlignment eltTys
-baseAlignment (SPIRV.Matrix {rows, entryTy}) = baseAlignment (SPIRV.Vector rows (SPIRV.Scalar entryTy)) -- assumed column-major
-baseAlignment SPIRV.AccelerationStructure    =
-  throwError
-      ( "Layout: acceleration structure not permitted as a structure member" )
-baseAlignment ty
-  = throwError
-      ( "Layout: cannot compute base alignment of type " <> ShortText.pack (show ty) <> "." )
-
-extendedAlignment :: MonadError ShortText m => SPIRV.PrimTy -> m Word32
-extendedAlignment (SPIRV.Array         {eltTy}) = (`roundUp` 16) <$> extendedAlignment eltTy
-extendedAlignment (SPIRV.RuntimeArray  {eltTy}) = (`roundUp` 16) <$> extendedAlignment eltTy
-extendedAlignment (SPIRV.Struct       {eltTys}) = (`roundUp` 16) <$> maxMemberAlignment extendedAlignment eltTys
-extendedAlignment ty                            = baseAlignment ty
-
-requiredAlignment :: MonadError ShortText m => SPIRV.StorageClass -> m ( SPIRV.PrimTy -> m Word32 )
-requiredAlignment Storage.Uniform       = pure extendedAlignment
-requiredAlignment Storage.StorageBuffer = pure baseAlignment
-requiredAlignment Storage.PushConstant  = pure baseAlignment
-requiredAlignment (Storage.RayStorage Storage.ShaderRecordBuffer) = pure baseAlignment
-requiredAlignment storage
-  = throwError
-      ( "Layout: unsupported storage class " <> ShortText.pack (show storage) <> "." )
+requiredLayout :: MonadError ShortText m => SPIRV.StorageClass -> m Layout
+requiredLayout Storage.Uniform                                 = pure Extended
+requiredLayout Storage.StorageBuffer                           = pure Base
+requiredLayout Storage.PushConstant                            = pure Base
+requiredLayout (Storage.RayStorage Storage.ShaderRecordBuffer) = pure Base
+requiredLayout storage = throwError
+  ( "'requiredLayout': unsupported storage class " <> ShortText.pack (show storage) <> "." )
 
 inferLayout :: MonadError ShortText m
             => SPIRV.AggregateUsage
@@ -587,29 +555,17 @@ inferLayout usage decs storageClass (SPIRV.Array lg (SPIRV.Struct as sdecs _) ad
   = pure $ SPIRV.Array lg (SPIRV.Struct as (Set.insert SPIRV.Block sdecs) usage) (Set.union decs adecs) usage
   | otherwise
   = do
-      f <- requiredAlignment storageClass
-      ali <- f (SPIRV.Struct as sdecs usage)
-      laidOutMembers <- fst <$> layoutStructMembersWith f ali 0 as
+      lay <- requiredLayout storageClass
+      laidOutMembers <- fst <$> layoutStructMembers lay 0 as
       let laidOutStruct = SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins
       pure ( SPIRV.Array lg laidOutStruct (Set.union decs adecs) SPIRV.NotForBuiltins )
-inferLayout _ decs storageClass (SPIRV.RuntimeArray (SPIRV.Struct as sdecs _) adecs _)
-  | storageClass `elem` [ Storage.Input, Storage.Output ]
-  = throwError "'inferLayout': cannot use run-time arrays in 'Input'/'Output', must use a uniform or storage buffer."
-  | otherwise
-  = do
-    f <- requiredAlignment storageClass
-    ali <- f (SPIRV.Struct as sdecs SPIRV.NotForBuiltins)
-    laidOutMembers <- fst <$> layoutStructMembersWith f ali 0 as
-    let laidOutStruct = SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block sdecs) SPIRV.NotForBuiltins
-    pure ( SPIRV.RuntimeArray laidOutStruct (Set.union decs adecs) SPIRV.NotForBuiltins )
-inferLayout usage decs storageClass struct@(SPIRV.Struct as sdecs _)
+inferLayout usage decs storageClass (SPIRV.Struct as sdecs _)
   | storageClass `elem` [ Storage.Input, Storage.Output ]
   = pure $ SPIRV.Struct as (Set.insert SPIRV.Block (Set.union decs sdecs)) usage
   | otherwise
   = do
-      f <- requiredAlignment storageClass
-      ali <- f struct
-      laidOutMembers <- fst <$> layoutStructMembersWith f ali 0 as
+      lay <- requiredLayout storageClass
+      laidOutMembers <- fst <$> layoutStructMembers lay 0 as
       pure ( SPIRV.Struct laidOutMembers (Set.insert SPIRV.Block (Set.union decs sdecs)) SPIRV.NotForBuiltins )
 inferLayout _ _ _ SPIRV.AccelerationStructure = pure SPIRV.AccelerationStructure
 inferLayout _ _ storageClass ty
@@ -631,16 +587,14 @@ inferPointerLayout
 inferPointerLayout usage decs (SPIRV.PointerTy storageClass ty)
   = SPIRV.PointerTy storageClass <$> inferLayout usage decs storageClass ty
 
-
-layoutWith :: MonadError ShortText m
-           => ( SPIRV.PrimTy -> m Word32 ) -> Word32 -> SPIRV.PrimTy -> m SPIRV.PrimTy
-layoutWith _ _ ty@(SPIRV.Scalar {}) = pure ty
-layoutWith _ _ ty@(SPIRV.Vector {}) = pure ty
-layoutWith _ _ mat@(SPIRV.Matrix {})
+layout :: MonadError ShortText m => Layout -> Word32 -> SPIRV.PrimTy -> m SPIRV.PrimTy
+layout _ _ ty@(SPIRV.Scalar {}) = pure ty
+layout _ _ ty@(SPIRV.Vector {}) = pure ty
+layout _ _ mat@(SPIRV.Matrix {})
   = pure mat -- cannot decorate matrix directly, must do so indirectly using arrays and structs
-layoutWith f _ arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs usage) = do
-  arrStride  <- f arr
-  matStride  <- f mat
+layout lay _ (SPIRV.Array l mat@(SPIRV.Matrix { rows, entryTy }) decs usage) = do
+  arrStride <- uncurry nextAligned <$> primTySizeAndAli lay mat
+  matStride <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Vector rows ( SPIRV.Scalar entryTy ) )
   pure ( SPIRV.Array l mat
             ( Set.union
                 ( Set.fromList [ SPIRV.ArrayStride arrStride, SPIRV.MatrixStride matStride, SPIRV.ColMajor ] )
@@ -648,13 +602,13 @@ layoutWith f _ arr@(SPIRV.Array l mat@(SPIRV.Matrix {}) decs usage) = do
             )
             usage
         )
-layoutWith f off arr@(SPIRV.Array l elt decs usage) = do
-  arrStride  <- f arr
-  laidOutElt <- layoutWith f off elt
+layout lay off (SPIRV.Array l elt decs usage) = do
+  arrStride  <- uncurry nextAligned <$> primTySizeAndAli lay elt
+  laidOutElt <- layout lay off elt
   pure ( SPIRV.Array l laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
-layoutWith f _ arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs usage) = do
-  arrStride  <- f arr
-  matStride  <- f mat
+layout lay _ (SPIRV.RuntimeArray mat@(SPIRV.Matrix { rows, entryTy }) decs usage) = do
+  arrStride <- uncurry nextAligned <$> primTySizeAndAli lay mat
+  matStride <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Vector rows ( SPIRV.Scalar entryTy ) )
   pure ( SPIRV.RuntimeArray mat
             ( Set.union
                 ( Set.fromList [ SPIRV.ArrayStride arrStride, SPIRV.MatrixStride matStride, SPIRV.ColMajor ] )
@@ -662,62 +616,319 @@ layoutWith f _ arr@(SPIRV.RuntimeArray mat@(SPIRV.Matrix {}) decs usage) = do
             )
             usage
         )
-layoutWith f off arr@(SPIRV.RuntimeArray elt decs usage) = do
-  arrStride  <- f arr
-  laidOutElt <- layoutWith f off elt
+layout lay off (SPIRV.RuntimeArray elt decs usage) = do
+  arrStride  <- uncurry nextAligned <$> primTySizeAndAli lay elt
+  laidOutElt <- layout lay off elt
   pure ( SPIRV.RuntimeArray laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
-layoutWith f off struct@(SPIRV.Struct as decs structUsage) = do
-  ali <- f struct
-  laidOutMembers <- fst <$> layoutStructMembersWith f ali off as
+layout lay off (SPIRV.Struct as decs structUsage) = do
+  ali <- structAlignment lay as
+  let
+    off' :: Word32
+    off' = nextAligned off ali
+  laidOutMembers <- fst <$> layoutStructMembers lay off' as
   pure ( SPIRV.Struct laidOutMembers decs structUsage )
-layoutWith _ _ ty
-  = throwError ( "'layoutWith': unsupported type " <> ShortText.pack (show ty) <> "." )
+layout _ _ ty
+  = throwError ( "'layout': unsupported type " <> ShortText.pack (show ty) <> "." )
 
-layoutStructMembersWith
+structAlignment
+  :: MonadError ShortText m
+  => Layout 
+  -> [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
+  -> m Word32
+structAlignment lay members =
+  case lay of
+    Base
+      | Just ( LayoutablePrimTy ( _ :: Proxy struct ) ) <- layoutableStruct @Base     adjustedMembers
+      -> pure $ alignment @struct @Base
+    Extended
+      | Just ( LayoutablePrimTy ( _ :: Proxy struct ) ) <- layoutableStruct @Extended adjustedMembers
+      -> pure $ alignment @struct @Extended
+    _ -> throwError
+            ( "'structAlignment': could not compute " <> ShortText.pack ( show lay ) <> " alignment for structure with members\n"
+            <> ShortText.pack ( show members )
+            )
+  where
+    adjustedMembers :: [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
+    adjustedMembers = map ( \( nm, ty, decs ) -> ( nm, adjustRuntimeArray ty, decs ) ) members
+    adjustRuntimeArray :: SPIRV.PrimTy -> SPIRV.PrimTy
+    adjustRuntimeArray ( SPIRV.RuntimeArray { eltTy, decs, usage } ) = SPIRV.Array { size = 1, eltTy, decs, usage }
+    adjustRuntimeArray ty = ty
+
+layoutStructMembers
     :: forall m. MonadError ShortText m
-    => ( SPIRV.PrimTy -> m Word32 )
-    -> Word32
+    => Layout
     -> Word32
     -> [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ]
     -> m ( [ ( Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations ) ], Word32 )
-layoutStructMembersWith _ _   offset []                     = pure ( [], offset )
-layoutStructMembersWith f ali offset ((name, ty, decs):nxt) = do
+layoutStructMembers _   offset []                     = pure ( [], offset )
+layoutStructMembers lay offset ((name, ty, decs):nxt) = do
   (newOffset, laidOutTy, newDecs)
      <- case ty of
-          SPIRV.Matrix { cols } -> do
-            stride <- f ty
-            laidOutTy <- layoutWith f offset ty
-            pure ( nextAligned (offset + cols * stride) ali
+          SPIRV.Matrix { rows, cols, entryTy } -> do
+            ( colSize, colAli ) <- primTySizeAndAli lay ( SPIRV.Vector rows ( SPIRV.Scalar entryTy ) )
+            let
+              matOffset :: Word32
+              matOffset = nextAligned offset colAli
+            laidOutTy <- layout lay matOffset ty
+            pure ( matOffset + cols * colSize
                  , laidOutTy
-                 , Set.fromList [ SPIRV.Offset offset, SPIRV.MatrixStride stride, SPIRV.ColMajor ]
+                 , Set.fromList [ SPIRV.Offset matOffset, SPIRV.MatrixStride colSize, SPIRV.ColMajor ]
                  )
-          SPIRV.Array { size } -> do
-            eltAlignment <- f ty
-            laidOutTy <- layoutWith f offset ty
-            pure ( nextAligned (offset + size * eltAlignment) ali
+          SPIRV.Array {} -> do
+            ( arrSize, arrAli ) <- primTySizeAndAli lay ty
+            let
+              arrOffset :: Word32
+              arrOffset = nextAligned offset arrAli
+            laidOutTy           <- layout lay arrOffset ty
+            pure ( arrOffset + arrSize
                  , laidOutTy
-                 , Set.singleton (SPIRV.Offset offset)
+                 , Set.singleton (SPIRV.Offset arrOffset)
                  )
-          SPIRV.RuntimeArray {} -> do
-            laidOutTy <- layoutWith f offset ty
-            pure ( maxBound -- should not come into play... we should be OK if this is the last struct member
+          SPIRV.RuntimeArray { eltTy } -> do
+            ( _, arrAli ) <- primTySizeAndAli lay ( SPIRV.Array 1 eltTy Set.empty SPIRV.NotForBuiltins )
+            let
+              arrOffset :: Word32
+              arrOffset = nextAligned offset arrAli
+            laidOutTy <- layout lay arrOffset ty
+            pure ( error "'layoutStructMembers': offset is undefined after a run-time array"
                  , laidOutTy
-                 , Set.singleton (SPIRV.Offset offset)
+                 , Set.singleton (SPIRV.Offset arrOffset)
                  )
           SPIRV.Struct as' decs' usage' -> do
-            ( innerMembers, additionalOffset ) <- layoutStructMembersWith f ali 0 as'
+            ( innerSize, innerAli ) <- primTySizeAndAli lay ty
+            ( innerMembers, _ ) <- layoutStructMembers lay 0 as'
             let
+              innerOffset :: Word32
+              innerOffset = nextAligned offset innerAli
               laidOutTy :: SPIRV.PrimTy
               laidOutTy = SPIRV.Struct innerMembers decs' usage'
-            pure ( nextAligned ( offset + additionalOffset ) ali
+            pure ( innerOffset + innerSize
                  , laidOutTy
-                 , Set.singleton (SPIRV.Offset offset)
+                 , Set.singleton (SPIRV.Offset innerOffset)
                  )
           _ -> do
-            align     <- f ty
-            laidOutTy <- layoutWith f offset ty
-            pure ( nextAligned (offset + align) ali
+            ( eltSize, eltAli ) <- primTySizeAndAli lay ty
+            let
+              eltOffset :: Word32
+              eltOffset = nextAligned offset eltAli
+            laidOutTy <- layout lay eltOffset ty
+            pure ( eltOffset + eltSize
                  , laidOutTy
-                 , Set.singleton (SPIRV.Offset offset)
+                 , Set.singleton (SPIRV.Offset eltOffset)
                  )
-  first ( (name, laidOutTy, Set.union newDecs decs) : ) <$> layoutStructMembersWith f ali newOffset nxt
+  first ( (name, laidOutTy, Set.union newDecs decs) : ) <$> layoutStructMembers lay newOffset nxt
+
+primTySizeAndAli :: MonadError ShortText m => Layout -> SPIRV.PrimTy -> m ( Word32, Word32 )
+primTySizeAndAli Base ty 
+  | Just ( LayoutablePrimTy ( _ :: Proxy ty ) ) <- layoutable @Base ty
+  = pure $ ( sizeOf @ty @Base, alignment @ty @Base )
+primTySizeAndAli Extended ty 
+  | Just ( LayoutablePrimTy ( _ :: Proxy ty ) ) <- layoutable @Extended ty
+  = pure $ ( sizeOf @ty @Extended, alignment @ty @Extended )
+primTySizeAndAli lay ty = throwError
+  ( "'primTySizeAndAli': cannot compute " <> ShortText.pack (show lay) <> " size & alignment for " <> ShortText.pack (show ty) )
+
+--------------------------------------------------------------------------------------------
+-- Some functions for promoting SPIR-V primitive types that can be laid-out.
+-- This allows us to re-use the type families that compute layout information
+-- at the value level.
+
+data SLayout (lay :: Layout) where
+  SBase      :: SLayout Base
+  SExtended  :: SLayout Extended
+  SLocations :: SLayout Locations
+
+class KnownLayout (lay :: Layout) where
+  layoutSing :: SLayout lay
+instance KnownLayout Base where
+  layoutSing = SBase
+instance KnownLayout Extended where
+  layoutSing = SExtended
+instance KnownLayout Locations where
+  layoutSing = SLocations
+
+data LayoutablePrimTy ( lay :: Layout ) where
+  LayoutablePrimTy :: ( Prim.PrimTy a, Poke a lay ) => Proxy a -> LayoutablePrimTy lay
+data LayoutableScalarTy ( lay :: Layout ) where
+  LayoutableScalarTy :: ( ScalarTy a, Poke a lay ) => Proxy a -> LayoutableScalarTy lay
+data LayoutableMatScalarTy ( lay :: Layout ) where
+  LayoutableMatScalarTy :: ( ScalarTy a, AdditiveGroup a, Semiring a, Poke a lay ) => Proxy a -> LayoutableMatScalarTy lay
+data LayoutableMembers (lay :: Layout) where
+  LayoutableMembers
+    :: ( PrimTyMap as, All (Pokeable lay) as
+       , KnownNat (SizeOf    lay (Struct as))
+       , KnownNat (Alignment lay (Struct as))
+       )
+    => Proxy as -> LayoutableMembers lay
+
+layoutable :: forall ( lay :: Layout ). KnownLayout lay => SPIRV.PrimTy -> Maybe ( LayoutablePrimTy lay )
+layoutable ( SPIRV.Scalar s )
+  | Just ( LayoutableScalarTy ( _ :: Proxy a ) ) <- layoutableScalar @lay s
+  = Just ( LayoutablePrimTy ( Proxy :: Proxy a ) )
+layoutable ( SPIRV.Vector n ( SPIRV.Scalar s ) )
+  | Just ( LayoutableScalarTy ( _ :: Proxy a ) ) <- layoutableScalar @lay s
+  , True <- 1 <= n
+  , SomeNat ( _ :: Proxy n ) <- someNatVal ( fromIntegral n )
+  , Refl <- ( unsafeCoerce Refl :: ( 1 <=? n ) :~: True )
+  , let
+      npp2 :: Natural
+      npp2
+        | n == 1    = 1
+        | otherwise = 2 ^ ( floor ( logBase 2 ( realToFrac ( n - 1 ) :: Float ) ) + 1 :: Int )
+  , SomeNat ( _ :: Proxy npp2 ) <- someNatVal npp2
+  , Refl <- ( unsafeCoerce Refl :: NextPositivePowerOf2 n :~: npp2 )
+  = Just $ LayoutablePrimTy ( Proxy :: Proxy ( V n a ) )
+layoutable ( SPIRV.Matrix m n a )
+  | Just ( LayoutableMatScalarTy ( _ :: Proxy a ) ) <- layoutableMatScalar @lay a
+  , SomeNat ( _ :: Proxy m ) <- someNatVal ( fromIntegral m )
+  , SomeNat ( _ :: Proxy n ) <- someNatVal ( fromIntegral n )
+  , True <- 1 <= n
+  , Refl <- ( unsafeCoerce Refl :: ( 1 <=? n ) :~: True )
+  , True <- 1 <= m
+  , Refl <- ( unsafeCoerce Refl :: ( 1 <=? m ) :~: True )
+  , let
+      npp2 :: Natural
+      npp2
+        | n == 1    = 1
+        | otherwise = 2 ^ ( floor ( logBase 2 ( realToFrac ( m - 1 ) :: Float ) ) + 1 :: Int )
+  , SomeNat ( _ :: Proxy npp2 ) <- someNatVal npp2
+  , Refl <- ( unsafeCoerce Refl :: NextPositivePowerOf2 m :~: npp2 )
+  = case layoutSing @lay of
+      SBase     -> Just $ LayoutablePrimTy ( Proxy :: Proxy ( M m n a ) )
+      SExtended -> Just $ LayoutablePrimTy ( Proxy :: Proxy ( M m n a ) )
+      _         -> Nothing
+layoutable ( SPIRV.Array { size, eltTy } )
+  | Just ( LayoutablePrimTy ( _ :: Proxy a ) ) <- layoutable @lay eltTy
+  , True <- 1 <= size
+  , SomeNat ( _ :: Proxy lg ) <- someNatVal ( fromIntegral size )
+  , Refl <- ( unsafeCoerce Refl :: ( 1 <=? lg ) :~: True )
+  = case layoutSing @lay of
+      SBase
+        | SomeNat ( _ :: Proxy sz ) <- someNatVal ( fromIntegral $ size * ( nextAligned ( sizeOf @a @Base ) ( alignment @a @Base ) ) )
+        , Refl <- ( unsafeCoerce Refl :: sz :~: SizeOf Base ( Array lg a ) )
+        -> Just $ LayoutablePrimTy ( Proxy :: Proxy ( Array lg a ) )
+      SExtended
+        | SomeNat ( _ :: Proxy sz ) <- someNatVal ( fromIntegral $ size * ( nextAligned ( sizeOf @a @Extended ) ( alignment @a @Extended `roundUp` 16 ) ) )
+        , Refl <- ( unsafeCoerce Refl :: sz :~: SizeOf Extended ( Array lg a ) )
+        , SomeNat ( _ :: Proxy ali ) <- someNatVal ( fromIntegral $ alignment @a @Extended `roundUp` 16 )
+        , Refl <- ( unsafeCoerce Refl :: ali :~: (Alignment Extended a `RoundUp` 16) )
+        -> Just $ LayoutablePrimTy ( Proxy :: Proxy ( Array lg a ) )
+      _ -> Nothing
+layoutable ( SPIRV.Struct { eltTys } ) = layoutableStruct @lay eltTys
+layoutable _ = Nothing
+
+layoutableScalar :: forall ( lay :: Layout ). SPIRV.ScalarTy -> Maybe ( LayoutableScalarTy lay )
+layoutableScalar ( SPIRV.Integer SPIRV.Unsigned SPIRV.W8  ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Word8  )
+layoutableScalar ( SPIRV.Integer SPIRV.Unsigned SPIRV.W16 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Word16 )
+layoutableScalar ( SPIRV.Integer SPIRV.Unsigned SPIRV.W32 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Word32 )
+layoutableScalar ( SPIRV.Integer SPIRV.Unsigned SPIRV.W64 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Word64 )
+layoutableScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W8  ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Int8   )
+layoutableScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W16 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Int16  )
+layoutableScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W32 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Int32  )
+layoutableScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W64 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Int64  )
+layoutableScalar ( SPIRV.Floating               SPIRV.W16 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Half   )
+layoutableScalar ( SPIRV.Floating               SPIRV.W32 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Float  )
+layoutableScalar ( SPIRV.Floating               SPIRV.W64 ) = Just $ LayoutableScalarTy ( Proxy :: Proxy Double )
+layoutableScalar _ = Nothing
+
+layoutableMatScalar :: forall ( lay :: Layout ). SPIRV.ScalarTy -> Maybe ( LayoutableMatScalarTy lay )
+layoutableMatScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W8  ) = Just $ LayoutableMatScalarTy ( Proxy :: Proxy Int8   )
+layoutableMatScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W16 ) = Just $ LayoutableMatScalarTy ( Proxy :: Proxy Int16  )
+layoutableMatScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W32 ) = Just $ LayoutableMatScalarTy ( Proxy :: Proxy Int32  )
+layoutableMatScalar ( SPIRV.Integer SPIRV.Signed   SPIRV.W64 ) = Just $ LayoutableMatScalarTy ( Proxy :: Proxy Int64  )
+layoutableMatScalar ( SPIRV.Floating               SPIRV.W16 ) = Just $ LayoutableMatScalarTy ( Proxy :: Proxy Half   )
+layoutableMatScalar ( SPIRV.Floating               SPIRV.W32 ) = Just $ LayoutableMatScalarTy ( Proxy :: Proxy Float  )
+layoutableMatScalar ( SPIRV.Floating               SPIRV.W64 ) = Just $ LayoutableMatScalarTy ( Proxy :: Proxy Double )
+layoutableMatScalar _ = Nothing
+
+layoutableStruct
+  :: forall ( lay :: Layout ) mbName decs
+  .  KnownLayout lay
+  => [ ( mbName, SPIRV.PrimTy, decs ) ]
+  -> Maybe ( LayoutablePrimTy lay )
+layoutableStruct elts = makeLayoutableStruct =<< layoutableStructMembers 0 elts
+  where
+    layoutableStructMembers :: Int -> [ ( mbName, SPIRV.PrimTy, decs ) ] -> Maybe [ ( SomeSymbol, LayoutablePrimTy lay ) ]
+    layoutableStructMembers _ [] = Just []
+    layoutableStructMembers i ( (_,ty,_) : tys )
+      | Just layoutableTy  <- layoutable @lay ty
+      , Just layoutableTys <- layoutableStructMembers (i+1) tys
+      , nm <- someSymbolVal ( show i )
+      = Just ( ( nm, layoutableTy ) : layoutableTys )
+    layoutableStructMembers _ _ = Nothing
+
+    makeLayoutableStruct :: [ ( SomeSymbol, LayoutablePrimTy lay ) ] -> Maybe ( LayoutablePrimTy lay )
+    makeLayoutableStruct members
+      | Just ( _, LayoutableMembers ( _ :: Proxy as ) ) <- makeLayoutableMembers 0 members
+      = case layoutSing @lay of
+          SBase
+            | let
+                structAli :: Word32
+                structAli = maximumAlignment @lay members
+            , SomeNat ( _ :: Proxy structAli ) <- someNatVal ( fromIntegral structAli )
+            , Refl <- ( unsafeCoerce Refl :: structAli :~: Alignment lay ( Struct as ) )
+            -> Just ( LayoutablePrimTy ( Proxy :: Proxy ( Struct as ) ) )
+          SExtended
+            | let
+                structAli :: Word32
+                structAli = maximumAlignment @lay members `roundUp` 16
+            , SomeNat ( _ :: Proxy structAli ) <- someNatVal ( fromIntegral structAli )
+            , Refl <- ( unsafeCoerce Refl :: structAli :~: Alignment lay ( Struct as ) )
+            -> Just ( LayoutablePrimTy ( Proxy :: Proxy ( Struct as ) ) )
+          _ -> Nothing
+    makeLayoutableStruct _ = Nothing
+
+    makeLayoutableMembers
+      :: Word32
+      -> [ ( SomeSymbol, LayoutablePrimTy lay ) ]
+      -> Maybe ( Word32, LayoutableMembers lay )
+    makeLayoutableMembers acc [] = case layoutSing @lay of
+      SBase     -> Just ( acc, LayoutableMembers ( Proxy :: Proxy ('[] :: [ Symbol :-> Type ] ) ) )
+      SExtended -> Just ( acc, LayoutableMembers ( Proxy :: Proxy ('[] :: [ Symbol :-> Type ] ) ) )
+      _         -> Nothing
+    makeLayoutableMembers acc ( ( SomeSymbol ( _ :: Proxy nm ), LayoutablePrimTy ( _ :: Proxy a ) ) : as )
+      | let
+          acc' :: Word32
+          acc' = nextAligned acc ( alignment @a @lay ) + sizeOf @a @lay
+      = case layoutSing @lay of
+          SBase
+            | Just ( sz, LayoutableMembers ( _ :: Proxy ( as :: [ fld :-> Type ] ) ) ) <- makeLayoutableMembers acc' as
+            , NamedField <- fieldKind @fld
+            , let
+                structSize :: Word32
+                structSize = sz
+                structAli :: Word32
+                structAli = max ( alignment @a @lay ) ( alignment @(Struct as) @lay )
+            , SomeNat ( _ :: Proxy structSize ) <- someNatVal ( fromIntegral structSize )
+            , Refl <- ( unsafeCoerce Refl :: structSize :~: ( SizeOf lay ( Struct ( ( nm ':-> a ) ': as ) ) ) )
+            , SomeNat ( _ :: Proxy structAli ) <- someNatVal ( fromIntegral structAli )
+            , Refl <- ( unsafeCoerce Refl :: structAli :~: Alignment lay ( Struct ( ( nm ':-> a ) ': as ) ) )
+            -> Just ( sz, LayoutableMembers ( Proxy :: Proxy ( ( nm ':-> a ) ': as ) ) )
+          SExtended
+            | Just ( sz, LayoutableMembers ( _ :: Proxy ( as :: [ fld :-> Type ] ) ) ) <- makeLayoutableMembers acc' as
+            , NamedField <- fieldKind @fld
+            , let
+                structSize :: Word32
+                structSize = sz `roundUp` 16
+                structAli :: Word32
+                structAli = ( max ( alignment @a @lay ) ( alignment @(Struct as) @lay ) ) `roundUp` 16
+            , SomeNat ( _ :: Proxy structSize ) <- someNatVal ( fromIntegral structSize )
+            , Refl <- ( unsafeCoerce Refl :: structSize :~: ( SizeOf lay ( Struct ( ( nm ':-> a ) ': as ) ) ) )
+            , SomeNat ( _ :: Proxy structAli ) <- someNatVal ( fromIntegral structAli )
+            , Refl <- ( unsafeCoerce Refl :: structAli :~: Alignment lay ( Struct ( ( nm ':-> a ) ': as ) ) )
+            -> Just ( sz, LayoutableMembers ( Proxy :: Proxy ( ( nm ':-> a ) ': as ) ) )
+          _ -> Nothing
+
+maximumAlignment
+  :: forall ( lay :: Layout )
+  .  KnownLayout lay
+  => [ ( SomeSymbol, LayoutablePrimTy lay ) ] -> Word32
+maximumAlignment [] = 1
+maximumAlignment ( (_, a) : as ) = case layoutSing @lay of
+  SExtended -> maxAliHelper a as `roundUp` 16
+  _         -> maxAliHelper a as
+  where
+    maxAliHelper ( LayoutablePrimTy ( _ :: Proxy a ) ) []
+      = alignment @a @lay
+    maxAliHelper ( LayoutablePrimTy ( _ :: Proxy a ) ) ( (_,b) : bs )
+      = max ( alignment @a @lay ) ( maxAliHelper b bs )
