@@ -62,8 +62,8 @@ import FIR.Examples.Paths
 type Width      = 1280 `WithDivisor` ( 2 * LocalSizeX )
 type Height     = 720  `WithDivisor` LocalSizeY
 type SS         = 4
-type LocalSizeX = 32
-type LocalSizeY = 36
+type LocalSizeX = 16
+type LocalSizeY = 8
 width, height, ss, localSizeX, localSizeY :: Semiring a => a
 width      = fromInteger ( Prelude.toInteger $ natVal ( Proxy @Width ) )
 height     = fromInteger ( Prelude.toInteger $ natVal ( Proxy @Height ) )

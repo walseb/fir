@@ -65,8 +65,8 @@ pattern Diffuse  = 1
 
 type Width      = 1280 `WithDivisor` LocalSizeX
 type Height     = 720  `WithDivisor` LocalSizeY
-type LocalSizeX = 32
-type LocalSizeY = 36
+type LocalSizeX = 16
+type LocalSizeY = 8
 
 width, height, localSizeX, localSizeY, mipWidth, mipHeight :: Semiring a => a
 width      = fromInteger ( Prelude.toInteger $ natVal ( Proxy @Width  ) )

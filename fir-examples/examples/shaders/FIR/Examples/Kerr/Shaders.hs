@@ -71,8 +71,8 @@ type ComputeDefs =
    , "kerr" ':-> Uniform '[ DescriptorSet 0, Binding 1 ] KerrInfo
    , "disk" ':-> Uniform '[ DescriptorSet 0, Binding 2 ] DiskInfo
    , "img"  ':-> Image2D '[ DescriptorSet 0, Binding 3 ] ( RGBA8 UNorm )
-   -- global size: 20 * 30 * 1
-   , "main" ':-> EntryPoint '[ LocalSize ( Width `Div` 20 ) ( Height `Div` 30 ) 1 ] Compute
+   -- global size: 60 * 75 * 1
+   , "main" ':-> EntryPoint '[ LocalSize ( Width `Div` 60 ) ( Height `Div` 75 ) 1 ] Compute
    ]
 
 computeShader :: Module ComputeDefs

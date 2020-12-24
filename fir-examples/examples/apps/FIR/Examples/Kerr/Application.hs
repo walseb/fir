@@ -157,7 +157,7 @@ data ResourceSet i st
   deriving ( Generic )
 
 globalSizes :: ( Word32, Word32, Word32 )
-globalSizes = ( 20, 30, 1 )
+globalSizes = ( 60, 75, 1 )
 
 ----------------------------------------------------------------------------
 -- Application.
