@@ -144,7 +144,7 @@ vulkanInstanceInfo appName = do
         { Vulkan.next                  = ()
         , Vulkan.flags                 = Vulkan.zero
         , Vulkan.applicationInfo       = Just appInfo
-        , Vulkan.enabledLayerNames     = Boxed.Vector.fromList ( "VK_LAYER_NV_nomad_release_public_2020_6_1" : enabledLayers )
+        , Vulkan.enabledLayerNames     = Boxed.Vector.fromList enabledLayers
         , Vulkan.enabledExtensionNames = mempty
         }
 
