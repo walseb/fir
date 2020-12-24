@@ -54,9 +54,9 @@ cabalResult (Failure CGOutputParseError)
   = Cabal.Error "Could not parse result of code-generation. Maybe something crashed?"
 cabalResult (Failure OtherError)
   = Cabal.Error "Encountered a problem loading test in ghci. Maybe something crashed?"
-cabalResult (Failure ModuleError)
+cabalResult (Failure FIRNotBuiltOrUnusableError)
   = Cabal.Error
       "Could not load 'fir' library.\n\
-      \Possible cause: package environment file missing or of wrong version."
+      \Possible cause: library not built, package environment file missing, or wrong version."
 cabalResult (Failure failure)
   = Cabal.Fail (show failure)

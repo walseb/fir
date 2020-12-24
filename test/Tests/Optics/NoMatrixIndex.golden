@@ -10,8 +10,7 @@ test\Tests\Optics\NoMatrixIndex.hs:31:10: error:
             put @"gl_Position" (Vec4 c c c 1)'
       In a stmt of a 'do' block:
         entryPoint
-          @"main"
-          @Vertex
+          @"main" @Vertex
           do c <- use @(Name "vertexData" :.: Entry 1 4)
              put @"gl_Position" (Vec4 c c c 1)
    |

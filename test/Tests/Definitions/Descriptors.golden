@@ -1,0 +1,21 @@
+
+test\Tests\Definitions\Descriptors.hs:28:11: error:
+    * More than one descriptor with DescriptorSet 1 and Binding 2:
+      '["desc3", "desc2", "desc1"]
+    * In the expression:
+        Module
+          do entryPoint
+               @"main" @Vertex
+               do xy <- use @(Name "desc1" :.: Name "v")
+                  abcd <- imageRead @"desc2" xy
+                  ....
+      In an equation for `program':
+          program
+            = Module
+                do entryPoint
+                     @"main" @Vertex
+                     do xy <- use @(Name "desc1" :.: Name "v")
+                        ....
+   |
+28 | program = Module do
+   |           ^^^^^^^^^^...

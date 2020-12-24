@@ -9,8 +9,7 @@ test\Tests\Geometry\NotGeometry.hs:34:5: error:
             emitVertex'
       In a stmt of a 'do' block:
         entryPoint
-          @"main"
-          @Fragment
+          @"main" @Fragment
           do col <- get @"in_colour"
              put @"out_colour" col
              emitVertex

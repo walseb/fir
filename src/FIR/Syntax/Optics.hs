@@ -65,7 +65,7 @@ import GHC.TypeLits.Compare
 
 -- vector
 import qualified Data.Vector as Unsized.Vector
-  ( (!) )
+  ( (!), (//) )
 
 -- vector-sized
 import qualified Data.Vector.Sized as Vector
@@ -699,15 +699,21 @@ instance ( KnownNat n, KnownNat i
       where
   set a (MkArray arr) = MkArray ( arr Vector.// [( fromIntegral (natVal (Proxy @i)), a)] )
 
-instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+instance ( KnownNat i
+         , empty ~ '[]
+         , r ~ a
+         )
       => Settable (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r) where
-instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+instance ( KnownNat i
+         , empty ~ '[]
+         , r ~ a
+         , PrimTy a
+         )
       => ReifiedSetter
            (Field_ (i :: Nat) :: Optic empty (RuntimeArray a) r)
       where
-  set = error "unreachable"
-  --set a (MkRuntimeArray arr)
-  --  = MkRuntimeArray ( arr Vector.// [( fromIntegral (natVal (Proxy @i)), a)] )
+  set a (MkRuntimeArray arr)
+    = MkRuntimeArray ( arr Unsized.Vector.// [( fromIntegral (natVal (Proxy @i)), a)] )
 
 instance ( IntegralTy ty
          , ix ~ '[ty]
@@ -725,15 +731,21 @@ instance ( KnownNat n
       where
   set i a (MkArray arr) = MkArray ( arr Vector.// [(fromIntegral i, a)] )
 
-instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+instance ( IntegralTy ty
+         , ix ~ '[ty]
+         , r ~ a
+         )
       => Settable (RTOptic_ :: Optic ix (RuntimeArray a) r) where
-instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+instance ( IntegralTy ty
+         , ix ~ '[ty]
+         , r ~ a
+         , PrimTy a
+         )
       => ReifiedSetter
            (RTOptic_ :: Optic ix (RuntimeArray a) r)
       where
-  set = error "unreachable"
-  --set i a (MkRuntimeArray arr)
-  --  = MkRuntimeArray ( arr Vector.// [(fromIntegral i, a)] )
+  set i a (MkRuntimeArray arr)
+    = MkRuntimeArray ( arr Unsized.Vector.// [(fromIntegral i, a)] )
   
 instance 
     TypeError (    Text "set: attempt to update array element \
@@ -978,10 +990,10 @@ instance ( empty ~ '[]
       where
   set a = fmap ( set @(OfType ty :: Optic '[] a ty) a )
 
-instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+instance ( TypeError ( Text "Cannot use 'OfType' optic on a runtime array." ) )
       => Settable (OfType_ ty :: Optic empty (RuntimeArray a) r)
       where
-instance ( TypeError ( Text "Cannot use 'put'/'set' on runtime array." ) )
+instance ( TypeError ( Text "Cannot use 'OfType' optic on a runtime array." ) )
       => ReifiedSetter (OfType_ ty :: Optic empty (RuntimeArray a) r)
       where
   set = error "unreachable"

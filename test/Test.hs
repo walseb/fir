@@ -73,7 +73,7 @@ data TestFailure
   | CodeGenFail  Text
   | ValidateFail Text
   | CGOutputParseError
-  | ModuleError
+  | FIRNotBuiltOrUnusableError
   | OtherError
   deriving stock ( Eq, Show )
 
@@ -153,7 +153,7 @@ compileTest flags testName = do
                     ( l1 : _ )
                       | Text.take 43 l1 == "<command line>: cannot satisfy -package fir"
                       -> do removeFile err
-                            pure (Failure ModuleError)
+                            pure (Failure FIRNotBuiltOrUnusableError)
                     _ -> do renameFile err test
                             pure res
           Success
@@ -232,7 +232,7 @@ typeCheck testName = do
         let mbTcOutput = parseTcOutput testContents
 
         case mbTcOutput of
-          Nothing -> pure ( Failure ModuleError )
+          Nothing -> pure ( Failure FIRNotBuiltOrUnusableError )
           Just tcOutput -> do
 
             goldenExists <- doesFileExist gold

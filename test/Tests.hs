@@ -38,6 +38,9 @@ allTests
           , ( "IntWidth"  , Typecheck )
           , ( "Sign"      , Validate  )
           ]
+    , Folder "Definitions"
+          [ ( "Descriptors", Typecheck )
+          ]
     , Folder "Control"
           [ ( "Def"      , Validate )
           , ( "Loop"     , Validate )
@@ -100,9 +103,6 @@ allTests
           ]
     , Folder "ProgramState"
           [ ( "Shadowing", Validate)
-          ]
-    , Folder "RayTracing"
-          [ ( "RayGeneration", Validate)
           ]
     , Folder "Small"
           [ ( "HalfArithmetic" , Validate )

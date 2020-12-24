@@ -5,16 +5,14 @@ test\Tests\Components\FloatWidth.hs:31:12: error:
         - Double with Location 0, Component 2 requires Double.
     * In the second argument of `($)', namely
         `entryPoint
-           @"main"
-           @Vertex
+           @"main" @Vertex
            do ~(Vec2 x y) <- get @"in_col1"
               z <- get @"in_col2"
               put @"out_col" (Vec4 x y (convert z) 1)'
       In the expression:
         Module
           $ entryPoint
-              @"main"
-              @Vertex
+              @"main" @Vertex
               do ~(Vec2 x y) <- get @"in_col1"
                  z <- get @"in_col2"
                  put @"out_col" (Vec4 x y (convert z) 1)
@@ -22,8 +20,7 @@ test\Tests\Components\FloatWidth.hs:31:12: error:
           program
             = Module
                 $ entryPoint
-                    @"main"
-                    @Vertex
+                    @"main" @Vertex
                     do ~(Vec2 x y) <- get @"in_col1"
                        z <- get @"in_col2"
                        put @"out_col" (Vec4 x y (convert z) 1)

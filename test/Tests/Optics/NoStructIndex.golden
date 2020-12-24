@@ -12,8 +12,7 @@ test\Tests\Optics\NoStructIndex.hs:42:17: error:
             #gl_Position .= position'
       In a stmt of a 'do' block:
         entryPoint
-          @"main"
-          @Vertex
+          @"main" @Vertex
           do position <- use @(Name "vertexData" :.: Index 5)
              #gl_Position .= position
    |

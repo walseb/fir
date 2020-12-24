@@ -30,5 +30,5 @@ program :: Module Defs
 program =
   Module $ entryPoint @"main" @Fragment do
     pos <- get @"in_pos"
-    col <- use @(ImageTexel "image") (MinLOD 0.5 NilOps) pos
+    col <- use @(ImageTexel "image") (MinLOD ( 0.5 :: Code Float ) NilOps) pos
     put @"out_col" col

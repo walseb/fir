@@ -14,7 +14,6 @@ module Tests.Inference.Ising2 where
 
 -- fir
 import FIR
-import FIR.Validation.Bindings
 
 ------------------------------------------------
 -- Work sizes.

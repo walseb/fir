@@ -1,0 +1,22 @@
+
+test\Tests\Array\Runtime.hs:33:15: error:
+    * 'get'/'use': cannot focus on type 
+        RuntimeArray Float
+      within binding named "storage", as it is (or contains) an opaque type.
+    * In a stmt of a 'do' block:
+        buffer <- use @(Name "storage" :.: Name "buffer")
+      In the third argument of `entryPoint', namely
+        `do buffer <- use @(Name "storage" :.: Name "buffer")
+            let res :: Code Float
+                res = view @(AnIndex (Code Word32)) 1728 buffer
+            put @"out" res'
+      In a stmt of a 'do' block:
+        entryPoint
+          @"main" @Fragment
+          do buffer <- use @(Name "storage" :.: Name "buffer")
+             let res :: Code Float
+                 res = view @(AnIndex (Code Word32)) 1728 buffer
+             put @"out" res
+   |
+33 |     buffer <- use @( Name "storage" :.: Name "buffer" )
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

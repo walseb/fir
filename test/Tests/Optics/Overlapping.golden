@@ -23,8 +23,7 @@ test\Tests\Optics\Overlapping.hs:33:5: error:
               (Lit (4 :& 5 :& End))'
       In a stmt of a 'do' block:
         entryPoint
-          @"main"
-          @Vertex
+          @"main" @Vertex
           do def @"struct" @RW @MyStruct (Lit (3 :& True :& End))
              assign
                @(Name "struct"

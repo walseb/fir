@@ -58,3 +58,5 @@ program = Module $ entryPoint @"main" @Geometry do
   put @"out_color" ( view @(Index 2) color )
   emitVertex
   endPrimitive
+
+  pure ( Lit () )
