@@ -593,7 +593,7 @@ layout _ _ ty@(SPIRV.Vector {}) = pure ty
 layout _ _ mat@(SPIRV.Matrix {})
   = pure mat -- cannot decorate matrix directly, must do so indirectly using arrays and structs
 layout lay _ (SPIRV.Array l mat@(SPIRV.Matrix { rows, entryTy }) decs usage) = do
-  arrStride <- uncurry nextAligned <$> primTySizeAndAli lay mat
+  arrStride <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Array 1 mat Set.empty SPIRV.NotForBuiltins )
   matStride <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Vector rows ( SPIRV.Scalar entryTy ) )
   pure ( SPIRV.Array l mat
             ( Set.union
@@ -603,11 +603,11 @@ layout lay _ (SPIRV.Array l mat@(SPIRV.Matrix { rows, entryTy }) decs usage) = d
             usage
         )
 layout lay off (SPIRV.Array l elt decs usage) = do
-  arrStride  <- uncurry nextAligned <$> primTySizeAndAli lay elt
+  arrStride  <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Array 1 elt Set.empty SPIRV.NotForBuiltins )
   laidOutElt <- layout lay off elt
   pure ( SPIRV.Array l laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
 layout lay _ (SPIRV.RuntimeArray mat@(SPIRV.Matrix { rows, entryTy }) decs usage) = do
-  arrStride <- uncurry nextAligned <$> primTySizeAndAli lay mat
+  arrStride <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Array 1 mat Set.empty SPIRV.NotForBuiltins )
   matStride <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Vector rows ( SPIRV.Scalar entryTy ) )
   pure ( SPIRV.RuntimeArray mat
             ( Set.union
@@ -617,7 +617,7 @@ layout lay _ (SPIRV.RuntimeArray mat@(SPIRV.Matrix { rows, entryTy }) decs usage
             usage
         )
 layout lay off (SPIRV.RuntimeArray elt decs usage) = do
-  arrStride  <- uncurry nextAligned <$> primTySizeAndAli lay elt
+  arrStride  <- uncurry nextAligned <$> primTySizeAndAli lay ( SPIRV.Array 1 elt Set.empty SPIRV.NotForBuiltins )
   laidOutElt <- layout lay off elt
   pure ( SPIRV.RuntimeArray laidOutElt (Set.insert (SPIRV.ArrayStride arrStride) decs) usage )
 layout lay off (SPIRV.Struct as decs structUsage) = do
