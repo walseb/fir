@@ -410,6 +410,34 @@ pattern ControlBarrier :: Operation
 pattern ControlBarrier = Code 224
 pattern MemoryBarrier :: Operation
 pattern MemoryBarrier = Code 225
+-- group and subgroup operations
+pattern GroupAsyncCopy :: Operation
+pattern GroupAsyncCopy = Code 259
+pattern GroupWaitEvents :: Operation
+pattern GroupWaitEvents = Code 260
+pattern GroupAll :: Operation
+pattern GroupAll = Code 261
+pattern GroupAny :: Operation
+pattern GroupAny = Code 262
+pattern GroupBroadcast :: Operation
+pattern GroupBroadcast = Code 263
+pattern GroupIAdd :: Operation
+pattern GroupIAdd = Code 264
+pattern GroupFAdd :: Operation
+pattern GroupFAdd = Code 265
+pattern GroupFMin :: Operation
+pattern GroupFMin = Code 266
+pattern GroupUMin :: Operation
+pattern GroupUMin = Code 267
+pattern GroupSMin :: Operation
+pattern GroupSMin = Code 268
+pattern GroupFMax :: Operation
+pattern GroupFMax = Code 269
+pattern GroupUMax :: Operation
+pattern GroupUMax = Code 270
+pattern GroupSMax :: Operation
+pattern GroupSMax = Code 271
+
 -- control flow
 pattern Phi               :: Operation
 pattern Phi               = Code 245
@@ -873,6 +901,19 @@ showOperation EmitVertex         = "EmitVertex"
 showOperation EndPrimitive       = "EndPrimitive"
 showOperation EmitStreamVertex   = "EmitStreamVertex"
 showOperation EndStreamPrimitive = "EndStreamPrimitive"
+showOperation GroupAsyncCopy = "GroupAsyncCopy"
+showOperation GroupWaitEvents = "GroupWaitEvents"
+showOperation GroupAll = "GroupAll"
+showOperation GroupAny = "GroupAny"
+showOperation GroupBroadcast = "GroupBroadcast"
+showOperation GroupIAdd = "GroupIAdd"
+showOperation GroupFAdd = "GroupFAdd"
+showOperation GroupFMin = "GroupFMin"
+showOperation GroupUMin = "GroupUMin"
+showOperation GroupSMin = "GroupSMin"
+showOperation GroupFMax = "GroupFMax"
+showOperation GroupUMax = "GroupUMax"
+showOperation GroupSMax = "GroupSMax"
 showOperation Phi = "Phi"
 showOperation LoopMerge = "LoopMerge"
 showOperation SelectionMerge = "SelectionMerge"

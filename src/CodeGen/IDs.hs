@@ -111,7 +111,7 @@ import CodeGen.State
   , addMemberDecoration, addMemberDecorations
   )
 import FIR.Builtin
-  ( modelBuiltins )
+  ( modelBuiltins, builtinCapabilities )
 import FIR.Layout
   ( inferPointerLayout )
 import FIR.Prim.RayTracing
@@ -440,13 +440,16 @@ bindingID :: forall m.
              ) => ShortText -> m (ID, SPIRV.PrimTy)
 bindingID varName
   = do  ctxt <- use _functionContext
-
+        bk <- view _backend
         case ctxt of
           InEntryPoint modelName modelInfo _
             | Just ptrTy <- lookup varName (modelBuiltins modelInfo)
               ->
                 do -- this is a built-in variable, use 'builtinID'
                   builtin <- builtinID modelName modelInfo varName ptrTy
+                  -- requirement
+                  let requirements = builtinCapabilities bk varName
+                  requireCapabilities requirements
                   -- note that 'builtinID' sets the necessary decorations for the builtin
                   pure (builtin, SPIRV.pointerTy ptrTy)
           _ ->

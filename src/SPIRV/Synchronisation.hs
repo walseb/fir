@@ -1,7 +1,10 @@
-{-# LANGUAGE DerivingVia       #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE DerivingVia           #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
 Module: SPIRV.Synchronisation
@@ -34,6 +37,8 @@ import Data.Word
 -- fir
 import Data.Binary.Class.Put
   ( Put(..), PutWord32Enum(..) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )
 
 --------------------------------------------------
 
@@ -50,6 +55,30 @@ data SynchronisationScope
 
 synchronisationScope :: SynchronisationScope -> Word32
 synchronisationScope = fromIntegral . fromEnum
+
+instance Demotable SynchronisationScope where
+  type Demote SynchronisationScope = SynchronisationScope
+
+instance Known SynchronisationScope 'CrossDevice where
+  known = CrossDevice
+
+instance Known SynchronisationScope 'Device where
+  known = Device
+
+instance Known SynchronisationScope 'Workgroup where
+  known = Workgroup
+  
+instance Known SynchronisationScope 'Subgroup where
+  known = Subgroup
+  
+instance Known SynchronisationScope 'Invocation where
+  known = Invocation
+
+instance Known SynchronisationScope 'QueueFamily where
+  known = QueueFamily
+
+instance Known SynchronisationScope 'ShaderCall where
+  known = ShaderCall
 
 data MemorySemantics
   = MemorySemantics

@@ -1,5 +1,9 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
 Module: SPIRV.PrimOp
@@ -30,8 +34,10 @@ module SPIRV.PrimOp
   , ConvPrimOp(..)
   , GeomPrimOp(..)
   , SyncPrimOp(..)
+  , GroupPrimOp(..)
   , RayPrimOp(..)
-  , opAndReturnType, op
+  , GroupOp(..)
+  , opAndReturnType, op, groupOperationOp
   ) where
 
 -- base
@@ -39,6 +45,7 @@ import Control.Arrow
   ( second )
 import Data.Word
   ( Word32 )
+
 import Prelude
   hiding ( Ordering(..) )
 
@@ -50,6 +57,8 @@ import SPIRV.ScalarTy
   ( ScalarTy(..), Signedness(..) )
 import SPIRV.Stage
   ( Backend(Vulkan, OpenCL) )
+import Data.Type.Known
+  ( Demotable(Demote), Known(known) )  
 
 -------------------------------------------------------------------------------
 -- names of primitive operations
@@ -67,6 +76,7 @@ data PrimOp where
   CastOp  ::                                    PrimTy   -> PrimOp
   GeomOp  :: GeomPrimOp                                  -> PrimOp
   SyncOp  :: SyncPrimOp                                  -> PrimOp
+  GroupNumOp :: GroupPrimOp                  -> ScalarTy -> PrimOp
   RayOp   :: RayPrimOp                                   -> PrimOp
   deriving stock Show
 
@@ -179,12 +189,45 @@ data SyncPrimOp
   | MemorySync
   deriving stock Show
 
+data GroupOp
+  = Reduce
+  | InclusiveScan
+  | ExclusiveScan
+  | ClusteredReduce
+
+instance Demotable GroupOp where
+  type Demote GroupOp = GroupOp
+
+instance Known GroupOp 'Reduce where
+  known = Reduce
+
+instance Known GroupOp 'InclusiveScan where
+  known = InclusiveScan
+
+instance Known GroupOp 'ExclusiveScan where
+  known = ExclusiveScan
+
+instance Known GroupOp 'ClusteredReduce where
+  known = ClusteredReduce  
+
+data GroupPrimOp
+  = Group_Add
+  | Group_Min
+  | Group_Max
+  deriving stock Show
+
 data RayPrimOp
   = RT_ReportIntersection
   | RT_IgnoreIntersection
   | RT_TerminateRay
   | RT_AccelerationStructureFromDeviceAddress
   deriving stock Show
+
+groupOperationOp :: GroupOp ->  Word32
+groupOperationOp Reduce = 0
+groupOperationOp InclusiveScan = 1
+groupOperationOp ExclusiveScan = 2
+groupOperationOp ClusteredReduce = 3
 
 backendOp :: Backend -> Operation -> Operation -> Operation
 backendOp Vulkan o _ = o
@@ -219,6 +262,8 @@ opAndReturnType _ (GeomOp gOp)
   = geomOp gOp
 opAndReturnType _ (SyncOp sOp)
   = syncOp sOp
+opAndReturnType bk (GroupNumOp gOp s)
+  = second Scalar (groupOp bk gOp s)
 opAndReturnType _ (RayOp rOp)
   = rayOp rOp
 
@@ -397,6 +442,16 @@ geomOp EndGeometryPrimitive = ( EndPrimitive, Unit )
 syncOp :: SyncPrimOp -> (Operation, PrimTy)
 syncOp ControlSync = ( ControlBarrier, Unit )
 syncOp MemorySync  = ( MemoryBarrier , Unit )
+
+groupOp :: Backend -> GroupPrimOp -> ScalarTy -> (Operation, ScalarTy)
+groupOp _  Group_Add  (Floating         w) = ( GroupFAdd   , Floating         w )
+groupOp _  Group_Add  (Integer s        w) = ( GroupIAdd   , Integer s        w )
+groupOp _  Group_Max  (Floating         w) = ( GroupFMax   , Floating         w )
+groupOp _  Group_Max  (Integer Signed   w) = ( GroupSMax   , Integer Signed   w )
+groupOp _  Group_Max  (Integer Unsigned w) = ( GroupUMin   , Integer Unsigned w )
+groupOp _  Group_Min  (Floating         w) = ( GroupFMin   , Floating         w )
+groupOp _  Group_Min  (Integer Signed   w) = ( GroupSMin   , Integer Signed   w )
+groupOp _  Group_Min  (Integer Unsigned w) = ( GroupUMin   , Integer Unsigned w )
 
 rayOp :: RayPrimOp -> (Operation, PrimTy)
 rayOp RT_ReportIntersection                     = ( ReportIntersection, Boolean )

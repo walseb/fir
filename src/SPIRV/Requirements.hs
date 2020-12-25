@@ -41,6 +41,10 @@ import           SPIRV.Stage
   ( ExecutionModel(Stage), Stage(..), Shader, Backend(..) )
 import qualified SPIRV.Stage    as Stage
   ( ExecutionModel(..), Shader(..) )
+import SPIRV.PrimOp
+  ( VecPrimOp(..))
+import FIR.Prim.Op
+  (Vectorise)
 
 --------------------------------------------------------------------------
 -- primitive operations
@@ -50,6 +54,8 @@ primOpCapabilities bk ( op bk -> SatConvertSToU ) = [ ComputeKernel ]
 primOpCapabilities bk ( op bk -> SatConvertUToS ) = [ ComputeKernel ]
 primOpCapabilities _  ( MatOp {}                ) = [ Matrix ]
 primOpCapabilities _  ( RayOp {}                ) = [ RayTracingKHR ]
+primOpCapabilities _  ( GroupNumOp _ _          ) = [ Groups, GroupNonUniformArithmetic ]
+primOpCapabilities bk ( VecOp ( Vectorise primop ) _ _ ) = primOpCapabilities bk primop
 primOpCapabilities _  _                           = [ ]
 
 --------------------------------------------------------------------------

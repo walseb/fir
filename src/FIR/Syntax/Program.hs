@@ -68,6 +68,9 @@ module FIR.Syntax.Program
   -- * Memory synchronisation primitive operations
   , controlBarrier, memoryBarrier
 
+  , HasGroupAdd(groupAdd)
+  , HasGroupMinMax(groupMin, groupMax)
+
     -- * Instances
 
     -- ** Syntactic type class
@@ -139,7 +142,7 @@ import Control.Type.Optic
 import Data.Constraint.All
   ( All )
 import Data.Type.Known
-  ( Known )
+  ( Known, knownValue  )
 import Data.Type.List
   ( KnownLength(sLength), Postpend )
 import Data.Type.Map
@@ -149,6 +152,7 @@ import FIR.AST
   , Syntactic(Internal,toAST,fromAST)
   , SyntacticVal, InternalType
   , primOp
+  , pattern MkID
   , HasUndefined(undefined)
   , AugUser, AugAssigner
   , FunctionHandle
@@ -185,6 +189,8 @@ import FIR.Prim.Singletons
   ( PrimTy, ScalarTy, IntegralTy
   , KnownVars
   )
+import FIR.Prim.Op
+  ( Vectorise(Vectorise))
 import FIR.Prim.RayTracing
   ( RayQueryState )
 import FIR.Prim.Struct
@@ -241,13 +247,17 @@ import Math.Logic.Bits
 import Math.Logic.Class
   ( Eq(..), Boolean(..), Ord(..) )
 import qualified SPIRV.PrimOp          as SPIRV
-  ( GeomPrimOp(..), SyncPrimOp(..) )
+  ( GeomPrimOp(..), SyncPrimOp(..), GroupPrimOp(..), GroupOp(..), groupOperationOp)
 import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Synchronisation as SPIRV
   ( SynchronisationScope, MemorySemantics
   , synchronisationScope, memorySemanticsBitmask
   )
 
+import FIR.Prim.Singletons
+ (primTy)
+import CodeGen.Instruction
+  ( ID(..) )
 --------------------------------------------------------------------------
 -- * Monadic control operations
 
@@ -684,6 +694,39 @@ instance
         )
   where
   arrayLength' = fromAST $ ArrayLength ( Proxy :: Proxy structName ) ( Proxy :: Proxy memberIndex )
+
+--------------------------------------------------------------------------
+-- subgroup operations
+
+groupOperationToWord32 :: SPIRV.GroupOp -> Code Word32
+groupOperationToWord32 op = MkID ( ID (SPIRV.groupOperationOp op), primTy @Word32 )
+
+class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp)
+      => HasGroupAdd scope groupOp a ( i :: ProgramState ) where
+  groupAdd :: Code a -> Program i i ( Code a )
+
+class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp)
+      => HasGroupMinMax scope groupOp a ( i :: ProgramState ) where  
+  groupMin :: Code a -> Program i i ( Code a )
+  groupMax :: Code a -> Program i i ( Code a )
+
+instance (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Semiring a )
+      => HasGroupAdd scope groupOp a i where
+  groupAdd = primOp @'(i, a) @SPIRV.Group_Add (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+
+instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Ord a )
+      => HasGroupMinMax scope groupOp a i where  
+  groupMin = primOp @'(i, a) @SPIRV.Group_Min (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+  groupMax = primOp @'(i, a) @SPIRV.Group_Max (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+
+instance {-# OVERLAPPING #-} (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Semiring a, KnownNat n )
+       => HasGroupAdd scope groupOp ( V n a ) i where
+  groupAdd = primOp @'(i, V n a) @('Vectorise SPIRV.Group_Add) (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+
+instance {-# OVERLAPPING #-} ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Ord a, KnownNat n )
+       => HasGroupMinMax scope groupOp ( V n a ) i where
+  groupMin = primOp @'(i, V n a) @('Vectorise SPIRV.Group_Min) (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+  groupMax = primOp @'(i, V n a) @('Vectorise SPIRV.Group_Max) (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
 
 --------------------------------------------------------------------------
 -- geometry shader primitive instructions

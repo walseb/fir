@@ -88,6 +88,10 @@ import SPIRV.Stage
   , RayShader(..), RayShaderInfo(..)
   )
 
+import qualified SPIRV.Stage as SPIRV
+  ( Backend(Vulkan) )
+import qualified SPIRV.Capability as SPIRV
+
 --------------------------------------------------------------------------
 
 type ModelBuiltins (info :: ExecutionInfo Nat stage)
@@ -171,6 +175,10 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        , "gl_LocalInvocationID"    ':-> Var R ( V 3 Word32 )
        , "gl_GlobalInvocationID"   ':-> Var R ( V 3 Word32 )
        , "gl_LocalInvocationIndex" ':-> Var R Word32
+       , "gl_SubgroupInvocationID" ':-> Var R Word32
+       , "gl_SubgroupID"           ':-> Var R Word32
+       , "gl_SubgroupSize"         ':-> Var R Word32
+       , "gl_SubgroupMaxSize"      ':-> Var R Word32
        ]
   ModelBuiltins' ( KernelInfo _ )
     = '[ "cl_WorkDim"            ':-> Var R Word32
@@ -296,3 +304,7 @@ builtinDecorations builtin
       Set.empty
       ( Set.singleton . SPIRV.Builtin )
       ( SPIRV.readBuiltin builtin )
+
+builtinCapabilities :: SPIRV.Backend -> ShortText -> Set.Set SPIRV.Capability
+builtinCapabilities SPIRV.Vulkan "gl_SubgroupInvocationID" = Set.singleton SPIRV.GroupNonUniform 
+builtinCapabilities _ _ = Set.empty

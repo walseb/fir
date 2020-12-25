@@ -212,6 +212,31 @@ pattern StorageImageWriteWithoutFormat = Capability 56
 pattern MultiViewport :: Capability
 pattern MultiViewport = Capability 57
 
+-- no 61
+pattern GroupNonUniform :: Capability
+pattern GroupNonUniform = Capability 61
+
+pattern GroupNonUniformVote :: Capability
+pattern GroupNonUniformVote = Capability 62
+
+pattern GroupNonUniformArithmetic :: Capability
+pattern GroupNonUniformArithmetic = Capability 63
+
+pattern GroupNonUniformBallot :: Capability
+pattern GroupNonUniformBallot = Capability 64
+
+pattern GroupNonUniformShuffle :: Capability
+pattern GroupNonUniformShuffle = Capability 65
+
+pattern GroupNonUniformShuffleRelative :: Capability
+pattern GroupNonUniformShuffleRelative = Capability 66
+
+pattern GroupNonUniformClustered :: Capability
+pattern GroupNonUniformClustered = Capability 67
+
+pattern GroupNonUniformQuad :: Capability
+pattern GroupNonUniformQuad = Capability 68
+
 -- extensions
 pattern RayQueryKHR :: Capability
 pattern RayQueryKHR = Capability 4471
@@ -282,6 +307,14 @@ showCapability GeometryStreams = "GeometryStreams"
 showCapability StorageImageReadWithoutFormat = "StorageImageReadWithoutFormat"
 showCapability StorageImageWriteWithoutFormat = "StorageImageWriteWithoutFormat"
 showCapability MultiViewport = "MultiViewport"
+showCapability GroupNonUniform = "GroupNonUniform"
+showCapability GroupNonUniformVote = "GroupNonUniformVote"
+showCapability GroupNonUniformArithmetic = "GroupNonUniformArithmetic"
+showCapability GroupNonUniformBallot = "GroupNonUniformBallot"
+showCapability GroupNonUniformShuffle = "GroupNonUniformShuffle"
+showCapability GroupNonUniformShuffleRelative = "GroupNonUniformShuffleRelative"
+showCapability GroupNonUniformClustered = "GroupNonUniformClustered"
+showCapability GroupNonUniformQuad = "GroupNonUniformQuad"
 showCapability RayTraversalPrimitiveCullingKHR = "RayTraversalPrimitiveCullingKHR"
 showCapability RayTracingKHR = "RayTracingKHR"
 showCapability MeshShadingNV = "MeshShadingNV"

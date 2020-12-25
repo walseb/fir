@@ -452,6 +452,18 @@ instance PrimOp SPIRV.MemorySync (i :: ProgramState) where
   type PrimOpAugType SPIRV.MemorySync i = Val Word32 :--> Val Word32 :--> Eff i i ()
   opName = SPIRV.SyncOp SPIRV.MemorySync
 
+-- subgroup instructions
+instance ( ScalarTy a, Semiring a) => PrimOp SPIRV.Group_Add '(i :: ProgramState, a)  where
+    type PrimOpAugType SPIRV.Group_Add '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupNumOp SPIRV.Group_Add (scalarTy @a)
+instance ( ScalarTy a, Ord a) => PrimOp SPIRV.Group_Min '(i :: ProgramState, a)  where
+    type PrimOpAugType SPIRV.Group_Min '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupNumOp SPIRV.Group_Min (scalarTy @a)
+instance ( ScalarTy a, Ord a) => PrimOp SPIRV.Group_Max '(i :: ProgramState, a)  where
+    type PrimOpAugType SPIRV.Group_Max '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupNumOp SPIRV.Group_Max (scalarTy @a)
+
+
 -- ray tracing instructions
 instance PrimOp SPIRV.RT_ReportIntersection (i :: ProgramState) where
   type PrimOpAugType SPIRV.RT_ReportIntersection i = Val Float :--> Val Word32 :--> Eff i i Bool
@@ -472,6 +484,15 @@ instance PrimOp SPIRV.RT_AccelerationStructureFromDeviceAddress '() where
 val :: forall n. KnownNat n => Word32
 val = fromIntegral ( natVal (Proxy @n) )
 
+instance (KnownNat n, ScalarTy a, Semiring a) => PrimOp ('Vectorise SPIRV.Group_Add) '(i :: ProgramState, V n a)  where
+    type PrimOpAugType ('Vectorise SPIRV.Group_Add) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Add @'(i, a))) (val @n) (scalarTy @a)
+instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.Group_Min) '(i :: ProgramState, V n a)  where
+    type PrimOpAugType ('Vectorise SPIRV.Group_Min) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Min @'(i, a))) (val @n) (scalarTy @a)
+instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.Group_Max) '(i :: ProgramState, V n a)  where
+    type PrimOpAugType ('Vectorise SPIRV.Group_Max) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Max @'(i, a))) (val @n) (scalarTy @a)        
 
 instance ( KnownNat n, ScalarTy a, Bits a ) => PrimOp ('Vectorise SPIRV.BitAnd) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.BitAnd) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
