@@ -71,6 +71,7 @@ import qualified Vulkan
 import qualified Vulkan.CStruct.Extends as Vulkan
   ( SomeStruct(..) )
 import qualified Vulkan.Requirement as Vulkan
+import qualified Vulkan.Zero as Vulkan
 
 -- vulkan-utils
 import qualified Vulkan.Utils.Initialization as Vulkan.Utils

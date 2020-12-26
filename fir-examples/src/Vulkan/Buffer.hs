@@ -29,6 +29,7 @@ import qualified Data.Vector as Boxed.Vector
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan.Zero as Vulkan
 
 -- fir
 import FIR

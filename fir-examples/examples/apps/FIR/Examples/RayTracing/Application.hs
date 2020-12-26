@@ -101,12 +101,15 @@ import qualified Data.Vector.Sized as V
 import qualified Vulkan
 import qualified Vulkan.CStruct.Extends as Vulkan
 import qualified Vulkan.Requirement     as Vulkan
+import qualified Vulkan.Zero            as Vulkan
 
 -- fir
 import FIR
   ( ModuleRequirements(..)
   , ShaderGroup(..)
   , Struct((:&),End)
+  , Name, Swizzle, type (:.:)
+  , view
   , runCompilationsTH
   )
 import Math.Linear
@@ -129,9 +132,9 @@ import FIR.Examples.RayTracing.Luminaire
 import FIR.Examples.RayTracing.Material
   ( Material(MaterialProperties) )
 import FIR.Examples.RayTracing.Scene
-  ( Scene )
-import FIR.Examples.RayTracing.Scenes.CornellBox
-  ( cornellBox )
+  ( Scene(sceneCamera) )
+import FIR.Examples.RayTracing.Scenes
+  ( chooseScene )
 import FIR.Examples.RayTracing.Shaders
   ( Shaders(..), ShaderGroups(..), allShaderCompilations )
 import qualified FIR.Examples.RayTracing.Shaders as RayTracing
@@ -236,17 +239,14 @@ rayTracing = runVulkan initialState do
         pure reqs
 
   -------------------------------------------
-  -- Choose scene (baked in for now )
+  -- Choose scene
 
+  scene <- liftIO chooseScene
   let
-    scene :: Scene
-    scene = cornellBox
     initialUBO :: UBO
-    initialUBO = initialCamera :& 0 :& End
-    initialCamera :: CameraCoordinates
-    initialCamera = V4 50 -40.8 35 0 :& V3 1 0 0 :& V3 0 1 0 :& V4 0 0 1 0 :& End
+    initialUBO = sceneCamera scene :& 0 :& End
 
-  modifying _observer ( \ obs -> obs { position = V3 50 -40.8 35 } )
+  modifying _observer ( \ obs -> obs { position = view @( Name "position" :.: Swizzle "xyz" ) ( sceneCamera scene ) } )
 
   -------------------------------------------
   -- Initialise window and Vulkan context.

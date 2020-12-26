@@ -142,12 +142,12 @@ data MaterialKind
 
 type ShaderRecord =
   Struct
-    '[ "geometryOffset"    ':-> Word32  -- ^ offset into the geometry array appropriate to this shader group
-     , "emitterCallable"   ':-> Int32   -- ^ index of emitter callable shader in SBT, -1 if given object is not an emitter
-     , "emitterInfoIndex"  ':-> Word32  -- ^ index into the corresponding emitter info array (ignored if callable is -1)
-     , "matSampleCallable" ':-> Word32  -- ^ index of material sample callable shader in SBT
-     , "matQueryCallable"  ':-> Word32  -- ^ index of material query callable shader in SBT
-     , "matPropsIndex"     ':-> Word32  -- ^ offset into the corresponding material property array
+    '[ "geometryOffset"    ':-> Word32  -- offset into the geometry array appropriate to this shader group
+     , "emitterCallable"   ':-> Int32   -- index of emitter callable shader in SBT, -1 if given object is not an emitter
+     , "emitterInfoIndex"  ':-> Word32  -- index into the corresponding emitter info array (ignored if callable is -1)
+     , "matSampleCallable" ':-> Word32  -- index of material sample callable shader in SBT
+     , "matQueryCallable"  ':-> Word32  -- index of material query callable shader in SBT
+     , "matPropsIndex"     ':-> Word32  -- offset into the corresponding material property array
      ]
 
 type LuminaireID =
@@ -166,7 +166,7 @@ type EmitterCallableData =
     '[ "emitterInfoIndex" ':-> Word32
      , "rayDirection"     ':-> V 3 Float
      , "normal"           ':-> V 3 Float
-     , "mainData"         ':-> V 4 Float -- ^ Incoming: wavelengths. Outgoing: spectral radiances.
+     , "mainData"         ':-> V 4 Float -- Incoming: wavelengths. Outgoing: spectral radiances.
      ]
 
 type LightSamplingCallableData =
@@ -175,9 +175,9 @@ type LightSamplingCallableData =
      , "quasiRandomState"     ':-> V 4 Float
      , "geometryInfoIndex"    ':-> Word32
      , "emitterInfoIndex"     ':-> Word32
-     , "normal"               ':-> V 3 Float -- ^ Normal to the surface from where we are sampling lights.
-     , "rayOrigin"            ':-> V 3 Float -- ^ Input: ray origin on surface. Output: light sample point.
-     , "psa_correction"       ':-> Float     -- ^ Correction factor to account for not sampling with respect to projected solid angle.
+     , "normal"               ':-> V 3 Float -- Normal to the surface from where we are sampling lights.
+     , "rayOrigin"            ':-> V 3 Float -- Input: ray origin on surface. Output: light sample point.
+     , "psa_correction"       ':-> Float     -- Correction factor to account for not sampling with respect to projected solid angle.
      ]
 
 --------------------------------------------------------------------------

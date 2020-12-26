@@ -25,6 +25,7 @@ import qualified Data.Vector as Boxed.Vector
 import qualified Vulkan
 import qualified Vulkan.Core10.Pass as Vulkan.AttachmentReference
   ( AttachmentReference(..) )
+import qualified Vulkan.Zero as Vulkan
 
 -- fir-examples
 import Data.Traversable.Indexed

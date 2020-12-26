@@ -52,6 +52,7 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan.Zero as Vulkan
 
 -- fir
 import FIR

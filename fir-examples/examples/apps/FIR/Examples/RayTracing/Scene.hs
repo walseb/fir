@@ -23,6 +23,8 @@ import Math.Linear
   ( M )
 
 -- fir-examples
+import FIR.Examples.RayTracing.Camera
+  ( CameraCoordinates )
 import FIR.Examples.RayTracing.Geometry
   ( Geometry(GeometryData), HittableGeometry )
 import FIR.Examples.RayTracing.Luminaire
@@ -44,6 +46,7 @@ data Scene
     , sceneTriangleGeometries   :: HashMap ShortText ( Maybe [ Word32 ], [ GeometryData Triangle ] )
     , sceneProceduralGeometries :: HashMap ShortText GeometryObject
     , sceneInstances            :: [ ( InstanceType, M 3 4 Float, [ ( ShortText, SomeMaterialProperties ) ] ) ]
+    , sceneCamera               :: CameraCoordinates
     }
 
 data GeometryObject where

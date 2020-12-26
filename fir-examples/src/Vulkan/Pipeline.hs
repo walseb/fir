@@ -50,6 +50,7 @@ import qualified Data.Vector as Boxed.Vector
 import qualified Vulkan
 import qualified Vulkan.CStruct.Extends as Vulkan
   ( SomeStruct(SomeStruct) )
+import qualified Vulkan.Zero as Vulkan
 
 -- fir
 import FIR

@@ -139,6 +139,7 @@ import qualified Data.Vector.Sized as Boxed.Sized.Vector
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan.Zero as Vulkan
 
 -- fir
 import FIR

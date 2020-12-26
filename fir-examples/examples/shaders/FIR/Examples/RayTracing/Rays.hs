@@ -170,6 +170,8 @@ type OcclusionMissDefs =
 
 primaryMissShader :: Module PrimaryMissDefs
 primaryMissShader = Module $ entryPoint @"main" @Miss do
+  throughput <- use @( Name "payload" :.: Name "throughput"        )
+  modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> Vec4 0.9 0.9 0.9 0.9 ) )
   assign @( Name "payload" :.: Name "hitType" ) ( Lit Miss )
 
 occlusionMissShader :: Module OcclusionMissDefs

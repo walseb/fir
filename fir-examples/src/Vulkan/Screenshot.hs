@@ -50,6 +50,7 @@ import qualified Data.Vector.Storable as Storable.Vector
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan.Zero as Vulkan
 
 -- fir-examples
 import FIR.Examples.Paths

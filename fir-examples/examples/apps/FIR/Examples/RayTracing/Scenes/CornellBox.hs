@@ -26,11 +26,13 @@ import qualified Data.HashMap.Strict as HashMap
 import FIR
   ( GradedSemigroup((<!>)), Struct(..) )
 import Math.Linear
-  ( pattern V3
+  ( pattern V3, pattern V4
   , identity, konst
   )
 
 -- fir-examples
+import FIR.Examples.RayTracing.Camera
+  ( CameraCoordinates )
 import FIR.Examples.RayTracing.Luminaire
   ( LightSamplingMethod(SurfaceArea) )
 import FIR.Examples.RayTracing.Scene
@@ -51,6 +53,7 @@ cornellBox =
     , sceneTriangleGeometries   = HashMap.empty
     , sceneProceduralGeometries = HashMap.map fst cornellBoxAABBGeometries
     , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBGeometries ) ) ]
+    , sceneCamera               = cornellBoxCamera
     }
 cornellBoxEmitter :: EmitterObject
 cornellBoxEmitter =
@@ -83,3 +86,6 @@ cornellBoxAABBGeometries
   , ( "sphere1"   , ( V3      73   -16.5         78       :& 16.5 :& End, V3 1   1   1   :& End ) )
   , ( "sphere2"   , ( V3      28   -19           92       :& 19   :& End, V3 0.2 0.5 1.0 :& End ) )
   ]
+
+cornellBoxCamera :: CameraCoordinates
+cornellBoxCamera = V4 50 -40.8 35 0 :& V3 1 0 0 :& V3 0 1 0 :& V4 0 0 1 0 :& End
