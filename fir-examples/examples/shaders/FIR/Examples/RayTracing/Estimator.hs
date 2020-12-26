@@ -300,22 +300,22 @@ randomLuminaire
 randomLuminaire = do
   ~( Vec4 r _ _ _ ) <- random01s
   locally do
-    _ <- def @"i"        @RW @Word32      0
-    _ <- def @"acc"      @RW @Float       0
-    _ <- def @"continue" @RW @Bool        ( Lit True )
-    _ <- def @"res"      @RW @LuminaireID =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) 0
-    while ( get @"continue" ) do
+    lg <- let' =<< arrayLength @( Name "luminaires" :.: Index 0 ) --Name "luminaireArray" )
+    _  <- def @"i"        @RW @Word32      0
+    _  <- def @"acc"      @RW @Float       0
+    _  <- def @"res"      @RW @LuminaireID =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) 0
+    while ( (< lg) <<$>> get @"i" ) do
       i    <- get @"i"
       acc  <- get @"acc"
       lum  <- let' @LuminaireID =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) i
       acc' <- let' $ acc + view @( Name "luminaireWeight" ) lum
-      if acc' >= r - 1e-6
+      if acc' >= r
       then do
-        put @"continue" ( Lit False )
-        put @"res"      lum
+        put @"i"   lg -- end loop
+        put @"res" lum
       else do
-        put @"acc" acc'
         put @"i"   (i+1)
+        put @"acc" acc'
     get @"res"
 
 -- | Spectral multiple importance sampling.

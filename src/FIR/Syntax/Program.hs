@@ -59,6 +59,9 @@ module FIR.Syntax.Program
     -- *** Special cases for manipulating images
   , imageRead, imageWrite
 
+  -- * Querying the length of a run-time array
+  , ArrayLength, arrayLength
+
   -- * Geometry shader primitive instructions
   , emitVertex, endPrimitive
 
@@ -130,7 +133,7 @@ import Control.Monad.Indexed
   )
 import qualified Control.Monad.Indexed as Indexed
 import Control.Type.Optic
-  ( Optic, Name, Gettable, Settable
+  ( Optic(..), Name, Gettable, Settable
   , Part, Whole, Indices
   )
 import Data.Constraint.All
@@ -154,6 +157,7 @@ import FIR.AST
   , pattern While, pattern SwitchM
   , pattern Return, pattern Bind
   , pattern Let, pattern Def, pattern FunDef, pattern FunCall, pattern DefEntryPoint
+  , pattern ArrayLength
   , pattern Use, pattern Assign
   , pattern NilOps
   )
@@ -172,6 +176,8 @@ import FIR.Module
   ( Program
   , ShaderModule(ShaderModule)
   )
+import FIR.Prim.Array
+  ( RuntimeArray )
 import FIR.Prim.Image
   ( ImageProperties, ImageOperands
   )
@@ -181,6 +187,8 @@ import FIR.Prim.Singletons
   )
 import FIR.Prim.RayTracing
   ( RayQueryState )
+import FIR.Prim.Struct
+  ( Struct )
 import FIR.ProgramState
   ( FunctionInfo
   , FunctionContext(..)
@@ -206,6 +214,8 @@ import FIR.Validation.Bindings
   , SetInterface, GetExecutionInfo
   , Embeddable
   )
+import FIR.Validation.Bounds
+  ( StructIndexFromName )
 import FIR.Validation.Definitions
   ( ValidDefinitions )
 import FIR.Validation.Images
@@ -625,6 +635,55 @@ imageWrite = assign
                      imgTexel
             )
            NilOps
+
+--------------------------------------------------------------------------
+
+-- | Query the length of a run-time array.
+--
+-- Usage:
+--
+-- > arrayLength @( Name "structName" :.: Name "arrayName" )
+--
+-- This returns the size of the run-time array, bound within the structure named @"structureName"@
+-- with member field name @"arrayName"@.
+--
+-- Note that run-time arrays can only appear as the last structure member.
+arrayLength
+  :: forall optic i
+  .  ( i ~ Whole optic )
+  => ArrayLength (Whole optic) optic
+  => Program i i (Code Word32)
+arrayLength = arrayLength' @_ @_ @i @optic
+
+class ArrayLength (i :: ProgramState) (optic :: Optic is i r) where
+  arrayLength' :: Program i i ( Code Word32 )
+
+instance
+  ( empty1 ~ '[], empty2 ~ '[], r ~ RuntimeArray a
+  , KnownSymbol structName, KnownNat memberIndex
+  , struct ~ Has structName i
+  , struct ~ Struct as
+  )
+  => ArrayLength i
+        (          ( Field_ ( structName  :: Symbol ) :: Optic empty1 i struct )
+        `ComposeO` ( Field_ ( memberIndex :: Nat    ) :: Optic empty2 struct r )
+        )
+  where
+  arrayLength' = fromAST $ ArrayLength ( Proxy :: Proxy structName ) ( Proxy :: Proxy memberIndex )
+
+instance
+  ( empty1 ~ '[], empty2 ~ '[], r ~ RuntimeArray a
+  , KnownSymbol structName, KnownNat memberIndex
+  , struct ~ Has structName i
+  , ( memberIndex ':-> r ) ~ StructIndexFromName memberName as
+  , struct ~ Struct as
+  )
+  => ArrayLength i
+        (          ( Field_ ( structName :: Symbol ) :: Optic empty1 i struct )
+        `ComposeO` ( Field_ ( memberName :: Symbol ) :: Optic empty2 struct r )
+        )
+  where
+  arrayLength' = fromAST $ ArrayLength ( Proxy :: Proxy structName ) ( Proxy :: Proxy memberIndex )
 
 --------------------------------------------------------------------------
 -- geometry shader primitive instructions

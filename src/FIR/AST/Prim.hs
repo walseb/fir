@@ -33,8 +33,14 @@ import Data.Kind
   ( Type )
 import Data.Proxy
   ( Proxy )
+import Data.Word
+  ( Word32 )
+import GHC.TypeLits
+  ( KnownSymbol, symbolVal )
 import GHC.TypeNats
   ( KnownNat, natVal )
+import Numeric.Natural
+  ( Natural )
 
 -- containers
 import Data.Tree
@@ -99,26 +105,27 @@ import qualified SPIRV.Stage  as SPIRV
 infixl 9 :$
 infixr 5 `ConsHList`
 
-pattern Lam   f       = VF (LamF   f  )
-pattern (:$)  f a     = VF (AppF   f a)
-pattern Lit   l       = VF (LitF   l  )
-pattern MkID  i       = VF (MkIDF  i  )
-pattern Value v       = VF (ValueF v  )
-pattern UnsafeCoerce  = VF UnsafeCoerceF
-pattern Return        = VF ReturnF
-pattern Bind          = VF BindF
-pattern PrimOp a op   = VF (PrimOpF a op)
-pattern Undefined     = VF UndefinedF
-pattern GradedMappend = VF GradedMappendF
-pattern Pure px   a   = VF (PureF px   a)
-pattern Ap   px f a   = VF (ApF   px f a)
-pattern MkVector v    = VF (MkVectorF v)
-pattern Mat           = VF MatF
-pattern UnMat         = VF UnMatF
-pattern Struct st     = VF (StructF st)
-pattern Array arr     = VF (ArrayF arr)
-pattern NilHList      = VF NilHListF
-pattern ConsHList     = VF ConsHListF
+pattern Lam   f             = VF (LamF   f  )
+pattern (:$)  f a           = VF (AppF   f a)
+pattern Lit   l             = VF (LitF   l  )
+pattern MkID  i             = VF (MkIDF  i  )
+pattern Value v             = VF (ValueF v  )
+pattern UnsafeCoerce        = VF UnsafeCoerceF
+pattern Return              = VF ReturnF
+pattern Bind                = VF BindF
+pattern PrimOp a op         = VF (PrimOpF a op)
+pattern Undefined           = VF UndefinedF
+pattern GradedMappend       = VF GradedMappendF
+pattern Pure px   a         = VF (PureF px   a)
+pattern Ap   px f a         = VF (ApF   px f a)
+pattern MkVector v          = VF (MkVectorF v)
+pattern Mat                 = VF MatF
+pattern UnMat               = VF UnMatF
+pattern Struct st           = VF (StructF st)
+pattern Array arr           = VF (ArrayF arr)
+pattern ArrayLength px1 px2 = VF ( ArrayLengthF px1 px2 )
+pattern NilHList            = VF NilHListF
+pattern ConsHList           = VF ConsHListF
 
 
 -- | Lambda abstraction.
@@ -225,6 +232,14 @@ data ArrayF ( ast :: AugType -> Type ) ( t :: AugType ) where
     => Array n ( ast (Val a) )
     -> ArrayF ast ( Val (Array n a) )
 
+-- | Query length of a run-time array.
+data ArrayLengthF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  ArrayLengthF
+    :: ( KnownSymbol structName, KnownNat arrayPosition )
+    => Proxy structName
+    -> Proxy arrayPosition
+    -> ArrayLengthF ast ( Eff i i Word32 )
+
 -- | Internal HList data type.
 --
 -- Only used for providing multiple run-time indices to product optics.
@@ -316,6 +331,15 @@ instance Display ast => Display (ArrayF ast) where
         Node
           ( "Array @" ++ lg ++ " @" ++ show (primTy @a) )
           ( trees ++ as )
+instance Display (ArrayLengthF ast) where
+  toTreeArgs as (ArrayLengthF px_name px_pos) =
+    let
+      structName :: String
+      structName = symbolVal px_name
+      structPos :: Natural
+      structPos = natVal px_pos
+    in
+      pure $ Node ( "ArrayLength @" <> structName <> " @" <> show structPos ) as
 instance Display (NilHListF ast) where
   toTreeArgs = named (const "NilHList")
 instance Display (ConsHListF ast) where

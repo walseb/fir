@@ -160,9 +160,9 @@ instance Material Lambertian where
       rgb <- use @( Name "matProps" :.: Name "props" :.: AnIndex Word32 :.: Name "colour" ) i
       ~( Vec4 λ1 λ2 λ3 λ4 ) <- use @( Name "callableData" :.: Name "wavelengths" )
       -- TODO: vectorise this?
-      f1 <- let' =<< ( rgbToSpectrum rgb λ1 )
-      f2 <- let' =<< ( rgbToSpectrum rgb λ2 )
-      f3 <- let' =<< ( rgbToSpectrum rgb λ3 )
-      f4 <- let' =<< ( rgbToSpectrum rgb λ4 )
+      f1 <- let' =<< rgbToSpectrum rgb λ1
+      f2 <- let' =<< rgbToSpectrum rgb λ2
+      f3 <- let' =<< rgbToSpectrum rgb λ3
+      f4 <- let' =<< rgbToSpectrum rgb λ4
       assign @( Name "callableData" :.: Name "bsdf"  ) ( Vec4 f1 f2 f3 f4 )
       assign @( Name "callableData" :.: Name "probs" ) ( pureAST 1.0 :: Code ( V 4 Float ) )

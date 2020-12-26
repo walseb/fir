@@ -90,7 +90,7 @@ type AllOpsF
      , ReturnF, BindF
      , PrimOpF, UndefinedF, GradedMappendF
      , PureF, ApF
-     , MkVectorF, MatF, UnMatF, StructF, ArrayF, NilHListF, ConsHListF
+     , MkVectorF, MatF, UnMatF, StructF, ArrayF, ArrayLengthF, NilHListF, ConsHListF
      , IfF, IfMF, SwitchF, SwitchMF, WhileF
      , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
      , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF

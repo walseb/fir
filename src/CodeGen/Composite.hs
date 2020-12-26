@@ -30,6 +30,8 @@ module CodeGen.Composite
 -- base
 import Data.Foldable
   ( toList )
+import Data.Proxy
+  ( Proxy )
 import Data.Word
   ( Word32 )
 import GHC.TypeNats
@@ -47,6 +49,8 @@ import Data.List.Split
   ( chunksOf )
 
 -- text-short
+import Data.Text.Short
+  ( ShortText )
 import qualified Data.Text.Short as ShortText
   ( pack )
 
@@ -67,7 +71,7 @@ import {-# SOURCE #-} CodeGen.CodeGen
 import CodeGen.Debug
   ( whenAsserting )
 import CodeGen.IDs
-  ( typeID, undefID )
+  ( bindingID, typeID, undefID )
 import CodeGen.Instruction
   ( Args(..), toArgs
   , ID, Instruction(..)
@@ -80,7 +84,7 @@ import FIR.AST
   ( AST
   , MkVectorF(..), GradedMappendF(..)
   , MatF(..), UnMatF(..)
-  , StructF(..), ArrayF(..)
+  , StructF(..), ArrayF(..), ArrayLengthF(..)
   )
 import FIR.AST.Type
   ( AugType(Val) )
@@ -96,6 +100,8 @@ import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 import           SPIRV.PrimTy
   ( PrimTy(..) )
+import qualified SPIRV.ScalarTy as SPIRV
+  ( ScalarTy(..), Signedness(..), Width(..) )
 
 ----------------------------------------------------------------------------
 -- Code generation for constructing composite objects.
@@ -141,6 +147,30 @@ instance CodeGen AST => CodeGen (ArrayF AST) where
       in
         compositeConstruct vecTy
           =<< traverse (fmap fst . codeGen) (Vector.toList vec)
+
+instance CodeGen (ArrayLengthF AST) where
+  codeGenArgs ( Applied (ArrayLengthF (_ :: Proxy structName) (_ :: Proxy pos)) NilAST ) = do
+    let
+      structName :: ShortText
+      structName = knownValue @structName
+      arrayPos :: Word32
+      arrayPos = knownValue @pos
+    (structBdID, _) <- bindingID structName
+    let
+      word32Ty :: SPIRV.PrimTy
+      word32Ty = SPIRV.Scalar ( SPIRV.Integer SPIRV.Unsigned SPIRV.W32 )
+    word32TyID <- typeID word32Ty
+    v <- fresh
+    instruction
+      Instruction
+        { operation = SPIRV.Op.ArrayLength
+        , resTy = Just word32TyID
+        , resID = Just v
+        , args  = Arg structBdID
+                $ Arg arrayPos
+                $ EndArgs
+        }
+    pure ( v, word32Ty )
 
 instance CodeGen AST => CodeGen (GradedMappendF AST) where
   codeGenArgs ( Applied GradedMappendF ( a `ConsAST` b `ConsAST` NilAST ) ) = do

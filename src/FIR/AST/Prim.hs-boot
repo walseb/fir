@@ -32,6 +32,7 @@ data MatF           ( ast :: AugType -> Type ) ( t :: AugType )
 data UnMatF         ( ast :: AugType -> Type ) ( t :: AugType )
 data StructF        ( ast :: AugType -> Type ) ( t :: AugType )
 data ArrayF         ( ast :: AugType -> Type ) ( t :: AugType )
+data ArrayLengthF   ( ast :: AugType -> Type ) ( t :: AugType )
 data ConsHListF     ( ast :: AugType -> Type ) ( t :: AugType )
 data NilHListF      ( ast :: AugType -> Type ) ( t :: AugType )
 
@@ -53,5 +54,6 @@ type role MatF           phantom          nominal
 type role UnMatF         phantom          nominal
 type role StructF        nominal          nominal
 type role ArrayF         nominal          nominal
+type role ArrayLengthF   phantom          nominal
 type role ConsHListF     phantom          nominal
 type role NilHListF      phantom          nominal
