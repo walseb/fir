@@ -65,8 +65,11 @@ import qualified Numeric.Half as Half
 import Deriving.Base
   ( Base(..) ) -- newtype for deriving via base instances
 import Math.Logic.Class
-  ( ifThenElse, Eq(Logic,(==)), Ord )
+  ( Eq(Logic,(==)), Ord
+  , ifThenElse
+  )
 
+----------------------------------------------------------------------------
 
 infixl 6 +
 infixl 6 -
@@ -391,11 +394,15 @@ deriving via Base Double instance Floating Double
 deriving via Base CFloat  instance Floating CFloat
 deriving via Base CDouble instance Floating CDouble
 
-class Floating a => RealFloat a where
-  atan2 :: a -> a -> a
+class ( Floating a, Eq a ) => RealFloat a where
+  atan2      :: a -> a -> a
+  isNaN      :: a -> Logic a
+  isInfinite :: a -> Logic a
 
-instance Prelude.RealFloat a => RealFloat (Base a) where
-  atan2 = coerce ( Prelude.atan2 :: a -> a -> a )
+instance ( Prelude.RealFloat a, Prelude.Eq a ) => RealFloat (Base a) where
+  atan2      = coerce ( Prelude.atan2      :: a -> a -> a )
+  isNaN      = coerce ( Prelude.isNaN      :: a -> Bool )
+  isInfinite = coerce ( Prelude.isInfinite :: a -> Bool )
 
 deriving via Base Half   instance RealFloat Half
 deriving via Base Float  instance RealFloat Float

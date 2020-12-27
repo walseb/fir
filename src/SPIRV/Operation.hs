@@ -317,6 +317,11 @@ pattern OuterProduct      :: Operation
 pattern OuterProduct      = Code 147
 pattern Dot               :: Operation
 pattern Dot               = Code 148
+-- IEEE floating point logical instructions
+pattern IsNan :: Operation
+pattern IsNan = Code 156
+pattern IsInf :: Operation
+pattern IsInf = Code 157
 -- boolean instructions
 pattern LogicalEqual    :: Operation
 pattern LogicalEqual    = Code 164

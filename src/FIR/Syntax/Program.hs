@@ -940,8 +940,10 @@ instance (ScalarTy a, Floating a, j ~ i) => Floating (Program i j (Code a)) wher
   atanh   = ixFmap atanh
   (**)    = ixLiftA2 (**)
 
-instance (ScalarTy a, RealFloat a, j ~ i) => RealFloat (Program i j (Code a)) where
-  atan2 = ixLiftA2 atan2
+instance (ScalarTy a, RealFloat a, Eq a, Logic a ~ Bool, j ~ i) => RealFloat (Program i j (Code a)) where
+  atan2      = ixLiftA2 atan2
+  isNaN      = ixFmap   isNaN
+  isInfinite = ixFmap   isInfinite
 
 -- Numeric conversions
 

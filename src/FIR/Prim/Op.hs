@@ -391,7 +391,18 @@ instance (ScalarTy a, Floating a) => PrimOp SPIRV.FInvSqrt (a :: Type) where
   opName = SPIRV.FloatOp SPIRV.FInvSqrt (scalarTy @a)
   vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.FInvSqrt a)
   vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
-
+instance (ScalarTy a, RealFloat a, Logic a ~ Bool) => PrimOp SPIRV.FIsNaN (a :: Type) where
+  type PrimOpAugType SPIRV.FIsNaN a = Val a :--> Val Bool
+  op = isNaN
+  opName = SPIRV.FloatOp SPIRV.FIsNaN (scalarTy @a)
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.FIsNaN a)
+  vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
+instance (ScalarTy a, RealFloat a, Logic a ~ Bool) => PrimOp SPIRV.FIsInf (a :: Type) where
+  type PrimOpAugType SPIRV.FIsInf a = Val a :--> Val Bool
+  op = isInfinite
+  opName = SPIRV.FloatOp SPIRV.FIsInf (scalarTy @a)
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.FIsInf a)
+  vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
 
 -- numeric conversions
 instance ( ScalarTy a, ScalarTy b, Convert '(a,b) ) => PrimOp SPIRV.Convert '(a,b) where
@@ -627,6 +638,14 @@ instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FInv
   type PrimOpAugType ('Vectorise SPIRV.FInvSqrt) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap ( recip . sqrt )
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FInvSqrt @a)) (val @n) (scalarTy @a)
+instance ( KnownNat n, ScalarTy a, RealFloat a, Logic a ~ Bool) => PrimOp ('Vectorise SPIRV.FIsNaN) (V n a) where
+  type PrimOpAugType ('Vectorise SPIRV.FIsNaN) (V n a) = Val (V n a) :--> Val (V n Bool)
+  op = fmap isNaN
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FIsNaN @a)) (val @n) (scalarTy @a)
+instance ( KnownNat n, ScalarTy a, RealFloat a, Logic a ~ Bool) => PrimOp ('Vectorise SPIRV.FIsInf) (V n a) where
+  type PrimOpAugType ('Vectorise SPIRV.FIsInf) (V n a) = Val (V n a) :--> Val (V n Bool)
+  op = fmap isInfinite
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FIsInf @a)) (val @n) (scalarTy @a)
 
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp SPIRV.DotV (V n a) where
   type PrimOpAugType SPIRV.DotV (V n a) = Val (V n a) :--> Val (V n a) :--> Val a

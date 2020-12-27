@@ -149,7 +149,10 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
     if reset > 0
     then pure ( Vec4 0 0 0 0 )
     else imageRead @"in_data" ( Vec2 i_x i_y )
-  new@( ~( Vec4 x' y' z' n' ) ) <- let' ( old ^+^ Vec4 x y z 4 )
+  new@( ~( Vec4 x' y' z' n' ) ) <- let' $
+    if   isNaN x || isNaN y || isNaN z
+    then old
+    else ( old ^+^ Vec4 x y z 4 )
   imageWrite @"out_data" ( Vec2 i_x i_y ) new
 
   -- Write log luminance data for tone mapping.

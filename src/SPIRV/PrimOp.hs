@@ -138,6 +138,8 @@ data FloatPrimOp
   | FLog
   | FSqrt
   | FInvSqrt
+  | FIsNaN
+  | FIsInf
   deriving stock Show
 
 data VecPrimOp
@@ -206,9 +208,7 @@ opAndReturnType _ (CastOp s)
 opAndReturnType bk (NumOp numOp s)
   = second Scalar (numericOp bk numOp s)
 opAndReturnType bk (FloatOp flOp s)
-  = ( floatingOp bk flOp
-    , Scalar s -- should be a Floating type always
-    )
+  = floatingOp bk flOp s
 opAndReturnType bk (VecOp vecOp n s)
   = vectorOp bk vecOp n s
 opAndReturnType bk (MatOp matOp n m s)
@@ -307,25 +307,27 @@ numericOp _  Quot (Integer Signed   w) = ( SDiv   , Integer Signed   w )
 numericOp _  Quot (Integer Unsigned w) = ( UDiv   , Integer Unsigned w )
 numericOp _  Quot (Floating         _) = error "internal error: Quot used with floating-point type"
 
-floatingOp :: Backend -> FloatPrimOp -> Operation
-floatingOp bk FSin     = backendOp bk GLSL_Sin     OpenCL_Sin
-floatingOp bk FCos     = backendOp bk GLSL_Cos     OpenCL_Cos
-floatingOp bk FTan     = backendOp bk GLSL_Tan     OpenCL_Tan
-floatingOp bk FAsin    = backendOp bk GLSL_Asin    OpenCL_Asin
-floatingOp bk FAcos    = backendOp bk GLSL_Acos    OpenCL_Acos
-floatingOp bk FAtan    = backendOp bk GLSL_Atan    OpenCL_Atan
-floatingOp bk FSinh    = backendOp bk GLSL_Sinh    OpenCL_Sinh
-floatingOp bk FCosh    = backendOp bk GLSL_Cosh    OpenCL_Cosh
-floatingOp bk FTanh    = backendOp bk GLSL_Tanh    OpenCL_Tanh
-floatingOp bk FAsinh   = backendOp bk GLSL_Asinh   OpenCL_Asinh
-floatingOp bk FAcosh   = backendOp bk GLSL_Acosh   OpenCL_Acosh
-floatingOp bk FAtanh   = backendOp bk GLSL_Atanh   OpenCL_Atanh
-floatingOp bk FAtan2   = backendOp bk GLSL_Atan2   OpenCL_Atan2
-floatingOp bk FPow     = backendOp bk GLSL_Pow     OpenCL_Pow
-floatingOp bk FExp     = backendOp bk GLSL_Exp     OpenCL_Exp
-floatingOp bk FLog     = backendOp bk GLSL_Log     OpenCL_Log
-floatingOp bk FSqrt    = backendOp bk GLSL_Sqrt    OpenCL_Sqrt
-floatingOp bk FInvSqrt = backendOp bk GLSL_InvSqrt OpenCL_InvSqrt
+floatingOp :: Backend -> FloatPrimOp -> ScalarTy -> (Operation, PrimTy)
+floatingOp bk FSin     s = ( backendOp bk GLSL_Sin     OpenCL_Sin     , Scalar s )
+floatingOp bk FCos     s = ( backendOp bk GLSL_Cos     OpenCL_Cos     , Scalar s )
+floatingOp bk FTan     s = ( backendOp bk GLSL_Tan     OpenCL_Tan     , Scalar s )
+floatingOp bk FAsin    s = ( backendOp bk GLSL_Asin    OpenCL_Asin    , Scalar s )
+floatingOp bk FAcos    s = ( backendOp bk GLSL_Acos    OpenCL_Acos    , Scalar s )
+floatingOp bk FAtan    s = ( backendOp bk GLSL_Atan    OpenCL_Atan    , Scalar s )
+floatingOp bk FSinh    s = ( backendOp bk GLSL_Sinh    OpenCL_Sinh    , Scalar s )
+floatingOp bk FCosh    s = ( backendOp bk GLSL_Cosh    OpenCL_Cosh    , Scalar s )
+floatingOp bk FTanh    s = ( backendOp bk GLSL_Tanh    OpenCL_Tanh    , Scalar s )
+floatingOp bk FAsinh   s = ( backendOp bk GLSL_Asinh   OpenCL_Asinh   , Scalar s )
+floatingOp bk FAcosh   s = ( backendOp bk GLSL_Acosh   OpenCL_Acosh   , Scalar s )
+floatingOp bk FAtanh   s = ( backendOp bk GLSL_Atanh   OpenCL_Atanh   , Scalar s )
+floatingOp bk FAtan2   s = ( backendOp bk GLSL_Atan2   OpenCL_Atan2   , Scalar s )
+floatingOp bk FPow     s = ( backendOp bk GLSL_Pow     OpenCL_Pow     , Scalar s )
+floatingOp bk FExp     s = ( backendOp bk GLSL_Exp     OpenCL_Exp     , Scalar s )
+floatingOp bk FLog     s = ( backendOp bk GLSL_Log     OpenCL_Log     , Scalar s )
+floatingOp bk FSqrt    s = ( backendOp bk GLSL_Sqrt    OpenCL_Sqrt    , Scalar s )
+floatingOp bk FInvSqrt s = ( backendOp bk GLSL_InvSqrt OpenCL_InvSqrt , Scalar s )
+floatingOp _  FIsNaN   _ = ( IsNan, Boolean )
+floatingOp _  FIsInf   _ = ( IsInf, Boolean )
 
 vectorOp :: Backend -> VecPrimOp -> Word32 -> ScalarTy -> (Operation, PrimTy)
 vectorOp bk (Vectorise prim) n s  = ( op bk prim, Vector n (Scalar s) )
