@@ -227,7 +227,7 @@ instance HittableGeometry Sphere where
 --  - shadow ray closest-hit shader: just one,
 --  - primary ray closest-hit shader: one for each geometry type.
 
-occlusionClosestHitShader :: forall geom. HittableGeometry geom => Module ( ClosestHitOcclusionDefs geom )
+occlusionClosestHitShader :: forall geom. ( HittableGeometry geom, _ ) => Module ( ClosestHitOcclusionDefs geom )
 occlusionClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   instanceID        <- get @"gl_InstanceID"
@@ -245,7 +245,7 @@ occlusionClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   put @"payload" ( Struct $ fromIntegral primitiveID :& fromIntegral instanceID :& hitT :& normal :& End )
   pure ( Lit () )
 
-primaryClosestHitShader :: forall geom. HittableGeometry geom => Module ( ClosestHitPrimaryDefs geom )
+primaryClosestHitShader :: forall geom. ( HittableGeometry geom, _ ) => Module ( ClosestHitPrimaryDefs geom )
 primaryClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   hitT              <- get @"gl_RayTMax"
