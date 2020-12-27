@@ -73,7 +73,7 @@ import qualified Data.Map.Strict as Map
 import Data.Dependent.Map
   ( DMap )
 import qualified Data.Dependent.Map as DMap
-  ( empty, keys, map )
+  ( empty, map )
 import qualified Data.Dependent.Map.Lens as DMap
   ( dmat )
 
@@ -145,7 +145,7 @@ import qualified Vulkan.Zero as Vulkan
 import FIR
   ( Struct(..), (:->)((:->)) )
 import Math.Linear
-  ( V, pattern V2, pattern V3 )
+  ( V, pattern V2 )
 
 -- fir-examples
 import FIR.Examples.RayTracing.Geometry
@@ -155,7 +155,9 @@ import FIR.Examples.RayTracing.Luminaire
 import FIR.Examples.RayTracing.Material
   ( Material(MaterialProperties, materialKind) )
 import FIR.Examples.RayTracing.Scene
-  ( InstanceType(..), Scene(..), GeometryObject(..), SomeMaterialProperties(..), EmitterObject(..) )
+  ( InstanceType(..), Scene(..)
+  , GeometryObject(..), SomeMaterialProperties(..), EmitterObject(..)
+  )
 import FIR.Examples.RayTracing.Types
   ( GeometryKind(..), LuminaireKind, MaterialKind
   , LuminaireID, ShaderRecord, STriangleQ(..)
@@ -174,6 +176,7 @@ import Vulkan.RayTracing
 data SceneData f
   = SceneData
   { luminaireIDs         :: f LuminaireID
+  , triangleIndices      :: f Word32
   , geometryData         :: DMap TagGeometryData        f
   , luminaireProperties  :: DMap TagLuminaireProperties f
   , materialProperties   :: DMap TagMaterialProperties  f
@@ -181,9 +184,6 @@ data SceneData f
   , temporaryData        :: [ReleaseKey]
   }
   deriving stock Generic
-instance ( forall a. Show a => Show (f a) ) => Show (SceneData f) where
-  show (SceneData a b c d e _) =
-    "SceneData{\n" <> show a <> "\n" <> show (DMap.keys b) <> "\n" <> show (DMap.keys c) <> "\n" <> show (DMap.keys d) <> "\n" <> show e <> "\n}"
 
 data TagGeometryData ( dat :: Type ) where
   TagGeometryData
@@ -258,8 +258,8 @@ buildScene physicalDevice device commandPool queue
     
             ( ( ( emitterGeom, nbGeoms :: Int ), ( _ :: GeometryKind ), geomIndex ), buildRange ) <-
               case sGeom of
-                STriangle    -> buildTriangleGeometry   physicalDevice device Nothing [geomData]
-                SNotTriangle -> buildProceduralGeometry physicalDevice device ( GeometryObject ( Proxy :: Proxy geom ) [geomData] )
+                STriangle    -> buildTriangleGeometry   physicalDevice device [0,1,2] geomData
+                SNotTriangle -> buildProceduralGeometry physicalDevice device ( GeometryObject ( Proxy :: Proxy geom ) geomData )
             lumIndex  <- appendData pLum ( VectorBuilder.singleton lumProps )
             matIndex  <- appendData pMat ( VectorBuilder.singleton matProps )
 
@@ -314,8 +314,8 @@ buildScene physicalDevice device commandPool queue
 
       -- Create acceleration structure geometry data and build ranges for each geometry.
       logDebug "Gathering scene geometries."
-      nonEmitterTriangleGeometries   <- for sceneTriangleGeometries   ( uncurry $ buildTriangleGeometry physicalDevice device )
-      nonEmitterProceduralGeometries <- for sceneProceduralGeometries ( buildProceduralGeometry physicalDevice device )
+      nonEmitterTriangleGeometries   <- for sceneTriangleGeometries   ( uncurry $ buildTriangleGeometry   physicalDevice device )
+      nonEmitterProceduralGeometries <- for sceneProceduralGeometries (           buildProceduralGeometry physicalDevice device )
 
       -- Get enough info to create a BLAS for each scene instance.
       logDebug "Gathering scene instances."
@@ -462,14 +462,15 @@ buildTriangleGeometry
   :: MonadVulkan m
   => Vulkan.PhysicalDevice
   -> Vulkan.Device
-  -> Maybe [ Word32 ]
+  -> [ Word32 ]
   -> [ GeometryData Triangle ]
   -> StateT (SceneData Vector.Builder) m
       ( ( ( Vulkan.AccelerationStructureGeometryKHR, Int ), GeometryKind, Word32 )
       , Vulkan.AccelerationStructureBuildRangeInfoKHR
       )
-buildTriangleGeometry physicalDevice device mbIndices geomData = do
-  geomIndex <- appendData STriangle ( VectorBuilder.foldable geomData )
+buildTriangleGeometry physicalDevice device indices geomData = do
+  indsIndex <- appendIndexBufferData ( VectorBuilder.foldable indices  )
+  geomIndex <- appendData STriangle  ( VectorBuilder.foldable geomData )
   let
     nbGeoms :: Int
     nbGeoms = length geomData
@@ -483,30 +484,26 @@ buildTriangleGeometry physicalDevice device mbIndices geomData = do
       ( \ trisBufferPtr ->
         Foreign.Marshal.pokeArray
           trisBufferPtr
-          ( fmap ( \ ( p0 :& p1 :& p2 :& _ ) -> V3 p0 p1 p2 ) geomData )
+          ( fmap ( \ ( p0 :& _ ) -> p0 ) geomData )
       )
-      ( fromIntegral $ nbGeoms * 36 )
+      ( fromIntegral $ nbGeoms * 12 )
   trisBufferAddress <- Vulkan.getBufferDeviceAddress device ( Vulkan.BufferDeviceAddressInfo trisBuffer )
-  ( indexType, indexData ) <- case mbIndices of
-    Nothing -> pure ( Vulkan.INDEX_TYPE_NONE_KHR, Vulkan.zero )
-    Just indices -> do
-      let
-        nbIndices = length indices
-      ( _, ( indsBuffer, _ ) ) <-
-        createBufferFromPoke
-          ( Vulkan.BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR .|. Vulkan.BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT )
-          ( Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT .|. Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT )
-          Vulkan.MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
-          physicalDevice
-          device
-          ( \ indsPtr ->
-            Foreign.Marshal.pokeArray
-              indsPtr
-              indices
-          )
-          ( fromIntegral $ 4 * nbIndices )
-      indsBufferAddress <- Vulkan.getBufferDeviceAddress device ( Vulkan.BufferDeviceAddressInfo indsBuffer )
-      pure ( Vulkan.INDEX_TYPE_UINT32, Vulkan.DeviceAddressConst indsBufferAddress )
+  let
+    nbIndices = length indices
+  ( _, ( indsBuffer, _ ) ) <-
+    createBufferFromPoke
+      ( Vulkan.BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR .|. Vulkan.BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT )
+      ( Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT .|. Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT )
+      Vulkan.MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
+      physicalDevice
+      device
+      ( \ indsPtr ->
+        Foreign.Marshal.pokeArray
+          indsPtr
+          ( fmap ( indsIndex + ) indices )
+      )
+      ( fromIntegral $ 4 * nbIndices )
+  indsBufferAddress <- Vulkan.getBufferDeviceAddress device ( Vulkan.BufferDeviceAddressInfo indsBuffer )
   let
     trianglesData :: Vulkan.AccelerationStructureGeometryTrianglesDataKHR
     trianglesData = Vulkan.AccelerationStructureGeometryTrianglesDataKHR
@@ -514,8 +511,8 @@ buildTriangleGeometry physicalDevice device mbIndices geomData = do
       , Vulkan.vertexData    = Vulkan.DeviceAddressConst trisBufferAddress
       , Vulkan.vertexStride  = 12
       , Vulkan.maxVertex     = 3 * fromIntegral nbGeoms - 1
-      , Vulkan.indexType     = indexType
-      , Vulkan.indexData     = indexData
+      , Vulkan.indexType     = Vulkan.INDEX_TYPE_UINT32
+      , Vulkan.indexData     = Vulkan.DeviceAddressConst indsBufferAddress
       , Vulkan.transformData = Vulkan.zero
       }
     geometry :: Vulkan.AccelerationStructureGeometryKHR
@@ -588,12 +585,13 @@ buildProceduralGeometry physicalDevice device ( GeometryObject ( _ :: Proxy geom
 -- Various utilities.
 
 morphSceneData :: forall f g. ( forall a. f a -> g a ) -> SceneData f -> SceneData g
-morphSceneData f ( SceneData i g l m s t ) =
-  SceneData ( f i ) ( DMap.map f g ) ( DMap.map f l ) ( DMap.map f m ) ( f s ) t
+morphSceneData f ( SceneData i v g l m s t ) =
+  SceneData ( f i ) ( f v ) ( DMap.map f g ) ( DMap.map f l ) ( DMap.map f m ) ( f s ) t
 
 initialBuildSceneData :: SceneData Vector.Builder
 initialBuildSceneData =
   SceneData
+    VectorBuilder.empty
     VectorBuilder.empty
     DMap.empty DMap.empty DMap.empty
     VectorBuilder.empty
@@ -663,6 +661,13 @@ appendData datType dat = do
       Just prevDat -> ( VectorBuilder.size prevDat, prevDat <> dat )
   assign ( dataLens @_ @dat datType ) ( Just totalDat )
   pure ( fromIntegral i )
+
+appendIndexBufferData
+  :: Monad m => Vector.Builder Word32 -> StateT ( SceneData Vector.Builder ) m Word32
+appendIndexBufferData inds = do
+  prevDat <- use ( field' @"triangleIndices" )
+  assign ( field' @"triangleIndices" ) ( prevDat <> inds )
+  pure ( fromIntegral $ VectorBuilder.size prevDat )
 
 appendShaderRecordData
   :: Monad m => Vector.Builder ( ShaderRecord, Word32 ) -> StateT ( SceneData Vector.Builder ) m Word32

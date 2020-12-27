@@ -51,7 +51,7 @@ trivialEmitter =
   EmitterObject @Sphere @Blackbody @Lambertian
     SurfaceArea
     SNotTriangle
-    ( V3 0 0 0 :& 30 :& End )
+    [ V3 0 0 0 :& 30 :& End ]
     Proxy
     1.0
     ( 6.5e3 :& 0 :& End )

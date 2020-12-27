@@ -30,6 +30,8 @@ import FIR.Examples.RayTracing.Scene
   ( Scene )
 import FIR.Examples.RayTracing.Scenes.CornellBox
   ( cornellBox )
+import FIR.Examples.RayTracing.Scenes.CornellBox2
+  ( cornellBox2 )
 import FIR.Examples.RayTracing.Scenes.Furnace
   ( furnace )
 
@@ -37,8 +39,9 @@ import FIR.Examples.RayTracing.Scenes.Furnace
 
 scenes :: HashMap ShortText Scene
 scenes = HashMap.fromList
-  [ ( "cornellBox", cornellBox )
-  , ( "furnace"   , furnace    )
+  [ ( "cornellBox" , cornellBox  )
+  , ( "cornellBox2", cornellBox2 )
+  , ( "furnace"    , furnace     )
   ]
 
 chooseScene :: IO Scene

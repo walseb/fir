@@ -1,9 +1,11 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DerivingStrategies     #-}
+{-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE PatternSynonyms        #-}
+{-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RebindableSyntax       #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
@@ -29,7 +31,7 @@ import GHC.TypeLits
   , TypeError, ErrorMessage(..)
   )
 import GHC.TypeNats
-  ( Mod, natVal )
+  ( Nat, KnownNat, Mod, type (<=), natVal )
 
 -- fir
 import FIR
@@ -113,6 +115,14 @@ initialOcclusionPayload = Struct ( Lit (-1) :& Lit (-1) :& Lit (-1) :& Vec3 0 0 
 --------------------------------------------------------------------------
 -- Geometry, Luminaire, Material
 
+class ( KnownNat ( BindingNo x ), 3 <= BindingNo x ) => Bindable ( x :: k ) where
+  type BindingNo ( x :: k ) = ( bd :: Nat ) | bd -> k x -- injectivity annotation ensures no overlap of resources
+type GeometryBindingNo  ( geom :: GeometryKind  ) = BindingNo geom
+type LuminaireBindingNo ( lum  :: LuminaireKind ) = BindingNo lum
+type MaterialBindingNo  ( mat  :: MaterialKind  ) = BindingNo mat
+
+data IndexBuffer = TriangleIndexBuffer
+
 -- | Data-kind used to parametrise different geometries.
 data GeometryKind
   = Triangle
@@ -137,8 +147,19 @@ data LuminaireKind
 
 -- | Data-kind used to parametrise different materials.
 data MaterialKind
-  = Lambertian -- ^ Lambertian diffuse material.
+  = Lambertian   -- ^ Lambertian diffuse material.
   deriving stock ( Prelude.Show, Prelude.Eq, Prelude.Ord )
+
+instance Bindable TriangleIndexBuffer where
+  type BindingNo TriangleIndexBuffer = 3
+instance Bindable Triangle where
+  type BindingNo Triangle = 4
+instance Bindable Sphere where
+  type BindingNo Sphere = 5
+instance Bindable Blackbody where
+  type BindingNo Blackbody = 6
+instance Bindable Lambertian where
+  type BindingNo Lambertian = 7
 
 type ShaderRecord =
   Struct

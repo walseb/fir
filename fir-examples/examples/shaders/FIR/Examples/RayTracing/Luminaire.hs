@@ -11,6 +11,7 @@
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module FIR.Examples.RayTracing.Luminaire
   (
@@ -30,8 +31,6 @@ import Data.Kind
   ( Type )
 import Data.Typeable
   ( Typeable )
-import GHC.TypeNats
-  ( Nat, KnownNat )
 
 -- fir
 import FIR
@@ -46,7 +45,8 @@ import FIR.Examples.RayTracing.Geometry
 import FIR.Examples.RayTracing.QuasiRandom
   ( QuasiRandom, random01s )
 import FIR.Examples.RayTracing.Types
-  ( GeometryKind(..)
+  ( Bindable(..), GeometryBindingNo, LuminaireBindingNo
+  , IndexBuffer(..), GeometryKind(..)
   , LuminaireKind(..)
   , EmitterCallableData, LightSamplingCallableData
   )
@@ -54,19 +54,17 @@ import FIR.Examples.RayTracing.Types
 --------------------------------------------------------------------------
 -- Luminaires.
 
-class    ( KnownNat ( LuminaireBindingNo  lum )
-         , PrimTy   ( LuminaireProperties lum )
+class    ( PrimTy   ( LuminaireProperties lum )
          , Typeable lum
+         , Bindable lum
          )
       => Luminaire ( lum :: LuminaireKind )
       where
 
-  type LuminaireBindingNo  lum = ( bdNo :: Nat ) | bdNo -> lum
   type LuminaireProperties lum :: Type
   luminaireKind :: LuminaireKind
 
 instance Luminaire Blackbody where
-  type LuminaireBindingNo  Blackbody = 5
   type LuminaireProperties Blackbody = Struct '[ "temperature" ':-> Float, "intensity" ':-> Float ]
   luminaireKind = Blackbody
 
@@ -82,7 +80,6 @@ type EmitterCallableDefs ( lum :: LuminaireKind ) =
    , "main"           ':-> EntryPoint '[]
                               Callable
    ]
-
 
 class Luminaire lum => Emitter lum where
   emitterCallableShader :: Module ( EmitterCallableDefs lum )
@@ -117,13 +114,21 @@ data LightSamplingMethod
    | ProjectedSolidAngle
    deriving stock ( Prelude.Show, Prelude.Eq, Prelude.Ord )
 
-type LightSampleCallableDefs ( geom :: GeometryKind ) =
+type LightSampleCallableDefs_ ( geom :: GeometryKind ) =
   '[ "callableData" ':-> CallableDataIn '[] LightSamplingCallableData
    , "geometries"   ':-> StorageBuffer '[ DescriptorSet 0, Binding ( GeometryBindingNo geom ), NonWritable ]
                            ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
    , "main"         ':-> EntryPoint '[]
                           Callable
    ]
+
+type family LightSampleCallableDefs ( geom :: GeometryKind ) where
+  LightSampleCallableDefs Triangle =
+    ( "triangleIndices" ':->
+        StorageBuffer '[ DescriptorSet 0, Binding ( BindingNo TriangleIndexBuffer ), NonWritable ]
+          ( Struct '[ "indices" ':-> RuntimeArray ( Struct '[ "i0" ':-> Word32, "i1" ':-> Word32, "i2" ':-> Word32 ] ) ] )
+    ) : LightSampleCallableDefs_ Triangle
+  LightSampleCallableDefs geom = LightSampleCallableDefs_ geom
 
 class SampleableGeometry ( geom :: GeometryKind ) ( meth :: LightSamplingMethod ) where
 
@@ -134,11 +139,19 @@ instance SampleableGeometry Triangle SurfaceArea where
   lightSampleCallableShader = Module $ entryPoint @"main" @Callable do
 
     triangleIndex <- let' =<< use @( Name "callableData" :.: Name "geometryInfoIndex" )
-    triangle      <- let' =<< use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 ) triangleIndex
-    p0            <- let' $ view @( Name "p0"     ) triangle
-    p1            <- let' $ view @( Name "p1"     ) triangle
-    p2            <- let' $ view @( Name "p2"     ) triangle
-    triNormal     <- let' $ view @( Name "normal" ) triangle
+    is  <- use @( Name "triangleIndices" :.: Name "indices" :.: AnIndex Word32 ) triangleIndex
+    i0  <- let' $ view @( Name "i0" ) is
+    i1  <- let' $ view @( Name "i1" ) is
+    i2  <- let' $ view @( Name "i2" ) is
+    pn0 <- let' =<< use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 ) i0
+    pn1 <- let' =<< use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 ) i1
+    pn2 <- let' =<< use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 ) i2
+    p0  <- let' $ view @( Name "vertex" ) pn0
+    p1  <- let' $ view @( Name "vertex" ) pn1
+    p2  <- let' $ view @( Name "vertex" ) pn2
+    n0  <- let' $ view @( Name "normal" ) pn0
+    n1  <- let' $ view @( Name "normal" ) pn1
+    n2  <- let' $ view @( Name "normal" ) pn2
     -- assumes the geometry is not transformed
 
     rayOrig       <- use @( Name "callableData" :.: Name "rayOrigin" )
@@ -147,7 +160,9 @@ instance SampleableGeometry Triangle SurfaceArea where
     _ <- def @"quasiRandomConstants" @R  =<< use @( Name "callableData" :.: Name "quasiRandomConstants" )
     _ <- def @"quasiRandomState"     @RW =<< use @( Name "callableData" :.: Name "quasiRandomState"     )
 
-    trianglePt <- randomPointOnTriangle p0 p1 p2
+    ~( Vec2 u v ) <- randomBarycentric
+    trianglePt <- let' $ p0 ^+^ u *^ ( p1 ^-^ p0 ) ^+^ v *^ ( p2 ^-^ p0 )
+    triNormal  <- let' $ ( 1 - u - v ) *^ n0 ^+^ u *^ n1 ^+^ v *^ n2
     rayDir     <- let' $ normalise ( trianglePt ^-^ rayOrig )
     psa_correction <-
       let' $ abs ( rayDir ^.^ surfaceNormal ) * abs ( rayDir ^.^ triNormal )
@@ -187,22 +202,14 @@ instance SampleableGeometry Sphere SurfaceArea where
 
 --------------------------------------------------------------------------
 
--- | Compute a random point on a triangle, uniformly with respect to surface area.
-randomPointOnTriangle
+-- | Compute barycentric coordinates of a random point on a triangle, uniformly with respect to surface area.
+randomBarycentric
   :: QuasiRandom s
-  => Code ( V 3 Float )
-  -> Code ( V 3 Float )
-  -> Code ( V 3 Float )
-  -> Program s s ( Code ( V 3 Float ) )
-randomPointOnTriangle p1 p2 p3 = do
-
+  => Program s s ( Code ( V 2 Float ) )
+randomBarycentric = do
   ~( Vec4 t0 s _ _ ) <- random01s
   t <- let' $ sqrt ( 1 - t0 )
-
-  v1 <- let' $ p2 ^-^ p1
-  v2 <- let' $ p3 ^-^ p1
-
-  let' $ p1 ^+^ ( t * s ) *^ v1 ^+^ ( 1 - t ) *^ v2
+  let' $ Vec2 ( t * s ) ( 1 - t )
 
 -- | Compute a random point on a sphere, uniformly with respect to surface area.
 randomPointOnSphere

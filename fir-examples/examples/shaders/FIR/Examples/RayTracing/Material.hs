@@ -24,8 +24,6 @@ import Data.Kind
   ( Type )
 import Data.Typeable
   ( Typeable )
-import GHC.TypeNats
-  ( Nat, KnownNat )
 
 -- fir
 import FIR
@@ -38,7 +36,7 @@ import FIR.Examples.RayTracing.QuasiRandom
   ( random01s )
 import FIR.Examples.RayTracing.Types
   ( HitType, pattern Diffuse
-  , MaterialKind(..)
+  , MaterialKind(..), Bindable, MaterialBindingNo
   )
 
 --------------------------------------------------------------------------
@@ -94,13 +92,12 @@ type MaterialQueryCallableDefs ( mat :: MaterialKind ) =
 --    - given directions dir_eye, dir, and wavelengths ν, return:
 --      - the value of the BSDF ( dir --> dir_eye, ν ),
 --      - the value of the Radon–Nikodym derivative p(dir,ν) = dσ⟂/dμ(dir,ν)
-class ( KnownNat ( MaterialBindingNo  mat )
-      , PrimTy   ( MaterialProperties mat )
+class ( PrimTy   ( MaterialProperties mat )
       , Typeable mat
+      , Bindable mat
       )
     => Material ( mat :: MaterialKind ) where
 
-  type MaterialBindingNo  mat = ( bdNo :: Nat ) | bdNo -> mat
   type MaterialProperties mat :: Type
   materialKind :: MaterialKind
 
@@ -108,10 +105,11 @@ class ( KnownNat ( MaterialBindingNo  mat )
   queryMaterialCallableShader  :: Module ( MaterialQueryCallableDefs  mat )
 
 --------------------------------------------------------------------------
+-- Lambertian material.
+
 
 instance Material Lambertian where
 
-  type MaterialBindingNo  Lambertian = 6
   type MaterialProperties Lambertian =
     Struct
       '[ "colour" ':-> V 3 Float ]

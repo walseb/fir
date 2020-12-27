@@ -454,6 +454,7 @@ executable RayTracing
     , FIR.Examples.RayTracing.Scene
     , FIR.Examples.RayTracing.Scenes
     , FIR.Examples.RayTracing.Scenes.CornellBox
+    , FIR.Examples.RayTracing.Scenes.CornellBox2
     , FIR.Examples.RayTracing.Scenes.Furnace
 
   hs-source-dirs:

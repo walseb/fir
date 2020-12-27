@@ -26,8 +26,6 @@ import Data.Type.Bool
   ( If )
 import Data.Typeable
   ( Typeable )
-import GHC.TypeNats
-  ( Nat, KnownNat )
 
 -- fir
 import FIR
@@ -41,6 +39,8 @@ import FIR.Examples.RayTracing.Material
   ( MaterialSampleCallableData, MaterialQueryCallableData )
 import FIR.Examples.RayTracing.Types
   ( ShaderRecord
+  , Bindable(BindingNo), GeometryBindingNo
+  , IndexBuffer(TriangleIndexBuffer)
   , GeometryKind(..), IsTriangle, LuminaireID
   , EmitterCallableData, LightSamplingCallableData
   , PrimaryPayload, OcclusionPayload
@@ -49,30 +49,30 @@ import FIR.Examples.RayTracing.Types
 --------------------------------------------------------------------------
 -- Geometry types.
 
-class    ( KnownNat ( GeometryBindingNo geom )
-         , PrimTy   ( GeometryData      geom )
+class    ( PrimTy        ( GeometryData geom )
+         , HasOpaqueType ( GeometryData geom ) ~ False
+         , PrimTy        ( GeometryAttributes geom )
          , Typeable geom
+         , Bindable geom
          )
       => Geometry ( geom :: GeometryKind )
       where
-  type GeometryBindingNo geom = ( bdNo :: Nat ) | bdNo -> geom
-  type GeometryData      geom :: Type
+  type GeometryAttributes geom :: Type
+  type GeometryData       geom :: Type
   geometryKind :: GeometryKind
 
 instance Geometry Triangle where
-  type GeometryBindingNo Triangle = 3
-  type GeometryData      Triangle =
+  type GeometryAttributes Triangle = V 2 Float -- barycentric coordinates (built-in)
+  type GeometryData       Triangle =
     Struct
-      '[ "p0"     ':-> V 3 Float
-       , "p1"     ':-> V 3 Float
-       , "p2"     ':-> V 3 Float
+      '[ "vertex" ':-> V 3 Float
        , "normal" ':-> V 3 Float
        ]
   geometryKind = Triangle
 
 instance Geometry Sphere where
-  type GeometryBindingNo Sphere = 4
-  type GeometryData      Sphere =
+  type GeometryAttributes Sphere = ()
+  type GeometryData       Sphere =
     Struct
       '[ "center" ':-> V 3 Float
        , "radius" ':-> Float
@@ -94,11 +94,14 @@ type family AABBFunction ( geom :: GeometryKind ) where
   AABBFunction geom     = GeometryData geom -> ( V 3 Float, V 3 Float )
 
 type ClosestHitOcclusionDefs ( geom :: GeometryKind ) =
-  '[ "payload"       ':-> RayPayloadIn '[] OcclusionPayload
-   , "main"          ':-> EntryPoint   '[] ClosestHit
-   , "geometries"    ':-> StorageBuffer '[ DescriptorSet 0, Binding ( GeometryBindingNo geom ), NonWritable ]
-                            ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
-   , "shaderRecord"  ':-> ShaderRecordBuffer '[] ShaderRecord
+  '[ "payload"         ':-> RayPayloadIn '[] OcclusionPayload
+   , "triangleIndices" ':-> StorageBuffer '[ DescriptorSet 0, Binding ( BindingNo TriangleIndexBuffer ), NonWritable ]
+                              ( Struct '[ "indices" ':-> RuntimeArray ( Struct '[ "i0" ':-> Word32, "i1" ':-> Word32, "i2" ':-> Word32 ] ) ] )
+   , "geometries"      ':-> StorageBuffer '[ DescriptorSet 0, Binding ( GeometryBindingNo geom ), NonWritable ]
+                              ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
+   , "shaderRecord"    ':-> ShaderRecordBuffer '[] ShaderRecord
+   , "hitAttribute"    ':-> HitAttribute '[] ( Struct '[ "attributes" ':-> GeometryAttributes geom ] )
+   , "main"            ':-> EntryPoint   '[] ClosestHit
    ]
 
 type ClosestHitPrimaryDefs ( geom :: GeometryKind ) =
@@ -111,8 +114,11 @@ type ClosestHitPrimaryDefs ( geom :: GeometryKind ) =
    , "matSampleData"   ':-> CallableData  '[] MaterialSampleCallableData
    , "matQueryData"    ':-> CallableData  '[] MaterialQueryCallableData
    , "lightSampleData" ':-> CallableData  '[] LightSamplingCallableData
+   , "triangleIndices" ':-> StorageBuffer '[ DescriptorSet 0, Binding ( BindingNo TriangleIndexBuffer ), NonWritable ]
+                              ( Struct '[ "indices" ':-> RuntimeArray ( Struct '[ "i0" ':-> Word32, "i1" ':-> Word32, "i2" ':-> Word32 ] ) ] )
    , "geometries"      ':-> StorageBuffer '[ DescriptorSet 0, Binding ( GeometryBindingNo geom ), NonWritable ]
                               ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
+   , "hitAttribute"    ':-> HitAttribute '[] ( Struct '[ "attributes" ':-> GeometryAttributes geom ] )
    , "shaderRecord"    ':-> ShaderRecordBuffer '[] ShaderRecord
    , "main"            ':-> EntryPoint    '[] ClosestHit
    ]
@@ -126,8 +132,12 @@ class Geometry geom => HittableGeometry geom where
   intersectionShader :: If (IsTriangle geom) () (IntersectionShader geom)
 
   getNormal
-    :: ( Has    "geometries" s ~ ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
-       , CanGet "geometries" s
+    :: ( Has    "geometries"      s ~ Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ]
+       , CanGet "geometries"      s
+       , Has    "hitAttribute"    s ~ Struct '[ "attributes" ':-> GeometryAttributes geom ]
+       , CanGet "hitAttribute"    s
+       , Has    "triangleIndices" s ~ Struct '[ "indices" ':-> RuntimeArray ( Struct '[ "i0" ':-> Word32, "i1" ':-> Word32, "i2" ':-> Word32 ] ) ]
+       , CanGet "triangleIndices" s
        )
     => Code ( M 3 4 Float ) -- ^ Object-to-world matrix.
     -> Code ( M 4 3 Float ) -- ^ Transpose of world-to-object matrix.
@@ -137,7 +147,6 @@ class Geometry geom => HittableGeometry geom where
     -> Code Word32          -- ^ Index into the relevant geometry array.
     -> Program s s ( Code ( V 3 Float ) )
 
-
 instance HittableGeometry Triangle where
 
   aabb = ()
@@ -145,9 +154,17 @@ instance HittableGeometry Triangle where
   intersectionShader = ()
 
   getNormal _ worldToObject3x4 _ _ _ geometryIndex = do
-    objectNormal <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) geometryIndex
+    is <- use @( Name "triangleIndices" :.: Name "indices" :.: AnIndex Word32 ) geometryIndex
+    i0 <- let' $ view @( Name "i0" ) is
+    i1 <- let' $ view @( Name "i1" ) is
+    i2 <- let' $ view @( Name "i2" ) is
+    n0 <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) i0
+    n1 <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) i1
+    n2 <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) i2
+    ~( Vec2 u v ) <- use @( Name "hitAttribute" :.: Name "attributes" )
+    objectNormal <- let' $ ( 1 - u - v ) *^ n0 ^+^ u *^ n1 ^+^ v *^ n2
     -- Use the inverse-transpose of the object-to-world transformation to transform normal vectors.
-    let' $ view @( Swizzle "xyz" ) ( worldToObject3x4 !*^ objectNormal )
+    let' . normalise $ view @( Swizzle "xyz" ) ( worldToObject3x4 !*^ objectNormal )
 
 instance HittableGeometry Sphere where
 
@@ -171,7 +188,7 @@ instance HittableGeometry Sphere where
     worldCentre <- let' $ objectToWorld !*^ Vec4 cx_o cy_o cz_o 1
 
     r_o <- let' $ view @( Name "radius" ) objectSphere
-    r   <- let' $ distance worldCentre ( objectToWorld !*^ ( Vec4 ( cx_o + r_o ) cy_o cz_o 1 ) )
+    r   <- let' $ distance worldCentre ( objectToWorld !*^ Vec4 ( cx_o + r_o ) cy_o cz_o 1 )
 
     delta <- let' $ worldCentre ^-^ worldRayOrigin
     leg   <- let' $ worldRayDir ^.^ delta
@@ -210,7 +227,7 @@ instance HittableGeometry Sphere where
 --  - shadow ray closest-hit shader: just one,
 --  - primary ray closest-hit shader: one for each geometry type.
 
-occlusionClosestHitShader :: forall geom. ( HittableGeometry geom, _ ) => Module ( ClosestHitOcclusionDefs geom )
+occlusionClosestHitShader :: forall geom. HittableGeometry geom => Module ( ClosestHitOcclusionDefs geom )
 occlusionClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   instanceID        <- get @"gl_InstanceID"
@@ -228,7 +245,7 @@ occlusionClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   put @"payload" ( Struct $ fromIntegral primitiveID :& fromIntegral instanceID :& hitT :& normal :& End )
   pure ( Lit () )
 
-primaryClosestHitShader :: forall geom. ( HittableGeometry geom, _ ) => Module ( ClosestHitPrimaryDefs geom )
+primaryClosestHitShader :: forall geom. HittableGeometry geom => Module ( ClosestHitPrimaryDefs geom )
 primaryClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   hitT              <- get @"gl_RayTMax"

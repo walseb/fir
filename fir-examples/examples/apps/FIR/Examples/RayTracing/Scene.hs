@@ -1,6 +1,7 @@
-{-# LANGUAGE DataKinds    #-}
-{-# LANGUAGE GADTs        #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DataKinds     #-}
+{-# LANGUAGE GADTs         #-}
+{-# LANGUAGE TypeFamilies  #-}
+{-# LANGUAGE TypeOperators #-}
 
 module FIR.Examples.RayTracing.Scene where
 
@@ -43,7 +44,7 @@ data InstanceType
 data Scene
   = Scene
     { sceneEmitters             :: [EmitterObject]
-    , sceneTriangleGeometries   :: HashMap ShortText ( Maybe [ Word32 ], [ GeometryData Triangle ] )
+    , sceneTriangleGeometries   :: HashMap ShortText ( [ Word32 ], [ GeometryData Triangle ] )
     , sceneProceduralGeometries :: HashMap ShortText GeometryObject
     , sceneInstances            :: [ ( InstanceType, M 3 4 Float, [ ( ShortText, SomeMaterialProperties ) ] ) ]
     , sceneCamera               :: CameraCoordinates
@@ -68,7 +69,7 @@ data EmitterObject where
     :: ( HittableGeometry geom, Luminaire lum, Material mat )
     => LightSamplingMethod
     -> STriangleQ geom
-    -> GeometryData geom
+    -> [ GeometryData geom ] -- should be of length 3 for triangle geometry and length 0 otherwise
     -> Proxy lum
     -> Float -- ^ luminaire weight; these need to sum to 1 (TODO: normalise within the 'buildScene' function)
     -> LuminaireProperties lum

@@ -83,6 +83,7 @@ Descriptor set 0:
   - Binding 2: storage buffer of all light sources in the scene,
                each with information about the appropriate callable shaders
                and light source information
+  - Binding 3: triangle index buffer
   - one binding for each geometry type supported,
     as specified by the GeometryBindingNo type family;
     each of these is a storage buffer holding geometry data

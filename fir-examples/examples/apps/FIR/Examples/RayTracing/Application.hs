@@ -61,6 +61,10 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Dependent.Map as DMap
   ( lookup )
 
+-- generic-lens
+import Data.Generics.Product.Typed
+  ( HasType(typed) )
+
 -- lens
 import Control.Lens
   ( assign, modifying, use )
@@ -178,11 +182,12 @@ shortName = "ray-tracing" -- name for screenshots
 -- Ray-tracing descriptor set 0
 data UBOResourceSet i st
   = UBOResourceSet
-    { uboResource      :: UniformBuffer UBO                   i st
-    , accelResource    :: TopLevelAS                          i st
-    , luminaireIDs     :: StorageBuffer LuminaireID           i st
-    , trianglesArray   :: StorageBuffer ( GeometryData Triangle ) i st
-    , spheresArray     :: StorageBuffer ( GeometryData Sphere   ) i st
+    { uboResource      :: UniformBuffer UBO                               i st
+    , accelResource    :: TopLevelAS                                      i st
+    , luminaireIDs     :: StorageBuffer LuminaireID                       i st
+    , indexBuffer      :: StorageBuffer Word32                            i st
+    , trianglesArray   :: StorageBuffer ( GeometryData Triangle )         i st
+    , spheresArray     :: StorageBuffer ( GeometryData Sphere   )         i st
     , blackbodiesArray :: StorageBuffer ( LuminaireProperties Blackbody ) i st
     , lambertiansArray :: StorageBuffer ( MaterialProperties Lambertian ) i st
     }
@@ -222,11 +227,13 @@ shaderIndices = ShaderIndices
   , hitGroupAbsoluteIndices            = Map.fromList [ ( Triangle, V2 8 9 ), ( Sphere, V2 10 11 ) ]
   }
 
+newtype CameraLock = CameraIsLocked { cameraIsLocked :: Bool }
+
 ----------------------------------------------------------------------------
 -- Application.
 
 rayTracing :: IO ()
-rayTracing = runVulkan initialState do
+rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -246,7 +253,8 @@ rayTracing = runVulkan initialState do
     initialUBO :: UBO
     initialUBO = sceneCamera scene :& 0 :& End
 
-  modifying _observer ( \ obs -> obs { position = view @( Name "position" :.: Swizzle "xyz" ) ( sceneCamera scene ) } )
+  modifying ( typed @RenderState . _observer )
+    ( \ obs -> obs { position = view @( Name "position" :.: Swizzle "xyz" ) ( sceneCamera scene ) } )
 
   -------------------------------------------
   -- Initialise window and Vulkan context.
@@ -328,7 +336,7 @@ rayTracing = runVulkan initialState do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain Normal appName rtReqs
+    initialiseContext @WithSwapchain Debug appName rtReqs
       RenderInfo
         { queueType   = Vulkan.QUEUE_GRAPHICS_BIT .|. Vulkan.QUEUE_COMPUTE_BIT .|. Vulkan.QUEUE_TRANSFER_BIT
         , surfaceInfo = surfaceInfo
@@ -342,6 +350,7 @@ rayTracing = runVulkan initialState do
     ( topLevelAS
       , SceneData
         { luminaireIDs
+        , triangleIndices
         , geometryData
         , luminaireProperties
         , materialProperties
@@ -494,6 +503,9 @@ rayTracing = runVulkan initialState do
                          .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
         , luminaireIDs     = StageFlags 
                              Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+        , indexBuffer      = StageFlags $
+                             Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR
+                         .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
         , trianglesArray   = StageFlags $
                              Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR
                          .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
@@ -524,6 +536,7 @@ rayTracing = runVulkan initialState do
         { uboResource      = BufferData initialUBO
         , accelResource    = TopLevelAS topLevelAS
         , luminaireIDs     = BufferData ( toList luminaireIDs )
+        , indexBuffer      = BufferData ( toList triangleIndices )
         , trianglesArray   = BufferData
           ( maybe [] toList $ DMap.lookup ( TagGeometryData     $ STriangle            ) geometryData )
         , spheresArray     = BufferData
@@ -792,23 +805,37 @@ rayTracing = runVulkan initialState do
       ----------------
       -- input
 
-      inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
-      prevInput <- use _input
+      inputEvents   <- map SDL.Event.eventPayload <$> SDL.pollEvents
+      prevCamLocked <- cameraIsLocked <$> use ( typed @CameraLock )
+      prevInput     <- use ( typed @RenderState . _input )
       let
         newInput = foldl onSDLInput prevInput inputEvents
-        action   = interpretInput newInput
+        cameraIsLocked =
+          if   SDL.ScancodeL `elem` ( keysPressed newInput )
+          then not prevCamLocked
+          else prevCamLocked
+        action =
+          if cameraIsLocked
+          then ( interpretInput newInput ) { movement = mempty, look = mempty }
+          else   interpretInput newInput
+
         reset    = not
-          (  norm ( coerce ( movement action ) :: V 3 Float ) < 1e-7
-          && norm ( coerce ( look     action ) :: V 2 Float ) < 1e-7
+          ( (  norm ( coerce ( movement action ) :: V 3 Float ) < 1e-7
+            && norm ( coerce ( look     action ) :: V 2 Float ) < 1e-7
+            )
           )
-      assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
+      assign ( typed @CameraLock )
+        ( CameraIsLocked { cameraIsLocked } )
+      assign ( typed @RenderState . _input )
+        ( newInput { mouseRel = pure 0, keysPressed = [] } )
 
       ----------------
       -- simulation
 
-      oldObserver <- use _observer
+      oldObserver <- use ( typed @RenderState . _observer )
+
       let (observer, orientation) = oldObserver `move` action
-      assign _observer observer
+      assign ( typed @RenderState . _observer ) observer
 
       when ( locate action )
         ( liftIO $ putStrLn ( show observer ) )

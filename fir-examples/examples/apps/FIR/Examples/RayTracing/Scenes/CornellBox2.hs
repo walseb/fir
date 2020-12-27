@@ -5,13 +5,15 @@
 {-# LANGUAGE TupleSections     #-}
 {-# LANGUAGE TypeApplications  #-}
 
-module FIR.Examples.RayTracing.Scenes.CornellBox
-  ( cornellBox )
+module FIR.Examples.RayTracing.Scenes.CornellBox2
+  ( cornellBox2 )
   where
 
 -- base
 import Data.Proxy
   ( Proxy(..) )
+import Data.Word
+  ( Word32 )
 
 -- text-short
 import Data.Text.Short
@@ -21,19 +23,23 @@ import Data.Text.Short
 import Data.HashMap.Strict
   ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
-  ( empty, fromList, map, toList )
+  ( fromList, map, toList )
 
 -- fir
 import FIR
   ( GradedSemigroup((<!>)), Struct(..) )
 import Math.Linear
-  ( pattern V3, pattern V4
-  , identity, konst
+  ( V, M(..)
+  , pattern V3, pattern V4
+  , (^+^), (*^), (^-^), (!*^)
+  , cross, identity, konst
   )
 
 -- fir-examples
 import FIR.Examples.RayTracing.Camera
   ( CameraCoordinates )
+import FIR.Examples.RayTracing.Geometry
+  ( Geometry(GeometryData) )
 import FIR.Examples.RayTracing.Luminaire
   ( LightSamplingMethod(SurfaceArea) )
 import FIR.Examples.RayTracing.Scene
@@ -47,13 +53,15 @@ import FIR.Examples.RayTracing.Types
 
 --------------------------------------------------------------------------
 
-cornellBox :: Scene
-cornellBox =
+cornellBox2 :: Scene
+cornellBox2 =
   Scene
     { sceneEmitters             = [cornellBoxEmitter]
-    , sceneTriangleGeometries   = HashMap.empty
+    , sceneTriangleGeometries   = HashMap.map fst cornellBoxTriangleGeometries
     , sceneProceduralGeometries = HashMap.map fst cornellBoxAABBGeometries
-    , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBGeometries ) ) ]
+    , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBGeometries ) )
+                                  , ( TrianglesInstance , identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxTriangleGeometries ) )
+                                  ]
     , sceneCamera               = cornellBoxCamera
     }
 cornellBoxEmitter :: EmitterObject
@@ -80,13 +88,49 @@ cornellBoxAABBGeometries
   $
   [ ( "leftWall"  , ( V3 (-1e5+1)  -40.8         81.6     :& 1e5  :& End, V3 0.9 0.2 0.2 :& End ) )
   , ( "rightWall" , ( V3 (1e5+99)  -40.8         81.6     :& 1e5  :& End, V3 0.4 0.8 0.1 :& End ) )
-  , ( "backWall"  , ( V3      50   -40.8        (1e5+170) :& 1e5  :& End, V3 1   1   1   :& End ) )
+  , ( "backWall"  , ( V3      50   -40.8        (1e5+190) :& 1e5  :& End, V3 1   1   1   :& End ) )
   , ( "frontWall" , ( V3      50   -40.8        -1e5      :& 1e5  :& End, V3 0.1 0.1 0.1 :& End ) )
   , ( "bottomWall", ( V3      50    1e5          81.6     :& 1e5  :& End, V3 0.7 0.7 0.7 :& End ) )
   , ( "topWall"   , ( V3      50  (-(1e5+81.6))  81.6     :& 1e5  :& End, V3 1   1   1   :& End ) )
   , ( "sphere1"   , ( V3      73   -16.5         78       :& 16.5 :& End, V3 1   1   1   :& End ) )
   , ( "sphere2"   , ( V3      28   -19           92       :& 19   :& End, V3 0.2 0.5 1.0 :& End ) )
   ]
+
+cornellBoxTriangleGeometries :: HashMap ShortText ( ( [ Word32 ], [ GeometryData Triangle ] ), SomeMaterialProperties )
+cornellBoxTriangleGeometries
+  = HashMap.fromList
+  [ ( "triangle" :: ShortText
+    , ( ( [ 0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3 ]
+        , [ p0 :& foldr (^+^) (V3 0 0 0) [ n012, n013, n023 ] :& End
+          , p1 :& foldr (^+^) (V3 0 0 0) [ n012, n013, n123 ] :& End
+          , p2 :& foldr (^+^) (V3 0 0 0) [ n012, n023, n123 ] :& End
+          , p3 :& foldr (^+^) (V3 0 0 0) [ n013, n023, n123 ] :& End
+          ]
+        )
+      , SomeMaterialProperties @Lambertian Proxy ( V3 1.0 0.9 0.1 :& End )
+      )
+    )
+  ]
+  where
+    p0, p1, p2, p3, n012, n013, n023, n123, c :: V 3 Float
+    p0 = c ^+^ k *^ ( m !*^ V3 1     0                0 )
+    p1 = c ^+^ k *^ ( m !*^ V3 -0.5  0                (   sqrt 3 / 2 ) )
+    p2 = c ^+^ k *^ ( m !*^ V3 -0.5  0                ( - sqrt 3 / 2 ) )
+    p3 = c ^+^ k *^ ( m !*^ V3 0     ( - sqrt 6 / 3 ) 0 )
+    n012 = ( p1 ^-^ p0 ) `cross` ( p2 ^-^ p0 )
+    n013 = ( p3 ^-^ p0 ) `cross` ( p1 ^-^ p0 )
+    n023 = ( p3 ^-^ p0 ) `cross` ( p2 ^-^ p0 )
+    n123 = ( p3 ^-^ p1 ) `cross` ( p2 ^-^ p1 )
+    c = V3 60 ( - sqrt 6 * k / 3 ) 150
+    k :: Float
+    k = 40
+    φ :: Float
+    φ = 0.8 * pi
+    m :: M 3 3 Float
+    m = M $ V3
+          ( V3 (   cos φ )  0   ( sin φ ) )
+          ( V3      0      -1       0     )
+          ( V3 ( - sin φ )  0   ( cos φ ) )
 
 cornellBoxCamera :: CameraCoordinates
 cornellBoxCamera = V4 50 -40.8 35 0 :& V3 1 0 0 :& V3 0 1 0 :& V4 0 0 1 0 :& End
