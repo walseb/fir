@@ -158,7 +158,7 @@ stepShader sParity = Module $ entryPoint @"main" @Compute do
     globalIndex
       <- use @( Name "gl_GlobalInvocationID" :.: Swizzle "xy" )
 
-    localArrayIndex  <- let' @Word32 $ i_local_x + localSizeX * i_local_y
+    localArrayIndex  <- let' $ i_local_x + localSizeX * i_local_y
 
     -- Read spins at current index, and write spins for lattice sites of opposite checkerboard colouring into local storage.
     evenSpin <- imageRead @"evenSpins" globalIndex
@@ -196,8 +196,8 @@ updateSpin sParity isingParameters ( Vec2 ix iy ) s ( Vec4 u l r d ) = do
   -- The probabilities should be as decorrelated as possible
   --  - between different lattice sites (x and y indices as well as parity);
   --  - over time.
-  ~( Vec3 hx hy _ ) <- let' @( V 3 Word32 ) =<< pcg3d ( Vec3 ix iy ( floor $ time * 1000 ) )
-  prob <- let' @Float
+  ~( Vec3 hx hy _ ) <- let' @( Code ( V 3 Word32 ) ) =<< pcg3d ( Vec3 ix iy ( floor $ time * 1000 ) )
+  prob <- let'
     ( word32ToProbability $ case sParity of { SEven -> hx; _ -> hy } )
 
   -- Change in Hamiltonian resuling from flipping the current spin.
@@ -378,11 +378,11 @@ gradient
   -> Code ( Array n ( V 4 Float ) )
   -> Program s s ( Code (V 4 Float) )
 gradient t colors = do
-  t'   <- let'         $ 0.5 * (t+1)
-  n    <- let'         $ Lit ( fromIntegral $ knownValue @n )
-  i    <- let' @Word32 $ floor ( (n-1) * t' )
-  s    <- let'         $ (n-1) * t' - fromIntegral i
-  cols <- let'         $ colors
+  t'   <- let' $ 0.5 * (t+1)
+  n    <- let' $ Lit ( fromIntegral $ knownValue @n )
+  i    <- let' $ ( floor ( (n-1) * t' ) :: Code Word32 )
+  s    <- let' $ (n-1) * t' - fromIntegral i
+  cols <- let' $ colors
   res  <- let'
     (    ( (1-s) *^ ( view @(AnIndex _)  i    cols ) )
      ^+^ (    s  *^ ( view @(AnIndex _) (i+1) cols ) )

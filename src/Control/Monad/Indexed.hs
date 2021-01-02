@@ -228,16 +228,20 @@ ixFor_ = flip ixTraverse_
 ------------------------------------------------
 -- rebindable syntax
 
+infixl 1 >>=
 -- | Angelic bind.
 (>>=) :: MonadIx m => m (a := j) i -> (a -> m q j) -> m q i
 c >>= f = extendIx ( \ (AtKey a) -> f a ) c  
 
+infixl 1 >>
 (>>) :: MonadIx m => m (a := j) i -> m q j -> m q i
 ma >> mb = ma >>= const mb
 
+infixr 1 <<
 (<<) :: MonadIx m => m q j -> m (a := j) i -> m q i
 (<<) = flip (>>)
 
+infixr 1 =<<
 (=<<) :: MonadIx m => (a -> m q j) -> m (a := j) i -> m q i
 (=<<) = flip (>>=)
 

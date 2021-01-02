@@ -64,6 +64,7 @@ as one wants to avoid having a constant conditional in the header.
 module FIR.Syntax.Labels
  ( -- * Overloaded labels
    IsLabel(fromLabel)
+ , Label(..), LabelUsage(..)
    -- * Infix operators
  , (#=), (#=!), (.=), (%=)
  )

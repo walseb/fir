@@ -8,6 +8,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE NamedWildCards        #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
 module FIR.Examples.JuliaSet.Shaders where
@@ -119,15 +120,17 @@ fragment = shader do
     ~(Vec4 x y _ _) <- #gl_FragCoord
     ~(Vec2 mx my) <- use @(Name "ubo" :.: Name "mousePos")
 
+    let
+      -- disambiguate to help type inference
+      (#<) :: _ => Program i i ( Code a ) -> Program i i ( Code a ) -> Program i i ( Code Bool )
+      (#<) = (<)
 
-    let (#<) = (<) @(Program _i _i _) -- disambiguate to help type inference
+    #total #= ( 0 :: Code Word32 )
 
-    #total     @Word32 #= 0
-
-    #xSampleNo @Word32 #= 0
+    #xSampleNo #= ( 0 :: Code Word32 )
     while ( #xSampleNo #< pure xSamples ) do
 
-      #ySampleNo @Word32 #= 0
+      #ySampleNo #= ( 0 :: Code Word32 )
       while ( #ySampleNo #< pure ySamples ) do
 
 
@@ -139,9 +142,9 @@ fragment = shader do
           dx = ( fromIntegral xNo + 0.5 ) * xWidth - 0.5
           dy = ( fromIntegral yNo + 0.5 ) * xWidth - 0.5
 
-        #pos @(V 2 Float) #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
-        #continue         #= Lit True
-        #depth @Word32    #= 0
+        #pos      #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
+        #continue #= Lit True
+        #depth    #= ( 0 :: Code Word32 )
 
         while #continue do
           pos   <- #pos

@@ -149,6 +149,7 @@ module FIR
   , FIR.ProgramState.ProgramState(ProgramState)
   , FIR.ProgramState.FunctionContext(TopLevel)
   , module FIR.Syntax.AST
+  , module FIR.Syntax.Complex
   , module FIR.Syntax.IfThenElse
   , module FIR.Syntax.Images
   , module FIR.Syntax.Optics
@@ -246,7 +247,7 @@ module FIR
   , Numeric.Half.Half
   , Prelude.Float
   , Prelude.Double
-  -- deliberately not re-exporing Int/Word
+  -- deliberately not re-exporting Int/Word
 
   -- overloaded strings syntax
   , Data.String.IsString(..)
@@ -335,6 +336,7 @@ import FIR.Prim.Singletons
 import FIR.Prim.Struct
 import FIR.ProgramState
 import FIR.Syntax.AST
+import FIR.Syntax.Complex
 import FIR.Syntax.IfThenElse
 import FIR.Syntax.Images
 import FIR.Syntax.Optics

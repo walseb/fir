@@ -2,7 +2,7 @@
 {-# LANGUAGE DerivingVia            #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -46,6 +46,8 @@ import Prelude
 import qualified Prelude
 import Data.Coerce
   ( coerce )
+import Data.Complex
+  ( Complex(..) )
 import Data.Int
   ( Int8, Int16, Int32, Int64 )
 import Data.Kind
@@ -119,6 +121,8 @@ deriving via Base CULLong instance AdditiveMonoid CULLong
 deriving via Base CFloat  instance AdditiveMonoid CFloat
 deriving via Base CDouble instance AdditiveMonoid CDouble
 
+deriving via Base (Complex a) instance Prelude.RealFloat a => AdditiveMonoid (Complex a)
+
 class AdditiveMonoid a => Semiring a where
   -- | Multiplication.
   (*) :: a -> a -> a
@@ -153,6 +157,8 @@ deriving via Base CLLong  instance Semiring CLLong
 deriving via Base CULLong instance Semiring CULLong
 deriving via Base CFloat  instance Semiring CFloat
 deriving via Base CDouble instance Semiring CDouble
+
+deriving via Base (Complex a) instance Prelude.RealFloat a => Semiring (Complex a)
 
 -- | Cancellative monoid under addition.
 class AdditiveMonoid a => CancellativeAdditiveMonoid a where
@@ -195,6 +201,8 @@ deriving via Base CULLong instance CancellativeAdditiveMonoid CULLong
 deriving via Base CFloat  instance CancellativeAdditiveMonoid CFloat
 deriving via Base CDouble instance CancellativeAdditiveMonoid CDouble
 
+deriving via Base (Complex a) instance Prelude.RealFloat a => CancellativeAdditiveMonoid (Complex a)
+
 -- | Additive group.
 class CancellativeAdditiveMonoid a => AdditiveGroup a where
   -- | Negation.
@@ -220,6 +228,8 @@ deriving via Base CLong   instance AdditiveGroup CLong
 deriving via Base CLLong  instance AdditiveGroup CLLong
 deriving via Base CFloat  instance AdditiveGroup CFloat
 deriving via Base CDouble instance AdditiveGroup CDouble
+
+deriving via Base (Complex a) instance Prelude.RealFloat a => AdditiveGroup (Complex a)
 
 class AdditiveGroup a => Signed a where
   -- | Absolute value.
@@ -279,6 +289,7 @@ deriving via Base Double instance DivisionRing Double
 deriving via Base CFloat  instance DivisionRing CFloat
 deriving via Base CDouble instance DivisionRing CDouble
 
+deriving via Base (Complex a) instance Prelude.RealFloat a => DivisionRing (Complex a)
 
 -- totally ordered archimedean monoids
 class (Ord a, AdditiveMonoid a) => Archimedean a where
@@ -394,6 +405,8 @@ deriving via Base Double instance Floating Double
 deriving via Base CFloat  instance Floating CFloat
 deriving via Base CDouble instance Floating CDouble
 
+deriving via Base (Complex a) instance Prelude.RealFloat a => Floating (Complex a)
+
 class ( Floating a, Eq a ) => RealFloat a where
   atan2      :: a -> a -> a
   isNaN      :: a -> Logic a
@@ -410,6 +423,29 @@ deriving via Base Double instance RealFloat Double
 
 deriving via Base CFloat  instance RealFloat CFloat
 deriving via Base CDouble instance RealFloat CDouble
+
+
+class ComplexFloat c a | c -> a where
+  conjugate   :: c -> c
+  magnitude   :: c -> a
+  phase       :: c -> a
+  mkCartesian :: a -> a -> c
+  mkPolar     :: a -> a -> c
+  cis         :: a -> c
+  scale       :: a -> c -> c
+  realPart    :: c -> a
+  imagPart    :: c -> a
+
+instance (RealFloat a, b ~ a) => ComplexFloat (Complex a) b where
+  conjugate ( a :+ b ) = a :+ negate b
+  magnitude ( a :+ b ) = sqrt ( a * a + b * b )
+  phase     ( a :+ b ) = atan2 b a
+  mkCartesian          = (:+)
+  mkPolar r theta      = scale r $ cis theta
+  cis theta            = cos theta :+ sin theta
+  scale r              = Prelude.fmap ( r * )
+  realPart  ( a :+ _ ) = a
+  imagPart  ( _ :+ b ) = b
 
 -- constraint for integer types,
 -- no methods

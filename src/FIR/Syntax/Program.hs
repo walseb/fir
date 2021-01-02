@@ -323,9 +323,9 @@ instance {-# OVERLAPPABLE #-} ( j ~ i ) => HasUndefined (Program i j a) where
 
 -- | let binding.
 let' :: forall ( a :: Type ) ( i :: ProgramState )
-     . ( GHC.Stack.HasCallStack, PrimTy a )
-     => Code a
-     -> Program i i (Code a)
+     . ( GHC.Stack.HasCallStack, SyntacticVal a, PrimTy (InternalType a) )
+     => a
+     -> Program i i a
 let' = fromAST Let
 
 -- | Define a new variable.

@@ -196,6 +196,7 @@ library
       , FIR.Prim.Op
       , FIR.ProgramState
       , FIR.Syntax.AST
+      , FIR.Syntax.Complex
       , FIR.Syntax.IfThenElse
       , FIR.Syntax.Images
       , FIR.Syntax.Optics
@@ -261,7 +262,7 @@ library
       , haskus-utils-variant
           ^>= 3.0
       , lens
-          >= 4.18     && < 4.20
+          >= 4.18     && < 5.1
       , mtl
           ^>= 2.2.2
       , split

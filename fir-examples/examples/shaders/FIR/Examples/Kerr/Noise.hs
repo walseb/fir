@@ -34,12 +34,12 @@ noise v@(Vec2 x y) = purely do
   j  <- let' $ Vec2 (ix + ox) (iy + oy)
   b  <- let' $ a ^-^ o ^+^ pureAST k2
   c  <- let' $ a ^+^ pureAST ( 2 * k2 - 1 )
-  h  <- let' @(V 3 Float) $ ( max 0 :: Code Float -> Code Float ) <$$> ( pureAST 0.5 ^-^ Vec3 (a ^.^ a) (b ^.^ b) (c ^.^ c) )
-  h² <- let' @(V 3 Float) $ ( ( \ t -> t * t ) :: Code Float -> Code Float ) <$$> h
+  h  <- let' @( Code ( V 3 Float) ) $ ( max 0 :: Code Float -> Code Float ) <$$> ( pureAST 0.5 ^-^ Vec3 (a ^.^ a) (b ^.^ b) (c ^.^ c) )
+  h² <- let' @( Code ( V 3 Float) ) $ ( ( \ t -> t * t ) :: Code Float -> Code Float ) <$$> h
   hx <- let' =<< hash2 i
   hy <- let' =<< hash2 j
   hz <- let' =<< hash2 ( i ^+^ Vec2 1 1 )
-  n  <- let' @(V 3 Float) $ ( ( \ r t -> r * r * t ) :: Code Float -> Code Float -> Code Float )
+  n  <- let' @( Code ( V 3 Float) ) $ ( ( \ r t -> r * r * t ) :: Code Float -> Code Float -> Code Float )
                         <$$> h² <**> Vec3 ( a ^.^ hx ) ( b ^.^ hy ) ( c ^.^ hz )
   let' $ n ^.^ pureAST 70
     where

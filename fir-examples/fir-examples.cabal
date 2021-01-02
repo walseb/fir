@@ -68,7 +68,7 @@ common vulkan-common
     , JuicyPixels
         ^>= 3.3.2
     , lens
-        >= 4.18     && < 4.20
+        >= 4.18     && < 5.1
     , logging-effect
         ^>= 1.3.6
     , resourcet
