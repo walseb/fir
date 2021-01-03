@@ -30,14 +30,12 @@ import FIR
   ( Array, GradedSemigroup((<!>)), Struct(..) )
 import Math.Linear
   ( V, M(..)
-  , pattern V2, pattern V3, pattern V4
+  , pattern V2, pattern V3
   , (^+^), (*^), (^-^), (!*^)
   , cross, identity, konst
   )
 
 -- fir-examples
-import FIR.Examples.RayTracing.Camera
-  ( CameraCoordinates )
 import FIR.Examples.RayTracing.IOR
   ( IORData(..), MaterialInterface(..), materialInterfaceArray
   , au, bk7
@@ -47,13 +45,15 @@ import FIR.Examples.RayTracing.Geometry
 import FIR.Examples.RayTracing.Luminaire
   ( LightSamplingMethod(SurfaceArea) )
 import FIR.Examples.RayTracing.Scene
-  ( Scene(..), InstanceType(..)
+  ( Scene(..), InstanceType(..), MissInfo(..)
   , GeometryObject(..), SomeMaterialProperties(..), EmitterObject(..)
   )
 import FIR.Examples.RayTracing.Types
-  ( GeometryKind(..), LuminaireKind(..), MaterialKind(..)
+  ( GeometryKind(..), LuminaireKind(..), MaterialKind(..), MissKind(..)
   , STriangleQ(..)
   )
+import FIR.Examples.RenderState
+  ( Observer(..), initialObserver )
 
 --------------------------------------------------------------------------
 
@@ -67,7 +67,8 @@ cornellBox2 =
                                   , ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBFresnelGeometries ) )
                                   , ( TrianglesInstance , identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxTriangleGeometries ) )
                                   ]
-    , sceneCamera               = cornellBoxCamera
+    , sceneObserver             = cornellBoxObserver
+    , sceneMissInfo             = cornellMissInfo
     }
 cornellBoxEmitter :: EmitterObject
 cornellBoxEmitter =
@@ -165,5 +166,12 @@ cornellBoxTriangleGeometries
         }
       )
 
-cornellBoxCamera :: CameraCoordinates
-cornellBoxCamera = V4 50 -40.8 35 0 :& V3 1 0 0 :& V3 0 1 0 :& V4 0 0 1 0 :& End
+cornellBoxObserver :: Observer
+cornellBoxObserver = initialObserver { position = V3 50 -40.8 35 , angles = V2 0 0 }
+
+cornellMissInfo :: MissInfo
+cornellMissInfo =
+  MissInfo
+    ( Proxy :: Proxy Factor )
+    2 -- miss shader index
+    0

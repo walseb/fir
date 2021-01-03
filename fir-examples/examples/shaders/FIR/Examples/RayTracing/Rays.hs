@@ -1,6 +1,8 @@
+{-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveFunctor         #-}
+{-# LANGUAGE NegativeLiterals      #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE PolyKinds             #-}
@@ -9,10 +11,11 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module FIR.Examples.RayTracing.Rays
   ( raygenShader
-  , primaryMissShader, occlusionMissShader
+  , MissData, MissShader(..), occlusionMissShader
   ) where
 
 -- fir
@@ -23,11 +26,15 @@ import Math.Linear
 import FIR.Examples.RayTracing.Camera
   ( Camera(..), cameraRay )
 import FIR.Examples.RayTracing.Colour
-  ( wavelengthToXYZ )
+  ( blackbodySpectrum, wavelengthToXYZ )
+import FIR.Examples.RayTracing.Luminaire
+  ( Luminaire(LuminaireProperties) )
 import FIR.Examples.RayTracing.QuasiRandom
   ( initialiseQuasiRandomState, random01s )
 import FIR.Examples.RayTracing.Types
-  ( UBO, PrimaryPayload, OcclusionPayload
+  ( LuminaireKind(Blackbody), MissKind(..)
+  , PrimaryPayload, OcclusionPayload, UBO
+  , type BindingNo
   , pattern Specular, pattern Miss
   , height, width
   , tracePrimaryRay
@@ -47,8 +54,8 @@ import FIR.Examples.RayTracing.Types
 
 
 type RayGenDefs =
-  '[ "ubo"      ':-> Uniform         '[ DescriptorSet 0, Binding 0 ] UBO
-   , "accel"    ':-> UniformConstant '[ DescriptorSet 0, Binding 1 ] AccelerationStructure
+  '[ "ubo"      ':-> Uniform         '[ DescriptorSet 0, Binding ( BindingNo UBO ) ] UBO
+   , "accel"    ':-> UniformConstant '[ DescriptorSet 0, Binding ( BindingNo AccelerationStructure ) ] AccelerationStructure
    , "in_data"  ':-> Image2D         '[ DescriptorSet 1, Binding 0, NonWritable ] ( RGBA32 F )
    , "out_data" ':-> Image2D         '[ DescriptorSet 2, Binding 0, NonReadable ] ( RGBA32 F )
    , "loglumis" ':-> Image2D         '[ DescriptorSet 2, Binding 1 ] ( RGBA32 F )
@@ -58,8 +65,9 @@ type RayGenDefs =
 
 raygenShader :: Module RayGenDefs
 raygenShader = Module $ entryPoint @"main" @RayGeneration do
-  cameraCoords <- use @( Name "ubo" :.: Name "camera" )
-  reset        <- use @( Name "ubo" :.: Name "reset"  )
+  cameraCoords <- use @( Name "ubo" :.: Name "camera"          )
+  reset        <- use @( Name "ubo" :.: Name "reset"           )
+  missIndex    <- use @( Name "ubo" :.: Name "missShaderIndex" )
   accel        <- get @"accel"
   let
     frame :: Code Float
@@ -114,7 +122,7 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
     -- Shoot primary ray.
     worldRayOrigin    <- use @( Name "payload" :.: Name "worldRayOrigin"    )
     worldRayDirection <- use @( Name "payload" :.: Name "worldRayDirection" )
-    tracePrimaryRay @"payload" accel worldRayOrigin worldRayDirection
+    tracePrimaryRay @"payload" accel missIndex worldRayOrigin worldRayDirection
 
     -- New ray payload data has now been written to,
     -- by a closest hit shader or a miss shader.
@@ -160,24 +168,131 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
   imageWrite @"loglumis" ( Vec2 i_x i_y ) ( Vec4 x' y' z' logLumi )
 
 --------------------------------------------------------------------------
--- Miss shaders (primary ray and occlusion ray).
-
-type PrimaryMissDefs =
-  '[ "payload" ':-> RayPayloadIn '[] PrimaryPayload
-   , "main"    ':-> EntryPoint   '[] Miss
-   ]
+-- Miss shaders:
+--
+-- - a single occlusion miss shader
+-- - several different primary miss shaders
 
 type OcclusionMissDefs =
   '[ "payload" ':-> RayPayloadIn '[] OcclusionPayload
    , "main"    ':-> EntryPoint   '[] Miss
    ]
 
-primaryMissShader :: Module PrimaryMissDefs
-primaryMissShader = Module $ entryPoint @"main" @Miss do
-  throughput <- use @( Name "payload" :.: Name "throughput"        )
-  modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> Vec4 0.9 0.9 0.9 0.9 ) )
-  assign @( Name "payload" :.: Name "hitType" ) ( Lit Miss )
-
 occlusionMissShader :: Module OcclusionMissDefs
 occlusionMissShader = Module $ entryPoint @"main" @Miss do
   assign @( Name "payload" ) ( Struct $ (-1) :& (-1) :& (-1) :& Vec3 0 0 0 :& End )
+
+type PrimaryMissDefs =
+  '[ "payload"  ':-> RayPayloadIn '[] PrimaryPayload
+   , "main"     ':-> EntryPoint   '[] Miss
+   , "missData" ':-> Uniform      '[ DescriptorSet 0, Binding ( BindingNo MissKind ) ] MissData
+   ]
+
+
+type MissData = Struct
+  '[ "blackbody" ':-> MissProperties EnvironmentBlackbody
+   , "factor"    ':-> MissProperties Factor
+--   , "sky"       ':-> MissProperties Sky
+   ]
+
+defaultMissData :: MissData
+defaultMissData = defaultMissProps @EnvironmentBlackbody :& defaultMissProps @Factor :& End --  :& defaultMissProps @Sky :& End
+
+class MissShader ( miss :: MissKind ) where
+  type MissProperties miss
+
+  defaultMissProps  :: MissProperties miss
+  missData          :: MissProperties miss -> MissData
+  primaryMissShader :: Module PrimaryMissDefs
+
+instance MissShader EnvironmentBlackbody where
+  type MissProperties EnvironmentBlackbody = LuminaireProperties Blackbody
+  defaultMissProps = 6.5e3 :& 1 :& End
+  missData props = set @( Name "blackbody" ) props defaultMissData
+
+  primaryMissShader = Module $ entryPoint @"main" @Miss do
+    emitterInfo      <- use @( Name "missData" :.: Name "blackbody" )
+    emitterTemp      <- let' $ view @( Name "temperature" ) emitterInfo
+    emitterIntensity <- let' $ view @( Name "intensity"   ) emitterInfo
+    ~( Vec4 λ0 λ1 λ2 λ3 ) <- use @( Name "payload" :.: Name "wavelengths" )
+    r0 <- let' =<< blackbodySpectrum emitterTemp λ0
+    r1 <- let' =<< blackbodySpectrum emitterTemp λ1
+    r2 <- let' =<< blackbodySpectrum emitterTemp λ2
+    r3 <- let' =<< blackbodySpectrum emitterTemp λ3
+    let
+      radiances :: Code ( V 4 Float )
+      radiances = ( 1e-13 * emitterIntensity ) *^ Vec4 r0 r1 r2 r3
+    throughput <- use @( Name "payload" :.: Name "throughput" )
+    modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> radiances ) )
+    assign @( Name "payload" :.: Name "hitType" ) ( Lit Miss )
+
+instance MissShader Factor where
+  type MissProperties Factor = Float
+  defaultMissProps = 0.9
+  missData props = set @( Name "factor" ) props defaultMissData
+
+  primaryMissShader = Module $ entryPoint @"main" @Miss do
+    f <- use @( Name "missData" :.: Name "factor" )
+    throughput <- use @( Name "payload" :.: Name "throughput" )
+    modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> Vec4 f f f f ) )
+    assign @( Name "payload" :.: Name "hitType" ) ( Lit Miss )
+
+{-
+instance MissShader Sky where
+  type MissProperties Sky =
+    Struct 
+      '[ "depolarisation"            ':-> Float
+       , "mieCoefficient"            ':-> Float
+       , "mieDirectionalG"           ':-> Float
+       , "mieV"                      ':-> Float
+
+       , "mieKCoefficient"           ':-> V 3 Float
+       , "mieZenithLength"           ':-> Float
+
+       , "primaries"                 ':-> V 3 Float
+       , "turbidity"                 ':-> Float
+
+       , "rayleigh"                  ':-> Float
+       , "rayleighZenithLength"      ':-> Float
+       , "refractiveIndex"           ':-> Float
+       , "sumAngularDiameterDegrees" ':-> Float
+
+       , "sunPosition"               ':-> V 3 Float
+       , "sumIntensityFactor"        ':-> Float
+
+       , "sumIntensityFalloff"       ':-> Float
+
+       , "numMolecules"              ':-> Word32
+
+       ]
+  defaultMissProps
+    =  0.035
+    :& 0.005
+    :& 0.8
+    :& 4
+
+    :& V3 0.686 0.678 0.666
+    :& 1.25e3
+
+    :& V3 6.8e-7 5.5e-7 4.5e-7
+    :& 2
+
+    :& 1
+    :& 8.4e3
+    :& 1.0003
+    :& 0.0093333
+
+    :& V3 0 -1e6 0
+    :& 1000.0
+
+    :& 1.5
+
+    :& ( 2542 * 10 Prelude.^ ( 22 :: Word32 ) )
+    :& End
+  missData props = set @( Name "sky" ) props defaultMissData
+
+
+  primaryMissShader = Module $ entryPoint @"main" @Miss do
+    -- TODO
+    assign @( Name "payload" :.: Name "hitType" ) ( Lit Miss )
+-}

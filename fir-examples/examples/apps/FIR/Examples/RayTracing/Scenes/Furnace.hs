@@ -12,51 +12,62 @@ module FIR.Examples.RayTracing.Scenes.Furnace
 import Data.Proxy
   ( Proxy(..) )
 
+-- text-short
+import Data.Text.Short
+  ( ShortText )
+
 -- unordered-containers
+import Data.HashMap.Strict
+  ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
-  ( empty )
+  ( empty, fromList, map, toList )
 
 -- fir
 import FIR
-  ( Struct(..) )
+  ( GradedSemigroup((<!>)), Struct(..) )
 import Math.Linear
-  ( pattern V3, pattern V4 )
+  ( pattern V2, pattern V3
+  , identity, konst
+  )
 
 -- fir-examples
-import FIR.Examples.RayTracing.Camera
-  ( CameraCoordinates )
-import FIR.Examples.RayTracing.Luminaire
-  ( LightSamplingMethod(SurfaceArea) )
 import FIR.Examples.RayTracing.Scene
-  ( Scene(..), EmitterObject(..) )
-import FIR.Examples.RayTracing.Types
-  ( GeometryKind(..), LuminaireKind(..), MaterialKind(..)
-  , STriangleQ(..)
+  ( Scene(..), InstanceType(..), MissInfo(..)
+  , GeometryObject(..), SomeMaterialProperties(..)
   )
+import FIR.Examples.RayTracing.Types
+  ( GeometryKind(..), MaterialKind(..), MissKind(..) )
+import FIR.Examples.RenderState
+  ( Observer(..), initialObserver )
 
 --------------------------------------------------------------------------
 
 furnace :: Scene
 furnace =
   Scene
-    { sceneEmitters             = [trivialEmitter]
+    { sceneEmitters             = []
     , sceneTriangleGeometries   = HashMap.empty
-    , sceneProceduralGeometries = HashMap.empty
-    , sceneInstances            = []
-    , sceneCamera               = furnaceCamera
+    , sceneProceduralGeometries = HashMap.map fst furnaceGeometries
+    , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd furnaceGeometries ) ) ]
+    , sceneObserver             = furnaceObserver
+    , sceneMissInfo             = furnaceMissInfo
     }
 
-trivialEmitter :: EmitterObject
-trivialEmitter =
-  EmitterObject @Sphere @Blackbody @Lambertian
-    SurfaceArea
-    SNotTriangle
-    [ V3 0 0 0 :& 30 :& End ]
-    Proxy
-    1.0
-    ( 6.5e3 :& 0 :& End )
-    Proxy
-    ( V3 1 1 1 :& End )
+furnaceGeometries :: HashMap ShortText ( GeometryObject, SomeMaterialProperties )
+furnaceGeometries = HashMap.fromList
+  [ ( "furnaceObject"
+    , ( GeometryObject         @Sphere     Proxy [ V3 0 0 0 :& 30 :& End ]
+      , SomeMaterialProperties @Lambertian Proxy ( V3 1 1 1 :& End )
+      )
+    )
+  ]
 
-furnaceCamera :: CameraCoordinates
-furnaceCamera = V4 0 0 -70 0 :& V3 1 0 0 :& V3 0 1 0 :& V4 0 0 1 0 :& End
+furnaceObserver :: Observer
+furnaceObserver = initialObserver { position = V3 0 0 -70, angles = V2 0 0 }
+
+furnaceMissInfo :: MissInfo
+furnaceMissInfo =
+  MissInfo
+    ( Proxy :: Proxy Factor )
+    2 -- miss shader index
+    0.9

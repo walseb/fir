@@ -67,7 +67,7 @@ import Data.Generics.Product.Typed
 
 -- lens
 import Control.Lens
-  ( assign, modifying, use )
+  ( assign, use )
 
 -- logging-effect
 import Control.Monad.Log
@@ -116,8 +116,6 @@ import FIR
   ( ModuleRequirements(..)
   , ShaderGroup(..)
   , Struct((:&),End)
-  , Name, Swizzle, type (:.:)
-  , view
   , runCompilationsTH
   )
 import Math.Linear
@@ -139,8 +137,10 @@ import FIR.Examples.RayTracing.Luminaire
   ( Luminaire(LuminaireProperties), LightSamplingMethod(SurfaceArea) )
 import FIR.Examples.RayTracing.Material
   ( Material(MaterialProperties) )
+import FIR.Examples.RayTracing.Rays
+  ( MissData )
 import FIR.Examples.RayTracing.Scene
-  ( Scene(sceneCamera) )
+  ( Scene(..), MissInfo(..), missInfoData )
 import FIR.Examples.RayTracing.Scenes
   ( chooseScene )
 import FIR.Examples.RayTracing.Shaders
@@ -155,9 +155,9 @@ import FIR.Examples.RayTracing.Types
       )
   , LuminaireKind
       ( Blackbody )
+  , LuminaireID
   , MaterialKind
       ( Lambertian, Fresnel )
-  , LuminaireID
   )
 import qualified FIR.Examples.RayTracing.Types as RayTracing
   ( width, height, localSizeX, localSizeY, mipWidth, mipHeight )
@@ -189,6 +189,7 @@ data UBOResourceSet i st
     { uboResource      :: UniformBuffer UBO                               i st
     , accelResource    :: TopLevelAS                                      i st
     , luminaireIDs     :: StorageBuffer LuminaireID                       i st
+    , missData         :: UniformBuffer MissData                          i st
     , indexBuffer      :: StorageBuffer Word32                            i st
     , trianglesArray   :: StorageBuffer ( GeometryData Triangle )         i st
     , spheresArray     :: StorageBuffer ( GeometryData Sphere   )         i st
@@ -229,10 +230,21 @@ shaderIndices = ShaderIndices
   { emitterCallableRelativeIndices     = Map.fromList [ ( Blackbody , 0 ) ]
   , lightSampleCallableRelativeIndices = Map.fromList [ ( ( Triangle, SurfaceArea ), 1 ), ( ( Sphere, SurfaceArea ), 2 ) ]
   , materialCallableRelativeIndices    = Map.fromList [ ( Lambertian, 3 :& 4 :& End ), ( Fresnel, 5 :& 6 :& End ) ]
-  , hitGroupAbsoluteIndices            = Map.fromList [ ( Triangle, V2 10 11 ), ( Sphere, V2 12 13 ) ]
+  , hitGroupAbsoluteIndices            = Map.fromList [ ( Triangle, V2 11 12 ), ( Sphere, V2 13 14 ) ]
   }
 
 newtype CameraLock = CameraIsLocked { cameraIsLocked :: Bool }
+
+cameraFromObserver :: Observer -> CameraCoordinates
+cameraFromObserver observer
+  = V4 pos_x pos_y pos_z ( fromIntegral $ frame observer )
+    :& right
+    :& up
+    :& V4 fwd_x fwd_y fwd_z 0
+    :& End
+  where
+    ( V3 pos_x pos_y pos_z :& right :& up :& V3 fwd_x fwd_y fwd_z :& End ) =
+      camera observer Nothing
 
 ----------------------------------------------------------------------------
 -- Application.
@@ -255,11 +267,14 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
 
   scene <- liftIO chooseScene
   let
+    missIndex :: Word32
+    MissInfo _ missIndex _ = sceneMissInfo scene
     initialUBO :: UBO
-    initialUBO = sceneCamera scene :& 0 :& End
+    initialUBO = cameraFromObserver ( sceneObserver scene ) :& 0 :& missIndex :& End
+    missData :: MissData
+    missData = missInfoData ( sceneMissInfo scene )
 
-  modifying ( typed @RenderState . _observer )
-    ( \ obs -> obs { position = view @( Name "position" :.: Swizzle "xyz" ) ( sceneCamera scene ) } )
+  assign ( typed @RenderState . _observer ) ( sceneObserver scene )
 
   -------------------------------------------
   -- Initialise window and Vulkan context.
@@ -508,6 +523,8 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
                          .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
         , luminaireIDs     = StageFlags 
                              Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+        , missData         = StageFlags
+                             Vulkan.SHADER_STAGE_MISS_BIT_KHR
         , indexBuffer      = StageFlags $
                              Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR
                          .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
@@ -542,6 +559,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
         { uboResource      = BufferData initialUBO
         , accelResource    = TopLevelAS topLevelAS
         , luminaireIDs     = BufferData ( toList luminaireIDs )
+        , missData         = BufferData missData
         , indexBuffer      = BufferData ( toList triangleIndices )
         , trianglesArray   = BufferData
           ( maybe [] toList $ DMap.lookup ( TagGeometryData     $ STriangle            ) geometryData )
@@ -850,24 +868,15 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
 
       oldObserver <- use ( typed @RenderState . _observer )
 
-      let (observer, orientation) = oldObserver `move` action
+      let (observer, _) = oldObserver `move` action
       assign ( typed @RenderState . _observer ) observer
 
       when ( locate action )
         ( liftIO $ putStrLn ( show observer ) )
 
       let
-        ( V3 pos_x pos_y pos_z :& right :& up :& V3 fwd_x fwd_y fwd_z :& End )
-         = camera observer ( Just orientation )
         currentUBO :: UBO
-        currentUBO = currentCamera :& ( if reset then 1 else 0 ) :& End
-        currentCamera :: CameraCoordinates
-        currentCamera
-          =  V4 pos_x pos_y pos_z ( fromIntegral $ frame observer )
-          :& right
-          :& up
-          :& V4 fwd_x fwd_y fwd_z 0
-          :& End
+        currentUBO = cameraFromObserver observer :& ( if reset then 1 else 0 ) :& missIndex :& End
         BufferResource _ updateUBO = uboResource uboResources
 
       liftIO ( updateUBO currentUBO )

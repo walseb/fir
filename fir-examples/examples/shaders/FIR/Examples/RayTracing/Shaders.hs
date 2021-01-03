@@ -83,7 +83,8 @@ Descriptor set 0:
   - Binding 2: storage buffer of all light sources in the scene,
                each with information about the appropriate callable shaders
                and light source information
-  - Binding 3: triangle index buffer
+  - Binding 3: uniform buffer holding miss shader data ( accessible only in miss shader stages)
+  - Binding 4: triangle index buffer
   - one binding for each geometry type supported,
     as specified by the GeometryBindingNo type family;
     each of these is a storage buffer holding geometry data
@@ -157,9 +158,11 @@ data Shaders a
   { tonemapCompute
   -- raygen shaders
   , raygen
-  -- then miss shaders
-  , primaryMiss
+  -- then miss shaders (occlusion miss shader first)
   , occlusionMiss
+  , blackbodyMiss
+  , factorMiss
+--, skyMiss
   -- then callable shaders
   , emitter_Blackbody_Callable
   , sample_Triangle_SurfaceArea_Callable
@@ -199,14 +202,22 @@ shaders = Prelude.fmap ( first ( shaderDir </> ) ) $ ShaderGroups $ Shaders
                                            ( "rt_raygen.spv"
                                            , AnyProgram raygenShader
                                            )
-  , primaryMiss                          = Right $ MissGroup
-                                           ( "rt_primaryMiss.spv"
-                                           , AnyProgram primaryMissShader
-                                           )
   , occlusionMiss                        = Right $ MissGroup
                                            ( "rt_occlusionMiss.spv"
                                            , AnyProgram occlusionMissShader
                                            )
+  , blackbodyMiss                        = Right $ MissGroup
+                                           ( "rt_blackbodyMiss.spv"
+                                           , AnyProgram ( primaryMissShader @EnvironmentBlackbody )
+                                           )
+  , factorMiss                           = Right $ MissGroup
+                                           ( "rt_factorMiss.spv"
+                                           , AnyProgram ( primaryMissShader @Factor )
+                                           )
+--, skyMiss                              = Right $ MissGroup
+--                                         ( "rt_skyMiss.spv"
+--                                         , AnyProgram ( primaryMissShader @Sky )
+--                                         )
   , emitter_Blackbody_Callable           = Right $ CallableGroup
                                            ( "rt_emitter_Blackbody_Callable.spv"
                                            , AnyProgram ( emitterCallableShader @Blackbody )

@@ -166,86 +166,88 @@ estimateRadiance accel shaderRecord hitPos normal = do
     ---------------------------------------------
     -- Start by picking a random light source.
 
-    luminaire              <- randomLuminaire
-  --lumWeight              <- let' $ view @( Name "luminaireWeight"     ) luminaire
-    lightPrimitiveID       <- let' $ view @( Name "primitiveID"         ) luminaire
-    lightInstanceID        <- let' $ view @( Name "instanceID"          ) luminaire
-    lightEmitterCallable   <- let' $ view @( Name "emitterCallable"     ) luminaire
-    lightSampleCallable    <- let' $ view @( Name "lightSampleCallable" ) luminaire
-    lightEmitterInfoIndex  <- let' $ view @( Name "emitterInfoIndex"    ) luminaire
-    lightGeometryInfoIndex <- let' $ view @( Name "geometryInfoIndex"   ) luminaire
+    lg <- arrayLength @( Name "luminaires" :.: Index 0 )
+    unless ( lg < 1 ) do
+      luminaire              <- randomLuminaire lg
+    --lumWeight              <- let' $ view @( Name "luminaireWeight"     ) luminaire
+      lightPrimitiveID       <- let' $ view @( Name "primitiveID"         ) luminaire
+      lightInstanceID        <- let' $ view @( Name "instanceID"          ) luminaire
+      lightEmitterCallable   <- let' $ view @( Name "emitterCallable"     ) luminaire
+      lightSampleCallable    <- let' $ view @( Name "lightSampleCallable" ) luminaire
+      lightEmitterInfoIndex  <- let' $ view @( Name "emitterInfoIndex"    ) luminaire
+      lightGeometryInfoIndex <- let' $ view @( Name "geometryInfoIndex"   ) luminaire
 
-    ---------------------------------------------
-    -- Compute the bounce contribution.
+      ---------------------------------------------
+      -- Compute the bounce contribution.
 
-    -- Trace an occlusion ray along the bounce ray direction.
-    put @"occPayload" initialOcclusionPayload
-    traceOcclusionRay @"occPayload" accel hitPos bounceDir
-    bounceOccPayload <- get @"occPayload"
-    bounceVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID bounceOccPayload
+      -- Trace an occlusion ray along the bounce ray direction.
+      put @"occPayload" initialOcclusionPayload
+      traceOcclusionRay @"occPayload" accel hitPos bounceDir
+      bounceOccPayload <- get @"occPayload"
+      bounceVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID bounceOccPayload
 
-    -- Query the chosen light source for spectral radiances.
-    bounceEmitterRadiances <-
-      if bounceVisFactor == 0
-      then pure ( pureAST 0 :: Code ( V 4 Float ) )
-      else do
-        bounceLightNormal <- let' $ view @( Name "normal" ) bounceOccPayload
-        put @"emitterData" ( Struct $ lightEmitterInfoIndex :& bounceDir :& bounceLightNormal :& wavelengths :& End )
-        executeCallable @"emitterData" lightEmitterCallable
-        use @( Name "emitterData" :.: Name "mainData" )
+      -- Query the chosen light source for spectral radiances.
+      bounceEmitterRadiances <-
+        if bounceVisFactor == 0
+        then pure ( pureAST 0 :: Code ( V 4 Float ) )
+        else do
+          bounceLightNormal <- let' $ view @( Name "normal" ) bounceOccPayload
+          put @"emitterData" ( Struct $ lightEmitterInfoIndex :& bounceDir :& bounceLightNormal :& wavelengths :& End )
+          executeCallable @"emitterData" lightEmitterCallable
+          use @( Name "emitterData" :.: Name "mainData" )
 
-    ---------------------------------------------
-    -- Compute the direct light contribution.
+      ---------------------------------------------
+      -- Compute the direct light contribution.
 
-    -- Pick a random point on the light,
-    -- using the callable shader corresponding to the light type.
-    --
-    -- Assumes that the geometry info obtained from the index,
-    -- for the geometry type corresponding to the callable shader,
-    -- does not have any transformation matrix applied to it.
-    put @"lightSampleData"
-      ( Struct $ quasiRandomConstants :& quasiRandomState :& lightGeometryInfoIndex :& lightEmitterInfoIndex :& normal :& hitPos :& Lit 1 :& End )
-    executeCallable @"lightSampleData" lightSampleCallable
-    lightPt          <- use @( Name "lightSampleData" :.: Name "rayOrigin"        )
-    psa_correction   <- use @( Name "lightSampleData" :.: Name "psa_correction"   )
-    quasiRandomState <- use @( Name "lightSampleData" :.: Name "quasiRandomState" )
-    assign @( Name "payload" :.: Name "quasiRandomState" ) quasiRandomState
+      -- Pick a random point on the light,
+      -- using the callable shader corresponding to the light type.
+      --
+      -- Assumes that the geometry info obtained from the index,
+      -- for the geometry type corresponding to the callable shader,
+      -- does not have any transformation matrix applied to it.
+      put @"lightSampleData"
+        ( Struct $ quasiRandomConstants :& quasiRandomState :& lightGeometryInfoIndex :& lightEmitterInfoIndex :& normal :& hitPos :& Lit 1 :& End )
+      executeCallable @"lightSampleData" lightSampleCallable
+      lightPt          <- use @( Name "lightSampleData" :.: Name "rayOrigin"        )
+      psa_correction   <- use @( Name "lightSampleData" :.: Name "psa_correction"   )
+      quasiRandomState <- use @( Name "lightSampleData" :.: Name "quasiRandomState" )
+      assign @( Name "payload" :.: Name "quasiRandomState" ) quasiRandomState
 
-    -- Trace an occlusion ray towards the chosen light point.
-    lightDirection <- let' ( normalise $ lightPt ^-^ hitPos )
-    put @"occPayload" initialOcclusionPayload
-    traceOcclusionRay @"occPayload" accel hitPos lightDirection
-    lightSampleOccPayload <- get @"occPayload"
-    lightSampleVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID lightSampleOccPayload
+      -- Trace an occlusion ray towards the chosen light point.
+      lightDirection <- let' ( normalise $ lightPt ^-^ hitPos )
+      put @"occPayload" initialOcclusionPayload
+      traceOcclusionRay @"occPayload" accel hitPos lightDirection
+      lightSampleOccPayload <- get @"occPayload"
+      lightSampleVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID lightSampleOccPayload
 
-    -- Query the chosen light source for spectral radiances.
-    lightSampleEmitterRadiances <-
-      if lightSampleVisFactor == 0
-      then pure ( pureAST 0 :: Code ( V 4 Float ) )
-      else do
-        lightSampleLightNormal <- let' $ view @( Name "normal" ) lightSampleOccPayload
-        put @"emitterData" ( Struct $ lightEmitterInfoIndex :& lightDirection :& lightSampleLightNormal :& wavelengths :& End )
-        executeCallable @"emitterData" lightEmitterCallable
-        use @( Name "emitterData" :.: Name "mainData" )
+      -- Query the chosen light source for spectral radiances.
+      lightSampleEmitterRadiances <-
+        if lightSampleVisFactor == 0
+        then pure ( pureAST 0 :: Code ( V 4 Float ) )
+        else do
+          lightSampleLightNormal <- let' $ view @( Name "normal" ) lightSampleOccPayload
+          put @"emitterData" ( Struct $ lightEmitterInfoIndex :& lightDirection :& lightSampleLightNormal :& wavelengths :& End )
+          executeCallable @"emitterData" lightEmitterCallable
+          use @( Name "emitterData" :.: Name "mainData" )
 
-    -- Query the material BSDF along the sampled light direction.
-    put @"matQueryData"
-      ( Struct $ materialInfoIndex :& normal :& rayDirection :& lightDirection :& wavelengths :& extinctionCoeffs :& Vec4 1 1 1 1 :& Vec4 0 0 0 0 :& End )
-    executeCallable @"matQueryData" materialQueryCallable
+      -- Query the material BSDF along the sampled light direction.
+      put @"matQueryData"
+        ( Struct $ materialInfoIndex :& normal :& rayDirection :& lightDirection :& wavelengths :& extinctionCoeffs :& Vec4 1 1 1 1 :& Vec4 0 0 0 0 :& End )
+      executeCallable @"matQueryData" materialQueryCallable
   
-    -- Obtain results.
-    lightDirBSDF <- use @( Name "matQueryData" :.: Name "bsdf"  )
-    lightDirProb <- use @( Name "matQueryData" :.: Name "probs" )
+      -- Obtain results.
+      lightDirBSDF <- use @( Name "matQueryData" :.: Name "bsdf"  )
+      lightDirProb <- use @( Name "matQueryData" :.: Name "probs" )
 
-    ---------------------------------------------
-    -- Accumulate radiances using multiple importance sampling (balance heuristic).
+      ---------------------------------------------
+      -- Accumulate radiances using multiple importance sampling (balance heuristic).
 
-    estimatedRadiance <-
-      mis
-        ( (*) <$$> bounceDirBSDF <**>      bounceEmitterRadiances ) ( bounceDirProb ^*   p_λ )
-        ( (*) <$$>  lightDirBSDF <**> lightSampleEmitterRadiances ) (  lightDirProb ^* ( p_λ * psa_correction ) )
+      estimatedRadiance <-
+        mis
+          ( (*) <$$> bounceDirBSDF <**>      bounceEmitterRadiances ) ( bounceDirProb ^*   p_λ )
+          ( (*) <$$>  lightDirBSDF <**> lightSampleEmitterRadiances ) (  lightDirProb ^* ( p_λ * psa_correction ) )
   
-    modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> estimatedRadiance ) )
+      modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> estimatedRadiance ) )
 
   -- Update the ray throughput using BSDF values.
   assign @( Name "payload" :.: Name "throughput" ) ( (*) <$$> bounceDirBSDF <**> throughput )
@@ -295,22 +297,21 @@ russianRoulette ( Vec4 t1 t2 t3 t4 ) = do
 -- The total weight (i.e. sum of each light's weight) must be 1.
 randomLuminaire
   :: ( QuasiRandom s, _ )
-  => Program s s ( Code LuminaireID )
-randomLuminaire = do
+  => Code Word32 -> Program s s ( Code LuminaireID )
+randomLuminaire nbLuminaires = do
   ~( Vec4 r _ _ _ ) <- random01s
   locally do
-    lg <- let' =<< arrayLength @( Name "luminaires" :.: Index 0 )
     _  <- def @"i"        @RW @Word32      0
     _  <- def @"acc"      @RW @Float       0
     _  <- def @"res"      @RW @LuminaireID =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) 0
-    while ( (< lg) <<$>> get @"i" ) do
+    while ( (< nbLuminaires) <<$>> get @"i" ) do
       i    <- get @"i"
       acc  <- get @"acc"
       lum  <- let' @( Code LuminaireID ) =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) i
       acc' <- let' $ acc + view @( Name "luminaireWeight" ) lum
       if acc' >= r
       then do
-        put @"i"   lg -- end loop
+        put @"i"   nbLuminaires -- end loop
         put @"res" lum
       else do
         put @"i"   (i+1)

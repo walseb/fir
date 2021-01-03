@@ -27,23 +27,23 @@ import qualified Data.HashMap.Strict as HashMap
 import FIR
   ( GradedSemigroup((<!>)), Struct(..) )
 import Math.Linear
-  ( pattern V3, pattern V4
+  ( pattern V2, pattern V3
   , identity, konst
   )
 
 -- fir-examples
-import FIR.Examples.RayTracing.Camera
-  ( CameraCoordinates )
 import FIR.Examples.RayTracing.Luminaire
   ( LightSamplingMethod(SurfaceArea) )
 import FIR.Examples.RayTracing.Scene
-  ( Scene(..), InstanceType(..)
+  ( Scene(..), InstanceType(..), MissInfo(..)
   , GeometryObject(..), SomeMaterialProperties(..), EmitterObject(..)
   )
 import FIR.Examples.RayTracing.Types
-  ( GeometryKind(..), LuminaireKind(..), MaterialKind(..)
+  ( GeometryKind(..), LuminaireKind(..), MaterialKind(..), MissKind(..)
   , STriangleQ(..)
   )
+import FIR.Examples.RenderState
+  ( Observer(..), initialObserver )
 
 --------------------------------------------------------------------------
 
@@ -54,7 +54,8 @@ cornellBox =
     , sceneTriangleGeometries   = HashMap.empty
     , sceneProceduralGeometries = HashMap.map fst cornellBoxAABBGeometries
     , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBGeometries ) ) ]
-    , sceneCamera               = cornellBoxCamera
+    , sceneObserver             = cornellBoxObserver
+    , sceneMissInfo             = cornellMissInfo
     }
 cornellBoxEmitter :: EmitterObject
 cornellBoxEmitter =
@@ -88,5 +89,12 @@ cornellBoxAABBGeometries
   , ( "sphere2"   , ( V3      28   -19           92       :& 19   :& End, V3 0.2 0.5 1.0 :& End ) )
   ]
 
-cornellBoxCamera :: CameraCoordinates
-cornellBoxCamera = V4 50 -40.8 35 0 :& V3 1 0 0 :& V3 0 1 0 :& V4 0 0 1 0 :& End
+cornellBoxObserver :: Observer
+cornellBoxObserver = initialObserver { position = V3 50 -40.8 35 , angles = V2 0 0 }
+
+cornellMissInfo :: MissInfo
+cornellMissInfo =
+  MissInfo
+    ( Proxy :: Proxy Factor )
+    2 -- miss shader index
+    0

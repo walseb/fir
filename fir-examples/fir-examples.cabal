@@ -457,6 +457,7 @@ executable RayTracing
     , FIR.Examples.RayTracing.Scenes.CornellBox
     , FIR.Examples.RayTracing.Scenes.CornellBox2
     , FIR.Examples.RayTracing.Scenes.Furnace
+    , FIR.Examples.RayTracing.Scenes.Weekend
 
   hs-source-dirs:
     examples/exes/RayTracing
@@ -469,12 +470,14 @@ executable RayTracing
         >= 0.4.0.0 && < 0.5
     , haskeline
         >= 0.8.1.0 && < 0.9
+    , random
+        >= 1.2.0   && < 1.3
     , some
         >= 1.0.0.3 && < 1.1
     , unordered-containers
-        >= 0.2.13 && < 0.3
+        >= 0.2.13  && < 0.3
     , vector-builder
-        >= 0.3.8 && < 0.4
+        >= 0.3.8   && < 0.4
 
 -----------------------------------
 -- Texture

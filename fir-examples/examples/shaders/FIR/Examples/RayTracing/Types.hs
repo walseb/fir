@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE NamedFieldPuns         #-}
 {-# LANGUAGE PatternSynonyms        #-}
@@ -31,7 +32,7 @@ import GHC.TypeLits
   , TypeError, ErrorMessage(..)
   )
 import GHC.TypeNats
-  ( Nat, KnownNat, Mod, type (<=), natVal )
+  ( Nat, KnownNat, Mod, natVal )
 
 -- fir
 import FIR
@@ -47,8 +48,9 @@ import FIR.Examples.RayTracing.Camera
 
 type UBO =
   Struct
-    '[ "camera" ':-> CameraCoordinates
-     , "reset"  ':-> Int32
+    '[ "camera"          ':-> CameraCoordinates
+     , "reset"           ':-> Int32
+     , "missShaderIndex" ':-> Word32
      ]
 
 --------------------------------------------------------------------------
@@ -115,13 +117,19 @@ initialOcclusionPayload = Struct ( Lit (-1) :& Lit (-1) :& Lit (-1) :& Vec3 0 0 
 --------------------------------------------------------------------------
 -- Geometry, Luminaire, Material
 
-class ( KnownNat ( BindingNo x ), 3 <= BindingNo x ) => Bindable ( x :: k ) where
+class KnownNat ( BindingNo x ) => Bindable ( x :: k ) where
   type BindingNo ( x :: k ) = ( bd :: Nat ) | bd -> k x -- injectivity annotation ensures no overlap of resources
 type GeometryBindingNo  ( geom :: GeometryKind  ) = BindingNo geom
 type LuminaireBindingNo ( lum  :: LuminaireKind ) = BindingNo lum
 type MaterialBindingNo  ( mat  :: MaterialKind  ) = BindingNo mat
 
 data IndexBuffer = TriangleIndexBuffer
+
+-- | Data-kind used to parametrise (primary) miss shaders
+data MissKind
+  = EnvironmentBlackbody
+  | Factor
+--    | Sky
 
 -- | Data-kind used to parametrise different geometries.
 data GeometryKind
@@ -152,20 +160,29 @@ data MaterialKind
   | RoughFresnel -- ^ Fresnel material with microfacet roughness.
   deriving stock ( Prelude.Show, Prelude.Eq, Prelude.Ord )
 
+
+instance Bindable UBO where
+  type BindingNo UBO = 0
+instance Bindable AccelerationStructure where
+  type BindingNo AccelerationStructure = 1
+instance Bindable LuminaireID where
+  type BindingNo LuminaireID = 2
+instance Bindable MissKind where
+  type BindingNo MissKind = 3
 instance Bindable TriangleIndexBuffer where
-  type BindingNo TriangleIndexBuffer = 3
+  type BindingNo TriangleIndexBuffer = 4
 instance Bindable Triangle where
-  type BindingNo Triangle = 4
+  type BindingNo Triangle = 5
 instance Bindable Sphere where
-  type BindingNo Sphere = 5
+  type BindingNo Sphere = 6
 instance Bindable Blackbody where
-  type BindingNo Blackbody = 6
+  type BindingNo Blackbody = 7
 instance Bindable Lambertian where
-  type BindingNo Lambertian = 7
+  type BindingNo Lambertian = 8
 instance Bindable Fresnel where
-  type BindingNo Fresnel = 8
+  type BindingNo Fresnel = 9
 instance Bindable RoughFresnel where
-  type BindingNo RoughFresnel = 9
+  type BindingNo RoughFresnel = 10
 
 type ShaderRecord =
   Struct
@@ -213,9 +230,12 @@ type LightSamplingCallableData =
 tracePrimaryRay
   :: forall ( primaryPayloadName :: Symbol ) ( s :: ProgramState )
   .  ( KnownSymbol primaryPayloadName, CanTraceRay primaryPayloadName s )
-  => Code AccelerationStructure -> Code ( V 3 Float ) -> Code ( V 3 Float )
+  => Code AccelerationStructure
+  -> Code Word32
+  -> Code ( V 3 Float )
+  -> Code ( V 3 Float )
   -> Program s s ( Code () )
-tracePrimaryRay accel rayOrigin rayDirection = do
+tracePrimaryRay accel missIndex rayOrigin rayDirection = do
   let
     rayInfo :: RayInfo
     rayInfo = RayInfo
@@ -230,7 +250,7 @@ tracePrimaryRay accel rayOrigin rayDirection = do
     rayShaderInfo = RayShaderInfo
       { bindingTableOffset = 0
       , bindingTableStride = 2
-      , missShaderIndex    = 0
+      , missShaderIndex    = missIndex
       }
   traceRay @primaryPayloadName accel rayInfo rayShaderInfo
 
@@ -254,6 +274,6 @@ traceOcclusionRay accel rayOrigin rayDirection = do
     rayShaderInfo = RayShaderInfo
       { bindingTableOffset = 1
       , bindingTableStride = 2
-      , missShaderIndex    = 1
+      , missShaderIndex    = 0
       }
   traceRay @occlusionPayloadName accel rayInfo rayShaderInfo
