@@ -80,6 +80,10 @@ import Control.Monad.Trans.Resource
 -- sdl2
 import qualified SDL
 import qualified SDL.Event
+import qualified SDL.Internal.Types as SDL.Raw
+  ( Window(..) )
+import qualified SDL.Raw.Video as SDL.Raw
+  ( setWindowGrab )
 
 -- text-short
 import Data.Text.Short
@@ -152,7 +156,7 @@ import FIR.Examples.RayTracing.Types
   , LuminaireKind
       ( Blackbody )
   , MaterialKind
-      ( Lambertian )
+      ( Lambertian, Fresnel )
   , LuminaireID
   )
 import qualified FIR.Examples.RayTracing.Types as RayTracing
@@ -190,6 +194,7 @@ data UBOResourceSet i st
     , spheresArray     :: StorageBuffer ( GeometryData Sphere   )         i st
     , blackbodiesArray :: StorageBuffer ( LuminaireProperties Blackbody ) i st
     , lambertiansArray :: StorageBuffer ( MaterialProperties Lambertian ) i st
+    , fresnelsArray    :: StorageBuffer ( MaterialProperties Fresnel    ) i st
     }
   deriving Generic
 
@@ -223,8 +228,8 @@ shaderIndices :: ShaderIndices 2
 shaderIndices = ShaderIndices
   { emitterCallableRelativeIndices     = Map.fromList [ ( Blackbody , 0 ) ]
   , lightSampleCallableRelativeIndices = Map.fromList [ ( ( Triangle, SurfaceArea ), 1 ), ( ( Sphere, SurfaceArea ), 2 ) ]
-  , materialCallableRelativeIndices    = Map.fromList [ ( Lambertian, 3 :& 4 :& End ) ]
-  , hitGroupAbsoluteIndices            = Map.fromList [ ( Triangle, V2 8 9 ), ( Sphere, V2 10 11 ) ]
+  , materialCallableRelativeIndices    = Map.fromList [ ( Lambertian, 3 :& 4 :& End ), ( Fresnel, 5 :& 6 :& End ) ]
+  , hitGroupAbsoluteIndices            = Map.fromList [ ( Triangle, V2 10 11 ), ( Sphere, V2 12 13 ) ]
   }
 
 newtype CameraLock = CameraIsLocked { cameraIsLocked :: Bool }
@@ -259,7 +264,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
   -------------------------------------------
   -- Initialise window and Vulkan context.
 
-  ( window, windowExtensions ) <-
+  ( window@( SDL.Raw.Window rawWindow ), windowExtensions ) <-
     initialiseWindow
       WindowInfo
         { width      = RayTracing.width
@@ -515,6 +520,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
                          .|. Vulkan.SHADER_STAGE_INTERSECTION_BIT_KHR
         , blackbodiesArray = StageFlags Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR
         , lambertiansArray = StageFlags Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR
+        , fresnelsArray    = StageFlags Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR
         }
 
       dataResourceFlags :: DataResourceSet numImages Named
@@ -545,6 +551,8 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
           ( maybe [] toList $ DMap.lookup ( TagLuminaireProperties $ Proxy @Blackbody  ) luminaireProperties )
         , lambertiansArray = BufferData
           ( maybe [] toList $ DMap.lookup ( TagMaterialProperties  $ Proxy @Lambertian ) materialProperties )
+        , fresnelsArray    = BufferData
+          ( maybe [] toList $ DMap.lookup ( TagMaterialProperties  $ Proxy @Fresnel    ) materialProperties )
         }
 
       initialDataResourceSet :: DataResourceSet numImages Pre
@@ -828,6 +836,14 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
         ( CameraIsLocked { cameraIsLocked } )
       assign ( typed @RenderState . _input )
         ( newInput { mouseRel = pure 0, keysPressed = [] } )
+
+      if cameraIsLocked
+      then do
+        _ <- SDL.setMouseLocationMode SDL.AbsoluteLocation
+        SDL.Raw.setWindowGrab rawWindow False
+      else do
+        _ <- SDL.setMouseLocationMode SDL.RelativeLocation
+        SDL.Raw.setWindowGrab rawWindow True
 
       ----------------
       -- simulation

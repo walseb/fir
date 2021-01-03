@@ -129,8 +129,8 @@ type TonemapDefs =
 tonemapComputeShader :: Module TonemapDefs
 tonemapComputeShader = Module $ entryPoint @"main" @Compute do
   ~( Vec2 ix iy ) <- use @( Name "gl_GlobalInvocationID" :.: Swizzle "xy" )
-  ix_mips <- let' @Float $ fromIntegral ix / width
-  iy_mips <- let' @Float $ fromIntegral iy / height
+  ix_mips <- let' @( Code Float ) $ fromIntegral ix / width
+  iy_mips <- let' @( Code Float ) $ fromIntegral iy / height
 
   ~( Vec4 nx ny nz n ) <- imageRead @"data" ( Vec2 ix iy )
   x <- let' $ nx / n
@@ -166,6 +166,8 @@ data Shaders a
   , sample_Sphere_SurfaceArea_Callable
   , materialSample_Lambertian_Callable
   , materialQuery_Lambertian_Callable
+  , materialSample_Fresnel_Callable
+  , materialQuery_Fresnel_Callable
   -- then hit shader groups
   , primary_Triangle_HitGroup
   , occlusion_Triangle_HitGroup
@@ -224,6 +226,14 @@ shaders = Prelude.fmap ( first ( shaderDir </> ) ) $ ShaderGroups $ Shaders
   , materialQuery_Lambertian_Callable    = Right $ CallableGroup
                                            ( "rt_materialQuery_Lambertian_Callable.spv"
                                            , AnyProgram ( queryMaterialCallableShader @Lambertian )
+                                           )
+  , materialSample_Fresnel_Callable      = Right $ CallableGroup
+                                           ( "rt_materialSample_Fresnel_Callable.spv"
+                                           , AnyProgram ( sampleMaterialCallableShader @Fresnel )
+                                           )
+  , materialQuery_Fresnel_Callable       = Right $ CallableGroup
+                                           ( "rt_materialQuery_Fresnel_Callable.spv"
+                                           , AnyProgram ( queryMaterialCallableShader @Fresnel )
                                            )
   , primary_Triangle_HitGroup            = Right $ HitGroup
                                          { intersection = Nothing

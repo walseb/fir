@@ -51,19 +51,19 @@ import FIR.Examples.RayTracing.Types
 
 class    ( PrimTy        ( GeometryData geom )
          , HasOpaqueType ( GeometryData geom ) ~ False
-         , PrimTy        ( GeometryAttributes geom )
+         , PrimTy        ( GeometryHitAttributes geom )
          , Typeable geom
          , Bindable geom
          )
       => Geometry ( geom :: GeometryKind )
       where
-  type GeometryAttributes geom :: Type
-  type GeometryData       geom :: Type
+  type GeometryHitAttributes geom :: Type
+  type GeometryData          geom :: Type
   geometryKind :: GeometryKind
 
 instance Geometry Triangle where
-  type GeometryAttributes Triangle = V 2 Float -- barycentric coordinates (built-in)
-  type GeometryData       Triangle =
+  type GeometryHitAttributes Triangle = V 2 Float -- barycentric coordinates (built-in)
+  type GeometryData          Triangle =
     Struct
       '[ "vertex" ':-> V 3 Float
        , "normal" ':-> V 3 Float
@@ -71,8 +71,8 @@ instance Geometry Triangle where
   geometryKind = Triangle
 
 instance Geometry Sphere where
-  type GeometryAttributes Sphere = ()
-  type GeometryData       Sphere =
+  type GeometryHitAttributes Sphere = V 3 Float -- normal vector
+  type GeometryData          Sphere =
     Struct
       '[ "center" ':-> V 3 Float
        , "radius" ':-> Float
@@ -85,6 +85,7 @@ type IntersectionShader geom =
   Module
     [ "geometries"   ':-> StorageBuffer '[ DescriptorSet 0, Binding ( GeometryBindingNo geom ), NonWritable ]
                           ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
+    , "hitAttribute" ':-> HitAttribute '[] ( Struct '[ "attributes" ':-> GeometryHitAttributes geom ] )
     , "shaderRecord" ':-> ShaderRecordBuffer '[] ShaderRecord
     , "main"         ':-> EntryPoint   '[] Intersection
     ]
@@ -100,7 +101,7 @@ type ClosestHitOcclusionDefs ( geom :: GeometryKind ) =
    , "geometries"      ':-> StorageBuffer '[ DescriptorSet 0, Binding ( GeometryBindingNo geom ), NonWritable ]
                               ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
    , "shaderRecord"    ':-> ShaderRecordBuffer '[] ShaderRecord
-   , "hitAttribute"    ':-> HitAttribute '[] ( Struct '[ "attributes" ':-> GeometryAttributes geom ] )
+   , "hitAttribute"    ':-> HitAttribute '[] ( Struct '[ "attributes" ':-> GeometryHitAttributes geom ] )
    , "main"            ':-> EntryPoint   '[] ClosestHit
    ]
 
@@ -118,7 +119,7 @@ type ClosestHitPrimaryDefs ( geom :: GeometryKind ) =
                               ( Struct '[ "indices" ':-> RuntimeArray ( Struct '[ "i0" ':-> Word32, "i1" ':-> Word32, "i2" ':-> Word32 ] ) ] )
    , "geometries"      ':-> StorageBuffer '[ DescriptorSet 0, Binding ( GeometryBindingNo geom ), NonWritable ]
                               ( Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ] )
-   , "hitAttribute"    ':-> HitAttribute '[] ( Struct '[ "attributes" ':-> GeometryAttributes geom ] )
+   , "hitAttribute"    ':-> HitAttribute '[] ( Struct '[ "attributes" ':-> GeometryHitAttributes geom ] )
    , "shaderRecord"    ':-> ShaderRecordBuffer '[] ShaderRecord
    , "main"            ':-> EntryPoint    '[] ClosestHit
    ]
@@ -134,16 +135,12 @@ class Geometry geom => HittableGeometry geom where
   getNormal
     :: ( Has    "geometries"      s ~ Struct '[ "geometryArray" ':-> RuntimeArray ( GeometryData geom ) ]
        , CanGet "geometries"      s
-       , Has    "hitAttribute"    s ~ Struct '[ "attributes" ':-> GeometryAttributes geom ]
+       , Has    "hitAttribute"    s ~ Struct '[ "attributes" ':-> GeometryHitAttributes geom ]
        , CanGet "hitAttribute"    s
        , Has    "triangleIndices" s ~ Struct '[ "indices" ':-> RuntimeArray ( Struct '[ "i0" ':-> Word32, "i1" ':-> Word32, "i2" ':-> Word32 ] ) ]
        , CanGet "triangleIndices" s
        )
-    => Code ( M 3 4 Float ) -- ^ Object-to-world matrix.
-    -> Code ( M 4 3 Float ) -- ^ Transpose of world-to-object matrix.
-    -> Code ( V 3 Float )   -- ^ World ray origin.
-    -> Code ( V 3 Float )   -- ^ World ray direction.
-    -> Code Float           -- ^ HitT.
+    => Code ( M 4 3 Float ) -- ^ Transpose of world-to-object matrix.
     -> Code Word32          -- ^ Index into the relevant geometry array.
     -> Program s s ( Code ( V 3 Float ) )
 
@@ -153,7 +150,7 @@ instance HittableGeometry Triangle where
 
   intersectionShader = ()
 
-  getNormal _ worldToObject3x4 _ _ _ geometryIndex = do
+  getNormal worldToObject3x4 geometryIndex = do
     is <- use @( Name "triangleIndices" :.: Name "indices" :.: AnIndex Word32 ) geometryIndex
     i0 <- let' $ view @( Name "i0" ) is
     i1 <- let' $ view @( Name "i1" ) is
@@ -161,8 +158,8 @@ instance HittableGeometry Triangle where
     n0 <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) i0
     n1 <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) i1
     n2 <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) i2
-    ~( Vec2 u v ) <- use @( Name "hitAttribute" :.: Name "attributes" )
-    objectNormal <- let' $ ( 1 - u - v ) *^ n0 ^+^ u *^ n1 ^+^ v *^ n2
+    --  ~( Vec2 u v ) <- use @( Name "hitAttribute" :.: Name "attributes" )
+    objectNormal <- let' $ n0 ^+^ n1 ^+^ n2 --( 1 - u - v ) *^ n0 ^+^ u *^ n1 ^+^ v *^ n2 -- 
     -- Use the inverse-transpose of the object-to-world transformation to transform normal vectors.
     let' . normalise $ view @( Swizzle "xyz" ) ( worldToObject3x4 !*^ objectNormal )
 
@@ -173,16 +170,13 @@ instance HittableGeometry Sphere where
   intersectionShader = Module $ entryPoint @"main" @Intersection do
 
     worldRayOrigin <- let' =<< get @"gl_WorldRayOrigin"
-    worldRayDir0   <- let' =<< get @"gl_WorldRayDirection"
-
-    invNmRayDir <- let' $ invSqrt ( worldRayDir0 ^.^ worldRayDir0 )
-    worldRayDir <- let' $ invNmRayDir *^ worldRayDir0
+    worldRayDir    <- let' =<< get @"gl_WorldRayDirection"
 
     objectToWorld <- get @"gl_ObjectToWorld"
 
     primitiveID    <- get @"gl_PrimitiveID"
     geometryOffset <- use @( Name "shaderRecord" :.: Name "geometryOffset" )
-    objectSphere <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 ) ( geometryOffset + primitiveID )
+    objectSphere   <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 ) ( geometryOffset + primitiveID )
 
     ~( Vec3 cx_o cy_o cz_o ) <- let' $ view @( Name "center" ) objectSphere
     worldCentre <- let' $ objectToWorld !*^ Vec4 cx_o cy_o cz_o 1
@@ -206,21 +200,24 @@ instance HittableGeometry Sphere where
         else leg - sqrtDisc
       t2 <- let' $ ( delta ^.^ delta - r² ) / t1
 
-      --put @"hitData" sphere
-      _ <- reportIntersection ( invNmRayDir * t1 ) 0
-      _ <- reportIntersection ( invNmRayDir * t2 ) 0
+      -- Re-project the solutions onto the surface of the sphere.
+      n1  <- let' . normalise $ worldRayOrigin ^+^ t1 *^ worldRayDir ^-^ worldCentre
+      n2  <- let' . normalise $ worldRayOrigin ^+^ t2 *^ worldRayDir ^-^ worldCentre
+      o1  <- let' $ worldCentre ^+^ r *^ n1
+      o2  <- let' $ worldCentre ^+^ r *^ n2
+      s1  <- let' $ signum ( ( o1 ^-^ worldRayOrigin ) ^.^ worldRayDir )
+      s2  <- let' $ signum ( ( o2 ^-^ worldRayOrigin ) ^.^ worldRayDir )
+      t1' <- let' $ s1 * distance worldRayOrigin ( worldCentre ^+^ r *^ n1 )
+      t2' <- let' $ s2 * distance worldRayOrigin ( worldCentre ^+^ r *^ n2 )
+ 
+      assign @( Name "hitAttribute" :.: Name "attributes" ) n1
+      _ <- reportIntersection t1' 0
+      assign @( Name "hitAttribute" :.: Name "attributes" ) n2
+      _ <- reportIntersection t2' 0
+
       pure ( Lit () )
 
-
-  getNormal objectToWorld _ worldRayOrigin worldRayDir hitT geometryIndex = do
-
-    worldHitPos <- let' $ worldRayOrigin ^+^ ( hitT *^ worldRayDir )
-
-    ~( Vec3 cx cy cz ) <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "center" ) geometryIndex
-    worldSphereCenter  <- let' $ ( objectToWorld !*^ Vec4 cx cy cz 1 )
-
-    let' $ normalise ( worldHitPos ^-^ worldSphereCenter )
-
+  getNormal _ _ = use @( Name "hitAttribute" :.: Name "attributes" )
 
 --------------------------------------------------------------------------
 -- Closest hit shaders:
@@ -232,15 +229,12 @@ occlusionClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   instanceID        <- get @"gl_InstanceID"
   hitT              <- get @"gl_RayTMax"
-  objectToWorld     <- get @"gl_ObjectToWorld"
   worldToObject3x4  <- transpose <<$>> get @"gl_WorldToObject"
-  worldRayOrigin    <- get @"gl_WorldRayOrigin"
-  worldRayDirection <- get @"gl_WorldRayDirection"
 
   shaderRecord   <- get @"shaderRecord"
   geometryOffset <- let' $ view @( Name "geometryOffset" ) shaderRecord
 
-  normal <- getNormal @geom objectToWorld worldToObject3x4 worldRayOrigin worldRayDirection hitT ( geometryOffset + primitiveID )
+  normal <- getNormal @geom worldToObject3x4 ( geometryOffset + primitiveID )
 
   put @"payload" ( Struct $ fromIntegral primitiveID :& fromIntegral instanceID :& hitT :& normal :& End )
   pure ( Lit () )
@@ -249,7 +243,6 @@ primaryClosestHitShader :: forall geom. ( HittableGeometry geom, _ ) => Module (
 primaryClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   hitT              <- get @"gl_RayTMax"
-  objectToWorld     <- get @"gl_ObjectToWorld"
   worldToObject3x4  <- transpose <<$>> get @"gl_WorldToObject"
   worldRayOrigin    <- get @"gl_WorldRayOrigin"
   worldRayDirection <- get @"gl_WorldRayDirection"
@@ -259,7 +252,7 @@ primaryClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   geometryOffset <- let' $ view @( Name "geometryOffset" ) shaderRecord
 
   hitPos <- let' $ worldRayOrigin ^+^ hitT *^ worldRayDirection
-  normal <- getNormal @geom objectToWorld worldToObject3x4 worldRayOrigin worldRayDirection hitT ( geometryOffset + primitiveID )
+  normal <- getNormal @geom worldToObject3x4 ( geometryOffset + primitiveID )
 
   def @"quasiRandomConstants" @R  =<< use @( Name "payload" :.: Name "quasiRandomConstants" )
   def @"quasiRandomState"     @RW =<< use @( Name "payload" :.: Name "quasiRandomState"     )

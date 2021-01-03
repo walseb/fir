@@ -99,7 +99,7 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
     $  quasiRandomConstants
     :& quasiRandomState
     :& Lit Specular       -- count direct light hits when shooting from camera
-    :& (-1)               -- outside any media (air)
+    :& Vec4 0 0 0 0       -- outside any media (air)
     :& initialOrigin
     :& initialDirection
     :& initialWavelengths
@@ -120,7 +120,7 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
     -- by a closest hit shader or a miss shader.
 
     -- Continue until ray has been terminated
-    hitType  <- use @( Name "payload" :.: Name "hitType"    )
+    hitType  <- use @( Name "payload" :.: Name "hitType" )
     bounceNo <- get @"bounceNo"
     if hitType < 0 || bounceNo > 5 -- Ray should end: stop.
     then put @"continue" ( Lit False )
@@ -156,7 +156,8 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
   imageWrite @"out_data" ( Vec2 i_x i_y ) new
 
   -- Write log luminance data for tone mapping.
-  imageWrite @"loglumis" ( Vec2 i_x i_y ) ( Vec4 x' y' z' ( log ( y' / n' + 1e-3 ) / log 10 ) )
+  logLumi <- let' $ min 10 ( log ( y' / n' + 1e-3 ) / log 10 )
+  imageWrite @"loglumis" ( Vec2 i_x i_y ) ( Vec4 x' y' z' logLumi )
 
 --------------------------------------------------------------------------
 -- Miss shaders (primary ray and occlusion ray).

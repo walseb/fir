@@ -49,7 +49,7 @@ chooseScene = do
   args <- getArgs
   Haskeline.runInputT haskelineSettings do
     inTerminal <- Haskeline.haveTerminalUI
-    if inTerminal
+    if null args && inTerminal
     then do
       Haskeline.outputStrLn "Choose a scene."
       Haskeline.outputStrLn

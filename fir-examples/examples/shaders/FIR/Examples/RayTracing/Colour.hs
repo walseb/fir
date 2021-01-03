@@ -37,15 +37,15 @@ wavelengthToXYZ λ =
   if λ < 380 || λ > 780
   then pure $ Vec3 0 0 0
   else do
-    l <- let' @Float  $ 0.2 * ( λ - 380 )
-    i <- let' @Word32 $ floor l
-    s <- let' @Float  $ l - fromIntegral i
-    t <- let' @Float  $ 1 - s
+    l <- let' @( Code Float  ) $ 0.2 * ( λ - 380 )
+    i <- let' @( Code Word32 ) $ floor l
+    s <- let' @( Code Float  ) $ l - fromIntegral i
+    t <- let' @( Code Float  ) $ 1 - s
     let
       interp :: KnownNat n => Code ( Array n Float ) -> Code Float
       interp arr = t * view @( AnIndex ( Code Word32 ) )   i       arr
                  + s * view @( AnIndex ( Code Word32 ) ) ( i + 1 ) arr
-    let' @( V 3 Float ) $
+    let' $
       Vec3
         ( interp ( Lit cie_x ) )
         ( interp ( Lit cie_y ) )
@@ -80,10 +80,10 @@ rgbToSpectrum ( Vec3 r g b ) λ = do
   if λ < 380 || λ > 780
   then pure $ ( r + g + b ) / 3
   else do
-    l <- let' @Float  $ 0.2 * ( λ - 380 )
-    i <- let' @Word32 $ floor l
-    s <- let' @Float  $ l - fromIntegral i
-    t <- let' @Float  $ 1 - s
+    l <- let' @( Code Float  ) $ 0.2 * ( λ - 380 )
+    i <- let' @( Code Word32 ) $ floor l
+    s <- let' @( Code Float  ) $ l - fromIntegral i
+    t <- let' @( Code Float  ) $ 1 - s
     let
       interp :: KnownNat n => Code ( Array n Float ) -> Code Float
       interp arr = t * view @( AnIndex ( Code Word32 ) )   i       arr

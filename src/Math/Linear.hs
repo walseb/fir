@@ -306,11 +306,11 @@ sum = getSum #. foldMap Sum
 lt1_is_Zero :: KnownNat n => (1 <=? n) :~: 'False -> (n :~: 0)
 lt1_is_Zero _ = unsafeCoerce Refl
 
-lemma1 :: forall j n. ( j <= n, 1 <= (n-j) )
+lemma1 :: forall j n. ( KnownNat j, KnownNat n, j <= n, 1 <= (n-j) )
        => ( CmpNat j n :~: Prelude.LT )
 lemma1 = unsafeCoerce Refl
 
-lemma2 :: forall j n. ( j <= n, 1 <= (n-j) )
+lemma2 :: forall j n. ( KnownNat j, KnownNat n, j <= n, 1 <= (n-j) )
        => ( (j+1) <=? n ) :~: 'True
 lemma2 = unsafeCoerce Refl
 

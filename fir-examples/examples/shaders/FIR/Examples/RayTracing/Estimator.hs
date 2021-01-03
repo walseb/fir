@@ -68,15 +68,20 @@ estimateRadiance
 estimateRadiance accel shaderRecord hitPos normal = do
 
   prevHitType  <- use @( Name "payload" :.: Name "hitType"           )
---rayOrigin    <- use @( Name "payload" :.: Name "worldRayOrigin"    )
+  rayOrigin    <- use @( Name "payload" :.: Name "worldRayOrigin"    )
   rayDirection <- use @( Name "payload" :.: Name "worldRayDirection" )
   wavelengths  <- use @( Name "payload" :.: Name "wavelengths"       )
-  throughput   <- use @( Name "payload" :.: Name "throughput"        )
 
   ------------------------------------------------------
-  -- TODO: Get transmittance of path from ray origin to current position,
+  -- Get transmittance of path from ray origin to current position,
   -- and use it to update throughput.
-  -- (Assume full transmittance for the moment.)
+
+  extinctionCoeffs <- use @( Name "payload" :.: Name "extinction" )
+  d <- let' $ distance rayOrigin hitPos
+  -- Lambert's law of absorption.
+  transmittance <- let' $ ( \ k λ -> exp ( - d * 4 * pi * k * 1e9 / λ ) ) <$$> extinctionCoeffs <**> wavelengths
+  modifying @( Name "payload" :.: Name "throughput" ) ( (*) <$$> transmittance <**> )
+  throughput    <- use @( Name "payload" :.: Name "throughput" )
 
   ------------------------------------------------------
   -- Add contribution from hitting an emitter
@@ -121,19 +126,12 @@ estimateRadiance accel shaderRecord hitPos normal = do
   executeCallable @"matSampleData" materialSampleCallable
 
   -- Obtain results.
-  bounceDir        <- use @( Name "matSampleData" :.: Name "inOutRayDir" )
-  bounceType       <- use @( Name "matSampleData" :.: Name "sampleType"  )
+  bounceDir        <- use @( Name "matSampleData" :.: Name "inOutRayDir"      )
+  bounceType       <- use @( Name "matSampleData" :.: Name "sampleType"       )
   quasiRandomState <- use @( Name "matSampleData" :.: Name "quasiRandomState" )
 
-  -- TODO: this offset shouldn't be necessary
-  -- (need more robust intersection computations).
-  offsetHitPos <- let' $
-    if rayDirection ^.^ normal < 0
-    then hitPos ^+^ 3e-2 *^ normal
-    else hitPos ^-^ 3e-2 *^ normal
-
   -- Update ray payload for the bounce, and update the quasi-random state.
-  assign @( Name "payload" :.: Name "worldRayOrigin"    ) offsetHitPos --hitPos
+  assign @( Name "payload" :.: Name "worldRayOrigin"    ) hitPos
   assign @( Name "payload" :.: Name "worldRayDirection" ) bounceDir
   assign @( Name "payload" :.: Name "hitType"           ) bounceType
   assign @( Name "payload" :.: Name "quasiRandomState"  ) quasiRandomState
@@ -147,7 +145,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
   -- Pass the data that the callable shader needs.
   materialQueryCallable <- let' $ view @( Name "matQueryCallable" ) shaderRecord
   put @"matQueryData"
-    ( Struct $ materialInfoIndex :& normal :& rayDirection :& bounceDir :& wavelengths :& Vec4 1 1 1 1 :& Vec4 0 0 0 0 :& End )
+    ( Struct $ materialInfoIndex :& normal :& rayDirection :& bounceDir :& wavelengths :& extinctionCoeffs :& Vec4 1 1 1 1 :& Vec4 0 0 0 0 :& End )
 
   -- Execute the callable shader.
   executeCallable @"matQueryData" materialQueryCallable
@@ -155,6 +153,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
   -- Obtain results.
   bounceDirBSDF <- use @( Name "matQueryData" :.: Name "bsdf"  )
   bounceDirProb <- use @( Name "matQueryData" :.: Name "probs" )
+  assign @( Name "payload" :.: Name "extinction" ) =<< use @( Name "matQueryData" :.: Name "extinction" )
 
   ------------------------------------------------------
   -- Light sampling.
@@ -181,7 +180,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
 
     -- Trace an occlusion ray along the bounce ray direction.
     put @"occPayload" initialOcclusionPayload
-    traceOcclusionRay @"occPayload" accel offsetHitPos bounceDir
+    traceOcclusionRay @"occPayload" accel hitPos bounceDir
     bounceOccPayload <- get @"occPayload"
     bounceVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID bounceOccPayload
 
@@ -215,7 +214,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
     -- Trace an occlusion ray towards the chosen light point.
     lightDirection <- let' ( normalise $ lightPt ^-^ hitPos )
     put @"occPayload" initialOcclusionPayload
-    traceOcclusionRay @"occPayload" accel offsetHitPos lightDirection
+    traceOcclusionRay @"occPayload" accel hitPos lightDirection
     lightSampleOccPayload <- get @"occPayload"
     lightSampleVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID lightSampleOccPayload
 
@@ -231,7 +230,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
 
     -- Query the material BSDF along the sampled light direction.
     put @"matQueryData"
-      ( Struct $ materialInfoIndex :& normal :& rayDirection :& lightDirection :& wavelengths :& Vec4 1 1 1 1 :& Vec4 0 0 0 0 :& End )
+      ( Struct $ materialInfoIndex :& normal :& rayDirection :& lightDirection :& wavelengths :& extinctionCoeffs :& Vec4 1 1 1 1 :& Vec4 0 0 0 0 :& End )
     executeCallable @"matQueryData" materialQueryCallable
   
     -- Obtain results.
@@ -283,7 +282,7 @@ russianRoulette
   => Code ( V 4 Float )
   -> Program s s ( Code Float )
 russianRoulette ( Vec4 t1 t2 t3 t4 ) = do
-  continueProb <- let' $ min 0.75 ( max t1 ( max t2 ( max t3 t4 ) ) )
+  continueProb <- let' $ min 0.99 ( max t1 ( max t2 ( max t3 t4 ) ) )
   ~( Vec4 rr _ _ _ ) <- random01s
   pure $
     if rr <= continueProb
@@ -300,14 +299,14 @@ randomLuminaire
 randomLuminaire = do
   ~( Vec4 r _ _ _ ) <- random01s
   locally do
-    lg <- let' =<< arrayLength @( Name "luminaires" :.: Index 0 ) --Name "luminaireArray" )
+    lg <- let' =<< arrayLength @( Name "luminaires" :.: Index 0 )
     _  <- def @"i"        @RW @Word32      0
     _  <- def @"acc"      @RW @Float       0
     _  <- def @"res"      @RW @LuminaireID =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) 0
     while ( (< lg) <<$>> get @"i" ) do
       i    <- get @"i"
       acc  <- get @"acc"
-      lum  <- let' @LuminaireID =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) i
+      lum  <- let' @( Code LuminaireID ) =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) i
       acc' <- let' $ acc + view @( Name "luminaireWeight" ) lum
       if acc' >= r
       then do
@@ -326,7 +325,7 @@ mis
   -> Code ( V 4 Float ) -- ^ material sampling probabilities in light direction (per wavelength), relative to projected solid angle.
   -> Program s s ( Code ( V 4 Float ) )
 mis bounceVal bounceProb lightVal lightProb = do
-  balance <- let' $ sumV bounceProb + sumV lightProb
+  balance <- let' $ max 1e-15 $ sumV bounceProb + sumV lightProb
   let' $ recip balance *^ ( bounceVal ^+^ lightVal )
     where
       sumV :: Code ( V 4 Float ) -> Code Float

@@ -27,10 +27,10 @@ import qualified Data.HashMap.Strict as HashMap
 
 -- fir
 import FIR
-  ( GradedSemigroup((<!>)), Struct(..) )
+  ( Array, GradedSemigroup((<!>)), Struct(..) )
 import Math.Linear
   ( V, M(..)
-  , pattern V3, pattern V4
+  , pattern V2, pattern V3, pattern V4
   , (^+^), (*^), (^-^), (!*^)
   , cross, identity, konst
   )
@@ -38,6 +38,10 @@ import Math.Linear
 -- fir-examples
 import FIR.Examples.RayTracing.Camera
   ( CameraCoordinates )
+import FIR.Examples.RayTracing.IOR
+  ( IORData(..), MaterialInterface(..), materialInterfaceArray
+  , au, bk7
+  )
 import FIR.Examples.RayTracing.Geometry
   ( Geometry(GeometryData) )
 import FIR.Examples.RayTracing.Luminaire
@@ -58,8 +62,9 @@ cornellBox2 =
   Scene
     { sceneEmitters             = [cornellBoxEmitter]
     , sceneTriangleGeometries   = HashMap.map fst cornellBoxTriangleGeometries
-    , sceneProceduralGeometries = HashMap.map fst cornellBoxAABBGeometries
-    , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBGeometries ) )
+    , sceneProceduralGeometries = HashMap.map fst cornellBoxAABBLambertianGeometries <> HashMap.map fst cornellBoxAABBFresnelGeometries
+    , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBLambertianGeometries ) )
+                                  , ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBFresnelGeometries ) )
                                   , ( TrianglesInstance , identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxTriangleGeometries ) )
                                   ]
     , sceneCamera               = cornellBoxCamera
@@ -76,8 +81,8 @@ cornellBoxEmitter =
     Proxy
     ( V3 1 1 1 :& End )
 
-cornellBoxAABBGeometries :: HashMap ShortText ( GeometryObject, SomeMaterialProperties )
-cornellBoxAABBGeometries
+cornellBoxAABBLambertianGeometries :: HashMap ShortText ( GeometryObject, SomeMaterialProperties )
+cornellBoxAABBLambertianGeometries
   = HashMap.map
       ( \ ( sphere, matProps ) ->
         ( GeometryObject         @Sphere     Proxy [ sphere ]
@@ -92,9 +97,30 @@ cornellBoxAABBGeometries
   , ( "frontWall" , ( V3      50   -40.8        -1e5      :& 1e5  :& End, V3 0.1 0.1 0.1 :& End ) )
   , ( "bottomWall", ( V3      50    1e5          81.6     :& 1e5  :& End, V3 0.7 0.7 0.7 :& End ) )
   , ( "topWall"   , ( V3      50  (-(1e5+81.6))  81.6     :& 1e5  :& End, V3 1   1   1   :& End ) )
-  , ( "sphere1"   , ( V3      73   -16.5         78       :& 16.5 :& End, V3 1   1   1   :& End ) )
-  , ( "sphere2"   , ( V3      28   -19           92       :& 19   :& End, V3 0.2 0.5 1.0 :& End ) )
+  , ( "sphere1"   , ( V3      73   -16.5         78       :& 16.5 :& End, V3 0.2 0.5 0.9 :& End ) )
+  , ( "sphere3"   , ( V3      28   -3            118      :& 3    :& End, V3 0.9 0.7 0.1 :& End ) )
   ]
+
+cornellBoxAABBFresnelGeometries :: HashMap ShortText ( GeometryObject, SomeMaterialProperties )
+cornellBoxAABBFresnelGeometries
+  = HashMap.map
+      ( \ ( sphere, matProps ) ->
+        ( GeometryObject         @Sphere  Proxy [ sphere ]
+        , SomeMaterialProperties @Fresnel Proxy matProps
+        )
+      )
+  . HashMap.fromList
+  $
+  [ ( "sphere2", ( V3 28 -19 92 :& 19 :& End, V3 1 1 1 :& iors2 :& End ) )
+  ]
+  where
+    iors2 :: Array 82 ( V 4 Float )
+    iors2 = materialInterfaceArray
+      ( MaterialInterface
+        { outsideMaterial = IORFunction ( const ( V2 1 0 ) )
+        , insideMaterial  = IORSellmeier bk7
+        }
+      )
 
 cornellBoxTriangleGeometries :: HashMap ShortText ( ( [ Word32 ], [ GeometryData Triangle ] ), SomeMaterialProperties )
 cornellBoxTriangleGeometries
@@ -107,7 +133,7 @@ cornellBoxTriangleGeometries
           , p3 :& foldr (^+^) (V3 0 0 0) [ n013, n023, n123 ] :& End
           ]
         )
-      , SomeMaterialProperties @Lambertian Proxy ( V3 1.0 0.9 0.1 :& End )
+      , SomeMaterialProperties @Fresnel Proxy ( V3 1 1 1 :& iors :& End )
       )
     )
   ]
@@ -119,7 +145,7 @@ cornellBoxTriangleGeometries
     p3 = c ^+^ k *^ ( m !*^ V3 0     ( - sqrt 6 / 3 ) 0 )
     n012 = ( p1 ^-^ p0 ) `cross` ( p2 ^-^ p0 )
     n013 = ( p3 ^-^ p0 ) `cross` ( p1 ^-^ p0 )
-    n023 = ( p3 ^-^ p0 ) `cross` ( p2 ^-^ p0 )
+    n023 = ( p0 ^-^ p3 ) `cross` ( p2 ^-^ p0 )
     n123 = ( p3 ^-^ p1 ) `cross` ( p2 ^-^ p1 )
     c = V3 60 ( - sqrt 6 * k / 3 ) 150
     k :: Float
@@ -131,6 +157,13 @@ cornellBoxTriangleGeometries
           ( V3 (   cos φ )  0   ( sin φ ) )
           ( V3      0      -1       0     )
           ( V3 ( - sin φ )  0   ( cos φ ) )
+    iors :: Array 82 ( V 4 Float )
+    iors = materialInterfaceArray
+      ( MaterialInterface
+        { outsideMaterial = IORFunction ( const ( V2 1 0 ) )
+        , insideMaterial  = IORMap au
+        }
+      )
 
 cornellBoxCamera :: CameraCoordinates
 cornellBoxCamera = V4 50 -40.8 35 0 :& V3 1 0 0 :& V3 0 1 0 :& V4 0 0 1 0 :& End

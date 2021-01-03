@@ -93,7 +93,7 @@ type PrimaryPayload =
     '[ "quasiRandomConstants" ':-> V 4 Float
      , "quasiRandomState"     ':-> V 4 Float
      , "hitType"              ':-> HitType
-     , "media"                ':-> Int32     -- index of current media (-1 if no media)
+     , "extinction"           ':-> V 4 Float -- extinction coefficients per wavelength
      , "worldRayOrigin"       ':-> V 3 Float
      , "worldRayDirection"    ':-> V 3 Float
      , "wavelengths"          ':-> V 4 Float
@@ -148,6 +148,8 @@ data LuminaireKind
 -- | Data-kind used to parametrise different materials.
 data MaterialKind
   = Lambertian   -- ^ Lambertian diffuse material.
+  | Fresnel      -- ^ Fresnel material.
+  | RoughFresnel -- ^ Fresnel material with microfacet roughness.
   deriving stock ( Prelude.Show, Prelude.Eq, Prelude.Ord )
 
 instance Bindable TriangleIndexBuffer where
@@ -160,6 +162,10 @@ instance Bindable Blackbody where
   type BindingNo Blackbody = 6
 instance Bindable Lambertian where
   type BindingNo Lambertian = 7
+instance Bindable Fresnel where
+  type BindingNo Fresnel = 8
+instance Bindable RoughFresnel where
+  type BindingNo RoughFresnel = 9
 
 type ShaderRecord =
   Struct
@@ -216,7 +222,7 @@ tracePrimaryRay accel rayOrigin rayDirection = do
       { rayFlags     = Lit RayFlagsOpaque
       , rayOrigin
       , rayDirection
-      , rayTMin      = 1e-5
+      , rayTMin      = 7e-2 -- this is terrible, fixes needed
       , rayTMax      = 1e10
       , cullMask     = 0xff
       }
@@ -240,7 +246,7 @@ traceOcclusionRay accel rayOrigin rayDirection = do
       { rayFlags     = Lit RayFlagsOpaque
       , rayOrigin
       , rayDirection
-      , rayTMin      = 1e-5
+      , rayTMin      = 7e-2
       , rayTMax      = 1e10
       , cullMask     = 0xff -- could use a different cull mask
       }

@@ -451,6 +451,7 @@ executable RayTracing
   other-modules:
       FIR.Examples.RayTracing.Application
     , FIR.Examples.RayTracing.BuildScene
+    , FIR.Examples.RayTracing.IOR
     , FIR.Examples.RayTracing.Scene
     , FIR.Examples.RayTracing.Scenes
     , FIR.Examples.RayTracing.Scenes.CornellBox

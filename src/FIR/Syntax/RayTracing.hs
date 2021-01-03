@@ -107,7 +107,9 @@ traceRay accelerationStructure ( RayInfo { .. } ) ( RayShaderInfo { .. } ) = fro
 reportIntersection 
   :: forall (i :: ProgramState)
   .  ( ExecutionContext i ~ Just SPIRV.Intersection )
-  => Code Float -> Code Word32 -> Program i i ( Code Bool )
+  => Code Float  -- ^ HitT
+  -> Code Word32 -- ^ Hit kind.
+  -> Program i i ( Code Bool )
 reportIntersection = primOp @i @SPIRV.RT_ReportIntersection
 
 ignoreIntersection
