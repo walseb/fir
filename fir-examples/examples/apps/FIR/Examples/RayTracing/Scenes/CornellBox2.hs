@@ -69,6 +69,7 @@ cornellBox2 =
                                   ]
     , sceneObserver             = cornellBoxObserver
     , sceneMissInfo             = cornellMissInfo
+    , sceneMovementMultiplier   = 3
     }
 cornellBoxEmitter :: EmitterObject
 cornellBoxEmitter =
@@ -140,15 +141,15 @@ cornellBoxTriangleGeometries
   ]
   where
     p0, p1, p2, p3, n012, n013, n023, n123, c :: V 3 Float
-    p0 = c ^+^ k *^ ( m !*^ V3 1     0                0 )
-    p1 = c ^+^ k *^ ( m !*^ V3 -0.5  0                (   sqrt 3 / 2 ) )
-    p2 = c ^+^ k *^ ( m !*^ V3 -0.5  0                ( - sqrt 3 / 2 ) )
-    p3 = c ^+^ k *^ ( m !*^ V3 0     ( - sqrt 6 / 3 ) 0 )
+    p0 = c ^+^ k *^ ( m !*^ V3 1     0            0 )
+    p1 = c ^+^ k *^ ( m !*^ V3 -0.5  0            (   sqrt 3 / 2 ) )
+    p2 = c ^+^ k *^ ( m !*^ V3 -0.5  0            ( - sqrt 3 / 2 ) )
+    p3 = c ^+^ k *^ ( m !*^ V3 0     ( - sqrt 2 ) 0 )
     n012 = ( p1 ^-^ p0 ) `cross` ( p2 ^-^ p0 )
     n013 = ( p3 ^-^ p0 ) `cross` ( p1 ^-^ p0 )
     n023 = ( p0 ^-^ p3 ) `cross` ( p2 ^-^ p0 )
     n123 = ( p3 ^-^ p1 ) `cross` ( p2 ^-^ p1 )
-    c = V3 60 ( - sqrt 6 * k / 3 ) 150
+    c = V3 60 ( - k * sqrt 2 ) 150
     k :: Float
     k = 40
     φ :: Float

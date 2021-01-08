@@ -18,6 +18,13 @@ module FIR.Examples.RayTracing.Rays
   , MissData, MissShader(..), occlusionMissShader
   ) where
 
+-- base
+import qualified Prelude
+
+-- vector-sized
+import qualified Data.Vector.Sized as Sized.Boxed.Vector
+  ( generate )
+
 -- fir
 import FIR
 import Math.Linear
@@ -31,11 +38,15 @@ import FIR.Examples.RayTracing.Luminaire
   ( Luminaire(LuminaireProperties) )
 import FIR.Examples.RayTracing.QuasiRandom
   ( initialiseQuasiRandomState, random01s )
+import FIR.Examples.RayTracing.Sky
+  ( skyScatter, inScattering )
 import FIR.Examples.RayTracing.Types
   ( LuminaireKind(Blackbody), MissKind(..)
+  , RayleighParams, MieParams, SunParams, MissData
   , PrimaryPayload, OcclusionPayload, UBO
   , type BindingNo
-  , pattern Specular, pattern Miss
+  , pattern SpecRefl, pattern Miss
+  , rayFinished
   , height, width
   , tracePrimaryRay
   )
@@ -106,7 +117,7 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
     ( Struct
     $  quasiRandomConstants
     :& quasiRandomState
-    :& Lit Specular       -- count direct light hits when shooting from camera
+    :& Lit SpecRefl       -- count direct light hits when shooting from camera
     :& Vec4 0 0 0 0       -- outside any media (air)
     :& initialOrigin
     :& initialDirection
@@ -130,7 +141,7 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
     -- Continue until ray has been terminated
     hitType  <- use @( Name "payload" :.: Name "hitType" )
     bounceNo <- get @"bounceNo"
-    if hitType < 0 || bounceNo > 5 -- Ray should end: stop.
+    if rayFinished hitType || bounceNo > 10 -- Ray should end: stop.
     then put @"continue" ( Lit False )
     else put @"bounceNo" ( bounceNo + 1 )
 
@@ -188,15 +199,11 @@ type PrimaryMissDefs =
    , "missData" ':-> Uniform      '[ DescriptorSet 0, Binding ( BindingNo MissKind ) ] MissData
    ]
 
-
-type MissData = Struct
-  '[ "blackbody" ':-> MissProperties EnvironmentBlackbody
-   , "factor"    ':-> MissProperties Factor
---   , "sky"       ':-> MissProperties Sky
-   ]
-
 defaultMissData :: MissData
-defaultMissData = defaultMissProps @EnvironmentBlackbody :& defaultMissProps @Factor :& End --  :& defaultMissProps @Sky :& End
+defaultMissData = defaultMissProps @EnvironmentBlackbody
+               :& defaultMissProps @Factor
+               :& defaultMissProps @Sky
+               :& End
 
 class MissShader ( miss :: MissKind ) where
   type MissProperties miss
@@ -237,62 +244,49 @@ instance MissShader Factor where
     modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> Vec4 f f f f ) )
     assign @( Name "payload" :.: Name "hitType" ) ( Lit Miss )
 
-{-
 instance MissShader Sky where
   type MissProperties Sky =
-    Struct 
-      '[ "depolarisation"            ':-> Float
-       , "mieCoefficient"            ':-> Float
-       , "mieDirectionalG"           ':-> Float
-       , "mieV"                      ':-> Float
+    Struct
+      [ "mie"      ':-> MieParams
+      , "rayleigh" ':-> RayleighParams
+      , "sun"      ':-> SunParams
+      ]
 
-       , "mieKCoefficient"           ':-> V 3 Float
-       , "mieZenithLength"           ':-> Float
-
-       , "primaries"                 ':-> V 3 Float
-       , "turbidity"                 ':-> Float
-
-       , "rayleigh"                  ':-> Float
-       , "rayleighZenithLength"      ':-> Float
-       , "refractiveIndex"           ':-> Float
-       , "sumAngularDiameterDegrees" ':-> Float
-
-       , "sunPosition"               ':-> V 3 Float
-       , "sumIntensityFactor"        ':-> Float
-
-       , "sumIntensityFalloff"       ':-> Float
-
-       , "numMolecules"              ':-> Word32
-
-       ]
-  defaultMissProps
-    =  0.035
-    :& 0.005
-    :& 0.8
-    :& 4
-
-    :& V3 0.686 0.678 0.666
-    :& 1.25e3
-
-    :& V3 6.8e-7 5.5e-7 4.5e-7
-    :& 2
-
-    :& 1
-    :& 8.4e3
-    :& 1.0003
-    :& 0.0093333
-
-    :& V3 0 -1e6 0
-    :& 1000.0
-
-    :& 1.5
-
-    :& ( 2542 * 10 Prelude.^ ( 22 :: Word32 ) )
-    :& End
+  defaultMissProps = defaultMie :& defaultRayleigh :& defaultSun :& End
   missData props = set @( Name "sky" ) props defaultMissData
-
-
   primaryMissShader = Module $ entryPoint @"main" @Miss do
-    -- TODO
+
+    rayleighParams <- let' =<< use @( Name "missData" :.: Name "sky" :.: Name "rayleigh" )
+    mieParams      <- let' =<< use @( Name "missData" :.: Name "sky" :.: Name "mie"      )
+    sunParams      <- let' =<< use @( Name "missData" :.: Name "sky" :.: Name "sun"      )
+
+    rayDir <- use @( Name "payload" :.: Name "worldRayDirection" )
+    λs     <- ( 1e-9 *^ ) <<$>> use @( Name "payload" :.: Name "wavelengths" )
+
+    scatteringInfo     <- skyScatter rayleighParams mieParams sunParams rayDir λs
+    f_exs              <- let' $ view @( Name "f_exs" ) scatteringInfo
+    baseRadiances      <- let' $ 0.1 *^ f_exs
+    inScatterRadiances <- inScattering mieParams sunParams rayDir scatteringInfo
+
+    throughput <- use @( Name "payload" :.: Name "throughput" )
+    modifying @( Name "payload" :.: Name "radiance" )
+      ( ^+^ ( (*) <$$> throughput <**> ( baseRadiances ^+^ inScatterRadiances ) ) )
     assign @( Name "payload" :.: Name "hitType" ) ( Lit Miss )
--}
+
+--------------------------------------------------------------------------
+-- Atmospheric scattering code.
+
+defaultMie :: MieParams
+defaultMie = 4 :& 0.8 :& 1.25e3 :& 2 :& 0.005 :& default_k_array :& End
+
+default_k_array :: Array 82 Float
+default_k_array = MkArray $ Sized.Boxed.Vector.generate \ i -> k ( 380 + 5 * Prelude.fromIntegral i )
+  where
+    k :: Float -> Float
+    k λ = 0.64 + 0.00015 * ( λ - 380 )
+
+defaultRayleigh :: RayleighParams
+defaultRayleigh = 0.035 :& 8.4e3 :& 1 :& 2.542e25 :& 1.0003 :& End
+
+defaultSun :: SunParams
+defaultSun = V3 0 -1e5 0 :& 1e2 :& 1.5 :& End

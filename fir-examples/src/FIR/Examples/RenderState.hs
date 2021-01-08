@@ -83,8 +83,8 @@ data RenderState
 initialState :: RenderState
 initialState =
   RenderState
-    { observer    = initialObserver
-    , input       = nullInput
+    { observer = initialObserver
+    , input    = nullInput
     }
 
 _observer :: Lens' RenderState Observer
@@ -177,12 +177,13 @@ normaliseStrafing v
   | otherwise     = normalise v
 
 
-strafe :: [SDL.Scancode] -> V 3 (Sum Float)
-strafe = coerce
-       . (0.05 *^)
-       . normaliseStrafing @3 @Float
-       . coerce
-       . foldMap (fmap Sum . strafeDir)
+strafe :: Float -> [SDL.Scancode] -> V 3 (Sum Float)
+strafe multiplier
+  = coerce
+  . ( multiplier *^ )
+  . normaliseStrafing @3 @Float
+  . coerce
+  . foldMap (fmap Sum . strafeDir)
 
 
 onSDLInput :: Input -> SDL.EventPayload -> Input
@@ -207,9 +208,9 @@ onSDLInput input (SDL.MouseMotionEvent ev)
 onSDLInput input _ = input
 
 
-interpretInput :: Input -> Action
-interpretInput Input { .. } =
-  let movement       = strafe keysDown
+interpretInput :: Float -> Input -> Action
+interpretInput mul Input { .. } =
+  let movement       = strafe mul keysDown
       escape         = foldMap
                           ( \case { SDL.ScancodeEscape -> Quit; _ -> mempty } )
                           keysPressed

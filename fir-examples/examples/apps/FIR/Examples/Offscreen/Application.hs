@@ -178,7 +178,7 @@ offscreen = runVulkan () do
   -- Initialise Vulkan context.
 
   let
-    vulkanReqs = vulkanRequirements reqs
+    vulkanReqs = ignoreMinVersion $ vulkanRequirements reqs
   VulkanContext{..} <-
     initialiseContext @Headless Normal appName vulkanReqs
       RenderInfo

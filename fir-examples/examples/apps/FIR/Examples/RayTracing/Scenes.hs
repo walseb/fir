@@ -34,6 +34,8 @@ import FIR.Examples.RayTracing.Scenes.CornellBox2
   ( cornellBox2 )
 import FIR.Examples.RayTracing.Scenes.Furnace
   ( furnace )
+import FIR.Examples.RayTracing.Scenes.Pyramid
+  ( pyramid )
 import FIR.Examples.RayTracing.Scenes.Weekend
   ( weekend )
 
@@ -44,6 +46,7 @@ scenes = HashMap.fromList
   [ ( "cornellBox" , cornellBox  )
   , ( "cornellBox2", cornellBox2 )
   , ( "furnace"    , furnace     )
+  , ( "pyramid"    , pyramid     )
   , ( "weekend"    , weekend     )
   ]
 

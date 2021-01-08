@@ -16,10 +16,12 @@ import Data.Traversable
   ( for )
 import Data.Proxy
   ( Proxy(..) )
+import System.IO.Unsafe
+  ( unsafePerformIO )
 
 -- random
 import qualified System.Random as Random
-  ( StdGen, mkStdGen )
+  ( StdGen, mkStdGen, randomIO )
 import qualified System.Random.Stateful as Random
   ( StateGenM, runStateGen_, uniformFloat01M )
 
@@ -41,11 +43,13 @@ import qualified Data.HashMap.Strict as HashMap
 
 -- fir
 import FIR
-  ( Array, GradedSemigroup((<!>)), Struct(..) )
+  ( Array, GradedSemigroup((<!>)), Struct(..)
+  , Field, set
+  )
 import Math.Linear
   ( V
   , pattern V2, pattern V3
-  , identity, konst
+  , distance, identity, konst
   )
 
 -- fir-examples
@@ -53,12 +57,17 @@ import FIR.Examples.RayTracing.IOR
   ( IORData(..), MaterialInterface(..), materialInterfaceArray
   , au, ag, bk7, cu
   )
+import FIR.Examples.RayTracing.Luminaire
+  ( LightSamplingMethod(SurfaceArea) )
+import FIR.Examples.RayTracing.Rays
+  ( defaultMissProps )
 import FIR.Examples.RayTracing.Scene
   ( Scene(..), InstanceType(..), MissInfo(..)
-  , GeometryObject(..), SomeMaterialProperties(..)
+  , GeometryObject(..), SomeMaterialProperties(..), EmitterObject(..)
   )
 import FIR.Examples.RayTracing.Types
-  ( GeometryKind(..), MaterialKind(..), MissKind(..)
+  ( GeometryKind(..), LuminaireKind(..), MaterialKind(..), MissKind(..)
+  , STriangleQ(..)
   )
 import FIR.Examples.RenderState
   ( Observer(..), initialObserver )
@@ -68,12 +77,13 @@ import FIR.Examples.RenderState
 weekend :: Scene
 weekend =
   Scene
-    { sceneEmitters             = []
+    { sceneEmitters             = [ sun ]
     , sceneTriangleGeometries   = HashMap.empty
     , sceneProceduralGeometries = HashMap.map fst weekendGeometries
     , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd weekendGeometries ) ) ]
     , sceneObserver             = weekendObserver
     , sceneMissInfo             = weekendMissInfo
+    , sceneMovementMultiplier   = 0.2
     }
 
 weekendObserver :: Observer
@@ -83,10 +93,28 @@ weekendObserver =
     , angles   = V2 0.6 0
     }
 
+sunPosition :: V 3 Float
+sunPosition = V3 -1e5 -2e4 1e5
+
+sunRadius :: Float
+sunRadius = distance ( position weekendObserver ) sunPosition
+          * tan ( 0.5 * 0.00925 ) -- 0.00925 is the angular diameter (in radius) of the sun seen from earth
+
+sun :: EmitterObject
+sun = EmitterObject @Sphere @Sun @Lambertian
+  SurfaceArea
+  SNotTriangle
+  [ sunPosition :& sunRadius :& End ]
+  Proxy
+  1.0
+  ()
+  Proxy
+  ( V3 1 1 1 :& End )
+
 weekendGeometries :: HashMap ShortText ( GeometryObject, SomeMaterialProperties )
-weekendGeometries = Random.runStateGen_ ( Random.mkStdGen 1729 ) \ gen -> do
+weekendGeometries = Random.runStateGen_ ( Random.mkStdGen $ unsafePerformIO Random.randomIO ) \ gen -> do
   randomObjs <- 
-    for [ ( i, j ) | ( i :: Int ) <- [-20..20], ( j :: Int ) <- [-20..20] ] \ ( i, j ) -> do
+    for [ ( i, j ) | ( i :: Int ) <- [-30..10], ( j :: Int ) <- [-10..30] ] \ ( i, j ) -> do
       x_r <- Random.uniformFloat01M gen
       z_r <- Random.uniformFloat01M gen
       let
@@ -166,6 +194,8 @@ glassIOR =
 weekendMissInfo :: MissInfo
 weekendMissInfo =
   MissInfo
-    ( Proxy :: Proxy EnvironmentBlackbody )
-    1 -- miss shader index
-    ( 6.5e3 :& 1 :& End )
+    ( Proxy :: Proxy Sky )
+    3 -- miss shader index
+    ( set @( Field "sun" ) ( sunPosition :& 4e2 :& 1.5 :& End )
+    $ defaultMissProps @Sky
+    )

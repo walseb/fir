@@ -32,7 +32,8 @@ import FIR.Examples.RayTracing.QuasiRandom
 import FIR.Examples.RayTracing.Types
   ( LuminaireID, ShaderRecord
   , EmitterCallableData, LightSamplingCallableData
-  , pattern EndRay, pattern Miss, pattern Specular
+  , pattern EndRay, pattern Miss
+  , specular
   , PrimaryPayload, OcclusionPayload
   , initialOcclusionPayload
   , traceOcclusionRay
@@ -89,7 +90,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
   -- (not accounted for by next-event estimation).
 
   emitterCallable <- let' $ view @( Name "emitterCallable" ) shaderRecord
-  when ( prevHitType == Lit Specular && emitterCallable >= 0 ) do
+  when ( specular prevHitType && emitterCallable >= 0 ) do
   
     -- Pass the data that the callable shader needs.
     emitterInfoIndex <- let' $ view @( Name "emitterInfoIndex" ) shaderRecord
@@ -161,7 +162,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
   -- If this was a specular bounce: no explicit light sampling to be done.
   -- Otherwise: sample direct illumination using multiple importance sampling.
 
-  unless ( bounceType == Lit Specular ) do
+  unless ( specular bounceType ) do
 
     ---------------------------------------------
     -- Start by picking a random light source.
@@ -250,7 +251,8 @@ estimateRadiance accel shaderRecord hitPos normal = do
       modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> estimatedRadiance ) )
 
   -- Update the ray throughput using BSDF values.
-  assign @( Name "payload" :.: Name "throughput" ) ( (*) <$$> bounceDirBSDF <**> throughput )
+  assign @( Name "payload" :.: Name "throughput" )
+    ( ( \ val prob through -> through * val / max 1e-12 prob ) <$$> bounceDirBSDF <**> bounceDirProb <**> throughput )
 
   -- Use Russian roulette to decide whether to continue.
   rrAdjustment <- russianRoulette =<< use @( Name "payload" :.: Name "throughput" )

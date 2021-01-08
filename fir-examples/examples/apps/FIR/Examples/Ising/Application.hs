@@ -154,7 +154,7 @@ ising = runVulkan initialState do
         }
 
   let
-    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
+    vulkanReqs = ignoreMinVersion . addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -447,7 +447,7 @@ ising = runVulkan initialState do
       timeNow <- SDL.time
       let
         newInput = foldl onSDLInput prevInput inputEvents
-        action   = interpretInput newInput
+        action   = interpretInput 1 newInput
         pos@(V2 px py) = mousePos newInput
         temperature = max 1e-4 $ px / ( 0.3 * Ising.width )
         interactionStrength = 0.7

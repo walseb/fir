@@ -435,6 +435,7 @@ library raytracing-shaders
     , FIR.Examples.RayTracing.Material
     , FIR.Examples.RayTracing.QuasiRandom
     , FIR.Examples.RayTracing.Rays
+    , FIR.Examples.RayTracing.Sky
     , FIR.Examples.RayTracing.Types
 
   build-depends:
@@ -457,6 +458,7 @@ executable RayTracing
     , FIR.Examples.RayTracing.Scenes.CornellBox
     , FIR.Examples.RayTracing.Scenes.CornellBox2
     , FIR.Examples.RayTracing.Scenes.Furnace
+    , FIR.Examples.RayTracing.Scenes.Pyramid
     , FIR.Examples.RayTracing.Scenes.Weekend
 
   hs-source-dirs:
@@ -468,6 +470,8 @@ executable RayTracing
         >= 0.3.0.2 && < 0.4
     , dependent-map
         >= 0.4.0.0 && < 0.5
+    , dlist
+        >= 1.0     && < 1.1
     , haskeline
         >= 0.8.1.0 && < 0.9
     , random

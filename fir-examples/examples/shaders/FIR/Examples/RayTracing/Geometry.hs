@@ -2,7 +2,6 @@
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE PartialTypeSignatures  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RebindableSyntax       #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
@@ -26,6 +25,8 @@ import Data.Type.Bool
   ( If )
 import Data.Typeable
   ( Typeable )
+import GHC.TypeNats
+  ( KnownNat, CmpNat )
 
 -- fir
 import FIR
@@ -54,6 +55,11 @@ class    ( PrimTy        ( GeometryData geom )
          , PrimTy        ( GeometryHitAttributes geom )
          , Typeable geom
          , Bindable geom
+         , KnownNat ( GeometryBindingNo geom )
+         , GeometryBindingNo geom `CmpNat` 4 ~ Prelude.GT -- Needed to prove that there are no duplicate bindings
+         , GeometryBindingNo geom `CmpNat` 1 ~ Prelude.GT ---- Unfortunately the natnormalise plugin
+         , GeometryBindingNo geom `CmpNat` 2 ~ Prelude.GT ---- can't deduce these last three equations
+         , GeometryBindingNo geom `CmpNat` 3 ~ Prelude.GT ---- from the first equation
          )
       => Geometry ( geom :: GeometryKind )
       where
@@ -106,8 +112,8 @@ type ClosestHitOcclusionDefs ( geom :: GeometryKind ) =
    ]
 
 type ClosestHitPrimaryDefs ( geom :: GeometryKind ) =
-  '[ "accel"           ':-> UniformConstant '[ DescriptorSet 0, Binding 1 ] AccelerationStructure
-   , "luminaires"      ':-> StorageBuffer '[ DescriptorSet 0, Binding 2, NonWritable ]
+  '[ "accel"           ':-> UniformConstant '[ DescriptorSet 0, Binding ( BindingNo AccelerationStructure ) ] AccelerationStructure
+   , "luminaires"      ':-> StorageBuffer '[ DescriptorSet 0, Binding ( BindingNo LuminaireID ), NonWritable ]
                               ( Struct '[ "luminaireArray" ':-> RuntimeArray LuminaireID ] )
    , "payload"         ':-> RayPayloadIn  '[] PrimaryPayload
    , "occPayload"      ':-> RayPayload    '[] OcclusionPayload
@@ -214,7 +220,6 @@ instance HittableGeometry Sphere where
       _ <- reportIntersection t1' 0
       assign @( Name "hitAttribute" :.: Name "attributes" ) n2
       _ <- reportIntersection t2' 0
-
       pure ( Lit () )
 
   getNormal _ _ = use @( Name "hitAttribute" :.: Name "attributes" )
@@ -224,7 +229,7 @@ instance HittableGeometry Sphere where
 --  - shadow ray closest-hit shader: just one,
 --  - primary ray closest-hit shader: one for each geometry type.
 
-occlusionClosestHitShader :: forall geom. ( HittableGeometry geom, _ ) => Module ( ClosestHitOcclusionDefs geom )
+occlusionClosestHitShader :: forall geom. HittableGeometry geom => Module ( ClosestHitOcclusionDefs geom )
 occlusionClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   instanceID        <- get @"gl_InstanceID"
@@ -239,7 +244,7 @@ occlusionClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   put @"payload" ( Struct $ fromIntegral primitiveID :& fromIntegral instanceID :& hitT :& normal :& End )
   pure ( Lit () )
 
-primaryClosestHitShader :: forall geom. ( HittableGeometry geom, _ ) => Module ( ClosestHitPrimaryDefs geom )
+primaryClosestHitShader :: forall geom. HittableGeometry geom => Module ( ClosestHitPrimaryDefs geom )
 primaryClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   primitiveID       <- get @"gl_PrimitiveID"
   hitT              <- get @"gl_RayTMax"

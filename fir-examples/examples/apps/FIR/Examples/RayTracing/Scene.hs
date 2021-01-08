@@ -66,6 +66,7 @@ data Scene
     , sceneInstances            :: [ ( InstanceType, M 3 4 Float, [ ( ShortText, SomeMaterialProperties ) ] ) ]
     , sceneObserver             :: Observer
     , sceneMissInfo             :: MissInfo
+    , sceneMovementMultiplier   :: Float
     }
 
 data GeometryObject where

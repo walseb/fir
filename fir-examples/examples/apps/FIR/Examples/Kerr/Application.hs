@@ -188,7 +188,7 @@ kerr = runVulkan initialStateKerr do
         }
 
   let
-    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
+    vulkanReqs = ignoreMinVersion . addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -338,7 +338,7 @@ kerr = runVulkan initialStateKerr do
       inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
       prevInput <- use _input
       let newInput = foldl onSDLInput prevInput inputEvents
-      let action = interpretInput newInput
+      let action = interpretInput 0.5 newInput
       assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
 
       ----------------

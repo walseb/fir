@@ -37,7 +37,7 @@ import FIR.Examples.RayTracing.Colour
 import FIR.Examples.RayTracing.QuasiRandom
   ( random01s )
 import FIR.Examples.RayTracing.Types
-  ( HitType, pattern Diffuse, pattern Specular
+  ( HitType, pattern DiffRefl, pattern SpecRefl, pattern SpecRefr
   , MaterialKind(..), Bindable, MaterialBindingNo
   )
 
@@ -132,19 +132,18 @@ instance Material Lambertian where
     w0 <- let' $ v `cross` n
     w  <- let' $ normalise w0
     -- Obtain random angles.
-    ~( Vec4 sinθ f _ _ ) <- random01s
-    cosθ <- let' ( sqrt $ 1 - sinθ * sinθ )
-    φ    <- let' ( 2 * pi * f )
+    ~( Vec4 ξ1 ξ2 _ _ ) <- random01s
+    sinθ <- let' $ sqrt ξ1
+    cosθ <- let' $ sqrt ( 1 - ξ1 )
+    φ    <- let' ( 2 * pi * ξ2 )
     -- Use spherical coordinates to return output direction.
     -- Physicist's convention:
     --   - φ: azimuthal angle,
     --   - θ: polar angle.
-    --
-    -- Uniform choice of sinθ (as above) leads to clustering at the pole, which is exactly what we want.
     dir <- let' . normalise $ sinθ *^ ( cos φ *^ v ^+^ sin φ *^ w ) ^+^ cosθ *^ n
 
     assign @( Name "callableData" :.: Name "inOutRayDir"      ) dir
-    assign @( Name "callableData" :.: Name "sampleType"       ) ( Lit Diffuse )
+    assign @( Name "callableData" :.: Name "sampleType"       ) ( Lit DiffRefl )
     assign @( Name "callableData" :.: Name "quasiRandomState" ) =<< get @"quasiRandomState"
 
   queryMaterialCallableShader = Module $ entryPoint @"main" @Callable do
@@ -215,16 +214,17 @@ instance Material Fresnel where
     reflectance_s <- fresnelReflectance S n_inc k_inc abs_cosθ_inc n_out k_out abs_cosθ_refr
     reflectance_p <- fresnelReflectance P n_inc k_inc abs_cosθ_inc n_out k_out abs_cosθ_refr
     reflectance   <- let' $ 0.5 * ( reflectance_s + reflectance_p ) -- Assume light is equally polarised in s and p directions
+
     ~( Vec4 p_refl _ _ _ ) <- random01s
-    out <- let' $
-      if   p_refl <= reflectance
-      then out_refl
-      else out_refr
+    if p_refl <= reflectance
+    then do
+      assign @( Name "callableData" :.: Name "inOutRayDir" ) out_refl
+      assign @( Name "callableData" :.: Name "sampleType"  ) ( Lit SpecRefl )
+    else do
+      assign @( Name "callableData" :.: Name "inOutRayDir" ) out_refr
+      assign @( Name "callableData" :.: Name "sampleType"  ) ( Lit SpecRefr )
 
-    assign @( Name "callableData" :.: Name "inOutRayDir"      ) out
-    assign @( Name "callableData" :.: Name "sampleType"       ) ( Lit Specular )
     assign @( Name "callableData" :.: Name "quasiRandomState" ) =<< get @"quasiRandomState"
-
 
 
   queryMaterialCallableShader = Module $ entryPoint @"main" @Callable do
@@ -295,10 +295,6 @@ instance Material Fresnel where
     ( abs_cosθ_refr3, reflectance3 ) <- computeReflectance @3
     reflectance <- let' $ Vec4 reflectance0 reflectance1 reflectance2 reflectance3
 
-    let
-      closeTo :: Code ( V 3 Float ) -> Code ( V 3 Float ) -> Code Bool
-      closeTo v1 v2 = abs ( v1 ^.^ v2 - 1 ) < 1e-5
-
     ( vals, probs ) <-
       if ( eye ^.^ normal ) * ( out ^.^ normal ) <= 0
       then do -- reflection: outgoing vector must be reflection of incoming vector with respect to surface normal
@@ -330,6 +326,9 @@ instance Material Fresnel where
 
 
 --------------------------------------------------------------------------------
+
+closeTo :: Code ( V 3 Float ) -> Code ( V 3 Float ) -> Code Bool
+closeTo v1 v2 = abs ( v1 ^.^ v2 - 1 ) < 0.01
 
 -- | Returns the cosine of the angle of refraction relative to the normal.
 refractionCosine

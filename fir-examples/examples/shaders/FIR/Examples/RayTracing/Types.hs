@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE BinaryLiterals         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE FlexibleContexts       #-}
@@ -56,13 +57,24 @@ type UBO =
 --------------------------------------------------------------------------
 -- Hit types.
 
-type HitType = Int32
+type HitType = Word32
 
-pattern EndRay, Miss, Specular, Diffuse :: HitType
-pattern EndRay   = (-2)
-pattern Miss     = (-1)
-pattern Specular = 0
-pattern Diffuse  = 1
+pattern EndRay, Miss, SpecRefl, SpecRefr, DiffRefl, DiffRefr :: HitType
+pattern EndRay   = 0b0000
+pattern Miss     = 0b0001
+pattern DiffRefr = 0b0100
+pattern DiffRefl = 0b0110
+pattern SpecRefr = 0b1000
+pattern SpecRefl = 0b1010
+
+rayFinished :: Code HitType -> Code Bool
+rayFinished h = h < 2
+
+reflected :: Code HitType -> Code Bool
+reflected h = h .&. 0b0010 > 0
+
+specular :: Code HitType -> Code Bool
+specular h = h .&. 0b1000 > 0
 
 --------------------------------------------------------------------------
 -- Sizes.
@@ -129,7 +141,7 @@ data IndexBuffer = TriangleIndexBuffer
 data MissKind
   = EnvironmentBlackbody
   | Factor
---    | Sky
+  | Sky
 
 -- | Data-kind used to parametrise different geometries.
 data GeometryKind
@@ -151,6 +163,7 @@ data STriangleQ ( geom :: GeometryKind ) where
 -- | Data-kind used to parametrise different luminaires.
 data LuminaireKind
   = Blackbody -- ^ Blackbody radiator.
+  | Sun       -- ^ Sun (seen through an atmosphere).
   deriving stock ( Prelude.Show, Prelude.Eq, Prelude.Ord )
 
 -- | Data-kind used to parametrise different materials.
@@ -224,6 +237,39 @@ type LightSamplingCallableData =
      , "psa_correction"       ':-> Float     -- Correction factor to account for not sampling with respect to projected solid angle.
      ]
 
+type MieParams = Struct
+  '[ "v"            ':-> Float
+   , "directionalG" ':-> Float
+   , "zenithLength" ':-> Float
+   , "turbidity"    ':-> Float
+   , "weight"       ':-> Float
+   , "k_array"      ':-> Array 82 Float
+   ]
+
+type RayleighParams = Struct
+  '[ "depolarisation" ':-> Float
+   , "zenithLength"   ':-> Float
+   , "intensity"      ':-> Float
+   , "numMolecules"   ':-> Float
+   , "ior"            ':-> Float
+   ]
+
+type SunParams = Struct
+  '[ "position"  ':-> V 3 Float
+   , "intensity" ':-> Float
+   , "falloff"   ':-> Float
+   ]
+
+type MissData = Struct
+  '[ "blackbody" ':-> Struct '[ "temperature" ':-> Float, "intensity" ':-> Float ]
+   , "factor"    ':-> Float
+   , "sky"       ':-> Struct
+      [ "mie"      ':-> MieParams
+      , "rayleigh" ':-> RayleighParams
+      , "sun"      ':-> SunParams
+      ]
+   ]
+
 --------------------------------------------------------------------------
 -- Utility tracing functions.
 
@@ -242,7 +288,7 @@ tracePrimaryRay accel missIndex rayOrigin rayDirection = do
       { rayFlags     = Lit RayFlagsOpaque
       , rayOrigin
       , rayDirection
-      , rayTMin      = 7e-2 -- this is terrible, fixes needed
+      , rayTMin      = 0.002 -- this is terrible, fixes needed
       , rayTMax      = 1e10
       , cullMask     = 0xff
       }
@@ -266,7 +312,7 @@ traceOcclusionRay accel rayOrigin rayDirection = do
       { rayFlags     = Lit RayFlagsOpaque
       , rayOrigin
       , rayDirection
-      , rayTMin      = 7e-2
+      , rayTMin      = 0.002
       , rayTMax      = 1e10
       , cullMask     = 0xff -- could use a different cull mask
       }

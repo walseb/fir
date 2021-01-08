@@ -56,6 +56,7 @@ cornellBox =
     , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd cornellBoxAABBGeometries ) ) ]
     , sceneObserver             = cornellBoxObserver
     , sceneMissInfo             = cornellMissInfo
+    , sceneMovementMultiplier   = 3
     }
 cornellBoxEmitter :: EmitterObject
 cornellBoxEmitter =

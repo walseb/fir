@@ -162,9 +162,10 @@ data Shaders a
   , occlusionMiss
   , blackbodyMiss
   , factorMiss
---, skyMiss
+  , skyMiss
   -- then callable shaders
   , emitter_Blackbody_Callable
+  , emitter_Sun_Callable
   , sample_Triangle_SurfaceArea_Callable
   , sample_Sphere_SurfaceArea_Callable
   , materialSample_Lambertian_Callable
@@ -214,13 +215,17 @@ shaders = Prelude.fmap ( first ( shaderDir </> ) ) $ ShaderGroups $ Shaders
                                            ( "rt_factorMiss.spv"
                                            , AnyProgram ( primaryMissShader @Factor )
                                            )
---, skyMiss                              = Right $ MissGroup
---                                         ( "rt_skyMiss.spv"
---                                         , AnyProgram ( primaryMissShader @Sky )
---                                         )
+  , skyMiss                              = Right $ MissGroup
+                                           ( "rt_skyMiss.spv"
+                                           , AnyProgram ( primaryMissShader @Sky )
+                                           )
   , emitter_Blackbody_Callable           = Right $ CallableGroup
                                            ( "rt_emitter_Blackbody_Callable.spv"
                                            , AnyProgram ( emitterCallableShader @Blackbody )
+                                           )
+  , emitter_Sun_Callable                 = Right $ CallableGroup
+                                           ( "rt_emitter_Sun_Callable.spv"
+                                           , AnyProgram ( emitterCallableShader @Sun )
                                            )
   , sample_Triangle_SurfaceArea_Callable = Right $ CallableGroup
                                            ( "rt_sample_Triangle_SurfaceArea_Callable.spv"

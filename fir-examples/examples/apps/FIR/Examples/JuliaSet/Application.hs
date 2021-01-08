@@ -173,7 +173,7 @@ juliaSet = runVulkan initialState do
         , mouseMode  = SDL.AbsoluteLocation
         }
   let
-    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
+    vulkanReqs = ignoreMinVersion . addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -314,9 +314,9 @@ juliaSet = runVulkan initialState do
       inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
       prevInput <- use _input
       let
-        prevAction = interpretInput prevInput
+        prevAction = interpretInput 1 prevInput
         newInput = foldl onSDLInput prevInput inputEvents
-        action   = interpretInput newInput
+        action   = interpretInput 1 newInput
 
       pos <-
         if locate action

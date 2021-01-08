@@ -44,9 +44,11 @@ import FIR.Examples.RayTracing.Geometry
   ( Geometry(..) ) -- + instances
 import FIR.Examples.RayTracing.QuasiRandom
   ( QuasiRandom, random01s )
+import FIR.Examples.RayTracing.Sky
+  ( skyScatter, sunIntensity )
 import FIR.Examples.RayTracing.Types
   ( Bindable(..), GeometryBindingNo, LuminaireBindingNo
-  , IndexBuffer(..), GeometryKind(..)
+  , IndexBuffer(..), GeometryKind(..), MissKind(..), MissData
   , LuminaireKind(..)
   , EmitterCallableData, LightSamplingCallableData
   )
@@ -56,7 +58,6 @@ import FIR.Examples.RayTracing.Types
 
 class    ( PrimTy   ( LuminaireProperties lum )
          , Typeable lum
-         , Bindable lum
          )
       => Luminaire ( lum :: LuminaireKind )
       where
@@ -68,18 +69,27 @@ instance Luminaire Blackbody where
   type LuminaireProperties Blackbody = Struct '[ "temperature" ':-> Float, "intensity" ':-> Float ]
   luminaireKind = Blackbody
 
+instance Luminaire Sun where
+  type LuminaireProperties Sun = () -- sun properties read from miss shader data
+  luminaireKind = Sun
+
 --------------------------------------------------------------------------
 -- Emitter callable shaders: query emission properties of a luminaire,
 -- in the given direction and at the given wavelengths.
 
 
-type EmitterCallableDefs ( lum :: LuminaireKind ) =
-  '[ "callableData"   ':-> CallableDataIn '[] EmitterCallableData
-   , "luminaireProps" ':-> StorageBuffer '[ DescriptorSet 0, Binding ( LuminaireBindingNo lum ), NonWritable ]
-                              ( Struct '[ "propsArray" ':-> RuntimeArray ( LuminaireProperties lum ) ] )
-   , "main"           ':-> EntryPoint '[]
-                              Callable
-   ]
+type family EmitterCallableDefs ( lum :: LuminaireKind ) where
+  EmitterCallableDefs Sun =
+    '[ "callableData" ':-> CallableDataIn '[] EmitterCallableData
+     , "skyMissData"  ':-> Uniform   '[ DescriptorSet 0, Binding ( BindingNo MissKind ) ] MissData
+     , "main"         ':-> EntryPoint '[] Callable
+     ]
+  EmitterCallableDefs lum =
+    '[ "callableData"   ':-> CallableDataIn '[] EmitterCallableData
+     , "luminaireProps" ':-> StorageBuffer '[ DescriptorSet 0, Binding ( LuminaireBindingNo lum ), NonWritable ]
+                                ( Struct '[ "propsArray" ':-> RuntimeArray ( LuminaireProperties lum ) ] )
+     , "main"           ':-> EntryPoint '[] Callable
+     ]
 
 class Luminaire lum => Emitter lum where
   emitterCallableShader :: Module ( EmitterCallableDefs lum )
@@ -103,6 +113,31 @@ instance Emitter Blackbody where
       radiances :: Code ( V 4 Float )
       radiances = ( 1e-13 * emitterIntensity * abs ( rayDir ^.^ normal ) )
                 *^ Vec4 r0 r1 r2 r3
+    assign @( Name "callableData" :.: Name "mainData" ) radiances
+
+instance Emitter Sun where
+
+  emitterCallableShader = Module $ entryPoint @"main" @Callable do
+
+    rayleighParams <- let' =<< use @( Name "skyMissData" :.: Name "sky" :.: Name "rayleigh" )
+    mieParams      <- let' =<< use @( Name "skyMissData" :.: Name "sky" :.: Name "mie"      )
+    sunParams      <- let' =<< use @( Name "skyMissData" :.: Name "sky" :.: Name "sun"      )
+
+    sunDir   <- let' . normalise $ view @( Name "position" ) sunParams
+    sunDir_y <- let' . negate $ view @( Swizzle "y" ) sunDir
+
+    rayDir   <- ( let' . normalise ) =<< use @( Name "callableData" :.: Name "rayDirection" )
+    normal   <- ( let' . normalise ) =<< use @( Name "callableData" :.: Name "normal" )
+    λs       <- use @( Name "callableData" :.: Name "mainData" )
+
+    f_exs    <- let' . view @( Name "f_exs" ) =<< skyScatter rayleighParams mieParams sunParams rayDir λs
+    ξ        <- let' . acos $ sunDir_y
+    sun_e    <- sunIntensity sunParams ξ
+
+    let
+      radiances :: Code ( V 4 Float )
+      radiances = ( abs ( rayDir ^.^ normal ) * sun_e ) *^ f_exs
+
     assign @( Name "callableData" :.: Name "mainData" ) radiances
 
 --------------------------------------------------------------------------
@@ -207,9 +242,9 @@ randomBarycentric
   :: QuasiRandom s
   => Program s s ( Code ( V 2 Float ) )
 randomBarycentric = do
-  ~( Vec4 t0 s _ _ ) <- random01s
-  t <- let' $ sqrt ( 1 - t0 )
-  let' $ Vec2 ( t * s ) ( 1 - t )
+  ~( Vec4 ξ1 ξ2 _ _ ) <- random01s
+  s <- let' $ sqrt ξ1
+  let' $ Vec2 ( 1 - s ) ( ξ2 * s )
 
 -- | Compute a random point on a sphere, uniformly with respect to surface area.
 randomPointOnSphere

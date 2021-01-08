@@ -49,10 +49,6 @@ import Data.Word
 import GHC.Generics
   ( Generic )
 
--- bytestring
-import Data.ByteString
-  ( ByteString )
-
 -- containers
 import qualified Data.Map.Strict as Map
   ( fromList )
@@ -154,7 +150,7 @@ import FIR.Examples.RayTracing.Types
       , Sphere
       )
   , LuminaireKind
-      ( Blackbody )
+      ( Blackbody, Sun )
   , LuminaireID
   , MaterialKind
       ( Lambertian, Fresnel )
@@ -227,10 +223,10 @@ data ImageResource a
 -- TODO: this shouldn't be baked in
 shaderIndices :: ShaderIndices 2
 shaderIndices = ShaderIndices
-  { emitterCallableRelativeIndices     = Map.fromList [ ( Blackbody , 0 ) ]
-  , lightSampleCallableRelativeIndices = Map.fromList [ ( ( Triangle, SurfaceArea ), 1 ), ( ( Sphere, SurfaceArea ), 2 ) ]
-  , materialCallableRelativeIndices    = Map.fromList [ ( Lambertian, 3 :& 4 :& End ), ( Fresnel, 5 :& 6 :& End ) ]
-  , hitGroupAbsoluteIndices            = Map.fromList [ ( Triangle, V2 11 12 ), ( Sphere, V2 13 14 ) ]
+  { emitterCallableRelativeIndices     = Map.fromList [ ( Blackbody, 0 ), ( Sun, 1 ) ]
+  , lightSampleCallableRelativeIndices = Map.fromList [ ( ( Triangle, SurfaceArea ), 2 ), ( ( Sphere, SurfaceArea ), 3 ) ]
+  , materialCallableRelativeIndices    = Map.fromList [ ( Lambertian, 4 :& 5 :& End ), ( Fresnel, 6 :& 7 :& End ) ]
+  , hitGroupAbsoluteIndices            = Map.fromList [ ( Triangle, V2 13 14 ), ( Sphere, V2 15 16 ) ]
   }
 
 newtype CameraLock = CameraIsLocked { cameraIsLocked :: Bool }
@@ -269,6 +265,8 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
   let
     missIndex :: Word32
     MissInfo _ missIndex _ = sceneMissInfo scene
+    strafeMul :: Float
+    strafeMul = sceneMovementMultiplier scene
     initialUBO :: UBO
     initialUBO = cameraFromObserver ( sceneObserver scene ) :& 0 :& missIndex :& End
     missData :: MissData
@@ -289,20 +287,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
         }
 
   let
-    vulkanReqs = addInstanceExtensions windowExtensions $ vulkanRequirements reqs
-    rtDevReqs  = map mkExtensionRequirement
-        [ Vulkan.KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME
-        , Vulkan.KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
-        , Vulkan.KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
-        ]
-      where
-        mkExtensionRequirement :: ByteString -> Vulkan.DeviceRequirement
-        mkExtensionRequirement extName =
-          Vulkan.RequireDeviceExtension
-            { Vulkan.deviceExtensionLayerName  = Nothing
-            , Vulkan.deviceExtensionName       = extName
-            , Vulkan.deviceExtensionMinVersion = 0
-            }
+    vulkanReqs = ignoreMinVersion . addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     rtDevFeats =
       [ Vulkan.RequireDeviceFeature
           { Vulkan.featureName = "accelerationStructure"
@@ -340,7 +325,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
       ]
     rtReqs = case vulkanReqs of
       VulkanRequirements instReqs devReqs ->
-        VulkanRequirements instReqs ( rtDevFeats <> rtDevReqs <> devReqs )
+        ignoreMinVersion $ VulkanRequirements instReqs ( rtDevFeats <> devReqs )
     surfaceInfo =
       SurfaceInfo
         { surfaceWindow = window
@@ -356,7 +341,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
         }
 
   VulkanContext{..} <-
-    initialiseContext @WithSwapchain Debug appName rtReqs
+    initialiseContext @WithSwapchain Normal appName rtReqs
       RenderInfo
         { queueType   = Vulkan.QUEUE_GRAPHICS_BIT .|. Vulkan.QUEUE_COMPUTE_BIT .|. Vulkan.QUEUE_TRANSFER_BIT
         , surfaceInfo = surfaceInfo
@@ -523,8 +508,9 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
                          .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
         , luminaireIDs     = StageFlags 
                              Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
-        , missData         = StageFlags
+        , missData         = StageFlags $
                              Vulkan.SHADER_STAGE_MISS_BIT_KHR
+                         .|. Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR -- sun callable shader uses the sky miss info
         , indexBuffer      = StageFlags $
                              Vulkan.SHADER_STAGE_CALLABLE_BIT_KHR
                          .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
@@ -842,8 +828,8 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
           else prevCamLocked
         action =
           if cameraIsLocked
-          then ( interpretInput newInput ) { movement = mempty, look = mempty }
-          else   interpretInput newInput
+          then ( interpretInput strafeMul newInput ) { movement = mempty, look = mempty }
+          else   interpretInput strafeMul newInput
 
         reset    = not
           ( (  norm ( coerce ( movement action ) :: V 3 Float ) < 1e-7

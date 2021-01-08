@@ -21,7 +21,7 @@ import Data.Bits
 import Data.Foldable
   ( toList )
 import Data.Maybe
-  ( fromMaybe )
+  ( fromMaybe, mapMaybe )
 import Data.Kind
   ( Type )
 import Foreign.C.String
@@ -118,6 +118,19 @@ data VulkanRequirements =
     { instanceRequirements :: [ Vulkan.InstanceRequirement ]
     , deviceRequirements   :: [ Vulkan.DeviceRequirement   ]
     }
+
+ignoreMinVersion :: VulkanRequirements -> VulkanRequirements
+ignoreMinVersion ( VulkanRequirements instReqs devReqs ) =
+  VulkanRequirements ( mapMaybe noMinInstVer instReqs ) ( mapMaybe noMinDevVer devReqs )
+    where
+      noMinInstVer :: Vulkan.InstanceRequirement -> Maybe Vulkan.InstanceRequirement
+      noMinInstVer ( Vulkan.RequireInstanceVersion {} ) = Nothing
+      noMinInstVer lay@( Vulkan.RequireInstanceLayer {} ) = Just $ lay { Vulkan.instanceLayerMinVersion = 0 }
+      noMinInstVer instExt@( Vulkan.RequireInstanceExtension {} ) = Just $ instExt { Vulkan.instanceExtensionMinVersion = 0 }
+      noMinDevVer :: Vulkan.DeviceRequirement -> Maybe Vulkan.DeviceRequirement
+      noMinDevVer ( Vulkan.RequireDeviceVersion {} ) = Nothing
+      noMinDevVer devExt@( Vulkan.RequireDeviceExtension {} ) = Just $ devExt { Vulkan.deviceExtensionMinVersion = 0 }
+      noMinDevVer devReq = Just devReq
 
 vulkanRequirements :: ModuleRequirements -> VulkanRequirements
 vulkanRequirements ( ModuleRequirements { requiredCapabilities, requiredExtensions } ) =
@@ -218,7 +231,7 @@ peekCString = fmap ( fromMaybe "???" . ShortText.fromShortByteString ) . ShortBy
 initialiseContext
   :: forall ctx m. ( KnownRenderingContext ctx, MonadVulkan m )
   => InstanceType -> ByteString -> VulkanRequirements -> RenderInfo ctx -> m ( VulkanContext ctx )
-initialiseContext instanceType appName  ( VulkanRequirements { instanceRequirements, deviceRequirements } ) ( RenderInfo { queueType, surfaceInfo } ) = do
+initialiseContext instanceType appName ( VulkanRequirements { instanceRequirements, deviceRequirements } ) ( RenderInfo { queueType, surfaceInfo } ) = do
   logDebug "Creating Vulkan instance"
   vkInstanceInfo   <- vulkanInstanceInfo appName
   vkInstance       <- case instanceType of
