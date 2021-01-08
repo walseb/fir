@@ -44,9 +44,10 @@ import FIR.Examples.RayTracing.Types
   ( LuminaireKind(Blackbody), MissKind(..)
   , RayleighParams, MieParams, SunParams, MissData
   , PrimaryPayload, OcclusionPayload, UBO
+  , BounceDistribution(..), BounceType(..), BounceSide(..)
   , type BindingNo
-  , pattern SpecRefl, pattern Miss
-  , rayFinished
+  , pattern Miss
+  , bounce, rayFinished
   , height, width
   , tracePrimaryRay
   )
@@ -62,7 +63,6 @@ import FIR.Examples.RayTracing.Types
 --      - result says whether to continue or not
 --  - finally, convert the resulting spectral radiance information
 --    into XYZ colour data, and write that to the output image.
-
 
 type RayGenDefs =
   '[ "ubo"      ':-> Uniform         '[ DescriptorSet 0, Binding ( BindingNo UBO ) ] UBO
@@ -117,7 +117,7 @@ raygenShader = Module $ entryPoint @"main" @RayGeneration do
     ( Struct
     $  quasiRandomConstants
     :& quasiRandomState
-    :& Lit SpecRefl       -- count direct light hits when shooting from camera
+    :& Lit ( bounce Specular Reflect Positive ) -- count direct light hits when shooting from camera
     :& Vec4 0 0 0 0       -- outside any media (air)
     :& initialOrigin
     :& initialDirection

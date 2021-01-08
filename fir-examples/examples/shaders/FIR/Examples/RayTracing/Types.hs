@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE NamedFieldPuns         #-}
+{-# LANGUAGE NumericUnderscores     #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RebindableSyntax       #-}
@@ -59,28 +60,50 @@ type UBO =
 
 type HitType = Word32
 
-pattern EndRay, Miss, SpecRefl, SpecRefr, DiffRefl, DiffRefr :: HitType
-pattern EndRay   = 0b0000
-pattern Miss     = 0b0001
-pattern DiffRefr = 0b0100
-pattern DiffRefl = 0b0110
-pattern SpecRefr = 0b1000
-pattern SpecRefl = 0b1010
+-- | Whether the bounce was diffuse (continuous PDF) or specular (discrete probability).
+data BounceDistribution = Diffuse | Specular
+-- | Whether the ray traversed the surface or remained on the same side.
+data BounceType = Reflect  | Refract
+-- | Which side the ray came in from, relative to the surface normal vector.
+-- 'Positive' means the ray came from the side the normal points towards,
+-- i.e. the outside of the surface (assuming outward pointing normals).
+data BounceSide = Positive | Negative
+
+pattern EndRay, Miss :: HitType
+pattern EndRay = 0b_0_0_0_00
+pattern Miss   = 0b_0_0_0_01
+
+bounce :: BounceDistribution -> BounceType -> BounceSide -> HitType
+bounce Diffuse  Reflect Positive = 0b_0_0_0_10
+bounce Diffuse  Reflect Negative = 0b_0_0_1_10
+bounce Diffuse  Refract Positive = 0b_0_1_0_10
+bounce Diffuse  Refract Negative = 0b_0_1_1_10
+bounce Specular Reflect Positive = 0b_1_0_0_10
+bounce Specular Reflect Negative = 0b_1_0_1_10
+bounce Specular Refract Positive = 0b_1_1_0_10
+bounce Specular Refract Negative = 0b_1_1_1_10
 
 rayFinished :: Code HitType -> Code Bool
 rayFinished h = h < 2
 
-reflected :: Code HitType -> Code Bool
-reflected h = h .&. 0b0010 > 0
+rayComingFromInside :: Code HitType -> Code Bool
+rayComingFromInside h = h .&. 0b_0_0_1_00 > 0
+
+flipBounceSign :: Code HitType -> Code Bool
+flipBounceSign h =
+  if refracted h then not ( rayComingFromInside h ) else rayComingFromInside h
+
+refracted :: Code HitType -> Code Bool
+refracted h = h .&. 0b_0_1_0_00 > 0
 
 specular :: Code HitType -> Code Bool
-specular h = h .&. 0b1000 > 0
+specular h = h .&. 0b_1_0_0_00 > 0
 
 --------------------------------------------------------------------------
 -- Sizes.
 
-type Width      = 1280 `WithDivisor` LocalSizeX
-type Height     = 720  `WithDivisor` LocalSizeY
+type Width      = 1920 `WithDivisor` LocalSizeX
+type Height     = 1080 `WithDivisor` LocalSizeY
 type LocalSizeX = 16
 type LocalSizeY = 8
 
@@ -271,7 +294,14 @@ type MissData = Struct
    ]
 
 --------------------------------------------------------------------------
--- Utility tracing functions.
+-- Utility functions.
+
+-- Machine epsilon for 32 bit floating pointer numbers, 2^-24.
+ε :: Float
+ε = 0b0_01100111_00000000000000000000000
+
+γ :: Float -> Float
+γ n = n * ε / ( 1 - n * ε )
 
 tracePrimaryRay
   :: forall ( primaryPayloadName :: Symbol ) ( s :: ProgramState )
@@ -288,7 +318,7 @@ tracePrimaryRay accel missIndex rayOrigin rayDirection = do
       { rayFlags     = Lit RayFlagsOpaque
       , rayOrigin
       , rayDirection
-      , rayTMin      = 0.002 -- this is terrible, fixes needed
+      , rayTMin      = 0
       , rayTMax      = 1e10
       , cullMask     = 0xff
       }
@@ -312,7 +342,7 @@ traceOcclusionRay accel rayOrigin rayDirection = do
       { rayFlags     = Lit RayFlagsOpaque
       , rayOrigin
       , rayDirection
-      , rayTMin      = 0.002
+      , rayTMin      = 0
       , rayTMax      = 1e10
       , cullMask     = 0xff -- could use a different cull mask
       }

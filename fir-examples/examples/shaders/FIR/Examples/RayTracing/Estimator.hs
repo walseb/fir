@@ -33,7 +33,7 @@ import FIR.Examples.RayTracing.Types
   ( LuminaireID, ShaderRecord
   , EmitterCallableData, LightSamplingCallableData
   , pattern EndRay, pattern Miss
-  , specular
+  , flipBounceSign, specular
   , PrimaryPayload, OcclusionPayload
   , initialOcclusionPayload
   , traceOcclusionRay
@@ -72,6 +72,13 @@ estimateRadiance accel shaderRecord hitPos normal = do
   rayOrigin    <- use @( Name "payload" :.: Name "worldRayOrigin"    )
   rayDirection <- use @( Name "payload" :.: Name "worldRayDirection" )
   wavelengths  <- use @( Name "payload" :.: Name "wavelengths"       )
+
+  offsetHitPos_bounce <- let' $
+    if   flipBounceSign prevHitType
+    then hitPos ^-^ 2e-3 *^ normal
+    else hitPos ^+^ 2e-3 *^ normal
+
+  offsetHitPos_outside <- let' $ hitPos ^+^ 5e-3 *^ normal
 
   ------------------------------------------------------
   -- Get transmittance of path from ray origin to current position,
@@ -132,7 +139,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
   quasiRandomState <- use @( Name "matSampleData" :.: Name "quasiRandomState" )
 
   -- Update ray payload for the bounce, and update the quasi-random state.
-  assign @( Name "payload" :.: Name "worldRayOrigin"    ) hitPos
+  assign @( Name "payload" :.: Name "worldRayOrigin"    ) offsetHitPos_bounce
   assign @( Name "payload" :.: Name "worldRayDirection" ) bounceDir
   assign @( Name "payload" :.: Name "hitType"           ) bounceType
   assign @( Name "payload" :.: Name "quasiRandomState"  ) quasiRandomState
@@ -183,7 +190,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
 
       -- Trace an occlusion ray along the bounce ray direction.
       put @"occPayload" initialOcclusionPayload
-      traceOcclusionRay @"occPayload" accel hitPos bounceDir
+      traceOcclusionRay @"occPayload" accel offsetHitPos_outside bounceDir
       bounceOccPayload <- get @"occPayload"
       bounceVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID bounceOccPayload
 
@@ -215,9 +222,9 @@ estimateRadiance accel shaderRecord hitPos normal = do
       assign @( Name "payload" :.: Name "quasiRandomState" ) quasiRandomState
 
       -- Trace an occlusion ray towards the chosen light point.
-      lightDirection <- let' ( normalise $ lightPt ^-^ hitPos )
+      lightDirection <- let' ( normalise $ lightPt ^-^ offsetHitPos_outside )
       put @"occPayload" initialOcclusionPayload
-      traceOcclusionRay @"occPayload" accel hitPos lightDirection
+      traceOcclusionRay @"occPayload" accel offsetHitPos_outside lightDirection
       lightSampleOccPayload <- get @"occPayload"
       lightSampleVisFactor  <- visibilityFactor lightPrimitiveID lightInstanceID lightSampleOccPayload
 

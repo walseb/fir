@@ -37,8 +37,9 @@ import FIR.Examples.RayTracing.Colour
 import FIR.Examples.RayTracing.QuasiRandom
   ( random01s )
 import FIR.Examples.RayTracing.Types
-  ( HitType, pattern DiffRefl, pattern SpecRefl, pattern SpecRefr
+  ( HitType, BounceDistribution(..), BounceType(..), BounceSide(..)
   , MaterialKind(..), Bindable, MaterialBindingNo
+  , bounce
   )
 
 --------------------------------------------------------------------------
@@ -143,7 +144,7 @@ instance Material Lambertian where
     dir <- let' . normalise $ sinθ *^ ( cos φ *^ v ^+^ sin φ *^ w ) ^+^ cosθ *^ n
 
     assign @( Name "callableData" :.: Name "inOutRayDir"      ) dir
-    assign @( Name "callableData" :.: Name "sampleType"       ) ( Lit DiffRefl )
+    assign @( Name "callableData" :.: Name "sampleType"       ) ( Lit $ bounce Diffuse Reflect Positive )
     assign @( Name "callableData" :.: Name "quasiRandomState" ) =<< get @"quasiRandomState"
 
   queryMaterialCallableShader = Module $ entryPoint @"main" @Callable do
@@ -219,10 +220,16 @@ instance Material Fresnel where
     if p_refl <= reflectance
     then do
       assign @( Name "callableData" :.: Name "inOutRayDir" ) out_refl
-      assign @( Name "callableData" :.: Name "sampleType"  ) ( Lit SpecRefl )
+      assign @( Name "callableData" :.: Name "sampleType"  ) $
+        if sign > 0
+        then ( Lit $ bounce Specular Reflect Positive )
+        else ( Lit $ bounce Specular Reflect Negative )
     else do
       assign @( Name "callableData" :.: Name "inOutRayDir" ) out_refr
-      assign @( Name "callableData" :.: Name "sampleType"  ) ( Lit SpecRefr )
+      assign @( Name "callableData" :.: Name "sampleType"  )
+        if sign > 0
+        then ( Lit $ bounce Specular Refract Positive )
+        else ( Lit $ bounce Specular Refract Negative )
 
     assign @( Name "callableData" :.: Name "quasiRandomState" ) =<< get @"quasiRandomState"
 
