@@ -36,6 +36,7 @@ Here are some of the library's __features__:
   * Control flow: if-then-else, switch statements and loops, compiled to [SSA form using ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form). GPU synchronisation with control and memory barriers.
   * Functor/applicative operations, compiling to efficient code (vectorised operations, loops).
   * Type-level optic combinator framework, including the ability to take side-by-side products of optics (disjointness checked at the type-level, ensuring lawfulness). Usage is similar to the [lens library](http://hackage.haskell.org/package/lens), e.g. `view @getter a s`, `assign @setter a`. Refer to the [section on optics](getting_started.md#optics) in the "getting started" guide.
+  * Support for [Vulkan subgroup arithmetic operations](https://www.khronos.org/blog/vulkan-subgroup-tutorial) (contributed by @vlj1).
   * Extensive type-level validation: shader interface matching, decorations and execution modes, validation of image read/write/sample operations (including compatibility checking of operations in conjunction with specified image operands and image formats).
   * Automatic memory layout for vertex, uniform, storage buffers and push constants, to conveniently pass data to the GPU.
 
