@@ -33,6 +33,8 @@ import GHC.TypeNats
   ( Nat, SomeNat(SomeNat), someNatVal )
 
 -- containers
+import Data.Set
+  ( Set )
 import qualified Data.Set as Set
 
 -- mtl
@@ -43,7 +45,7 @@ import Control.Monad.Except
 import Data.Text.Short
   ( ShortText )
 import qualified Data.Text.Short as ShortText
-  ( unpack )
+  ( drop, unpack )
 
 -- fir
 import Data.Type.List
@@ -89,7 +91,7 @@ import SPIRV.Stage
   )
 
 import qualified SPIRV.Stage as SPIRV
-  ( Backend(Vulkan) )
+  ( Backend(..) )
 import qualified SPIRV.Capability as SPIRV
 
 --------------------------------------------------------------------------
@@ -178,17 +180,20 @@ type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Bin
        , "gl_SubgroupInvocationID" ':-> Var R Word32
        , "gl_SubgroupID"           ':-> Var R Word32
        , "gl_SubgroupSize"         ':-> Var R Word32
-       , "gl_SubgroupMaxSize"      ':-> Var R Word32
        ]
   ModelBuiltins' ( KernelInfo _ )
-    = '[ "cl_WorkDim"            ':-> Var R Word32
-       , "cl_GlobalSize"         ':-> Var R (V 3 Word32)
-       , "cl_GlobalInvocationID" ':-> Var R (V 3 Word32)
-       , "cl_LocalInvocationID"  ':-> Var R (V 3 Word32)
-       , "cl_NumWorkgroups"      ':-> Var R (V 3 Word32)
-       , "cl_WorkgroupID"        ':-> Var R (V 3 Word32)
-       , "cl_GlobalOffset"       ':-> Var R (V 3 Word32)
-       , "cl_GlobalLinearID"     ':-> Var R Word32
+    = '[ "cl_WorkDim"              ':-> Var R Word32
+       , "cl_GlobalSize"           ':-> Var R (V 3 Word32)
+       , "cl_GlobalInvocationID"   ':-> Var R (V 3 Word32)
+       , "cl_LocalInvocationID"    ':-> Var R (V 3 Word32)
+       , "cl_NumWorkgroups"        ':-> Var R (V 3 Word32)
+       , "cl_WorkgroupID"          ':-> Var R (V 3 Word32)
+       , "cl_GlobalOffset"         ':-> Var R (V 3 Word32)
+       , "cl_GlobalLinearID"       ':-> Var R Word32
+       , "cl_SubgroupInvocationID" ':-> Var R Word32
+       , "cl_SubgroupID"           ':-> Var R Word32
+       , "cl_SubgroupSize"         ':-> Var R Word32
+       , "cl_SubgroupMaxSize"      ':-> Var R Word32
        ]
   ModelBuiltins' ( 'RayShaderInfo ( _ :: RayShaderInfo rayShader ) )
     = RayShaderBuiltins rayShader
@@ -305,6 +310,18 @@ builtinDecorations builtin
       ( Set.singleton . SPIRV.Builtin )
       ( SPIRV.readBuiltin builtin )
 
-builtinCapabilities :: SPIRV.Backend -> ShortText -> Set.Set SPIRV.Capability
-builtinCapabilities SPIRV.Vulkan "gl_SubgroupInvocationID" = Set.singleton SPIRV.GroupNonUniform 
-builtinCapabilities _ _ = Set.empty
+builtinCapabilities :: SPIRV.Backend -> ShortText -> Set SPIRV.Capability
+builtinCapabilities bk builtinName
+  | isSubgroupBuiltin ( ShortText.drop 3 builtinName )
+  = case bk of
+    SPIRV.Vulkan -> Set.singleton SPIRV.GroupNonUniform
+    SPIRV.OpenCL -> Set.singleton SPIRV.ComputeKernel
+  | otherwise
+  = Set.empty
+
+isSubgroupBuiltin :: ShortText -> Bool
+isSubgroupBuiltin "SubgroupInvocationID" = True
+isSubgroupBuiltin "SubgroupID"           = True
+isSubgroupBuiltin "SubgroupSize"         = True
+isSubgroupBuiltin "SubgroupMaxSize"      = True
+isSubgroupBuiltin _                      = False

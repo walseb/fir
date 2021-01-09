@@ -30,7 +30,7 @@ import qualified SPIRV.Image    as Image
 import           SPIRV.Operation
   hiding ( Capability )
 import           SPIRV.PrimOp
-  ( PrimOp(..), op )
+  ( PrimOp(..), VecPrimOp(..), op )
 import           SPIRV.PrimTy
   ( PrimTy, scalars )
 import qualified SPIRV.PrimTy   as PrimTy
@@ -41,10 +41,6 @@ import           SPIRV.Stage
   ( ExecutionModel(Stage), Stage(..), Shader, Backend(..) )
 import qualified SPIRV.Stage    as Stage
   ( ExecutionModel(..), Shader(..) )
-import SPIRV.PrimOp
-  ( VecPrimOp(..))
-import FIR.Prim.Op
-  (Vectorise)
 
 --------------------------------------------------------------------------
 -- primitive operations
