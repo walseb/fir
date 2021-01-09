@@ -63,6 +63,10 @@ import GHC.Float
   , castWord64ToDouble, castDoubleToWord64
   )
 
+-- half
+import Numeric.Half
+  ( Half(..) )
+
 -- fir
 import Deriving.Base
   ( Base(..) ) -- newtype for deriving via base instances
@@ -167,12 +171,14 @@ deriving via '(Base CULLong,(s :: Type)) instance (Integral s, Prelude.Integral 
 class BitCast a b where
   bitcast :: a -> b
 
---instance BitCast Word16 Half where
+instance BitCast Word16 Half where
+  bitcast = coerce
 instance BitCast Word32 Float where
   bitcast = castWord32ToFloat
 instance BitCast Word64 Double where
   bitcast = castWord64ToDouble
---instance BitCast Half   Word16 where
+instance BitCast Half   Word16 where
+  bitcast = coerce
 instance BitCast Float  Word32 where
   bitcast = castFloatToWord32
 instance BitCast Double Word64 where
