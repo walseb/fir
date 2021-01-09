@@ -6,6 +6,7 @@
 * [Features and limitations](#features)
 * [Examples](#examples)
 * [Getting started](#getting-started)
+* [Gitter channel](#gitter)
 * [Report a bug](#bugs)
 * [Development information](#dev)
 * [Acknowledgements](#acknowledgements)
@@ -82,7 +83,12 @@ See [getting started](getting_started.md) for help on getting started with this 
   * how to specify graphics pipelines, which can then be used with the [vulkan](https://github.com/expipiplus1/vulkan) or [vulkan-api](https://github.com/achirkin/vulkan) libraries.
 
 The [haddock documentation](https://sheaf.gitlab.io/fir/) is also worth perusing for specialised in-depth explanations.
-If you prefer to browse the haddocks locally, the ["getting started" guide](getting_started.md#docs) includes installation instructions.
+If you prefer to browse the haddocks locally, the ["getting started" guide](getting_started.md#docs) includes installation instructions.    
+
+<a name="gitter"></a>
+# Gitter channel
+
+For further help, you can pop into [the library's gitter channel](https://gitter.im/sheaf-fir/fir).
 
 <a name="bugs"></a>
 # Report a bug
