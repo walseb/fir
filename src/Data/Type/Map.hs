@@ -18,7 +18,7 @@ module Data.Type.Map where
 import Data.Type.Bool
   ( If )
 import Data.Type.Ord
-  (Compare)
+  ( Compare )
 import GHC.TypeLits
   ( TypeError, ErrorMessage(..) )
 

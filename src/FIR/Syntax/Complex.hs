@@ -6,6 +6,19 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
+{-|
+Module: FIR.Syntax.Complex
+
+Syntax for manipulating complex numbers.    
+
+@CodeComplex a@ is a newtype around @Code (V 2 a)@, but with a @ComplexFloat@ instance allowing for complex arithmetic.    
+
+Complex numbers can be constructed using using @:+:@, e.g. @0 :+: 1@ represents the imaginary unit @i@.
+
+Note that @Floating@ operations such as trigonometric functions are not provided, as these are not supported by @SPIR-V@.
+-}
+
+
 module FIR.Syntax.Complex
   ( CodeComplex(..), pattern (:+:) )
   where
@@ -41,6 +54,8 @@ import FIR.Syntax.Synonyms
 
 ----------------------------------------------------------------------------
 
+-- | Newtype around @Code (V 2 a)@, but with typeclass instances
+-- for complex arithmetic.
 newtype CodeComplex a = CodeComplex { codeComplex :: Code ( V 2 a ) }
 
 instance (ScalarTy a) => Syntactic (CodeComplex a) where

@@ -59,6 +59,14 @@ we then give @x'@ the (immutable) value of @1@.
 This subtlety is especially important when working with @while@ loops,
 as one wants to avoid having a constant conditional in the header.
 
+Note that overloaded labels don't support visible type application in GHC 9.0 [due to a bug](https://gitlab.haskell.org/ghc/ghc/-/issues/19154).
+For that version of GHC, you will need to write
+
+> #label #= ( val :: type )
+
+instead of
+
+> #label @type #= val
 -}
 
 module FIR.Syntax.Labels

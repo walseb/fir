@@ -8,6 +8,12 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
+{-|
+Module: FIR.Syntax.RayTracing
+
+Ray-tracing and ray-query operations, such as 'traceRay', 'reportIntersection', 'executeCallable'...
+-}
+
 module FIR.Syntax.RayTracing where
 
 -- base

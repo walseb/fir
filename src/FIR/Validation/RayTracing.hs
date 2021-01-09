@@ -4,6 +4,13 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+{-|
+Module: FIR.Validation.RayTracing
+
+Validation of ray-tracing and ray-query operations.
+-}
+
+
 module FIR.Validation.RayTracing
   ( -- * Ray tracing validation
     CanTraceRay, CanExecuteCallable

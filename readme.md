@@ -31,7 +31,7 @@ Refer to the ["getting started" guide (simple shader example)](getting_started.m
 
 Here are some of the library's __features__:
 
-  * Support for all native Vulkan execution models (all graphics shaders, as well as compute shaders), and OpenCL compute kernels. See the [examples](#examples) for illustration.
+  * Support for all native Vulkan execution models (all graphics shaders, as well as compute shaders), ray-tracing shaders, and OpenCL compute kernels. See the [examples](#examples) for illustration.
   * Image sampling and load/store, with a convenient functional interface given by specifying image operands. This avoids having many different image sampling functions like in GLSL (e.g. `sampler2DArrayShadow`, `textureProjOffset`, ...).
   * Control flow: if-then-else, switch statements and loops, compiled to [SSA form using ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form). GPU synchronisation with control and memory barriers.
   * Functor/applicative operations, compiling to efficient code (vectorised operations, loops).
@@ -60,7 +60,8 @@ See also the library's [issue tracker](https://gitlab.com/sheaf/fir/issues) for 
 
 <div align="center">
 <a href="img/kerr_large.png"><img src="img/kerr.png" alt="Kerr space-time"></a> <br>
-<a href="fir-examples/readme.md#fullpipeline"><img src="img/full_pipeline_small.png" alt="Full graphics pipeline"></a> <a href="fir-examples/readme.md#logo"><img src="img/logo_small.png" alt="FIR logo (compute shader)"></a> <a href="fir-examples/readme.md#hopf"><img src="img/hopf_small.png" alt="Hopf fibration"></a> <a href="fir-examples/readme.md#texture"><img src="img/texture_small.png" alt="Texture sampling"></a> <a href="fir-examples/readme.md#ising"><img src="img/ising_small.png" alt="Ising model"></a> <a href="fir-examples/readme.md#julia"><img src="img/julia_small.png" alt="Julia set"></a> <a href="fir-examples/readme.md#offscreen"><img src="img/offscreen_small.png" alt="Offscreen rendering"></a> <a href="fir-examples/readme.md#bezier"><img src="img/bezier_small.png" alt="Bézier curves"></a> 
+<a href="fir-examples/readme.md#fullpipeline"><img src="img/full_pipeline_small.png" alt="Full graphics pipeline"></a> <a href="fir-examples/readme.md#logo"><img src="img/logo_small.png" alt="FIR logo (compute shader)"></a> <a href="fir-examples/readme.md#hopf"><img src="img/hopf_small.png" alt="Hopf fibration"></a> <a href="fir-examples/readme.md#texture"><img src="img/texture_small.png" alt="Texture sampling"></a> <a href="fir-examples/readme.md#ising"><img src="img/ising_small.png" alt="Ising model"></a> <a href="fir-examples/readme.md#julia"><img src="img/julia_small.png" alt="Julia set"></a> <a href="fir-examples/readme.md#offscreen"><img src="img/offscreen_small.png" alt="Offscreen rendering"></a> <a href="fir-examples/readme.md#bezier"><img src="img/bezier_small.png" alt="Bézier curves"></a>  <br>
+<a href="img/raytracing_large.png"><img src="img/raytracing.png" alt="Spectral path tracer"></a> <br>
 </div>
 
 Usage examples are included in the **fir-examples** subdirectory.     

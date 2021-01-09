@@ -41,8 +41,11 @@ import GHC.TypeNats
 
 -- fir
 import Data.Type.Maybe
+  ( FromMaybe )
 import Data.Type.Map
-  (Map, UnionWithAppend, (:->)((:->)), InsertWithAppend )
+  ( (:->)((:->)), Map
+  , InsertWithAppend, UnionWithAppend
+  )
 import FIR.Definition
   ( Definition(..)
   , TriagedDefinitions

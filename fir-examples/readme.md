@@ -8,6 +8,7 @@
   - [Hot reloading](#hotreloading)
   - [Overview of examples](#overview)
     - [Kerr space-time](#kerr)
+    - [Path tracer](#raytracing)
     - [Full graphics pipeline](#fullpipeline)
     - [FIR logo](#logo)
     - [Hopf fibration](#hopf)
@@ -70,6 +71,9 @@ for the Vulkan SDK on Linux.
 
 <a name="darwin"></a>
 ### MacOS (via MoltenVK and nix)
+
+**TODO:** these instructions are outdated; see issue [#80](https://gitlab.com/sheaf/fir/-/issues/80).    
+
 `default.nix` contains overlays for `vulkan-api` and `fir` as well as a derivation for `fir-examples`.  Because `MoltenVK` only supports a subset of the Vulkan spec (and only SPIR-V version 1.0), not all the examples run.  `JuliaSet`, `Texture`, and `Logo` run successfuly on MacOS Mojave.
 
 Build the project:
@@ -134,6 +138,19 @@ Remarks:
 Render of a rotating black hole with a tilted accretion disk.    
 
 Consists of a compute shader using a Runge–Kutta numerical integrator to solve the geodesic equations of Kerr space-time backwards in time (relativistic ray-tracing).
+
+<a name="raytracing"></a>
+### Path tracer
+<div align="center">
+<a href="../img/raytracing_large.png"><img src="../img/raytracing_small.png" alt="RayTracing"></a> <br>
+[Application](examples/apps/FIR/Examples/RayTracing/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/RayTracing/Shaders.hs)
+</div>
+
+Spectral path tracer that uses Vulkan ray-tracing shaders. Press `L` to lock the camera (which lets the renderer converge).    
+
+Uses uni-directional path tracing with explicit light sampling (weighted with multiple importance sampling).    
+
+Several scenes are available. Running the example in GHCi, you will be asked to pick a scene. If running the executable directly, the scene name can be passed as a command line argument.
 
 <a name="fullpipeline"></a>
 ### Full graphics pipeline

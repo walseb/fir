@@ -118,6 +118,7 @@ type family BitsType (bs :: (Type,Type)) :: Type where
 type family ShiftType (bs :: (Type,Type)) :: Type where
   ShiftType '(_,b) = b
 
+-- | Bit-shift operations.
 class (bs ~ '(BitsType bs, ShiftType bs)) => BitShift (bs :: (Type,Type)) where
   -- | Shift the first argument left by the specified number of bits.
   --
@@ -161,6 +162,8 @@ deriving via '(Base CULong ,(s :: Type)) instance (Integral s, Prelude.Integral 
 deriving via '(Base CLLong ,(s :: Type)) instance (Integral s, Prelude.Integral s) => BitShift '(CLLong ,s)
 deriving via '(Base CULLong,(s :: Type)) instance (Integral s, Prelude.Integral s) => BitShift '(CULLong,s)
 
+-- | The 'BitCast' typeclass is used to cast between floating-point numbers and their binary representation,
+-- e.g between a 'Float' and its representation as a 'Word32'.
 class BitCast a b where
   bitcast :: a -> b
 
