@@ -45,7 +45,7 @@ module Math.Logic.Bits
 import Prelude
   ( Bool(..)
   , Int, Word, Float, Double
-  , ($)
+  , (.), ($)
   )
 import qualified Prelude
 import qualified Data.Bits as Base
@@ -183,6 +183,18 @@ instance BitCast Float  Word32 where
   bitcast = castFloatToWord32
 instance BitCast Double Word64 where
   bitcast = castDoubleToWord64
+instance BitCast Int16 Half where
+  bitcast = coerce . ( Prelude.fromIntegral :: Int16 -> Word16 )
+instance BitCast Int32 Float where
+  bitcast = castWord32ToFloat . ( Prelude.fromIntegral :: Int32 -> Word32 )
+instance BitCast Int64 Double where
+  bitcast = castWord64ToDouble . ( Prelude.fromIntegral :: Int64 -> Word64 )
+instance BitCast Half   Int16 where
+  bitcast = ( Prelude.fromIntegral :: Word16 -> Int16 ) . coerce
+instance BitCast Float  Int32 where
+  bitcast = ( Prelude.fromIntegral :: Word32 -> Int32 ) . castFloatToWord32
+instance BitCast Double Int64 where
+  bitcast = ( Prelude.fromIntegral :: Word64 -> Int64 ) . castDoubleToWord64
 
 zipBits2 :: Bits a
          => (Bool -> Bool -> Bool)

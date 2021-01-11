@@ -80,12 +80,12 @@ cornellBoxAABBGeometries
       )
   . HashMap.fromList
   $
-  [ ( "leftWall"  , ( V3 (-1e5+1)  -40.8         81.6     :& 1e5  :& End, V3 0.9 0.2 0.2 :& End ) )
-  , ( "rightWall" , ( V3 (1e5+99)  -40.8         81.6     :& 1e5  :& End, V3 0.4 0.8 0.1 :& End ) )
-  , ( "backWall"  , ( V3      50   -40.8        (1e5+170) :& 1e5  :& End, V3 1   1   1   :& End ) )
-  , ( "frontWall" , ( V3      50   -40.8        -1e5      :& 1e5  :& End, V3 0.1 0.1 0.1 :& End ) )
-  , ( "bottomWall", ( V3      50    1e5          81.6     :& 1e5  :& End, V3 0.7 0.7 0.7 :& End ) )
-  , ( "topWall"   , ( V3      50  (-(1e5+81.6))  81.6     :& 1e5  :& End, V3 1   1   1   :& End ) )
+  [ ( "leftWall"  , ( V3 (-1e3+1)  -40.8         81.6     :& 1e3  :& End, V3 0.9 0.2 0.2 :& End ) )
+  , ( "rightWall" , ( V3 (1e3+99)  -40.8         81.6     :& 1e3  :& End, V3 0.4 0.8 0.1 :& End ) )
+  , ( "backWall"  , ( V3      50   -40.8        (1e3+170) :& 1e3  :& End, V3 1   1   1   :& End ) )
+  , ( "frontWall" , ( V3      50   -40.8        -1e3      :& 1e3  :& End, V3 0.1 0.1 0.1 :& End ) )
+  , ( "bottomWall", ( V3      50    1e5          81.6     :& 1e3  :& End, V3 0.7 0.7 0.7 :& End ) )
+  , ( "topWall"   , ( V3      50  (-(1e3+81.6))  81.6     :& 1e3  :& End, V3 1   1   1   :& End ) )
   , ( "sphere1"   , ( V3      73   -16.5         78       :& 16.5 :& End, V3 1   1   1   :& End ) )
   , ( "sphere2"   , ( V3      28   -19           92       :& 19   :& End, V3 0.2 0.5 1.0 :& End ) )
   ]

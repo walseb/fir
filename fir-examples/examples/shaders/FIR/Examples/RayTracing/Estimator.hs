@@ -73,12 +73,8 @@ estimateRadiance accel shaderRecord hitPos normal = do
   rayDirection <- use @( Name "payload" :.: Name "worldRayDirection" )
   wavelengths  <- use @( Name "payload" :.: Name "wavelengths"       )
 
-  offsetHitPos_bounce <- let' $
-    if   flipBounceSign prevHitType
-    then hitPos ^-^ 2e-3 *^ normal
-    else hitPos ^+^ 2e-3 *^ normal
-
-  offsetHitPos_outside <- let' $ hitPos ^+^ 5e-3 *^ normal
+  offsetHitPos_bounce  <- offsetAlongNormal hitPos ( if flipBounceSign prevHitType then (-^) normal else normal )
+  offsetHitPos_outside <- offsetAlongNormal hitPos normal
 
   ------------------------------------------------------
   -- Get transmittance of path from ray origin to current position,
@@ -361,3 +357,22 @@ heroWavelength ( Vec4 λ0 λ1 λ2 λ3 ) throughput@( Vec4 t0 t1 t2 t3 ) = do
         if r <= p0 + p1 + p2
         then Struct ( λ2 :& p2 :& End )
         else Struct ( λ3 :& p3 :& End )
+
+-- | Offset a point along a surface normal, in order to avoid spurious self-intersections.
+--
+-- Taken from Ray-Tracing Gems:
+--
+-- "A Fast and Robust Method for Avoiding Self-Intersection"
+--   - Nikolaus Binder, Carsten Wächter
+offsetAlongNormal :: Code ( V 3 Float ) -> Code ( V 3 Float ) -> Program s s ( Code ( V 3 Float ) )
+offsetAlongNormal pos normal = do
+
+  offs  <- let' ( ( round :: Code Float -> Code Int32 ) <$$> 256 *^ normal )
+  pos_i <- let' $ step1 <$$> pos <**> offs
+  let' $ step2 <$$> pos <**> pos_i <**> normal
+
+  where
+    step1 :: Code Float -> Code Int32 -> Code Float
+    step1 p off = bitcast ( ( bitcast p :: Code Int32 ) + if p < 0 then -off else off )
+    step2 :: Code Float -> Code Float -> Code Float -> Code Float
+    step2 p p_i n = if abs p < recip 32 then p + n / 65536 else p_i

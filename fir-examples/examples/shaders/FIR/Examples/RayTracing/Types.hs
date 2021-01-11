@@ -296,13 +296,6 @@ type MissData = Struct
 --------------------------------------------------------------------------
 -- Utility functions.
 
--- Machine epsilon for 32 bit floating pointer numbers, 2^-24.
-ε :: Float
-ε = 0b0_01100111_00000000000000000000000
-
-γ :: Float -> Float
-γ n = n * ε / ( 1 - n * ε )
-
 tracePrimaryRay
   :: forall ( primaryPayloadName :: Symbol ) ( s :: ProgramState )
   .  ( KnownSymbol primaryPayloadName, CanTraceRay primaryPayloadName s )

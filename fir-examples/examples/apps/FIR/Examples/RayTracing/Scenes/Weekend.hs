@@ -16,6 +16,8 @@ import Data.Traversable
   ( for )
 import Data.Proxy
   ( Proxy(..) )
+import Data.Word
+  ( Word32 )
 import System.IO.Unsafe
   ( unsafePerformIO )
 
@@ -39,7 +41,7 @@ import Control.Monad.Trans.State.Strict
 import Data.HashMap.Strict
   ( HashMap )
 import qualified Data.HashMap.Strict as HashMap
-  ( empty, fromList, map, toList )
+  ( fromList, map, toList )
 
 -- fir
 import FIR
@@ -53,6 +55,8 @@ import Math.Linear
   )
 
 -- fir-examples
+import FIR.Examples.RayTracing.Geometry
+  ( Geometry(GeometryData) )
 import FIR.Examples.RayTracing.IOR
   ( IORData(..), MaterialInterface(..), materialInterfaceArray
   , au, ag, bk7, cu
@@ -78,9 +82,11 @@ weekend :: Scene
 weekend =
   Scene
     { sceneEmitters             = [ sun ]
-    , sceneTriangleGeometries   = HashMap.empty
-    , sceneProceduralGeometries = HashMap.map fst weekendGeometries
-    , sceneInstances            = [ ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd weekendGeometries ) ) ]
+    , sceneTriangleGeometries   = HashMap.map fst weekendTriangleGeometries
+    , sceneProceduralGeometries = HashMap.map fst weekendAABBGeometries
+    , sceneInstances            = [ ( TrianglesInstance , identity <!> konst 0, HashMap.toList ( HashMap.map snd weekendTriangleGeometries ) )
+                                  , ( ProceduralInstance, identity <!> konst 0, HashMap.toList ( HashMap.map snd weekendAABBGeometries     ) )
+                                  ]
     , sceneObserver             = weekendObserver
     , sceneMissInfo             = weekendMissInfo
     , sceneMovementMultiplier   = 0.2
@@ -111,8 +117,23 @@ sun = EmitterObject @Sphere @Sun @Lambertian
   Proxy
   ( V3 1 1 1 :& End )
 
-weekendGeometries :: HashMap ShortText ( GeometryObject, SomeMaterialProperties )
-weekendGeometries = Random.runStateGen_ ( Random.mkStdGen $ unsafePerformIO Random.randomIO ) \ gen -> do
+weekendTriangleGeometries :: HashMap ShortText ( ( [ Word32 ], [ GeometryData Triangle ] ), SomeMaterialProperties )
+weekendTriangleGeometries = HashMap.fromList
+  [ ( "ground"
+    , ( ( [ 0, 1, 2, 0, 2, 3 ]
+        , [ V3 -1e3 0  1e3 :& V3 0 -1 0 :& End
+          , V3  1e3 0  1e3 :& V3 0 -1 0 :& End
+          , V3  1e3 0 -1e3 :& V3 0 -1 0 :& End
+          , V3 -1e3 0 -1e3 :& V3 0 -1 0 :& End
+          ]
+        )
+      , SomeMaterialProperties @Lambertian Proxy ( V3 0.5 0.5 0.5 :& End )
+      )
+    )
+  ]
+
+weekendAABBGeometries :: HashMap ShortText ( GeometryObject, SomeMaterialProperties )
+weekendAABBGeometries = Random.runStateGen_ ( Random.mkStdGen $ unsafePerformIO Random.randomIO ) \ gen -> do
   randomObjs <- 
     for [ ( i, j ) | ( i :: Int ) <- [-30..10], ( j :: Int ) <- [-10..30] ] \ ( i, j ) -> do
       x_r <- Random.uniformFloat01M gen
@@ -127,12 +148,7 @@ weekendGeometries = Random.runStateGen_ ( Random.mkStdGen $ unsafePerformIO Rand
   let
     bakedObjs :: [ ( ShortText, ( GeometryObject, SomeMaterialProperties ) ) ]
     bakedObjs =
-      [ ( "ground"
-        , ( GeometryObject @Sphere Proxy [ V3 0 1e4 0 :& 1e4 :& End ]
-          , SomeMaterialProperties @Lambertian Proxy ( V3 0.5 0.5 0.5 :& End )
-          )
-        )
-      , ( "bigGlass"
+      [ ( "bigGlass"
         , ( GeometryObject @Sphere Proxy [ V3 0 -1 0 :& 1 :& End ]
           , SomeMaterialProperties @Fresnel Proxy ( V3 1 1 1 :& glassIOR :& End )
           )
