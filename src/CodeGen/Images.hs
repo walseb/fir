@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
@@ -95,6 +96,7 @@ import SPIRV.Image
 import qualified SPIRV.Capability   as SPIRV
   ( pattern ComputeKernel, pattern ImageQuery )
 import qualified SPIRV.Image        as SPIRV
+  hiding ( Image(Image) )
 import qualified SPIRV.Image
   ( Image(Image) )
 import qualified SPIRV.Operation    as SPIRV
@@ -280,7 +282,7 @@ addSampler (imgID, imgTy) samplerID
       pure (v, sampledImgTy)
 -}
 
-removeSampler :: CodeGen AST => (ID, SPIRV.Image) -> CGMonad (ID, SPIRV.PrimTy)
+removeSampler :: CodeGen AST => (ID, SPIRV.Image.Image) -> CGMonad (ID, SPIRV.PrimTy)
 removeSampler (imgID, imgTy)
   = do
       let plainImgTy = SPIRV.PrimTy.Image imgTy
@@ -484,14 +486,34 @@ instance CodeGen AST => CodeGen (ImgQueryF AST) where
     case bk of
       SPIRV.OpenCL -> case imgQueryOp of
         QueryLODF {} -> pure ()
-        _              -> requireCapability SPIRV.ComputeKernel
+        _            -> requireCapability SPIRV.ComputeKernel
       SPIRV.Vulkan -> requireCapability SPIRV.ImageQuery
     let
       imgName :: ShortText
       resultType :: SPIRV.PrimTy
       ( imgName, resultType ) = imageQueryImageNameAndResultType imgQueryOp
-    imgID <- fst <$> bindingID imgName
     resTyID <- typeID resultType
+    ( boundImgID, boundImgTy ) <- bindingID imgName
+
+    -- LOD query operation needs a sampled image.
+    -- Other operations use a plain image.
+    imgID <- case boundImgTy of
+      SPIRV.SampledImage imgTy
+        | QueryLODF {} <- imgQueryOp
+        -> pure boundImgID
+        | otherwise
+        -> fst <$> removeSampler ( boundImgID, imgTy )
+      SPIRV.Image {}
+        | QueryLODF {} <- imgQueryOp
+        -> throwError
+              ( "codeGen: cannot query LOD of image named " <> imgName <> ":\n\
+                \no sampler provided."
+              )
+        | otherwise
+        -> pure boundImgID
+      _ -> throwError
+              ( "codeGen: image query operation on non-image named " <> imgName <> " of type " <> ShortText.pack ( show boundImgTy ) )
+
     v <- fresh
     let
       emitInstruction :: CGMonad ()
