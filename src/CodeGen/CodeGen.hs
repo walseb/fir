@@ -117,7 +117,7 @@ import FIR.AST.Type
   ( AugType(Val, (:-->)), FunArgs, Nullary )
 import FIR.Binding
   ( Permission(Write) )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( primTy )
 import FIR.ProgramState
   ( FunctionContext(TopLevel) )

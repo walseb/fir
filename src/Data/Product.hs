@@ -35,7 +35,7 @@ import Data.Type.List
   , ZipCons
   , SameLength
   )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Types
   ( PrimTy )
 
 ----------------------------------------------------------------------

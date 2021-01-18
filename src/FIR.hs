@@ -141,12 +141,12 @@ module FIR
   , FIR.Prim.Image.Image
   , FIR.Prim.Image.GatherInfo(..)
   , module FIR.Prim.RayTracing
-  , FIR.Prim.Singletons.PrimTy
-  , FIR.Prim.Singletons.ScalarTy
-  , FIR.Prim.Singletons.IntegralTy
-  , FIR.Prim.Singletons.PrimTyMap
-  , FIR.Prim.Singletons.HasOpaqueType
   , module FIR.Prim.Struct
+  , FIR.Prim.Types.PrimTy
+  , FIR.Prim.Types.ScalarTy
+  , FIR.Prim.Types.IntegralTy
+  , FIR.Prim.Types.PrimTyMap
+  , FIR.Prim.Types.HasOpaqueType
   , FIR.ProgramState.ProgramState(ProgramState)
   , FIR.ProgramState.FunctionContext(TopLevel)
   , module FIR.Syntax.AST
@@ -335,7 +335,7 @@ import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.RayTracing
   hiding ( pattern RayQuery )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
 import FIR.Prim.Struct
 import FIR.ProgramState
 import FIR.Syntax.AST

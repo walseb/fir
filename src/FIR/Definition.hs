@@ -112,7 +112,7 @@ import qualified FIR.Binding as Binding
   ( Binding(Function) )
 import FIR.Prim.Image
   ( Image, knownImage, ImageProperties )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy, primTy )
 import FIR.ProgramState
   ( ProgramState(ProgramState)

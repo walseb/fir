@@ -60,7 +60,7 @@ import FIR.Binding
   ( Var, RW )
 import FIR.Prim.Array
   ( Array )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy, HasOpaqueType )
 import FIR.ProgramState
   ( ProgramState(ProgramState) )

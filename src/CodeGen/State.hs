@@ -66,7 +66,7 @@ import Data.Containers.Traversals
   ( traverseSet_ )
 import FIR.Builtin
   ( modelBuiltins, builtinDecorations )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( AConstant )
 import FIR.ProgramState
   ( FunctionContext(TopLevel), VLFunctionContext ) -- value-level function context

@@ -45,7 +45,7 @@ import FIR.AST
   ( Code, Syntactic(..), SyntacticVal, InternalType )
 import FIR.AST.Type
   ( AugType(Val) )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy, ScalarTy )
 import FIR.Syntax.AST
   ( )

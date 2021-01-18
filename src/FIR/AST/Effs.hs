@@ -49,7 +49,7 @@ import FIR.Binding
   ( BindingsMap
   , FunctionAugType, Var, Permissions
   )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy, KnownVars )
 import FIR.ProgramState
   ( ProgramState, TLInterface )

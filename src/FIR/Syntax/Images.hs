@@ -8,6 +8,7 @@
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
@@ -67,6 +68,10 @@ results in an error:
 module FIR.Syntax.Images
   ( -- * Lens focusing on an image texel    
     ImageTexel
+
+  -- * Image query operations
+  , imageSizeLOD, imageSize, imageLOD, imageLevels, imageSamples
+
   )
 where
 
@@ -75,6 +80,10 @@ import Prelude
   hiding ( Floating, Integral )
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy(..) )
+import Data.Word
+  ( Word32 )
 import GHC.TypeLits
   ( Symbol, KnownSymbol )
 
@@ -85,17 +94,28 @@ import Control.Type.Optic
   )
 import Data.Type.Known
   ( Known )
+import FIR.AST
+  ( Code, Syntactic(fromAST)
+  , pattern QuerySize, pattern QuerySizeLOD
+  , pattern QueryLOD, pattern QueryLevels, pattern QuerySamples
+  )
+import FIR.Module
+  ( Program )
 import FIR.Prim.Image
   ( ImageProperties
   , Image
   , OperandName, ImageOperands
   )
+import FIR.Prim.Types
+  ( PrimTy )
 import FIR.ProgramState
   ( ProgramState )
 import FIR.Validation.Images
   ( LookupImageProperties
   , ValidImageRead, ValidImageWrite
   , ImageTexelType
+  , ValidQueryImageSize, ValidQueryImageSizeLOD
+  , ValidQueryImageLOD, ValidQueryImageLevels, ValidQueryImageSamples
   )
 
 -----------------------------------------------------------------------
@@ -189,3 +209,74 @@ instance {-# OVERLAPPING #-}
                     ) :: Optic '[imgOps, imgCds] i imgTexel
                   )
       where
+
+-----------------------------------------------------------------------
+-- Image query operations.
+
+-- | Query the size of the named image, at a given level-of-detail.
+imageSizeLOD
+  :: forall
+      ( imgName :: Symbol )
+      ( res     :: Type   )
+      ( i       :: ProgramState )
+  . ( KnownSymbol imgName
+    , PrimTy res
+    , ValidQueryImageSizeLOD imgName i res
+    )
+  => Code Word32 -- ^ Image level-of-detail to use for the query.
+  -> Program i i ( Code res )
+imageSizeLOD = fromAST ( QuerySizeLOD ( Proxy @imgName ) ( Proxy @res ) )
+
+-- | Query the size of the named image.
+imageSize
+  :: forall
+      ( imgName :: Symbol )
+      ( res     :: Type   )
+      ( i       :: ProgramState )
+  . ( KnownSymbol imgName
+    , PrimTy res
+    , ValidQueryImageSize imgName i res
+    )
+  => Program i i ( Code res )
+imageSize = fromAST ( QuerySize ( Proxy @imgName ) ( Proxy @res ) )
+
+-- | Query the level of detail of the named image at the given coordinates.
+imageLOD
+  :: forall
+      ( imgName :: Symbol )
+      ( coords  :: Type   )
+      ( res     :: Type   )
+      ( i       :: ProgramState )
+  . ( KnownSymbol imgName
+    , PrimTy res
+    , ValidQueryImageLOD imgName i coords res
+    )
+  => Code coords
+  -> Program i i ( Code res )
+imageLOD = fromAST ( QueryLOD ( Proxy @imgName ) ( Proxy @res ) )
+
+-- | Query how many levels of detail the named image has.
+imageLevels
+  :: forall
+      ( imgName :: Symbol )
+      ( res     :: Type   )
+      ( i       :: ProgramState )
+  . ( KnownSymbol imgName
+    , PrimTy res
+    , ValidQueryImageLevels imgName i res
+    )
+  => Program i i ( Code res )
+imageLevels = fromAST ( QueryLevels ( Proxy @imgName ) ( Proxy @res ) )
+
+-- | Query how many samples the named multi-sampling image has.
+imageSamples
+  :: forall
+      ( imgName :: Symbol )
+      ( res     :: Type   )
+      ( i       :: ProgramState )
+  . ( KnownSymbol imgName
+    , PrimTy res
+    , ValidQueryImageSamples imgName i res
+    )
+  => Program i i ( Code res )
+imageSamples = fromAST ( QuerySamples ( Proxy @imgName ) ( Proxy @res ) )

@@ -57,10 +57,10 @@ import FIR.Prim.Image
   ( Image )
 import FIR.Prim.RayTracing
   ( AccelerationStructure )
-import FIR.Prim.Singletons
-  ( HasOpaqueType )
 import FIR.Prim.Struct
   ( Struct )
+import FIR.Prim.Types
+  ( HasOpaqueType )
 import FIR.ProgramState
   ( TLInterfaceVariable )
 import FIR.Validation.Images

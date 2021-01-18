@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module FIR.Prim.Singletons where
+module FIR.Prim.Types where
 
 -- base
 import Data.Kind

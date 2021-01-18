@@ -115,14 +115,14 @@ import FIR.Layout
   ( Components )
 import FIR.Prim.Array
   ( Array(..) )
-import FIR.Prim.Singletons
-  ( SScalarTy, ScalarWidth
-  , ScalarFromSScalar
-  , SKPrimTy(..), PrimTySing
-  )
 import FIR.Prim.Struct
   ( LocationSlot(LocationSlot)
   , ShowLocationSlot
+  )
+import FIR.Prim.Types
+  ( SScalarTy, ScalarWidth
+  , ScalarFromSScalar
+  , SKPrimTy(..), PrimTySing
   )
 import Math.Linear
   ( V, M )

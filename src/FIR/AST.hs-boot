@@ -23,7 +23,7 @@ import {-# SOURCE #-} FIR.AST.Effs
 import {-# SOURCE #-} FIR.AST.Exts
   ( DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF )
 import {-# SOURCE #-} FIR.AST.Images
-  ( ImgOpsF )
+  ( ImgOpsF, ImgQueryF )
 import {-# SOURCE #-} FIR.AST.Optics
   ( UseF, AssignF, ViewF, SetF )
 import {-# SOURCE #-} FIR.AST.Prim
@@ -45,7 +45,7 @@ type AllOpsF
      , IfF, IfMF, SwitchF, SwitchMF, WhileF
      , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
      , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF
-     , ImgOpsF
+     , ImgOpsF, ImgQueryF
      , UseF, AssignF, ViewF, SetF
      ]
 

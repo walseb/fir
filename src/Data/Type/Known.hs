@@ -18,7 +18,7 @@ This module provides a simple type class for reification (turning type-level dat
 This allows programs to perform type-level computations (e.g. to perform validation at compile time),
 and at the end turn this type-level data back into value-level data to be used e.g. by the code generator.
 
-This is a one way process: these are not singletons. See "FIR.Prim.Singletons" for the singletons this library uses internally.
+This is a one way process: these are not singletons. See "FIR.Prim.Types" for the singletons this library uses internally.
 
 Note that some instances are tailored to this library: type-level literals 'Symbol' are turned into 'ShortText',
 and type-level natural numbers 'Nat' are turned into 'Word32'.

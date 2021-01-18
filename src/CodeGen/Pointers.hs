@@ -66,7 +66,7 @@ import CodeGen.State
   , _temporaryPointer
   , _knownConstants
   )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( SPrimTy(..), SScalarTy(..)
   , PrimTy(primTySing), ScalarTy(scalarTySing)
   , AConstant(AConstant)

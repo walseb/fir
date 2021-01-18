@@ -1,7 +1,9 @@
 {-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures #-}
 
+{-# LANGUAGE BlockArguments  #-}
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE GADTs           #-}
+{-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE PolyKinds       #-}
 {-# LANGUAGE TypeOperators   #-}
@@ -9,7 +11,7 @@
 {-|
 Module: FIR.AST.Images
 
-Handling image operands.
+Handling image operands and image query operations.
 -}
 
 module FIR.AST.Images where
@@ -17,8 +19,12 @@ module FIR.AST.Images where
 -- base
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy )
 import Data.Word
   ( Word32 )
+import GHC.TypeLits
+  ( KnownSymbol, symbolVal )
 
 -- containers
 import Data.Tree
@@ -30,14 +36,14 @@ import Haskus.Utils.EGADT
 
 -- fir
 import FIR.AST.Display
-  ( Display(toTreeArgs) )
+  ( Display(toTreeArgs), named )
 import FIR.AST.Type
-  ( AugType(Val) )
+  ( AugType(..), Eff )
 import {-# SOURCE #-} FIR.Prim.Image
   ( ImageOperands, OperandName(..)
   , GatherInfo(..), WhichGather
   )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Types
   ( PrimTy )
 import FIR.Validation.Images
   ( BasicDim, NotCubeDim
@@ -73,6 +79,12 @@ pattern ConstOffsetBy off ops = VF (ConstOffsetByF off ops)
 pattern OffsetBy      off ops = VF (OffsetByF      off ops)
 pattern Gather       gath ops = VF (GatherF       gath ops)
 pattern SampleNo      sno ops = VF (SampleNoF      sno ops)
+
+pattern QuerySize    img res = VF ( QuerySizeF    img res )
+pattern QuerySizeLOD img res = VF ( QuerySizeLODF img res )
+pattern QueryLOD     img res = VF ( QueryLODF     img res )
+pattern QueryLevels  img res = VF ( QueryLevelsF  img res )
+pattern QuerySamples img res = VF ( QuerySamplesF img res )
 
 data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
 
@@ -189,6 +201,39 @@ data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType ) where
     -> ast ( Val ( ImageOperands props ops ) )
     -> ImgOpsF ast ( Val ( ImageOperands props (BaseOperand SPIRV.Sample ': ops) ) )
 
+
+data ImgQueryF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | Query the size of an image with implicit LOD.
+  QuerySizeF
+    :: ( KnownSymbol imgName, PrimTy res )
+    => Proxy imgName
+    -> Proxy res
+    -> ImgQueryF ast ( Eff i i res )
+  -- | Query the size of an image with explicit LOD.
+  QuerySizeLODF
+    :: ( KnownSymbol imgName, PrimTy res )
+    => Proxy imgName
+    -> Proxy res
+    -> ImgQueryF ast ( Val Word32 :--> Eff i i res )
+  -- | Query the LOD of an image at given coordinates.
+  QueryLODF
+    :: ( KnownSymbol imgName, PrimTy res )
+    => Proxy imgName
+    -> Proxy res
+    -> ImgQueryF ast ( Val coords :--> Eff i i res )
+  -- | Query the number of levels of detail supported by an image.
+  QueryLevelsF
+    :: ( KnownSymbol imgName, PrimTy res )
+    => Proxy imgName
+    -> Proxy res
+    -> ImgQueryF ast ( Eff i i res )
+  -- | Query the number of samples of a multi-sampled image.
+  QuerySamplesF
+    :: ( KnownSymbol imgName, PrimTy res )
+    => Proxy imgName
+    -> Proxy res
+    -> ImgQueryF ast ( Eff i i res )
+
 ------------------------------------------------------------
 -- displaying
 
@@ -236,3 +281,11 @@ instance Display ast => Display (ImgOpsF ast) where
     n <- toTreeArgs [] no
     a <- toTreeArgs [] ops
     pure $ Node "SampleNo" (n:a:as)
+
+instance Display ast => Display (ImgQueryF ast) where
+  toTreeArgs = named \case
+    QuerySizeF    imgName _ -> "ImageQuerySize @"    ++ symbolVal imgName
+    QuerySizeLODF imgName _ -> "ImageQuerySizeLod @" ++ symbolVal imgName
+    QueryLODF     imgName _ -> "ImageQueryLod @"     ++ symbolVal imgName
+    QueryLevelsF  imgName _ -> "ImageQueryLevels @"  ++ symbolVal imgName
+    QuerySamplesF imgName _ -> "ImageQuerySamples @" ++ symbolVal imgName

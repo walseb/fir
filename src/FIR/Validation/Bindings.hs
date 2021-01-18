@@ -60,7 +60,7 @@ import FIR.Binding
   )
 import FIR.Builtin
   ( ModelBuiltins )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( HasOpaqueType )
 import FIR.ProgramState
   ( FunctionContext(..)

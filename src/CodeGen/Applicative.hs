@@ -129,7 +129,7 @@ import FIR.Prim.Op
   , Vectorise(Vectorise), VecPrimOpType(VecPrimOpType)
   , PrimTyVal
   )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy, primTy
   , IntegralTy
   , PrimFunc(primFuncSing, distDict), DistDict(DistDict)

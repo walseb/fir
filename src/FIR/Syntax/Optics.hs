@@ -112,7 +112,11 @@ import FIR.Prim.Image
   ( Image, ImageProperties
   , ImageOperands, OperandName
   )
-import FIR.Prim.Singletons
+import FIR.Prim.Struct
+  ( Struct((:&))
+  , HasStructField(getStructField, setStructField)
+  )
+import FIR.Prim.Types
   ( PrimTy(primTySing)
   , IntegralTy
   , ScalarTy(scalarTySing), SScalarTy
@@ -122,10 +126,6 @@ import FIR.Prim.Singletons
   )
 import FIR.ProgramState
   ( ProgramState )
-import FIR.Prim.Struct
-  ( Struct((:&))
-  , HasStructField(getStructField, setStructField)
-  )
 import qualified FIR.Validation.Bindings as Binding
   ( Has, CanGet, CanPut )
 import FIR.Validation.Bounds

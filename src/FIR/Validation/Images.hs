@@ -30,6 +30,8 @@ module FIR.Validation.Images
   , NoDuplicate
   , NoMS, CanMultiSample
   , NoLODOps, SupportsDepthTest
+  , ValidQueryImageSize, ValidQueryImageSizeLOD
+  , ValidQueryImageLOD, ValidQueryImageLevels, ValidQueryImageSamples
   )
   where
 
@@ -59,7 +61,7 @@ import {-# SOURCE #-} FIR.Prim.Image
   , OperandName(DepthComparison, ProjectiveCoords, BaseOperand)
   , ImageCoordinateKind(..)
   )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( ScalarFromTy )
 import FIR.ProgramState
   ( ProgramState(ProgramState) )
@@ -520,3 +522,134 @@ type family SupportsDepthTest ( props :: ImageProperties ) :: Constraint where
   SupportsDepthTest (Properties _ _ _ (Just NotDepthImage) _ _ _ _)
     = TypeError ( Text "Cannot do a depth comparison: image is not a depth image." )
   SupportsDepthTest _ = ()
+
+-----------------------------------------------------------
+-- Validation of image query operations.
+
+type ValidQueryImageSizeLOD ( imgName :: Symbol ) ( i :: ProgramState ) ( res :: Type )
+  = ValidQueryImageSizeLODFromProps imgName ( LookupImageProperties imgName i ) res
+
+type ValidQueryImageSize ( imgName :: Symbol ) ( i :: ProgramState ) ( res :: Type )
+  = ValidQueryImageSizeFromProps imgName ( LookupImageProperties imgName i ) res
+
+type ValidQueryImageLOD ( imgName :: Symbol ) ( i :: ProgramState ) ( coords :: Type ) ( res :: Type )
+  = ValidQueryImageLODFromProps imgName ( LookupImageProperties imgName i ) coords res
+
+type ValidQueryImageLevels ( imgName :: Symbol ) ( i :: ProgramState ) ( res :: Type )
+  = ValidQueryImageLevelsFromProps imgName ( LookupImageProperties imgName i ) res
+
+type ValidQueryImageSamples ( imgName :: Symbol ) ( i :: ProgramState ) ( res :: Type )
+  = ValidQueryImageSamplesFromProps imgName ( LookupImageProperties imgName i ) res
+
+
+-- ImageQuerySizeLod
+
+type family ValidQueryImageSizeLODFromProps ( imgName :: Symbol ) ( imgProps :: ImageProperties ) ( res :: Type ) :: Constraint where
+  ValidQueryImageSizeLODFromProps imgName ( Properties _ _ _ _ _ MultiSampled _ _ ) res =
+    TypeError
+      ( Text "Cannot query size (with explicit LOD) of multi-sampled image " :<>: ShowType imgName )
+  ValidQueryImageSizeLODFromProps imgName ( Properties _ _ dim _ arr _ _ _ ) res =
+    ( ValidCoordinateType "image coordinates (for querying)" (ImageCoordinatesDim dim arr '[]) IntegralCoordinates res
+    , ValidImageSizeLODQueryDim imgName dim
+    )
+
+type family ValidImageSizeLODQueryDim ( imgName :: Symbol ) ( dim :: Dimensionality ) :: Constraint where
+  ValidImageSizeLODQueryDim _       OneD   = ()
+  ValidImageSizeLODQueryDim _       TwoD   = ()
+  ValidImageSizeLODQueryDim _       ThreeD = ()
+  ValidImageSizeLODQueryDim _       Cube   = ()
+  ValidImageSizeLODQueryDim imgName dim    =
+    TypeError
+      (    Text "Cannot query the size (with explicit LOD) of image " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "Unsupported dimensionality " :<>: ShowType dim :<>: Text "."
+      )
+
+-- ImageQuerySize
+
+type family ValidQueryImageSizeFromProps ( imgName :: Symbol ) ( imgProps :: ImageProperties ) ( res :: Type ) :: Constraint where
+  ValidQueryImageSizeFromProps imgName ( Properties _ _ dim _ arr ms usage _ ) res =
+    ( ValidCoordinateType "image coordinates (for querying)" (ImageCoordinatesDim dim arr '[]) IntegralCoordinates res
+    , ValidImageSizeQueryDim imgName dim ms usage
+    )
+
+type family ValidImageSizeQueryDim ( imgName :: Symbol ) ( dim :: Dimensionality ) ( ms :: MultiSampling ) ( usage :: ImageUsage ) :: Constraint where
+  ValidImageSizeQueryDim _ Rect   _ _ = ()
+  ValidImageSizeQueryDim _ Buffer _ _ = ()
+  ValidImageSizeQueryDim imgName SubpassData _ _ =
+    TypeError
+      (    Text "Cannot query the size (without LOD) of image " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "Unsupported dimensionality " :<>: ShowType SubpassData :<>: Text "."
+      )
+  ValidImageSizeQueryDim imgName dim SingleSampled Sampled =
+    TypeError
+      (    Text "Cannot query the size (without LOD) of image " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "Unsupported combination:"
+      :$$: Text "  - dimensionality " :<>: ShowType dim :<>: Text ","
+      :$$: Text "  - no multisampling,"
+      :$$: Text "  - image used with a sampler."
+      )
+
+
+-- ImageQueryLod
+
+type family ValidQueryImageLODFromProps ( imgName :: Symbol ) ( imgProps :: ImageProperties ) ( coords :: Type ) ( res :: Type ) :: Constraint where
+  ValidQueryImageLODFromProps imgName ( Properties coordKind _ dim _ arr _ _ _ ) coords res =
+    ( QueryLODIsV2Floating imgName res
+    , ValidCoordinateType "image coordinates (for querying LOD)" (ImageCoordinatesDim dim arr '[]) coordKind res -- TODO: enforce floating point coordinates outside of ComputeKernel?
+    , ValidImageLODQueryDim imgName dim
+    )
+
+type family QueryLODIsV2Floating ( imgName :: Symbol ) ( res :: Type ) :: Constraint where
+  QueryLODIsV2Floating _ ( V 2 a ) = Floating a
+  QueryLODIsV2Floating imgName t   =
+    TypeError
+      (    Text "Unexpected result type " :<>: ShowType t
+      :$$: Text "when querying LOD for image named " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "Result type should be a 2-component floating-point type vector."
+      )
+
+type family ValidImageLODQueryDim ( imgName :: Symbol ) ( dim :: Dimensionality ) :: Constraint where
+  ValidImageLODQueryDim _       OneD   = ()
+  ValidImageLODQueryDim _       TwoD   = ()
+  ValidImageLODQueryDim _       ThreeD = ()
+  ValidImageLODQueryDim _       Cube   = ()
+  ValidImageLODQueryDim imgName dim    =
+    TypeError
+      (    Text "Cannot query the LOD of image " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "Unsupported dimensionality " :<>: ShowType dim :<>: Text "."
+      )
+
+-- ImageQueryLevels
+
+type family ValidQueryImageLevelsFromProps ( imgName :: Symbol ) ( imgProps :: ImageProperties ) ( res :: Type ) :: Constraint where
+  ValidQueryImageLevelsFromProps imgName ( Properties _ _ dim _ _ _ _ _ ) res =
+    ( Integral res
+    , ValidImageLevelsQueryDim imgName dim
+    )
+
+type family ValidImageLevelsQueryDim ( imgName :: Symbol ) ( dim :: Dimensionality ) :: Constraint where
+  ValidImageLevelsQueryDim _       OneD   = ()
+  ValidImageLevelsQueryDim _       TwoD   = ()
+  ValidImageLevelsQueryDim _       ThreeD = ()
+  ValidImageLevelsQueryDim _       Cube   = ()
+  ValidImageLevelsQueryDim imgName dim    =
+    TypeError
+      (    Text "Cannot query the number of accessible mipmap levels of image named " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "Unsupported dimensionality " :<>: ShowType dim :<>: Text "."
+      )
+
+-- ImageQuerySamples
+
+type family ValidQueryImageSamplesFromProps ( imgName :: Symbol ) ( imgProps :: ImageProperties ) ( res :: Type ) :: Constraint where
+  ValidQueryImageSamplesFromProps _       ( Properties _ _ TwoD _ _ MultiSampled _ _ ) res = Integral res
+  ValidQueryImageSamplesFromProps imgName ( Properties _ _ dim  _ _ MultiSampled _ _ ) _   =
+    TypeError
+      (    Text "Cannot query the number of samples of image named " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "This image has unsupported dimensionality " :<>: ShowType dim :<>: Text "."
+      :$$: Text "Expected a TwoD dimensionality."
+      )
+  ValidQueryImageSamplesFromProps imgName ( Properties _ _ _ _ _ _ _ _ ) _ =
+    TypeError
+      (    Text "Cannot query the number of samples of image named " :<>: ShowType imgName :<>: Text "."
+      :$$: Text "This image is not multi-sampled."
+      )

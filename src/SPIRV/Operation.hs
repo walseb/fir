@@ -241,6 +241,20 @@ pattern ImageWrite = Code 99
 pattern Image :: Operation
 pattern Image = Code 100
 -- image queries
+pattern ImageQueryFormat  :: Operation
+pattern ImageQueryFormat  = Code 101
+pattern ImageQueryOrder   :: Operation
+pattern ImageQueryOrder   = Code 102
+pattern ImageQuerySizeLod :: Operation
+pattern ImageQuerySizeLod = Code 103
+pattern ImageQuerySize    :: Operation
+pattern ImageQuerySize    = Code 104
+pattern ImageQueryLod     :: Operation
+pattern ImageQueryLod     = Code 105
+pattern ImageQueryLevels  :: Operation
+pattern ImageQueryLevels  = Code 106
+pattern ImageQuerySamples :: Operation
+pattern ImageQuerySamples = Code 107
 -- sparse image instructions
 -- no 108
 -- conversion instructions
@@ -829,6 +843,13 @@ showOperation ImageDrefGather = "ImageDrefGather"
 showOperation ImageRead = "ImageRead"
 showOperation ImageWrite = "ImageWrite"
 showOperation Image = "Image"
+showOperation ImageQueryFormat  = "ImageQueryFormat"
+showOperation ImageQueryOrder   = "ImageQueryOrder"
+showOperation ImageQuerySizeLod = "ImageQuerySizeLod"
+showOperation ImageQuerySize    = "ImageQuerySize"
+showOperation ImageQueryLod     = "ImageQueryLod"
+showOperation ImageQueryLevels  = "ImageQueryLevels"
+showOperation ImageQuerySamples = "ImageQuerySamples"
 showOperation ConvertFToU = "ConvertFToU"
 showOperation ConvertFToS = "ConvertFToS"
 showOperation ConvertSToF = "ConvertSToF"

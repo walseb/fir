@@ -240,7 +240,7 @@ import Data.Function.Variadic
   ( ListVariadic )
 import FIR.Prim.Image
   ( Image )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Types
   ( PrimTy(FieldsOfType) )
 
 ----------------------------------------------------------------------

@@ -65,7 +65,7 @@ import Data.Type.List
   ( Elem )
 import FIR.Prim.Array
   ( Array )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Types
   ( ScalarTy, scalarTy )
 import FIR.Validation.Images
   ( MatchesFormat, BasicDim, NotCubeDim

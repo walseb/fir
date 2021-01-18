@@ -60,10 +60,10 @@ import FIR.Layout
   ( inferPointerLayout )
 import FIR.Prim.Array
   ( Array )
-import FIR.Prim.Singletons
-  ( KnownInterface(knownInterface) )
 import FIR.Prim.Struct
   ( Struct )
+import FIR.Prim.Types
+  ( KnownInterface(knownInterface) )
 import Math.Linear
   ( V, M )
 import qualified SPIRV.Builtin       as SPIRV

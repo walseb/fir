@@ -34,15 +34,15 @@ import Data.Type.Map
   ( Map, (:->)((:->)) )
 import Data.Type.Ord
   ( POrd(..) )
-import FIR.Prim.Singletons
-  ( SKPrimTy(..), SKPrimTyMap(..)
-  , PrimTySing
-  , ScalarFromSScalar
-  )
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Struct
   ( LocationSlot(LocationSlot) )
+import FIR.Prim.Types
+  ( SKPrimTy(..), SKPrimTyMap(..)
+  , PrimTySing
+  , ScalarFromSScalar
+  )
 import Math.Linear
   ( V, M )
 import qualified SPIRV.Image

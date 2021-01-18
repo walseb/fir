@@ -82,13 +82,13 @@ import FIR.Prim.Op
   ( PrimOp(PrimOpAugType, opName)
   , PrimTyVal
   )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Struct
+  ( Struct, ASTStructFields, traverseStructASTs )
+import {-# SOURCE #-} FIR.Prim.Types
   ( PrimTy, primTy
   , PrimTyMap, primTyMap
   , PrimFunc, primFuncName
   )
-import {-# SOURCE #-} FIR.Prim.Struct
-  ( Struct, ASTStructFields, traverseStructASTs )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(Grade, (:<!>:)) )
 import Math.Linear

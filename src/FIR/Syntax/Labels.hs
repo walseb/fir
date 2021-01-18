@@ -97,7 +97,7 @@ import FIR.Module
   ( Program )
 import FIR.Syntax.Program
   ( def, use, assign, modifying )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy )
 import FIR.ProgramState
   ( ProgramState )

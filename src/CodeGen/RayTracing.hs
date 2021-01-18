@@ -61,7 +61,7 @@ import FIR.AST.Type
   ( Nullary )
 import FIR.Prim.RayTracing
   ( RayQuery(..), IntersectionType(..) )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( primTy )
 import FIR.ProgramState
   ( FunctionContext(InEntryPoint) )

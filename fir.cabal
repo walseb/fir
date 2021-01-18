@@ -191,8 +191,8 @@ library
       , FIR.Prim.Array
       , FIR.Prim.Image
       , FIR.Prim.RayTracing
-      , FIR.Prim.Singletons
       , FIR.Prim.Struct
+      , FIR.Prim.Types
       , FIR.Prim.Op
       , FIR.ProgramState
       , FIR.Syntax.AST

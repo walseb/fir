@@ -61,7 +61,7 @@ import FIR.Binding
   )
 import FIR.Prim.RayTracing
   ( RayQueryState )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( KnownVars(knownVars) )
 import qualified SPIRV.Control    as SPIRV
 import qualified SPIRV.Decoration as SPIRV

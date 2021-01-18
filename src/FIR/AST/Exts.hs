@@ -54,7 +54,7 @@ import FIR.Prim.RayTracing
   ( AccelerationStructure
   , RayQuery(..), IntersectionType(..)
   )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy )
 import FIR.ProgramState
   ( ProgramState )

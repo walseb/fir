@@ -2,7 +2,9 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DerivingStrategies  #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -31,6 +33,8 @@ import Data.List
   ( insertBy )
 import Data.Ord
   ( comparing )
+import Data.Proxy
+  ( Proxy )
 import Data.Word
   ( Word32 )
 
@@ -43,16 +47,20 @@ import Control.Monad.Except
   ( throwError )
 
 -- text-short
+import Data.Text.Short
+  ( ShortText )
 import qualified Data.Text.Short as ShortText
   ( pack )
 
 -- fir
+import CodeGen.Application
+  ( ASTs(..), Application(..) )
 import CodeGen.Binary
   ( instruction )
 import {-# SOURCE #-} CodeGen.CodeGen
   ( CodeGen(codeGenArgs), codeGen )
 import CodeGen.IDs
-  ( typeID, constID )
+  ( bindingID, constID, typeID )
 import CodeGen.Instruction
   ( ID, TyID, Instruction(..)
   , Args(Arg,EndArgs), toArgs
@@ -60,7 +68,7 @@ import CodeGen.Instruction
 import CodeGen.Monad
   ( CGMonad, MonadFresh(fresh) )
 import CodeGen.State
-  ( _backend, requireCapabilities )
+  ( _backend, requireCapability, requireCapabilities )
 import Data.Type.Known
   ( Known, knownValue )
 import FIR.AST
@@ -71,6 +79,8 @@ import FIR.AST
   , pattern Gather, pattern SampleNo
   , ImgOpsF
   )
+import FIR.AST.Images
+  ( ImgQueryF(..) )
 import FIR.Prim.Image
   ( ImageProperties, ImageAndCoordinate(..)
   , ImageCoordinateKind(..)
@@ -78,8 +88,12 @@ import FIR.Prim.Image
   , GatherInfo(..)
   , knownImage
   )
+import FIR.Prim.Types
+  ( primTy )
 import SPIRV.Image
   ( DepthTesting(..), Projection(..) )
+import qualified SPIRV.Capability   as SPIRV
+  ( pattern ComputeKernel, pattern ImageQuery )
 import qualified SPIRV.Image        as SPIRV
 import qualified SPIRV.Image
   ( Image(Image) )
@@ -96,6 +110,8 @@ import qualified SPIRV.Requirements as SPIRV
   , lodCapabilities
   , gatherCapabilities
   )
+import qualified SPIRV.Stage        as SPIRV
+  ( Backend(OpenCL, Vulkan) )
 
 --------------------------------------------------------------------------
 -- image sample/read/write
@@ -458,3 +474,81 @@ stableSplice    ( as, bref ) []
 stableSplice l1@( as, bref ) l2@( (a, b) : nxt )
   | b > bref  = map ( , bref ) as ++ l2
   | otherwise = ( a, b ) : stableSplice l1 nxt
+
+--------------------------------------------------------------------------
+-- image query operations
+
+instance CodeGen AST => CodeGen (ImgQueryF AST) where
+  codeGenArgs (Applied imgQueryOp as) = do
+    bk <- view _backend
+    case bk of
+      SPIRV.OpenCL -> case imgQueryOp of
+        QueryLODF {} -> pure ()
+        _              -> requireCapability SPIRV.ComputeKernel
+      SPIRV.Vulkan -> requireCapability SPIRV.ImageQuery
+    let
+      imgName :: ShortText
+      resultType :: SPIRV.PrimTy
+      ( imgName, resultType ) = imageQueryImageNameAndResultType imgQueryOp
+    imgID <- fst <$> bindingID imgName
+    resTyID <- typeID resultType
+    v <- fresh
+    let
+      emitInstruction :: CGMonad ()
+      emitInstruction = case imgQueryOp of
+        QuerySizeF {} | NilAST <- as -> 
+          instruction
+            Instruction
+              { operation = SPIRV.Op.ImageQuerySize
+              , resTy     = Just resTyID
+              , resID     = Just v
+              , args      = Arg imgID EndArgs
+              }
+        QuerySizeLODF {} | (lod `ConsAST` NilAST) <- as -> do
+          lodID <- fst <$> codeGen lod
+          instruction
+            Instruction
+              { operation = SPIRV.Op.ImageQuerySizeLod
+              , resTy     = Just resTyID
+              , resID     = Just v
+              , args      = Arg imgID 
+                          $ Arg lodID
+                          $ EndArgs
+              }
+        QueryLODF {} | (coords `ConsAST` NilAST) <- as -> do
+          coordsID <- fst <$> codeGen coords
+          instruction
+            Instruction
+              { operation = SPIRV.Op.ImageQueryLod
+              , resTy     = Just resTyID
+              , resID     = Just v
+              , args      = Arg imgID
+                          $ Arg coordsID
+                          $ EndArgs
+              }
+        QueryLevelsF {} | NilAST <- as ->
+          instruction
+            Instruction
+              { operation = SPIRV.Op.ImageQueryLevels
+              , resTy     = Just resTyID
+              , resID     = Just v
+              , args      = Arg imgID EndArgs
+              }
+        QuerySamplesF {} | NilAST <- as ->
+          instruction
+            Instruction
+              { operation = SPIRV.Op.ImageQuerySamples
+              , resTy     = Just resTyID
+              , resID     = Just v
+              , args      = Arg imgID EndArgs
+              }
+    emitInstruction
+    pure ( v, resultType )
+
+imageQueryImageNameAndResultType :: ImgQueryF ast a -> ( ShortText, SPIRV.PrimTy )
+imageQueryImageNameAndResultType = \ case
+  QuerySizeF    ( _ :: Proxy imgName ) ( _ :: Proxy resTy ) -> ( knownValue @imgName, primTy @resTy )
+  QuerySizeLODF ( _ :: Proxy imgName ) ( _ :: Proxy resTy ) -> ( knownValue @imgName, primTy @resTy )
+  QueryLODF     ( _ :: Proxy imgName ) ( _ :: Proxy resTy ) -> ( knownValue @imgName, primTy @resTy )
+  QueryLevelsF  ( _ :: Proxy imgName ) ( _ :: Proxy resTy ) -> ( knownValue @imgName, primTy @resTy )
+  QuerySamplesF ( _ :: Proxy imgName ) ( _ :: Proxy resTy ) -> ( knownValue @imgName, primTy @resTy )

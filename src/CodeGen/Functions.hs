@@ -109,7 +109,7 @@ import FIR.AST.Type
   ( Nullary )
 import FIR.Binding
   ( Permissions )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( primTy, knownVars )
 import FIR.ProgramState
   ( FunctionContext(..)

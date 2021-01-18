@@ -148,12 +148,12 @@ import FIR.Prim.Image
   , ImageCoordinateKind(..)
   , Image, GatherInfo(..)
   )
-import FIR.Prim.Singletons
-  ( PrimTy, ScalarTy )
 import FIR.Prim.Struct
   ( Struct
   , LocationSlot(LocationSlot)
   )
+import FIR.Prim.Types
+  ( PrimTy, ScalarTy )
 import FIR.Validation.Bounds
   ( StructIndexFromName )
 import FIR.Validation.Formats

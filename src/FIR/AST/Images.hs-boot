@@ -14,6 +14,8 @@ import FIR.AST.Type
 
 ------------------------------------------------------------
 
-data ImgOpsF ( ast :: AugType -> Type ) ( t :: AugType )
+data ImgOpsF   ( ast :: AugType -> Type ) ( t :: AugType )
+data ImgQueryF ( ast :: AugType -> Type ) ( t :: AugType )
 
-type role ImgOpsF representational nominal
+type role ImgOpsF   representational nominal
+type role ImgQueryF phantom          nominal

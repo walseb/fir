@@ -38,7 +38,7 @@ import FIR.AST
   )
 import FIR.Module
   ( Program )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy )
 import FIR.Syntax.AST
   ( )

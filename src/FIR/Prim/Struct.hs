@@ -95,7 +95,7 @@ import FIR.AST.Type
   ( AugType(Val) )
 import Math.Algebra.GradedSemigroup
   ( GradedSemigroup(..) )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Types
   ( PrimTy
   , PrimTyMap(primTyMapSing)
   , SPrimTyMap(SNil, SCons)

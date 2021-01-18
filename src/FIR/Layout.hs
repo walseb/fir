@@ -130,19 +130,19 @@ import FIR.Prim.Array
   ( Array(..) )
 import FIR.Prim.RayTracing
   ( AccelerationStructure(..) )
-import FIR.Prim.Singletons
-  ( ScalarTy, PrimTyMap(..), SPrimTyMap(..)
-  , SPrimTy(..)
-  , primTySing
-  )
-import qualified FIR.Prim.Singletons as Prim
-  ( PrimTy )
 import FIR.Prim.Struct
   ( Struct(..)
   , LocationSlot(LocationSlot)
   , FieldKind(..)
   , StructFieldKind(fieldKind)
   )
+import FIR.Prim.Types
+  ( ScalarTy, PrimTyMap(..), SPrimTyMap(..)
+  , SPrimTy(..)
+  , primTySing
+  )
+import qualified FIR.Prim.Types as Prim
+  ( PrimTy )
 import Math.Algebra.Class
   ( AdditiveGroup, Semiring )
 import Math.Linear

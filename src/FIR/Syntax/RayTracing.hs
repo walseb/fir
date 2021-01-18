@@ -44,7 +44,7 @@ import FIR.Prim.RayTracing
   , RayQueryCandidateIntersection(..), RayQueryCommittedIntersection(..)
   , IntersectionType(..)
   )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy )
 import FIR.ProgramState
   ( ProgramState, ExecutionContext, RayQueries )

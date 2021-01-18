@@ -129,7 +129,7 @@ import FIR.AST
   )
 import FIR.AST.Type
   ( AugType(Val), MapVal )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy, primTy, primTys
   , SPrimTy(..), sPrimTy
   )

@@ -36,7 +36,7 @@ import FIR.AST.Display
   ( Display(toTreeArgs), named )
 import FIR.AST.Type
   ( AugType(Val, (:-->)), Eff )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Types
   ( PrimTy, IntegralTy )
 
 ------------------------------------------------------------

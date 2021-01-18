@@ -104,7 +104,7 @@ import FIR.AST
   )
 import FIR.AST.Type
   ( Eff, Nullary )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( IntegralTy, primTy )
 import FIR.ProgramState
   ( Bindings )

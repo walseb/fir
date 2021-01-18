@@ -79,7 +79,7 @@ import FIR.AST.Type
 
 import FIR.Prim.Op
   ( PrimOp(PrimOpAugType) )
-import {-# SOURCE #-} FIR.Prim.Singletons
+import {-# SOURCE #-} FIR.Prim.Types
   ( PrimTy )
 
 ------------------------------------------------------------
@@ -94,7 +94,7 @@ type AllOpsF
      , IfF, IfMF, SwitchF, SwitchMF, WhileF
      , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
      , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF
-     , ImgOpsF
+     , ImgOpsF, ImgQueryF
      , UseF, AssignF, ViewF, SetF
      ]
 

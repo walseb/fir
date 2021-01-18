@@ -116,13 +116,13 @@ import FIR.Layout
   ( inferPointerLayout )
 import FIR.Prim.RayTracing
   ( AccelerationStructure(..) )
-import FIR.Prim.Singletons
+import FIR.Prim.Struct
+  ( traverseStruct )
+import FIR.Prim.Types
   ( PrimTy(primTySing), primTy
   , SPrimTy(..)
   , aConstant
   )
-import FIR.Prim.Struct
-  ( traverseStruct )
 import FIR.ProgramState
   ( FunctionContext(InEntryPoint), executionContext )
 import Math.Linear

@@ -1,7 +1,10 @@
 {-# OPTIONS_HADDOCK ignore-exports #-}
 
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE InstanceSigs           #-}
+{-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
@@ -34,11 +37,16 @@ import GHC.TypeLits
 
 -- fir
 import Control.Monad.Indexed
-  ( (:=), Codensity )
+  ( (:=)(AtKey), Codensity(..) )
 import Data.Type.Map
   ( (:->) )
 import FIR.AST
-  ( AST, Code )
+  ( AST, Code
+  , Syntactic(..), SyntacticVal, InternalType
+  , pattern (:$), pattern Bind, pattern Return
+  )
+import FIR.AST.Type
+  ( Eff )
 import FIR.Definition
   ( Definition, KnownDefinitions
   , StartState
@@ -59,6 +67,15 @@ import qualified SPIRV.Stage  as SPIRV
 
 type Program (i :: ProgramState) (j :: ProgramState) (a :: Type)
   = Codensity AST (a := j) i
+
+instance SyntacticVal a => Syntactic (Program i j a) where
+  type Internal (Codensity AST (a := j) i) = Eff i j (InternalType a)
+
+  toAST :: Codensity AST (a := j) i -> AST ( Eff i j (InternalType a) )
+  toAST (Codensity k) = k ( \(AtKey a) -> Return :$ toAST a )
+
+  fromAST :: AST ( Eff i j (InternalType a) ) -> Codensity AST (a := j) i
+  fromAST a = Codensity ( \k -> Bind :$ toAST a :$ toAST (k . AtKey) )
 
 --------------------------------------------------------------------------
 -- * Module type

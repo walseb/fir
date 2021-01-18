@@ -15,9 +15,9 @@
 {-# LANGUAGE UndecidableInstances  #-}
 
 {-|
-Module: FIR.Prim.Singletons
+Module: FIR.Prim.Types
 
-This module contains singletons machinery that is necessary for code generation.
+This module defines the types used internally, including singletons machinery that is necessary for code generation.
 
 See for instance 'CodeGen.IDs.constID' for a crucial application of these singletons.
 
@@ -26,7 +26,7 @@ without the need to be able to go back the other way, see "Data.Type.Known".
 
 -}
 
-module FIR.Prim.Singletons where
+module FIR.Prim.Types where
 
 -- base
 import Data.Int

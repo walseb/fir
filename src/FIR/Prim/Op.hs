@@ -56,7 +56,7 @@ import FIR.AST.Type
   )
 import FIR.Prim.RayTracing
   ( AccelerationStructure )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( PrimTy, ScalarTy
   , primTy, scalarTy
   )

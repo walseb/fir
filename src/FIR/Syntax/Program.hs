@@ -73,9 +73,6 @@ module FIR.Syntax.Program
 
     -- * Instances
 
-    -- ** Syntactic type class
-    -- $syntactic
-
     -- ** Undefined type class
     -- $undef
 
@@ -159,7 +156,7 @@ import FIR.AST
   , pattern Lam, pattern (:$), pattern Lit
   , pattern Locally, pattern Embed
   , pattern While, pattern SwitchM
-  , pattern Return, pattern Bind
+  , pattern Bind
   , pattern Let, pattern Def, pattern FunDef, pattern FunCall, pattern DefEntryPoint
   , pattern ArrayLength
   , pattern Use, pattern Assign
@@ -185,16 +182,16 @@ import FIR.Prim.Array
 import FIR.Prim.Image
   ( ImageProperties, ImageOperands
   )
-import FIR.Prim.Singletons
-  ( PrimTy, ScalarTy, IntegralTy
-  , KnownVars
-  )
-import FIR.Prim.Op
-  ( Vectorise(Vectorise))
 import FIR.Prim.RayTracing
   ( RayQueryState )
 import FIR.Prim.Struct
   ( Struct )
+import FIR.Prim.Op
+  ( Vectorise(Vectorise) )
+import FIR.Prim.Types
+  ( PrimTy, ScalarTy, IntegralTy
+  , KnownVars
+  )
 import FIR.ProgramState
   ( FunctionInfo
   , FunctionContext(..)
@@ -254,7 +251,7 @@ import qualified SPIRV.Synchronisation as SPIRV
   , synchronisationScope, memorySemanticsBitmask
   )
 
-import FIR.Prim.Singletons
+import FIR.Prim.Types
  (primTy)
 import CodeGen.Instruction
   ( ID(..) )
@@ -292,22 +289,6 @@ switchM :: ( Syntactic scrut, Internal scrut ~ Val vscrut
         -> Program i i val   -- ^ Default (fallthrough) case.
         -> Program i i val
 switchM scrut cases val = fromAST $ SwitchM (toAST scrut) (toAST val) (map ( \ (x :-> y) -> (x, toAST y) ) cases)
-
---------------------------------------------------------------------------
--- Syntactic type class
-
--- $syntactic
--- Instance for the 'Syntactic' type class.
--- Recall that @Program i j a@ is a type synonym for @Codensity AST (a := j) i@.
-
-instance SyntacticVal a => Syntactic (Program i j a) where
-  type Internal (Codensity AST (a := j) i) = Eff i j (InternalType a)
-
-  toAST :: Codensity AST (a := j) i -> AST ( Eff i j (InternalType a) )
-  toAST (Codensity k) = k ( \(AtKey a) -> Return :$ toAST a )
-
-  fromAST :: AST ( Eff i j (InternalType a) ) -> Codensity AST (a := j) i
-  fromAST a = Codensity ( \k -> Bind :$ toAST a :$ toAST (k . AtKey) )
 
 --------------------------------------------------------------------------
 -- Undefined

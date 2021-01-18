@@ -92,7 +92,7 @@ import FIR.Prim.Array
   ( Array(MkArray) )
 import FIR.Prim.Struct
   ( traverseStructASTs )
-import FIR.Prim.Singletons
+import FIR.Prim.Types
   ( primTy )
 import Math.Linear
   ( V )

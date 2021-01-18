@@ -143,15 +143,15 @@ import FIR.Prim.Array
   ( Array(MkArray), RuntimeArray )
 import FIR.Prim.Op
   ( PrimTyVal, Vectorise(Vectorise) )
-import FIR.Prim.Singletons
+import FIR.Prim.Struct
+  ( Struct((:&), End) )
+import FIR.Prim.Types
   ( PrimTy
   , SScalarTy(..), ScalarTy, IntegralTy
   , ScalarFromTy, TypeFromScalar
   , SPrimFunc(..), PrimFunc(..), DistDict(DistDict)
   , scalarTySing
   )
-import FIR.Prim.Struct
-  ( Struct((:&), End) )
 import FIR.Validation.Bounds
   ( StructIndexFromName )
 import Math.Algebra.Class

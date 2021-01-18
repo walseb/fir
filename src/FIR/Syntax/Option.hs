@@ -39,10 +39,10 @@ import FIR.AST
   )
 import FIR.AST.Type
   ( AugType(Val) )
-import FIR.Prim.Singletons
-  ( PrimTy )
 import FIR.Prim.Struct
   ( Struct(..) )
+import FIR.Prim.Types
+  ( PrimTy )
 import FIR.Syntax.AST
   ( )
 import FIR.Syntax.IfThenElse
