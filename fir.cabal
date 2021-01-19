@@ -209,6 +209,7 @@ library
       , FIR.Validation.Arrayness
       , FIR.Validation.Bindings
       , FIR.Validation.Bounds
+      , FIR.Validation.CFG
       , FIR.Validation.Definitions
       , FIR.Validation.ExecutionModes
       , FIR.Validation.Formats

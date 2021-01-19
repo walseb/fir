@@ -43,7 +43,8 @@ allTests
           ]
     , Folder "Control"
           [ ( "Def"      , Validate )
-          , ( "Loop"     , Validate )
+          , ( "Loop1"    , Validate )
+          , ( "Loop2"    , Validate )
           , ( "Selection", Validate )
           , ( "Switch"   , Validate )
           ]

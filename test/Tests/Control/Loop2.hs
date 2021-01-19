@@ -7,11 +7,12 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators    #-}
 
-module Tests.Control.Loop where
+module Tests.Control.Loop2 where
 
 -- fir
 import FIR
 import FIR.Syntax.Labels
+import Math.Linear
 
 ------------------------------------------------
 -- program
@@ -23,23 +24,18 @@ program = Module do
 
   entryPoint @"main" @Vertex do
 
-    let (#<) = (<) @(Program _i _i _) -- disambiguate to help type inference
+    #p #= ( 99 :: Code Float )
+    #q #= ( Vec4 3 4 5 6 :: Code ( V 4 Float ) )
 
-    #t @Float #= 0
-    #s @Float #= 1
-    #r @Float #= 1
+    loop do
+      p <- #p
+      q <- #q
+      if p * norm q > 1555
+      then break @1
+      else do
+        #p .= p + 17
+        #q .= 3 *^ q
+    
+    q <- #q
 
-    while ( #t #< abs ( #s - #t ) ) do
-      t <- #t
-      s <- #s
-      #t %= (+1)
-      #s .= (s+2*t)
-      #r .= t + s
-      while ( #r #< ( #t * ( #s + #t ) ) ) do
-        #r %= (+1)
-
-    r <- #r
-    s <- #s
-    t <- #t
-
-    #gl_Position .= Vec4 r s t 1
+    #gl_Position .= q

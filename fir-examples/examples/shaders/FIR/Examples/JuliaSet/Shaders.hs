@@ -142,18 +142,17 @@ fragment = shader do
           dx = ( fromIntegral xNo + 0.5 ) * xWidth - 0.5
           dy = ( fromIntegral yNo + 0.5 ) * xWidth - 0.5
 
-        #pos      #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
-        #continue #= Lit True
-        #depth    #= ( 0 :: Code Word32 )
+        #pos   #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
+        #depth #= ( 0 :: Code Word32 )
 
-        while #continue do
+        loop do
           pos   <- #pos
           depth <- #depth
           if ( pos ^.^ pos > 4 || depth > maxDepth )
-            then ( #continue .= Lit False )
-            else do
-              #pos   .= complexSquare pos ^+^ Vec2 ((mx-960)/600) ((my-540)/600)
-              #depth .= depth + 1
+          then break @1
+          else do
+            #pos   .= complexSquare pos ^+^ Vec2 ((mx-960)/600) ((my-540)/600)
+            #depth .= depth + 1
 
         depth <- #depth
         #total %= (+depth)
@@ -163,8 +162,8 @@ fragment = shader do
 
 
     total <- #total
-    t <- let'
-        ( log ( fromIntegral total * xWidth * yWidth ) / log ( fromIntegral maxDepth ) :: Code Float )
+    t <- let' @( Code Float )
+        $ log ( fromIntegral total * xWidth * yWidth ) / log ( fromIntegral maxDepth )
 
     let col = gradient t (Lit sunset)
 

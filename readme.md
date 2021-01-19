@@ -34,7 +34,8 @@ Here are some of the library's __features__:
 
   * Support for all native Vulkan execution models (all graphics shaders, as well as compute shaders), ray-tracing shaders, and OpenCL compute kernels. See the [examples](#examples) for illustration.
   * Image sampling and load/store, with a convenient functional interface given by specifying image operands. This avoids having many different image sampling functions like in GLSL (e.g. `sampler2DArrayShadow`, `textureProjOffset`, ...).
-  * Control flow: if-then-else, switch statements and loops, compiled to [SSA form using ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form). GPU synchronisation with control and memory barriers.
+  * Control flow: if-then-else, switch statements and loops, compiled to [SSA form using ϕ-functions](https://en.wikipedia.org/wiki/Static_single_assignment_form). Includes `break` and `continue` operations, with the ability to break out of multiple loops at once.
+  * GPU synchronisation with control and memory barriers, with support for shared memory operations, as demonstrated in the [Ising model example](fir-examples/readme.md#ising).
   * Functor/applicative operations, compiling to efficient code (vectorised operations, loops).
   * Type-level optic combinator framework, including the ability to take side-by-side products of optics (disjointness checked at the type-level, ensuring lawfulness). Usage is similar to the [lens library](http://hackage.haskell.org/package/lens), e.g. `view @getter a s`, `assign @setter a`. Refer to the [section on optics](getting_started.md#optics) in the "getting started" guide.
   * Support for [Vulkan subgroup arithmetic operations](https://www.khronos.org/blog/vulkan-subgroup-tutorial) (contributed by @vlj1).
@@ -45,7 +46,7 @@ Current __limitations__ of the library include:
 
   * Inconsistent quality of error messages. This is a work in progress: the custom type errors are concise and informative, but regularly GHC also produces large error messages with internal representations leaking out (such as a full print-out of the indexed monadic state, which often fills several screens).
   * Lack of validation involving device limits. This should be addressed in the future.
-  * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be mitigated (rather tediously) as explained in the ["getting started" guide](getting_started.md#inlining).
+  * Overly-eager inlining. This is mostly due to the functional nature of the library, and can be mitigated as explained in the ["getting started" guide](getting_started.md#inlining).
   * Support for writing programs that can run both on the CPU (with Haskell) and on the GPU (with SPIRV) is limited.
   This should be addressed in the near future, with the implementation of an evaluator for the AST.
   * SPIR-V atomic operations are currently unsupported, as a convincing interface to these operations has yet to be found.

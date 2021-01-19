@@ -48,13 +48,15 @@ import Data.Set
 
 -- lens
 import Control.Lens
-  ( view )
+  ( use, view )
 
 -- mtl
 import Control.Monad.Except
   ( ExceptT )
 import Control.Monad.Reader
   ( MonadReader )
+import Control.Monad.State
+  ( MonadState )
 
 -- text-short
 import Data.Text.Short
@@ -78,7 +80,7 @@ import CodeGen.Monad
   ( CGMonad, note, liftPut )
 import CodeGen.State
   ( CGContext(..), CGState(..)
-  , _emittingCode
+  , _emittingCode, _earlyExit
   )
 import Data.Binary.Class.Put
   ( Put(put, wordCount) )
@@ -133,8 +135,12 @@ putModule
 ----------------------------------------------------------------------------
 -- individual binary instructions
 
-whenEmitting :: MonadReader CGContext m => m () -> m ()
-whenEmitting action = (`when` action) =<< view _emittingCode
+whenEmitting :: ( MonadReader CGContext m, MonadState CGState m ) => m () -> m ()
+whenEmitting action = do
+  emitting  <- view _emittingCode
+  earlyExit <- use  _earlyExit
+  when ( emitting && null earlyExit )
+    action
 
 -- | Emit code for an instruction (wrapper).
 instruction :: Instruction -> CGMonad ()

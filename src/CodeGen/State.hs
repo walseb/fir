@@ -38,6 +38,10 @@ import qualified Data.Map as Map
 import Data.Set
   ( Set )
 import qualified Data.Set as Set
+import Data.Sequence
+  ( Seq )
+import qualified Data.Sequence as Seq
+  ( empty )
 
 -- lens
 import Control.Lens
@@ -96,6 +100,18 @@ data CGState
 
       -- | ID of the current block in the CFG (if inside a block).
       , currentBlock        :: Maybe ID
+
+      -- | IDs of the loop blocks we are currently inside, innermost IDs first.
+      , loopBlockIDs        :: Seq LoopBlockIDs
+
+      -- | The block IDs in which early-exit instruction occurred within the current control flow,
+      -- together with
+      --   - the block which is the destination of the early-exit instruction
+      --   - the associated bindings at the point of the early-exit instruction (needed for ϕ-instructions).
+      , earlyExits          :: Map ID ( ContinueOrMergeID, Map ShortText (ID, SPIRV.PrimTy) )
+
+      -- | The loop block IDs when an early exit instruction was emited in the current control flow.
+      , earlyExit           :: Maybe                                ContinueOrMergeID
 
       -- | Current function context: top-level, within a function, within an entry point.
       , functionContext     :: VLFunctionContext
@@ -169,11 +185,26 @@ data PointerState
   | Modified
   deriving stock ( Eq, Show )
 
+data LoopBlockIDs
+  = LoopBlockIDs
+    { continueBlockID :: !ID
+    , mergeBlockID    :: !ID
+    }
+    deriving stock ( Show, Eq, Ord )
+
+data ContinueOrMergeID
+  = ContinueBlockID !ID
+  | MergeBlockID    !ID
+  deriving stock ( Show, Eq, Ord )
+
 initialState :: CGContext -> CGState
 initialState CGContext { userCapabilities, userExtensions }
   = CGState
       { currentID           = ID 1
       , currentBlock        = Nothing
+      , loopBlockIDs        = Seq.empty
+      , earlyExits          = Map.empty
+      , earlyExit           = Nothing
       , functionContext     = TopLevel
       , neededCapabilities  = userCapabilities
       , neededExtensions    = userExtensions
@@ -277,6 +308,15 @@ _currentID = lens currentID ( \s v -> s { currentID = v } )
 
 _currentBlock :: Lens' CGState ( Maybe ID )
 _currentBlock = lens currentBlock ( \s v -> s { currentBlock = v } )
+
+_loopBlockIDs :: Lens' CGState ( Seq LoopBlockIDs )
+_loopBlockIDs = lens loopBlockIDs ( \s v -> s { loopBlockIDs = v } )
+
+_earlyExits :: Lens' CGState ( Map ID ( ContinueOrMergeID, Map ShortText (ID, SPIRV.PrimTy) ) )
+_earlyExits = lens earlyExits ( \s v -> s { earlyExits = v } )
+
+_earlyExit :: Lens' CGState ( Maybe ContinueOrMergeID )
+_earlyExit = lens earlyExit ( \s v -> s { earlyExit = v } )
 
 _functionContext :: Lens' CGState VLFunctionContext
 _functionContext = lens functionContext ( \s v -> s { functionContext = v } )

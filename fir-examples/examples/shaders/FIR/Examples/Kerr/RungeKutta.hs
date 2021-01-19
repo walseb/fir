@@ -150,13 +150,12 @@ dormandPrince
     _ <- def @"t"        @RW t₀
     _ <- def @"h"        @RW hInit
     _ <- def @"y"        @RW y₀
-    _ <- def @"continue" @RW ( Lit True )
 
     _ <- def @"i" @RW @Word32 0
 
     _ <- def @"data" @RW @a $ a₀
 
-    while ( get @"continue" ) do
+    loop do
 
       t <- get @"t"
       h <- get @"h"
@@ -185,9 +184,7 @@ dormandPrince
       if delta < 0.8 -- too much error
       then do
         new_h <- get @"h"
-        if new_h >= h
-        then put @"continue" (Lit False) -- give up
-        else pure (Lit ())               -- try again (with adjusted step size)
+        when ( new_h >= h ) ( break @1 )
       else do
         a <- get @"data"
         let
@@ -198,12 +195,12 @@ dormandPrince
             }
         stepResult <- let' =<< nextStep stepData a
         put @"data" $ view @(Name "data") stepResult
-        modify @"continue" ( && ( view @(Name "continue") stepResult ) )
+        unless ( view @(Name "continue") stepResult ) ( break @1 )
         modify @"t" (+ h)
         modify @"y" (^+^ (h *^ y'))
 
       modify @"iter" (+1)
       nextIter <- get @"iter"
-      modify @"continue" ( && (nextIter < maxIters) )
+      unless (nextIter < maxIters) ( break @1 )
 
     get @"data"

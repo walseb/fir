@@ -161,6 +161,8 @@ data EntryPointInfo where
     -> Definedness
     -> EntryPointInfo
 
+newtype CFGState = CFGState { loopDepth :: Nat }
+
 -- | State that is used in the user-facing indexed monad (at the type level).
 -- Consists of:
 --
@@ -168,7 +170,8 @@ data EntryPointInfo where
 --    such as user-defined functions, user-defined variables
 --    and built-in variables,
 --    - a context – whether code in the current indexed monadic state
---    occurs inside a function or entry-point body – and,
+--    occurs inside a function or entry-point body –
+--    - the current control-flow state,
 --    - which functions are to be declared,
 --    whether they have been declared yet,
 --    and some further information (arguments, function control),
@@ -176,11 +179,13 @@ data EntryPointInfo where
 --    whether they have been declared yet, together with
 --    some additional info pertaining to their respective execution modes,
 --    and their interfaces (user defined inputs/outputs),
+--    - the state of all current ray-query operations,
 --    - which SPIR-V backend is being used (Vulkan or OpenCL).
 data ProgramState
   = ProgramState
       { bindings    :: BindingsMap
       , context     :: TLFunctionContext
+      , cfgState    :: CFGState
       , functions   :: Map Symbol FunctionInfo
       , entryPoints :: Map Symbol EntryPointInfo
       , interface   :: TLInterface
@@ -189,29 +194,32 @@ data ProgramState
       }
 
 type family Bindings ( s :: ProgramState ) :: BindingsMap where
-  Bindings ('ProgramState bds _ _ _ _ _ _) = bds
+  Bindings ('ProgramState bds _ _ _ _ _ _ _) = bds
+
+type family CFGInfo ( s :: ProgramState ) :: CFGState where
+  CFGInfo ('ProgramState _ _ cfg _ _ _ _ _) = cfg
 
 type family FunctionInfos ( s :: ProgramState ) :: Map Symbol FunctionInfo where
-  FunctionInfos ('ProgramState _ _ fs _ _ _ _) = fs
+  FunctionInfos ('ProgramState _ _ _ fs _ _ _ _) = fs
 
 type family EntryPointInfos ( s :: ProgramState ) :: Map Symbol EntryPointInfo where
-  EntryPointInfos ('ProgramState _ _ _ eps _ _ _) = eps
+  EntryPointInfos ('ProgramState _ _ _ _ eps _ _ _) = eps
 
 type family ExecutionContext ( s :: ProgramState ) :: Maybe SPIRV.ExecutionModel where
-  ExecutionContext ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _ _ _)
+  ExecutionContext ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _ _ _ _)
     = Just stage
   ExecutionContext _
     = Nothing
 
 type family RayQueries ( s :: ProgramState ) :: Map Symbol RayQueryState where
-  RayQueries ('ProgramState _ _ _ _ _ rayQueries _) = rayQueries
+  RayQueries ('ProgramState _ _ _ _ _ _ rayQueries _) = rayQueries
 
 executionContext :: VLFunctionContext -> Maybe (ShortText, SPIRV.ExecutionModel)
 executionContext (InEntryPoint stageName stageInfo _) = Just (stageName, SPIRV.modelOf stageInfo)
 executionContext _ = Nothing
 
 type family ExecutionContext' ( s :: ProgramState ) :: SPIRV.ExecutionModel where
-  ExecutionContext' ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _ _ _)
+  ExecutionContext' ('ProgramState _ ('InEntryPoint _ (info :: SPIRV.ExecutionInfo Nat stage) _) _ _ _ _ _ _)
     = stage
   ExecutionContext' _
     = TypeError
@@ -221,6 +229,6 @@ type family ExecutionInfoContext
                 ( s :: ProgramState )
               :: Maybe (SPIRV.ExecutionInfo Nat (ExecutionContext' s))
                 where
-  ExecutionInfoContext ('ProgramState _ ('InEntryPoint _ info _) _ _ _ _ _)
+  ExecutionInfoContext ('ProgramState _ ('InEntryPoint _ info _) _ _ _ _ _ _)
     = Just info
   ExecutionInfoContext _ = 'Nothing

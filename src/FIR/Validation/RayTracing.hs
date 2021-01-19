@@ -72,7 +72,7 @@ type family CanTraceRay
          ( info :: SPIRV.ExecutionInfo Nat ( 'SPIRV.Stage ( 'SPIRV.RayStage shader ) ) )
          _
        )
-       _ _ iface _ _
+       _ _ _ iface _ _
     ) = If ( StageIsCompatibleWithRayPayload shader )
           ( HasRayPayloadBinding payload
               ( IfNothingThen
@@ -140,7 +140,7 @@ type family CanExecuteCallable
          ( info :: SPIRV.ExecutionInfo Nat ( 'SPIRV.Stage ( 'SPIRV.RayStage shader ) ) )
          _
        )
-       _ _ iface _ _
+       _ _ _ iface _ _
     ) = If ( StageIsCompatibleWithCallableData shader )
           ( HasCallableDataBinding callable
               ( IfNothingThen
@@ -197,8 +197,8 @@ type family ValidCallableDataType ( callable :: Symbol ) ( ty :: Type ) :: Eithe
 
 -- | Start a new ray query.
 type family NewRayQuery ( rayQuery :: Symbol ) ( i :: ProgramState ) :: ProgramState where
-  NewRayQuery rayQuery ( 'ProgramState bds ctx fns eps iface rayQueries bk ) =
-    'ProgramState bds ctx fns eps iface ( Insert rayQuery ( 'RayQueryState 'Nothing 'Nothing ) rayQueries ) bk
+  NewRayQuery rayQuery ( 'ProgramState bds ctx cfg fns eps iface rayQueries bk ) =
+    'ProgramState bds ctx cfg fns eps iface ( Insert rayQuery ( 'RayQueryState 'Nothing 'Nothing ) rayQueries ) bk
 
 -- | Validation for ray query 'ifProceeding' function:
 --
@@ -210,8 +210,8 @@ type family RayQueryProceed
               ( st       :: RayQueryProceedState )
               ( i        :: ProgramState         )
            :: ProgramState where
-  RayQueryProceed rayQuery st ( 'ProgramState bds ctx fns eps iface rayQueries bk ) =
-    'ProgramState bds ctx fns eps iface ( SetProceedState rayQuery st rayQueries) bk
+  RayQueryProceed rayQuery st ( 'ProgramState bds ctx cfg fns eps iface rayQueries bk ) =
+    'ProgramState bds ctx cfg fns eps iface ( SetProceedState rayQuery st rayQueries) bk
 
 type family SetProceedState
               ( rayQuery   :: Symbol                       )
@@ -242,8 +242,8 @@ type family RayQueryCandidateState
               ( st       :: RayQueryCandidateIntersection )
               ( i        :: ProgramState                  )
            :: ProgramState where
-  RayQueryCandidateState rayQuery st ( 'ProgramState bds ctx fns eps iface rayQueries bk ) =
-    'ProgramState bds ctx fns eps iface ( SetCandidateState rayQuery st rayQueries) bk
+  RayQueryCandidateState rayQuery st ( 'ProgramState bds ctx cfg fns eps iface rayQueries bk ) =
+    'ProgramState bds ctx cfg fns eps iface ( SetCandidateState rayQuery st rayQueries) bk
 
 type family SetCandidateState
               ( rayQuery   :: Symbol                        )
@@ -279,8 +279,8 @@ type family RayQueryCommittedState
               ( st       :: RayQueryCommittedIntersection )
               ( i        :: ProgramState                  )
            :: ProgramState where
-  RayQueryCommittedState rayQuery st ( 'ProgramState bds ctx fns eps iface rayQueries bk ) =
-    'ProgramState bds ctx fns eps iface ( SetCommittedState rayQuery st rayQueries) bk
+  RayQueryCommittedState rayQuery st ( 'ProgramState bds ctx cfg fns eps iface rayQueries bk ) =
+    'ProgramState bds ctx cfg fns eps iface ( SetCommittedState rayQuery st rayQueries) bk
 
 type family SetCommittedState
               ( rayQuery   :: Symbol                        )
@@ -304,8 +304,8 @@ type family Terminate
               ( rayQuery :: Symbol       )
               ( i        :: ProgramState )
            :: ProgramState where
-  Terminate rayQuery ( 'ProgramState bds ctx fns eps iface rayQueries bk ) =
-    'ProgramState bds ctx fns eps iface ( TerminateRayQuery rayQuery rayQueries) bk
+  Terminate rayQuery ( 'ProgramState bds ctx cfg fns eps iface rayQueries bk ) =
+    'ProgramState bds ctx cfg fns eps iface ( TerminateRayQuery rayQuery rayQueries) bk
 
 type family TerminateRayQuery
               ( rayQuery   :: Symbol                       )

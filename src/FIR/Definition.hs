@@ -115,7 +115,7 @@ import FIR.Prim.Image
 import FIR.Prim.Types
   ( PrimTy, primTy )
 import FIR.ProgramState
-  ( ProgramState(ProgramState)
+  ( ProgramState(ProgramState), CFGState(..)
   , Definedness(Declared)
   , FunctionInfo(FunctionInfo)
   , EntryPointInfo(EntryPointInfo), TLInterfaceVariable
@@ -330,6 +330,7 @@ type family StartStateFromTriage
     = 'ProgramState
         ( InsertionSortGlobals globals ) -- checks for duplicate globals
         ProgramState.TopLevel
+        ( 'CFGState 0 )
         funs
         ( EntryPointInfos globals eps )  -- validates entry points and checks for duplicates
         globals
@@ -372,7 +373,7 @@ type family InsertGlobal
   InsertGlobal k storage global '[] = '[ storage ':-> '[ k ':-> global ] ]
   InsertGlobal k storage global
     ( (storage ':-> globals ) ': others )
-    = ( storage ':-> ( Insert k global globals ) ) ': others
+    = ( storage ':-> Insert k global globals ) ': others
   InsertGlobal k storage global ( others ': globals )
     = others ': InsertGlobal k storage global globals
 
@@ -392,7 +393,7 @@ type family TrieAddEntryPoint
             :: TriagedDefinitions
             where
   TrieAddEntryPoint k ep '( funs, eps, globs )
-    = '( funs, ( ( k ':-> ep) ': eps ), globs )
+    = '( funs, ( k ':-> ep) ': eps, globs )
 
 type family EntryPointInfos
               ( globals :: [ SPIRV.StorageClass :-> [ Symbol :-> TLInterfaceVariable ] ] )

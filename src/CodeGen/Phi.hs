@@ -46,7 +46,7 @@ import qualified SPIRV.Operation as SPIRV.Op
 import qualified SPIRV.PrimTy    as SPIRV
 
 ----------------------------------------------------------------------------
--- phi instructions
+-- ϕ-instructions
 
 conflicts :: forall k a. (Ord k, Eq a)
           => ( k -> Bool )

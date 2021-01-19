@@ -40,7 +40,8 @@ See also the validation modules:
 
 module FIR.Syntax.Program
   ( -- * Monadic control operations
-    while, switchM, locally, embed, purely
+    while, loop, break, breakContinue, continue
+  , switchM, locally, embed, purely
 
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
@@ -105,7 +106,7 @@ import Prelude hiding
   , Floating(..), RealFloat(..)
   , Functor(..), Monad(..)
   , Applicative(..)
-  , undefined
+  , break, undefined
   )
 import qualified Prelude
 import Data.Kind
@@ -126,6 +127,8 @@ import GHC.TypeNats
   ( Nat, KnownNat )
 
 -- fir
+import CodeGen.Instruction
+  ( ID(..) )
 import Control.Monad.Indexed
   ( (:=)(AtKey), Codensity(Codensity)
   , MonadIxFail(fail)
@@ -155,7 +158,8 @@ import FIR.AST
   , FunctionHandle
   , pattern Lam, pattern (:$), pattern Lit
   , pattern Locally, pattern Embed
-  , pattern While, pattern SwitchM
+  , pattern While, pattern Loop, pattern Break, pattern BreakContinue
+  , pattern SwitchM
   , pattern Bind
   , pattern Let, pattern Def, pattern FunDef, pattern FunCall, pattern DefEntryPoint
   , pattern ArrayLength
@@ -191,9 +195,11 @@ import FIR.Prim.Op
 import FIR.Prim.Types
   ( PrimTy, ScalarTy, IntegralTy
   , KnownVars
+  , primTy
   )
 import FIR.ProgramState
-  ( FunctionInfo
+  ( CFGState(..)
+  , FunctionInfo
   , FunctionContext(..)
   , ProgramState(ProgramState)
   , TLInterface
@@ -219,6 +225,10 @@ import FIR.Validation.Bindings
   )
 import FIR.Validation.Bounds
   ( StructIndexFromName )
+import FIR.Validation.CFG
+  ( InLoop
+  , ValidBreak, ValidContinue
+  )
 import FIR.Validation.Definitions
   ( ValidDefinitions )
 import FIR.Validation.Images
@@ -250,35 +260,77 @@ import qualified SPIRV.Synchronisation as SPIRV
   ( SynchronisationScope, MemorySemantics
   , synchronisationScope, memorySemanticsBitmask
   )
-
-import FIR.Prim.Types
- (primTy)
-import CodeGen.Instruction
-  ( ID(..) )
 --------------------------------------------------------------------------
 -- * Monadic control operations
 
+-- | Encapsulate local state, turning a program which changes state
+-- into one that preserves state.
 locally :: forall i j r. (SyntacticVal r) => Program i j r -> Program i i r
 locally p = fromAST ( Locally :$ toAST p )
 
+-- | Embed a program with a /smaller/ state into one with a /larger/ state.
 embed :: forall i j r. (Embeddable i j, SyntacticVal r)
       => Program i i r -> Program j j r
 embed p = fromAST ( Embed :$ toAST p )
 
+-- | Take a stateless program and embed it into another program.
 purely
   :: ( SyntacticVal r
-     , i ~ 'ProgramState '[] 'TopLevel '[] '[] '[] '[] bkend
+     , i ~ 'ProgramState '[] 'TopLevel ('CFGState 0) '[] '[] '[] '[] bkend
      , Embeddable i k
      )
   => Program i j r -> Program k k r
 purely = embed . locally
 
-while :: ( GHC.Stack.HasCallStack )
-      => Program i i (Code Bool)
-      -> Program i j (Code ())
+-- | While loop: loop over the body as long as the condition is true.
+--
+-- The condition is checked before the first time around the loop.
+while :: GHC.Stack.HasCallStack
+      => Program i i (Code Bool)        -- ^ Condition.
+      -> Program (InLoop i) j (Code ()) -- ^ Loop body.
       -> Program i i (Code ())
 while c p = fromAST ( While :$ toAST c :$ toAST p )
 
+-- | Unconditional loop. Break out of the loop using 'break'.
+loop :: GHC.Stack.HasCallStack
+     => Program (InLoop i) j (Code ())
+     -> Program i i (Code ())
+loop p = fromAST ( Loop :$ toAST p )
+
+-- | Break out of the given number of loops (specified with a type application).
+--
+-- Usage: @break \@n@ breaks out of the @n@ innermost loops at the current stage.
+break :: forall ( n :: Nat ) ( i :: ProgramState )
+      .  ( GHC.Stack.HasCallStack
+         , KnownNat n, ValidBreak n i
+         )
+      => Program i i (Code ())
+break = fromAST ( Break ( Proxy @n ) )
+
+-- | Break out the given number of loops (possibly @0@),
+-- and then continue from the start of the remaining innermost loop,
+-- checking the loop header condition if there is one.
+--
+-- Usage: @breakContinue \@i@.
+breakContinue
+  :: forall ( n :: Nat ) ( i :: ProgramState )
+  .  ( GHC.Stack.HasCallStack
+     , KnownNat n, ValidContinue n i
+     )
+  => Program i i (Code ())
+breakContinue = fromAST ( BreakContinue ( Proxy @n ) )
+
+-- | Go back to the start of the current loop,
+-- checking the loop header condition if there is one.
+continue :: ( GHC.Stack.HasCallStack, ValidContinue 0 i ) => Program i i (Code ())
+continue = breakContinue @0
+
+-- | Monadic switch statement.
+-- Takes a scrutinee, a list of cases and a default (fallthrough) case.
+--
+-- Returns a switch statement which decides on the branch to follow by inspecting the scrutinee.
+--
+-- See 'FIR.Syntax.AST.switch' for a non-monadic version.
 switchM :: ( Syntactic scrut, Internal scrut ~ Val vscrut
            , IntegralTy vscrut
            , Syntactic val, Internal val ~ Val vval
@@ -375,7 +427,7 @@ fundef :: forall
         -> Program i (AddFunBinding name as b i) r
 fundef f = ixFmap ( \g -> fromAST ( FunCall (Proxy @name) ( Proxy @as ) ( Proxy @b ) :$ g ) ) cod
   where
-    fun :: AST (Eff i (AddFunBinding name as b i) (FunctionHandle name as b)) 
+    fun :: AST (Eff i (AddFunBinding name as b i) (FunctionHandle name as b))
     fun = FunDef (Proxy @name) (Proxy @as) (Proxy @b) :$ toAST f
     cod :: Program i (AddFunBinding name as b i) (AST (Val (FunctionHandle name as b)))
     cod = Codensity ( \k -> Bind :$ fun :$ Lam (k . AtKey) )
@@ -438,6 +490,7 @@ shader :: forall
             ( stageInfo :: SPIRV.ExecutionInfo Nat stage )
             ( j_bds     :: BindingsMap                   )
             ( j_iface   :: TLInterface                   )
+            ( cfg       :: CFGState                      )
             ( funs      :: [Symbol :-> FunctionInfo   ]  )
             ( eps       :: [Symbol :-> EntryPointInfo ]  )
             ( g_iface   :: TLInterface                   )
@@ -449,14 +502,14 @@ shader :: forall
          , ValidDefinitions defs
          , GetExecutionInfo name stage i ~ stageInfo
          , funs ~ '[ ]
-         , i ~ 'ProgramState (StartBindings defs) 'TopLevel funs eps g_iface rayQs bkend
+         , i ~ 'ProgramState (StartBindings defs) 'TopLevel cfg funs eps g_iface rayQs bkend
          , i ~ StartState defs
          , KnownSymbol name
          , stage ~ 'SPIRV.Stage ('SPIRV.ShaderStage shader)
          , Known SPIRV.Shader shader
          , Known (SPIRV.ExecutionInfo Nat stage) stageInfo
          , EndBindings defs ~ StartBindings defs
-         , ValidEntryPoint name stageInfo ('ProgramState (EndBindings defs) 'TopLevel funs eps g_iface rayQs bkend) j_bds
+         , ValidEntryPoint name stageInfo ('ProgramState (EndBindings defs) 'TopLevel cfg funs eps g_iface rayQs bkend) j_bds
          )
        => Program
             ( EntryPointStartState name stageInfo               i )
@@ -560,7 +613,7 @@ imageRead :: forall
             ( KnownSymbol imgName
             , PrimTy imgCds
             , PrimTy imgTexel
-            , imgTexel ~ ( ImageTexelType props '[] )
+            , imgTexel ~ ImageTexelType props '[]
             , Gettable
                 ( ImageTexel imgName
                   :: Optic
@@ -603,7 +656,7 @@ imageWrite :: forall
              ( KnownSymbol imgName
              , PrimTy imgCds
              , PrimTy imgTexel
-             , imgTexel ~ ( ImageTexelType props '[] )
+             , imgTexel ~ ImageTexelType props '[]
              , Gettable
                 ( ImageTexel imgName
                   :: Optic
@@ -687,7 +740,7 @@ class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp)
   groupAdd :: Code a -> Program i i ( Code a )
 
 class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp)
-      => HasGroupMinMax scope groupOp a ( i :: ProgramState ) where  
+      => HasGroupMinMax scope groupOp a ( i :: ProgramState ) where
   groupMin :: Code a -> Program i i ( Code a )
   groupMax :: Code a -> Program i i ( Code a )
 
@@ -696,7 +749,7 @@ instance (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, S
   groupAdd = primOp @'(i, a) @SPIRV.Group_Add (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
 
 instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Ord a )
-      => HasGroupMinMax scope groupOp a i where  
+      => HasGroupMinMax scope groupOp a i where
   groupMin = primOp @'(i, a) @SPIRV.Group_Min (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
   groupMax = primOp @'(i, a) @SPIRV.Group_Max (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
 
@@ -744,7 +797,7 @@ controlBarrier controlScope memScope
       ( Lit $ fromMaybe 0                  $ SPIRV.memorySemanticsBitmask . snd <$> memScope :: Code Word32 )
     where
       controlScopeWord32 :: Word32
-      controlScopeWord32 = SPIRV.synchronisationScope controlScope 
+      controlScopeWord32 = SPIRV.synchronisationScope controlScope
 
 -- | Memory barrier: ensure ordering on memory accesses.
 memoryBarrier :: forall (i :: ProgramState)

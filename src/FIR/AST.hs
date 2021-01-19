@@ -91,7 +91,7 @@ type AllOpsF
      , PrimOpF, UndefinedF, GradedMappendF
      , PureF, ApF
      , MkVectorF, MatF, UnMatF, StructF, ArrayF, ArrayLengthF, NilHListF, ConsHListF
-     , IfF, IfMF, SwitchF, SwitchMF, WhileF
+     , IfF, IfMF, SwitchF, SwitchMF, WhileF, LoopF, BreakF, BreakContinueF
      , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
      , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF
      , ImgOpsF, ImgQueryF

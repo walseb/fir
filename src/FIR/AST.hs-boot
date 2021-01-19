@@ -17,7 +17,7 @@ import Haskus.Utils.EGADT
 import FIR.AST.Type
   ( AugType(Val), UnderlyingType )
 import {-# SOURCE #-} FIR.AST.ControlFlow
-  ( IfF, IfMF, SwitchF, SwitchMF, WhileF )
+  ( IfF, IfMF, SwitchF, SwitchMF, WhileF, LoopF, BreakF, BreakContinueF )
 import {-# SOURCE #-} FIR.AST.Effs
   ( LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF )
 import {-# SOURCE #-} FIR.AST.Exts
@@ -42,7 +42,7 @@ type AllOpsF
      , PrimOpF, UndefinedF, GradedMappendF
      , PureF, ApF
      , MkVectorF, MatF, UnMatF, StructF, ArrayF, ArrayLengthF, NilHListF, ConsHListF
-     , IfF, IfMF, SwitchF, SwitchMF, WhileF
+     , IfF, IfMF, SwitchF, SwitchMF, WhileF, LoopF, BreakF, BreakContinueF
      , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
      , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF
      , ImgOpsF, ImgQueryF

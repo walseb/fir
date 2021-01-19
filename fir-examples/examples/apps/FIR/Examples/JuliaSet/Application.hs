@@ -196,7 +196,6 @@ juliaSet = runVulkan initialState do
 
   withSwapchainInfo aSwapchainInfo \ ( swapchainInfo@(SwapchainInfo {..}) :: SwapchainInfo numImages ) -> do
 
-
   -------------------------------------------
   -- Create framebuffer attachments.
 

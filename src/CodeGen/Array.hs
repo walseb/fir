@@ -83,12 +83,12 @@ import FIR.Validation.Bindings
 -- but allows it to be uninitialised.
 --
 -- Runs in an environment with no local state.
-createArray :: forall n arrName ixName a i j ctx funs eps g_iface rayQs bkend.
+createArray :: forall n arrName ixName a i j ctx cfg funs eps g_iface rayQs bkend.
              ( KnownNat n
              , KnownSymbol ixName
              , KnownSymbol arrName
              , PrimTy a
-             , i ~ ( 'ProgramState '[ arrName ':-> Var RW (Array n a) ] ctx funs eps g_iface rayQs bkend )
+             , i ~ 'ProgramState '[ arrName ':-> Var RW (Array n a) ] ctx cfg funs eps g_iface rayQs bkend
              , j ~ AddBinding ixName (Var RW Word32) i
              , Has ixName  j ~ Word32
              , Has arrName j ~ Array n a

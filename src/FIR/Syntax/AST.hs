@@ -214,6 +214,12 @@ instance ( ScalarTy a, Ord a, Logic a ~ Bool )
   min  = primOp @a @SPIRV.Min
   max  = primOp @a @SPIRV.Max
 
+-- | Switch statement.
+-- Takes a scrutinee, a list of cases and a default (fallthrough) case.
+--
+-- Returns a switch statement which decides on the branch to follow by inspecting the scrutinee.
+--
+-- See 'FIR.Syntax.Program.switchM' for a monadic version.
 switch :: ( Syntactic scrut
           , Internal scrut ~ Val vscrut
           , IntegralTy vscrut
