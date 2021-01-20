@@ -70,7 +70,7 @@ data PrimOp where
   BitOp   :: BitPrimOp                       -> ScalarTy -> PrimOp
   NumOp   :: NumPrimOp                       -> ScalarTy -> PrimOp
   FloatOp :: FloatPrimOp                     -> ScalarTy -> PrimOp
-  VecOp   :: VecPrimOp   -> Word32           -> ScalarTy -> PrimOp
+  VecOp   :: VecPrimOp   -> Word32           -> PrimTy   -> PrimOp
   MatOp   :: MatPrimOp   -> Word32 -> Word32 -> ScalarTy -> PrimOp
   ConvOp  :: ConvPrimOp  -> ScalarTy         -> ScalarTy -> PrimOp
   CastOp  ::                                    PrimTy   -> PrimOp
@@ -234,7 +234,7 @@ backendOp Vulkan o _ = o
 backendOp OpenCL _ o = o
 
 opAndReturnType :: Backend -> PrimOp -> (Operation, PrimTy)
-opAndReturnType _ (BoolOp boolOp )
+opAndReturnType _ (BoolOp boolOp)
   = ( booleanOp  boolOp
     , Boolean
     )
@@ -252,8 +252,8 @@ opAndReturnType bk (NumOp numOp s)
   = second Scalar (numericOp bk numOp s)
 opAndReturnType bk (FloatOp flOp s)
   = floatingOp bk flOp s
-opAndReturnType bk (VecOp vecOp n s)
-  = vectorOp bk vecOp n s
+opAndReturnType bk (VecOp vecOp n ty)
+  = vectorOp bk vecOp n ty
 opAndReturnType bk (MatOp matOp n m s)
   = matrixOp bk matOp n m s
 opAndReturnType bk (ConvOp cOp s1 s2)
@@ -374,16 +374,16 @@ floatingOp bk FInvSqrt s = ( backendOp bk GLSL_InvSqrt OpenCL_InvSqrt , Scalar s
 floatingOp _  FIsNaN   _ = ( IsNan, Boolean )
 floatingOp _  FIsInf   _ = ( IsInf, Boolean )
 
-vectorOp :: Backend -> VecPrimOp -> Word32 -> ScalarTy -> (Operation, PrimTy)
-vectorOp bk (Vectorise prim) n s  = ( op bk prim, Vector n (Scalar s) )
-vectorOp _  DotV   _ (Floating w) = ( Dot, Scalar (Floating w) )
-vectorOp _  DotV   _ _            = error "internal error: dot product: vector elements must be of floating-point type."
-vectorOp _  VMulK  n (Floating w) = ( VectorTimesScalar, Vector n (Scalar (Floating w)) )
-vectorOp _  VMulK  _ _            = error "internal error: scalar multiplication: vector elements must be of floating-point type."
-vectorOp bk CrossV n (Floating w) = ( backendOp bk GLSL_Cross OpenCL_Cross, Vector n (Scalar (Floating w)) )
-vectorOp _  CrossV _ _            = error "internal error: cross product: vector elements must be of floating-point type."
-vectorOp bk NormaliseV n (Floating w) = ( backendOp bk GLSL_Normalize OpenCL_Normalize, Vector n (Scalar (Floating w)) )
-vectorOp _  NormaliseV _ _            = error "internal error: normalise: vector elements must be of floating-point type."
+vectorOp :: Backend -> VecPrimOp -> Word32 -> PrimTy -> (Operation, PrimTy)
+vectorOp bk (Vectorise prim) n ty = ( op bk prim, Vector n ty )
+vectorOp _  DotV       _ (Scalar (Floating w)) = ( Dot, Scalar (Floating w) )
+vectorOp _  DotV       _ _                     = error "internal error: dot product: vector elements must be of floating-point type."
+vectorOp _  VMulK      n (Scalar (Floating w)) = ( VectorTimesScalar, Vector n (Scalar (Floating w)) )
+vectorOp _  VMulK      _ _                     = error "internal error: scalar multiplication: vector elements must be of floating-point type."
+vectorOp bk CrossV     n (Scalar (Floating w)) = ( backendOp bk GLSL_Cross OpenCL_Cross, Vector n (Scalar (Floating w)) )
+vectorOp _  CrossV     _ _                     = error "internal error: cross product: vector elements must be of floating-point type."
+vectorOp bk NormaliseV n (Scalar (Floating w)) = ( backendOp bk GLSL_Normalize OpenCL_Normalize, Vector n (Scalar (Floating w)) )
+vectorOp _  NormaliseV _ _                     = error "internal error: normalise: vector elements must be of floating-point type."
 
 matrixOp :: Backend -> MatPrimOp -> Word32 -> Word32 -> ScalarTy -> (Operation, PrimTy)
 matrixOp _  MMulK  n m s = ( MatrixTimesScalar, Matrix n m s )

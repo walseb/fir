@@ -80,6 +80,8 @@ import Math.Algebra.Class
   , Convert(..), Rounding(..)
   )
 import qualified SPIRV.PrimOp as SPIRV
+import qualified SPIRV.PrimTy as SPIRV
+  ( PrimTy(..) )
 
 -------------------------------------------------------------------------------
 -- primitive operations
@@ -124,24 +126,34 @@ instance PrimOp SPIRV.BoolOr Bool where
   type PrimOpAugType SPIRV.BoolOr Bool = Val Bool :--> Val Bool :--> Val Bool
   op = (||)
   opName = SPIRV.BoolOp SPIRV.BoolOr
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.BoolOr Bool)
+  vectorisation = Just $ VecPrimOpType (Proxy @(V n Bool))
 instance PrimOp SPIRV.BoolAnd Bool where
   type PrimOpAugType SPIRV.BoolAnd Bool = Val Bool :--> Val Bool :--> Val Bool
   op = (&&)
   opName = SPIRV.BoolOp SPIRV.BoolAnd
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.BoolAnd Bool)
+  vectorisation = Just $ VecPrimOpType (Proxy @(V n Bool))
 instance PrimOp SPIRV.BoolNot Bool where
   type PrimOpAugType SPIRV.BoolNot Bool = Val Bool :--> Val Bool
   op = not
   opName = SPIRV.BoolOp SPIRV.BoolNot
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.BoolNot Bool)
+  vectorisation = Just $ VecPrimOpType (Proxy @(V n Bool))
 
 -- equality operations
 instance (PrimTy a, Eq a, Logic a ~ Bool) => PrimOp SPIRV.Equal (a :: Type) where
   type PrimOpAugType SPIRV.Equal a = Val a :--> Val a :--> Val Bool
   op = (==)
   opName = SPIRV.EqOp SPIRV.Equal (primTy @a)
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.Equal a)
+  vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
 instance (PrimTy a, Eq a, Logic a ~ Bool) => PrimOp SPIRV.NotEqual (a :: Type) where
   type PrimOpAugType SPIRV.NotEqual a = Val a :--> Val a :--> Val Bool
   op = (/=)
   opName = SPIRV.EqOp SPIRV.NotEqual (primTy @a)
+  vectorisation :: forall n. KnownNat n => Maybe (VecPrimOpType n SPIRV.NotEqual a)
+  vectorisation = Just $ VecPrimOpType (Proxy @(V n a))
 
 -- comparison
 instance (ScalarTy a, Ord a, Logic a ~ Bool) => PrimOp SPIRV.GT (a :: Type) where
@@ -484,207 +496,230 @@ instance PrimOp SPIRV.RT_AccelerationStructureFromDeviceAddress '() where
 val :: forall n. KnownNat n => Word32
 val = fromIntegral ( natVal (Proxy @n) )
 
+
+instance KnownNat n => PrimOp ('Vectorise SPIRV.BoolOr) (V n Bool) where
+  type PrimOpAugType ('Vectorise SPIRV.BoolOr) (V n Bool) = Val (V n Bool) :--> Val (V n Bool) :--> Val (V n Bool)
+  op = liftA2 (||)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BoolOr @Bool)) (val @n) SPIRV.Boolean
+instance KnownNat n => PrimOp ('Vectorise SPIRV.BoolAnd) (V n Bool) where
+  type PrimOpAugType ('Vectorise SPIRV.BoolAnd) (V n Bool) = Val (V n Bool) :--> Val (V n Bool) :--> Val (V n Bool)
+  op = liftA2 (&&)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BoolAnd @Bool)) (val @n) SPIRV.Boolean
+instance KnownNat n => PrimOp ('Vectorise SPIRV.BoolNot) (V n Bool) where
+  type PrimOpAugType ('Vectorise SPIRV.BoolNot) (V n Bool) = Val (V n Bool) :--> Val (V n Bool)
+  op = fmap not
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BoolNot @Bool)) (val @n) SPIRV.Boolean
+
+instance ( KnownNat n, PrimTy a, Eq a, Logic a ~ Bool ) => PrimOp ('Vectorise SPIRV.Equal) (V n a) where
+  type PrimOpAugType ('Vectorise SPIRV.Equal) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n Bool)
+  op = liftA2 (==)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Equal @a)) (val @n) SPIRV.Boolean
+instance ( KnownNat n, PrimTy a, Eq a, Logic a ~ Bool ) => PrimOp ('Vectorise SPIRV.NotEqual) (V n a) where
+  type PrimOpAugType ('Vectorise SPIRV.NotEqual) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n Bool)
+  op = liftA2 (/=)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.NotEqual @a)) (val @n) SPIRV.Boolean
+
 instance (KnownNat n, ScalarTy a, Semiring a) => PrimOp ('Vectorise SPIRV.Group_Add) '(i :: ProgramState, V n a)  where
     type PrimOpAugType ('Vectorise SPIRV.Group_Add) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
-    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Add @'(i, a))) (val @n) (scalarTy @a)
+    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Add @'(i, a))) (val @n) (primTy @a)
 instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.Group_Min) '(i :: ProgramState, V n a)  where
     type PrimOpAugType ('Vectorise SPIRV.Group_Min) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
-    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Min @'(i, a))) (val @n) (scalarTy @a)
+    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Min @'(i, a))) (val @n) (primTy @a)
 instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.Group_Max) '(i :: ProgramState, V n a)  where
     type PrimOpAugType ('Vectorise SPIRV.Group_Max) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
-    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Max @'(i, a))) (val @n) (scalarTy @a)        
+    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Max @'(i, a))) (val @n) (primTy @a)        
 
 instance ( KnownNat n, ScalarTy a, Bits a ) => PrimOp ('Vectorise SPIRV.BitAnd) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.BitAnd) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (.&.)
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitAnd @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitAnd @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Bits a  ) => PrimOp ('Vectorise SPIRV.BitOr) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.BitOr) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (.|.)
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitOr @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitOr @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Bits a  ) => PrimOp ('Vectorise SPIRV.BitXor) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.BitXor) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 xor
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitXor @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitXor @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Bits a ) => PrimOp ('Vectorise SPIRV.BitNot) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.BitNot) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap complement
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitNot @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitNot @a)) (val @n) (primTy @a)
 
 instance ( KnownNat n, ScalarTy a, ScalarTy b, BitCast a b ) => PrimOp ('Vectorise SPIRV.CastOp) '(V n a, V n b) where
   type PrimOpAugType ('Vectorise SPIRV.CastOp) '(V n a, V n b) = Val (V n a) :--> Val (V n b)
   op = fmap bitcast
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CastOp @'(a,b))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CastOp @'(a,b))) (val @n) (primTy @b)
 
 instance ( KnownNat n, ScalarTy b, PrimTy s, BitShift '(b,s) ) => PrimOp ('Vectorise SPIRV.BitShiftRightArithmetic) '(V n b, V n s) where
   type PrimOpAugType ('Vectorise SPIRV.BitShiftRightArithmetic) '(V n b, V n s) = Val (V n b) :--> Val (V n s) :--> Val (V n b)
   op = liftA2 shiftR
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitShiftRightArithmetic @'(b,s))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitShiftRightArithmetic @'(b,s))) (val @n) (primTy @b)
 instance ( KnownNat n, ScalarTy b, PrimTy s, BitShift '(b,s) ) => PrimOp ('Vectorise SPIRV.BitShiftLeft) '(V n b, V n s) where
   type PrimOpAugType ('Vectorise SPIRV.BitShiftLeft) '(V n b, V n s) = Val (V n b) :--> Val (V n s) :--> Val (V n b)
   op = liftA2 shiftL
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitShiftLeft @'(b,s))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.BitShiftLeft @'(b,s))) (val @n) (primTy @b)
 
 instance ( KnownNat n, ScalarTy a, AdditiveMonoid a ) => PrimOp ('Vectorise SPIRV.Add) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Add) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (+)
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Add @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Add @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, CancellativeAdditiveMonoid a ) => PrimOp ('Vectorise SPIRV.Sub) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Sub) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (-)
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Sub @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Sub @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, AdditiveGroup a ) => PrimOp ('Vectorise SPIRV.Neg) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Neg) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap negate
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Neg @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Neg @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Semiring a ) => PrimOp ('Vectorise SPIRV.Mul) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Mul) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (*)
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Mul @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Mul @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Signed a ) => PrimOp ('Vectorise SPIRV.Abs) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Abs) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap abs
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Abs @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Abs @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Signed a ) => PrimOp ('Vectorise SPIRV.Sign) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Sign) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap signum
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Sign @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Sign @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, DivisionRing a ) => PrimOp ('Vectorise SPIRV.Div) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Div) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (/)
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Div @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Div @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Archimedean a ) => PrimOp ('Vectorise SPIRV.Mod) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Mod) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 mod
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Mod @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Mod @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Archimedean a ) => PrimOp ('Vectorise SPIRV.Rem) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Rem) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 rem
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Rem @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Rem @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Archimedean a ) => PrimOp ('Vectorise SPIRV.Quot) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.Quot) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 div
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Quot @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Quot @a)) (val @n) (primTy @a)
 
 instance ( KnownNat n, ScalarTy a, ScalarTy b, Convert '(a,b) ) => PrimOp ('Vectorise SPIRV.Convert) '(V n a, V n b) where
   type PrimOpAugType ('Vectorise SPIRV.Convert) '(V n a, V n b) = Val (V n a) :--> Val (V n b)
   op = fmap convert
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Convert @'(a,b))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.Convert @'(a,b))) (val @n) (primTy @b)
 instance ( KnownNat n, ScalarTy a, ScalarTy b, Rounding '(a,b) ) => PrimOp ('Vectorise SPIRV.CTruncate) '(V n a, V n b) where
   type PrimOpAugType ('Vectorise SPIRV.CTruncate) '(V n a, V n b) = Val (V n a) :--> Val (V n b)
   op = fmap truncate
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CTruncate @'(a,b))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CTruncate @'(a,b))) (val @n) (primTy @b)
 instance ( KnownNat n, ScalarTy a, ScalarTy b, Rounding '(a,b) ) => PrimOp ('Vectorise SPIRV.CRound) '(V n a, V n b) where
   type PrimOpAugType ('Vectorise SPIRV.CRound) '(V n a, V n b) = Val (V n a) :--> Val (V n b)
   op = fmap round
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CRound @'(a,b))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CRound @'(a,b))) (val @n) (primTy @b)
 instance ( KnownNat n, ScalarTy a, ScalarTy b, Rounding '(a,b) ) => PrimOp ('Vectorise SPIRV.CFloor) '(V n a, V n b) where
   type PrimOpAugType ('Vectorise SPIRV.CFloor) '(V n a, V n b) = Val (V n a) :--> Val (V n b)
   op = fmap floor
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CFloor @'(a,b))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CFloor @'(a,b))) (val @n) (primTy @b)
 instance ( KnownNat n, ScalarTy a, ScalarTy b, Rounding '(a,b) ) => PrimOp ('Vectorise SPIRV.CCeiling) '(V n a, V n b) where
   type PrimOpAugType ('Vectorise SPIRV.CCeiling) '(V n a, V n b) = Val (V n a) :--> Val (V n b)
   op = fmap ceiling
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CCeiling @'(a,b))) (val @n) (scalarTy @b)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.CCeiling @'(a,b))) (val @n) (primTy @b)
 
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FSin) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FSin) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap sin
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FSin @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FSin @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FCos) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FCos) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap cos
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FCos @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FCos @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FTan) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FTan) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap tan
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FTan @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FTan @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FAsin) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FAsin) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap asin
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAsin @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAsin @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FAcos) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FAcos) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap acos
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAcos @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAcos @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FAtan) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FAtan) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap atan
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAtan @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAtan @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FSinh) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FSinh) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap sinh
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FSinh @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FSinh @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FCosh) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FCosh) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap cosh
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FCosh @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FCosh @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FTanh) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FTanh) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap tanh
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FTanh @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FTanh @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FAsinh) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FAsinh) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap asinh
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAsinh @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAsinh @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FAcosh) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FAcosh) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap acosh
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAcosh @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAcosh @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FAtanh) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FAtanh) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap atanh
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAtanh @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAtanh @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, RealFloat a ) => PrimOp ('Vectorise SPIRV.FAtan2) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FAtan2) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 atan2
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAtan2 @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FAtan2 @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FPow) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FPow) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)
   op = liftA2 (**)
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FPow @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FPow @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FExp) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FExp) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap exp
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FExp @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FExp @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FLog) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FLog) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap log
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FLog @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FLog @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FSqrt) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FSqrt) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap sqrt
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FSqrt @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FSqrt @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp ('Vectorise SPIRV.FInvSqrt) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FInvSqrt) (V n a) = Val (V n a) :--> Val (V n a)
   op = fmap ( recip . sqrt )
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FInvSqrt @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FInvSqrt @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, RealFloat a, Logic a ~ Bool) => PrimOp ('Vectorise SPIRV.FIsNaN) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FIsNaN) (V n a) = Val (V n a) :--> Val (V n Bool)
   op = fmap isNaN
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FIsNaN @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FIsNaN @a)) (val @n) (primTy @a)
 instance ( KnownNat n, ScalarTy a, RealFloat a, Logic a ~ Bool) => PrimOp ('Vectorise SPIRV.FIsInf) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.FIsInf) (V n a) = Val (V n a) :--> Val (V n Bool)
   op = fmap isInfinite
-  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FIsInf @a)) (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.FIsInf @a)) (val @n) (primTy @a)
 
 instance ( KnownNat n, ScalarTy a, Floating a ) => PrimOp SPIRV.DotV (V n a) where
   type PrimOpAugType SPIRV.DotV (V n a) = Val (V n a) :--> Val (V n a) :--> Val a
   op = dot
-  opName = SPIRV.VecOp SPIRV.DotV (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp SPIRV.DotV (val @n) (primTy @a)
 -- vector times scalar operation requires floating point type in SPIR-V
 instance ( KnownNat n, ScalarTy a, Semiring a, Floating a ) => PrimOp SPIRV.VMulK (V n a) where 
   type PrimOpAugType SPIRV.VMulK (V n a) = Val (V n a) :--> Val a :--> Val (V n a)
   op = (^*)
-  opName = SPIRV.VecOp SPIRV.VMulK (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp SPIRV.VMulK (val @n) (primTy @a)
 instance ( n ~ 3, ScalarTy a, Floating a ) => PrimOp SPIRV.CrossV (V n a) where
   type PrimOpAugType SPIRV.CrossV (V n a) = Val (V 3 a) :--> Val (V 3 a) :--> Val (V 3 a)
   op = cross
-  opName = SPIRV.VecOp SPIRV.CrossV 3 (scalarTy @a)
+  opName = SPIRV.VecOp SPIRV.CrossV 3 (primTy @a)
 instance ( KnownNat n, ScalarTy a, Floating a) => PrimOp SPIRV.NormaliseV (V n a) where
   type PrimOpAugType SPIRV.NormaliseV (V n a) = Val (V n a) :--> Val (V n a)
   op = normalise
-  opName = SPIRV.VecOp SPIRV.NormaliseV (val @n) (scalarTy @a)
+  opName = SPIRV.VecOp SPIRV.NormaliseV (val @n) (primTy @a)
 
 
 instance ( KnownNat i, KnownNat j, ScalarTy a, Floating a ) => PrimOp SPIRV.MMulK '(a,i,j) where
