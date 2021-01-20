@@ -588,6 +588,7 @@ type family ValidImageSizeQueryDim ( imgName :: Symbol ) ( dim :: Dimensionality
       :$$: Text "  - no multisampling,"
       :$$: Text "  - image used with a sampler."
       )
+  ValidImageSizeQueryDim _ _ _ _ = ()
 
 
 -- ImageQueryLod
