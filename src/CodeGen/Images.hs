@@ -68,6 +68,8 @@ import CodeGen.Instruction
   )
 import CodeGen.Monad
   ( CGMonad, MonadFresh(fresh) )
+import CodeGen.Pointers
+  ( load )
 import CodeGen.State
   ( _backend, requireCapability, requireCapabilities )
 import Data.Type.Known
@@ -493,16 +495,24 @@ instance CodeGen AST => CodeGen (ImgQueryF AST) where
       resultType :: SPIRV.PrimTy
       ( imgName, resultType ) = imageQueryImageNameAndResultType imgQueryOp
     resTyID <- typeID resultType
-    ( boundImgID, boundImgTy ) <- bindingID imgName
+    ( bdID, bindingTy ) <- bindingID imgName
 
+    ( valID, valTy ) <- case bindingTy of
+      SPIRV.Pointer storage imgTy
+        -> load (imgName, bdID) (SPIRV.PointerTy storage imgTy)
+      _ -> throwError
+              ( "codeGen: internal error, image query operation on non-pointer named "
+               <> imgName <> " of type " <> ShortText.pack ( show bindingTy )
+               )
+    
     -- LOD query operation needs a sampled image.
     -- Other operations use a plain image.
-    imgID <- case boundImgTy of
+    imgID <- case valTy of
       SPIRV.SampledImage imgTy
         | QueryLODF {} <- imgQueryOp
-        -> pure boundImgID
+        -> pure valID
         | otherwise
-        -> fst <$> removeSampler ( boundImgID, imgTy )
+        -> fst <$> removeSampler ( valID, imgTy )
       SPIRV.Image {}
         | QueryLODF {} <- imgQueryOp
         -> throwError
@@ -510,9 +520,10 @@ instance CodeGen AST => CodeGen (ImgQueryF AST) where
                 \no sampler provided."
               )
         | otherwise
-        -> pure boundImgID
-      _ -> throwError
-              ( "codeGen: image query operation on non-image named " <> imgName <> " of type " <> ShortText.pack ( show boundImgTy ) )
+        -> pure valID
+      nonImgTy
+        -> throwError
+              ( "codeGen: image query operation on non-image named " <> imgName <> " of type " <> ShortText.pack ( show nonImgTy ) )
 
     v <- fresh
     let
