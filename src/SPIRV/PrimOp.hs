@@ -34,20 +34,18 @@ module SPIRV.PrimOp
   , ConvPrimOp(..)
   , GeomPrimOp(..)
   , SyncPrimOp(..)
-  , GroupPrimOp(..)
+  , GroupPrimOp(..), GroupNumOp(..), GroupBitwiseOp(..), GroupLogicOp(..)
   , RayPrimOp(..)
-  , GroupOp(..)
-  , opAndReturnType, op, groupOperationOp
+  , opAndReturnType, op
   ) where
 
 -- base
+import Prelude
+  hiding ( Ordering(..) )
 import Control.Arrow
   ( second )
 import Data.Word
   ( Word32 )
-
-import Prelude
-  hiding ( Ordering(..) )
 
 -- fir
 import SPIRV.Operation
@@ -57,8 +55,6 @@ import SPIRV.ScalarTy
   ( ScalarTy(..), Signedness(..) )
 import SPIRV.Stage
   ( Backend(Vulkan, OpenCL) )
-import Data.Type.Known
-  ( Demotable(Demote), Known(known) )  
 
 -------------------------------------------------------------------------------
 -- names of primitive operations
@@ -76,7 +72,7 @@ data PrimOp where
   CastOp  ::                                    PrimTy   -> PrimOp
   GeomOp  :: GeomPrimOp                                  -> PrimOp
   SyncOp  :: SyncPrimOp                                  -> PrimOp
-  GroupNumOp :: GroupPrimOp                  -> ScalarTy -> PrimOp
+  GroupOp :: GroupPrimOp                                 -> PrimOp
   RayOp   :: RayPrimOp                                   -> PrimOp
   deriving stock Show
 
@@ -189,31 +185,29 @@ data SyncPrimOp
   | MemorySync
   deriving stock Show
 
-data GroupOp
-  = Reduce
-  | InclusiveScan
-  | ExclusiveScan
-  | ClusteredReduce
-
-instance Demotable GroupOp where
-  type Demote GroupOp = GroupOp
-
-instance Known GroupOp 'Reduce where
-  known = Reduce
-
-instance Known GroupOp 'InclusiveScan where
-  known = InclusiveScan
-
-instance Known GroupOp 'ExclusiveScan where
-  known = ExclusiveScan
-
-instance Known GroupOp 'ClusteredReduce where
-  known = ClusteredReduce  
-
 data GroupPrimOp
-  = Group_Add
-  | Group_Min
-  | Group_Max
+  = GroupNumOp     GroupNumOp     ScalarTy
+  | GroupBitwiseOp GroupBitwiseOp ScalarTy
+  | GroupLogicOp   GroupLogicOp
+  deriving stock Show
+
+data GroupNumOp
+  = GroupAdd
+  | GroupMin
+  | GroupMax
+  | GroupMul
+  deriving stock Show
+
+data GroupBitwiseOp
+  = GroupBitwiseAnd
+  | GroupBitwiseOr
+  | GroupBitwiseXor
+  deriving stock Show
+
+data GroupLogicOp
+  = GroupLogicalAnd
+  | GroupLogicalOr
+  | GroupLogicalXor
   deriving stock Show
 
 data RayPrimOp
@@ -222,12 +216,6 @@ data RayPrimOp
   | RT_TerminateRay
   | RT_AccelerationStructureFromDeviceAddress
   deriving stock Show
-
-groupOperationOp :: GroupOp ->  Word32
-groupOperationOp Reduce = 0
-groupOperationOp InclusiveScan = 1
-groupOperationOp ExclusiveScan = 2
-groupOperationOp ClusteredReduce = 3
 
 backendOp :: Backend -> Operation -> Operation -> Operation
 backendOp Vulkan o _ = o
@@ -262,8 +250,8 @@ opAndReturnType _ (GeomOp gOp)
   = geomOp gOp
 opAndReturnType _ (SyncOp sOp)
   = syncOp sOp
-opAndReturnType bk (GroupNumOp gOp s)
-  = second Scalar (groupOp bk gOp s)
+opAndReturnType bk (GroupOp gOp)
+  = groupOp bk gOp
 opAndReturnType _ (RayOp rOp)
   = rayOp rOp
 
@@ -443,15 +431,43 @@ syncOp :: SyncPrimOp -> (Operation, PrimTy)
 syncOp ControlSync = ( ControlBarrier, Unit )
 syncOp MemorySync  = ( MemoryBarrier , Unit )
 
-groupOp :: Backend -> GroupPrimOp -> ScalarTy -> (Operation, ScalarTy)
-groupOp _  Group_Add  (Floating         w) = ( GroupFAdd   , Floating         w )
-groupOp _  Group_Add  (Integer s        w) = ( GroupIAdd   , Integer s        w )
-groupOp _  Group_Max  (Floating         w) = ( GroupFMax   , Floating         w )
-groupOp _  Group_Max  (Integer Signed   w) = ( GroupSMax   , Integer Signed   w )
-groupOp _  Group_Max  (Integer Unsigned w) = ( GroupUMin   , Integer Unsigned w )
-groupOp _  Group_Min  (Floating         w) = ( GroupFMin   , Floating         w )
-groupOp _  Group_Min  (Integer Signed   w) = ( GroupSMin   , Integer Signed   w )
-groupOp _  Group_Min  (Integer Unsigned w) = ( GroupUMin   , Integer Unsigned w )
+groupOp :: Backend -> GroupPrimOp -> (Operation, PrimTy)
+groupOp bk (GroupNumOp gpOp s) = second Scalar $ groupNumOp bk gpOp s
+groupOp OpenCL gpOp = error $ "internal error: OpenCL backend does not support group operation " ++ show gpOp
+groupOp _ (GroupBitwiseOp gpOp s) = (groupBitwiseOp gpOp, Scalar s)
+groupOp _ (GroupLogicOp   gpOp)   = (groupLogicOp gpOp, Boolean)
+
+groupNumOp :: Backend -> GroupNumOp -> ScalarTy -> (Operation, ScalarTy)
+groupNumOp OpenCL GroupAdd (Floating         w) = ( GroupFAdd, Floating         w )
+groupNumOp OpenCL GroupAdd (Integer s        w) = ( GroupIAdd, Integer s        w )
+groupNumOp OpenCL GroupMax (Floating         w) = ( GroupFMax, Floating         w )
+groupNumOp OpenCL GroupMax (Integer Signed   w) = ( GroupSMax, Integer Signed   w )
+groupNumOp OpenCL GroupMax (Integer Unsigned w) = ( GroupUMin, Integer Unsigned w )
+groupNumOp OpenCL GroupMin (Floating         w) = ( GroupFMin, Floating         w )
+groupNumOp OpenCL GroupMin (Integer Signed   w) = ( GroupSMin, Integer Signed   w )
+groupNumOp OpenCL GroupMin (Integer Unsigned w) = ( GroupUMin, Integer Unsigned w )
+groupNumOp Vulkan GroupAdd (Floating         w) = ( GroupNonUniformFAdd, Floating         w )
+groupNumOp Vulkan GroupAdd (Integer s        w) = ( GroupNonUniformIAdd, Integer s        w )
+groupNumOp Vulkan GroupMul (Floating         w) = ( GroupNonUniformFMul, Floating         w )
+groupNumOp Vulkan GroupMul (Integer s        w) = ( GroupNonUniformIMul, Integer s        w )
+groupNumOp Vulkan GroupMax (Floating         w) = ( GroupNonUniformFMax, Floating         w )
+groupNumOp Vulkan GroupMax (Integer Signed   w) = ( GroupNonUniformSMax, Integer Signed   w )
+groupNumOp Vulkan GroupMax (Integer Unsigned w) = ( GroupNonUniformUMax, Integer Unsigned w )
+groupNumOp Vulkan GroupMin (Floating         w) = ( GroupNonUniformFMin, Floating         w )
+groupNumOp Vulkan GroupMin (Integer Signed   w) = ( GroupNonUniformSMin, Integer Signed   w )
+groupNumOp Vulkan GroupMin (Integer Unsigned w) = ( GroupNonUniformUMin, Integer Unsigned w )
+groupNumOp OpenCL GroupMul _ =
+  error "internal error: OpenCL backend does not support GroupMul operation"
+
+groupBitwiseOp :: GroupBitwiseOp -> Operation
+groupBitwiseOp GroupBitwiseAnd = GroupNonUniformBitwiseAnd
+groupBitwiseOp GroupBitwiseOr  = GroupNonUniformBitwiseOr
+groupBitwiseOp GroupBitwiseXor = GroupNonUniformBitwiseXor
+
+groupLogicOp :: GroupLogicOp -> Operation
+groupLogicOp GroupLogicalAnd = GroupNonUniformLogicalAnd
+groupLogicOp GroupLogicalOr  = GroupNonUniformLogicalOr
+groupLogicOp GroupLogicalXor = GroupNonUniformLogicalXor
 
 rayOp :: RayPrimOp -> (Operation, PrimTy)
 rayOp RT_ReportIntersection                     = ( ReportIntersection, Boolean )

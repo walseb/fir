@@ -175,6 +175,7 @@ module FIR
   , SPIRV.ExecutionMode.ExecutionMode(..)
   , SPIRV.ExecutionMode.InputVertices -- synonym of 'OutputVertices' for tessellation evaluation shaders
   , module SPIRV.Extension
+  , SPIRV.Groups.GroupOperation(..)
   , SPIRV.Stage.Vertex
   , SPIRV.Stage.TessellationControl
   , SPIRV.Stage.TessellationEvaluation
@@ -194,7 +195,6 @@ module FIR
   , SPIRV.Stage.Callable
   , SPIRV.Storage.DataOrigin(..)
   , module SPIRV.Synchronisation
-  , SPIRV.PrimOp.GroupOp(..)
   , SPIRV.Version.Version(..)
   -- image properties
   , SPIRV.Image.Dimensionality(..)
@@ -370,12 +370,12 @@ import SPIRV.ExecutionMode
 import SPIRV.Extension
 import qualified SPIRV.Extension  as SPIRV
 import SPIRV.Image hiding ( LODOperand(..), Operand(..) )
+import SPIRV.Groups
 import SPIRV.Stage
 import SPIRV.Storage
 import SPIRV.Version
 import qualified SPIRV.Version    as SPIRV
 import SPIRV.Synchronisation
-import SPIRV.PrimOp
 
 ------------------------------------------------
 

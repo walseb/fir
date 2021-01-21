@@ -475,6 +475,78 @@ pattern ReturnValue       :: Operation
 pattern ReturnValue       = Code 254
 pattern Unreachable       :: Operation
 pattern Unreachable       = Code 255
+
+-- non uniform group instructions
+pattern GroupNonUniformElect :: Operation
+pattern GroupNonUniformElect = Code 333
+pattern GroupNonUniformAll   :: Operation
+pattern GroupNonUniformAll   = Code 334
+pattern GroupNonUniformAny   :: Operation
+pattern GroupNonUniformAny   = Code 335
+pattern GroupNonUniformAllEqual :: Operation
+pattern GroupNonUniformAllEqual = Code 336
+pattern GroupNonUniformBroadcast :: Operation
+pattern GroupNonUniformBroadcast = Code 337
+pattern GroupNonUniformBroadcastFirst :: Operation
+pattern GroupNonUniformBroadcastFirst = Code 338
+pattern GroupNonUniformBallot :: Operation
+pattern GroupNonUniformBallot = Code 339
+pattern GroupNonUniformInverseBallot :: Operation
+pattern GroupNonUniformInverseBallot = Code 340
+pattern GroupNonUniformBallotBitExtract :: Operation
+pattern GroupNonUniformBallotBitExtract = Code 341
+pattern GroupNonUniformBallotBitCount :: Operation
+pattern GroupNonUniformBallotBitCount = Code 342
+pattern GroupNonUniformBallotFindLSB :: Operation
+pattern GroupNonUniformBallotFindLSB = Code 343
+pattern GroupNonUniformBallotFindMSB :: Operation
+pattern GroupNonUniformBallotFindMSB = Code 344
+pattern GroupNonUniformShuffle :: Operation
+pattern GroupNonUniformShuffle = Code 345
+pattern GroupNonUniformShuffleXor :: Operation
+pattern GroupNonUniformShuffleXor = Code 346
+pattern GroupNonUniformShuffleUp :: Operation
+pattern GroupNonUniformShuffleUp = Code 347
+pattern GroupNonUniformShuffleDown :: Operation
+pattern GroupNonUniformShuffleDown = Code 348
+pattern GroupNonUniformIAdd :: Operation
+pattern GroupNonUniformIAdd = Code 349
+pattern GroupNonUniformFAdd :: Operation
+pattern GroupNonUniformFAdd = Code 350
+pattern GroupNonUniformIMul :: Operation
+pattern GroupNonUniformIMul = Code 351
+pattern GroupNonUniformFMul :: Operation
+pattern GroupNonUniformFMul = Code 352
+pattern GroupNonUniformSMin :: Operation
+pattern GroupNonUniformSMin = Code 353
+pattern GroupNonUniformUMin :: Operation
+pattern GroupNonUniformUMin = Code 354
+pattern GroupNonUniformFMin :: Operation
+pattern GroupNonUniformFMin = Code 355
+pattern GroupNonUniformSMax :: Operation
+pattern GroupNonUniformSMax = Code 356
+pattern GroupNonUniformUMax :: Operation
+pattern GroupNonUniformUMax = Code 357
+pattern GroupNonUniformFMax :: Operation
+pattern GroupNonUniformFMax = Code 358
+pattern GroupNonUniformBitwiseAnd :: Operation
+pattern GroupNonUniformBitwiseAnd = Code 359
+pattern GroupNonUniformBitwiseOr :: Operation
+pattern GroupNonUniformBitwiseOr = Code 360
+pattern GroupNonUniformBitwiseXor :: Operation
+pattern GroupNonUniformBitwiseXor = Code 361
+pattern GroupNonUniformLogicalAnd :: Operation
+pattern GroupNonUniformLogicalAnd = Code 362
+pattern GroupNonUniformLogicalOr :: Operation
+pattern GroupNonUniformLogicalOr = Code 363
+pattern GroupNonUniformLogicalXor :: Operation
+pattern GroupNonUniformLogicalXor = Code 364
+pattern GroupNonUniformQuadBroadcast :: Operation
+pattern GroupNonUniformQuadBroadcast = Code 365
+pattern GroupNonUniformQuadSwap :: Operation
+pattern GroupNonUniformQuadSwap = Code 366
+
+
 -- ray tracing instructions
 pattern TraceRay                        :: Operation
 pattern TraceRay                        = Code 4445
@@ -946,6 +1018,41 @@ showOperation Kill = "Kill"
 showOperation Return = "Return"
 showOperation ReturnValue = "ReturnValue"
 showOperation Unreachable = "Unreachable"
+-- non uniform group instructions
+showOperation GroupNonUniformElect = "GroupNonUniformElect"
+showOperation GroupNonUniformAll = "GroupNonUniformAll"
+showOperation GroupNonUniformAny = "GroupNonUniformAny"
+showOperation GroupNonUniformAllEqual = "GroupNonUniformAllEqual"
+showOperation GroupNonUniformBroadcast = "GroupNonUniformBroadcast"
+showOperation GroupNonUniformBroadcastFirst = "GroupNonUniformBroadcastFirst"
+showOperation GroupNonUniformBallot = "GroupNonUniformBallot"
+showOperation GroupNonUniformInverseBallot = "GroupNonUniformInverseBallot"
+showOperation GroupNonUniformBallotBitExtract = "GroupNonUniformBallotBitExtract"
+showOperation GroupNonUniformBallotBitCount = "GroupNonUniformBallotBitCount"
+showOperation GroupNonUniformBallotFindLSB = "GroupNonUniformBallotFindLSB"
+showOperation GroupNonUniformBallotFindMSB = "GroupNonUniformBallotFindMSB"
+showOperation GroupNonUniformShuffle = "GroupNonUniformShuffle"
+showOperation GroupNonUniformShuffleXor = "GroupNonUniformShuffleXor"
+showOperation GroupNonUniformShuffleUp = "GroupNonUniformShuffleUp"
+showOperation GroupNonUniformShuffleDown = "GroupNonUniformShuffleDown"
+showOperation GroupNonUniformIAdd = "GroupNonUniformIAdd"
+showOperation GroupNonUniformFAdd = "GroupNonUniformFAdd"
+showOperation GroupNonUniformIMul = "GroupNonUniformIMul"
+showOperation GroupNonUniformFMul = "GroupNonUniformFMul"
+showOperation GroupNonUniformSMin = "GroupNonUniformSMin"
+showOperation GroupNonUniformUMin = "GroupNonUniformUMin"
+showOperation GroupNonUniformFMin = "GroupNonUniformFMin"
+showOperation GroupNonUniformSMax = "GroupNonUniformSMax"
+showOperation GroupNonUniformUMax = "GroupNonUniformUMax"
+showOperation GroupNonUniformFMax = "GroupNonUniformFMax"
+showOperation GroupNonUniformBitwiseAnd = "GroupNonUniformBitwiseAnd"
+showOperation GroupNonUniformBitwiseOr = "GroupNonUniformBitwiseOr"
+showOperation GroupNonUniformBitwiseXor = "GroupNonUniformBitwiseXor"
+showOperation GroupNonUniformLogicalAnd = "GroupNonUniformLogicalAnd"
+showOperation GroupNonUniformLogicalOr = "GroupNonUniformLogicalOr"
+showOperation GroupNonUniformLogicalXor = "GroupNonUniformLogicalXor"
+showOperation GroupNonUniformQuadBroadcast = "GroupNonUniformQuadBroadcast"
+showOperation GroupNonUniformQuadSwap = "GroupNonUniformQuadSwap"
 -- ray tracing instructions
 showOperation TraceRay                        = "TraceRay"
 showOperation ExecuteCallable                 = "ExecuteCallable"

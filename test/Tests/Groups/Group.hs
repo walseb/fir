@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Tests.Group.Group where
+module Tests.Groups.GroupAdd where
 
 -- fir
 import FIR

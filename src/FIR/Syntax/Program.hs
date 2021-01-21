@@ -69,8 +69,12 @@ module FIR.Syntax.Program
   -- * Memory synchronisation primitive operations
   , controlBarrier, memoryBarrier
 
-  , HasGroupAdd(groupAdd)
-  , HasGroupMinMax(groupMin, groupMax)
+  -- * Group operations
+  , HasGroupAdd(..)
+  , HasGroupMul(..)
+  , HasGroupMinMax(..)
+  , HasGroupBitwise(..)
+  , HasGroupLogic(..)
 
     -- * Instances
 
@@ -253,8 +257,12 @@ import Math.Logic.Bits
   ( Bits(..), BitShift(..), BitCast(..) )
 import Math.Logic.Class
   ( Eq(..), Boolean(..), Ord(..) )
+import qualified SPIRV.Groups          as SPIRV
+  ( GroupOperation(..), groupOperationToWord32 )
 import qualified SPIRV.PrimOp          as SPIRV
-  ( GeomPrimOp(..), SyncPrimOp(..), GroupPrimOp(..), GroupOp(..), groupOperationOp)
+  ( GeomPrimOp(..), SyncPrimOp(..)
+  , GroupNumOp(..), GroupBitwiseOp(..), GroupLogicOp(..)
+  )
 import qualified SPIRV.Stage           as SPIRV
 import qualified SPIRV.Synchronisation as SPIRV
   ( SynchronisationScope, MemorySemantics
@@ -732,35 +740,153 @@ instance
 --------------------------------------------------------------------------
 -- subgroup operations
 
-groupOperationToWord32 :: SPIRV.GroupOp -> Code Word32
-groupOperationToWord32 op = MkID ( ID (SPIRV.groupOperationOp op), primTy @Word32 )
+-- Unsightly hack to convert a group operation to a `SPIR-V` word value.
+groupOperationToWord32 :: SPIRV.GroupOperation -> Code Word32
+groupOperationToWord32 op = MkID ( ID (SPIRV.groupOperationToWord32 op), primTy @Word32 )
 
-class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp)
+class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp)
       => HasGroupAdd scope groupOp a ( i :: ProgramState ) where
   groupAdd :: Code a -> Program i i ( Code a )
 
-class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp)
+class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp)
+      => HasGroupMul scope groupOp a ( i :: ProgramState ) where
+  groupMul :: Code a -> Program i i ( Code a )  
+
+class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp)
       => HasGroupMinMax scope groupOp a ( i :: ProgramState ) where
   groupMin :: Code a -> Program i i ( Code a )
   groupMax :: Code a -> Program i i ( Code a )
 
-instance (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Semiring a )
+class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp)
+      => HasGroupBitwise scope groupOp a ( i :: ProgramState ) where  
+  groupBitwiseAnd :: Code a -> Program i i ( Code a )
+  groupBitwiseOr  :: Code a -> Program i i ( Code a )
+  groupBitwiseXor :: Code a -> Program i i ( Code a )
+
+class (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp)
+      => HasGroupLogic scope groupOp a ( i :: ProgramState ) where  
+  groupLogicalAnd :: Code a -> Program i i ( Code a )
+  groupLogicalOr  :: Code a -> Program i i ( Code a )
+  groupLogicalXor :: Code a -> Program i i ( Code a )
+
+instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+         , ScalarTy a, AdditiveMonoid a
+         )
       => HasGroupAdd scope groupOp a i where
-  groupAdd = primOp @'(i, a) @SPIRV.Group_Add (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+  groupAdd = primOp @'(i, a) @SPIRV.GroupAdd
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
 
-instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Ord a )
+instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+         , ScalarTy a, Semiring a
+         )
+      => HasGroupMul scope groupOp a i where
+  groupMul = primOp @'(i, a) @SPIRV.GroupMul
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+
+instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+         , ScalarTy a, Ord a
+         )
       => HasGroupMinMax scope groupOp a i where
-  groupMin = primOp @'(i, a) @SPIRV.Group_Min (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
-  groupMax = primOp @'(i, a) @SPIRV.Group_Max (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+  groupMin = primOp @'(i, a) @SPIRV.GroupMin
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupMax = primOp @'(i, a) @SPIRV.GroupMax
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  
+instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+         , ScalarTy a, Bits a
+         )
+      => HasGroupBitwise scope groupOp a i where
+  groupBitwiseAnd = primOp @'(i,a) @SPIRV.GroupBitwiseAnd
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupBitwiseOr  = primOp @'(i,a) @SPIRV.GroupBitwiseOr
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupBitwiseXor = primOp @'(i,a) @SPIRV.GroupBitwiseXor
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
 
-instance {-# OVERLAPPING #-} (Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Semiring a, KnownNat n )
-       => HasGroupAdd scope groupOp ( V n a ) i where
-  groupAdd = primOp @'(i, V n a) @('Vectorise SPIRV.Group_Add) (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+instance ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+         , b ~ Bool
+         )
+      => HasGroupLogic scope groupOp b i where
+  groupLogicalAnd = primOp @i @SPIRV.GroupLogicalAnd
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupLogicalOr  = primOp @i @SPIRV.GroupLogicalOr
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupLogicalXor = primOp @i @SPIRV.GroupLogicalXor
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
 
-instance {-# OVERLAPPING #-} ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOp groupOp, ScalarTy a, Ord a, KnownNat n )
-       => HasGroupMinMax scope groupOp ( V n a ) i where
-  groupMin = primOp @'(i, V n a) @('Vectorise SPIRV.Group_Min) (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
-  groupMax = primOp @'(i, V n a) @('Vectorise SPIRV.Group_Max) (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)  (groupOperationToWord32 $ knownValue @groupOp)
+instance {-# OVERLAPPING #-}
+      ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+      , ScalarTy a, AdditiveMonoid a
+      , KnownNat n
+      )
+    => HasGroupAdd scope groupOp ( V n a ) i where
+  groupAdd = primOp @'(i, V n a) @('Vectorise SPIRV.GroupAdd)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  
+instance {-# OVERLAPPING #-}
+      ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+      , ScalarTy a, Semiring a
+      , KnownNat n
+      )
+    => HasGroupMul scope groupOp ( V n a ) i where
+  groupMul = primOp @'(i, V n a) @('Vectorise SPIRV.GroupMul)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+
+instance {-# OVERLAPPING #-}
+      ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+      , ScalarTy a, Ord a
+      , KnownNat n
+      )
+    => HasGroupMinMax scope groupOp ( V n a ) i where
+  groupMin = primOp @'(i, V n a) @('Vectorise SPIRV.GroupMin)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupMax = primOp @'(i, V n a) @('Vectorise SPIRV.GroupMax)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  
+instance {-# OVERLAPPING #-}
+      ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+      , ScalarTy a, Bits a
+      , KnownNat n
+      )
+    => HasGroupBitwise scope groupOp ( V n a ) i where
+  groupBitwiseAnd = primOp @'(i, V n a) @('Vectorise SPIRV.GroupBitwiseAnd)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupBitwiseOr  = primOp @'(i, V n a) @('Vectorise SPIRV.GroupBitwiseOr)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupBitwiseXor = primOp @'(i, V n a) @('Vectorise SPIRV.GroupBitwiseXor)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+
+instance {-# OVERLAPPING #-}
+      ( Known SPIRV.SynchronisationScope scope, Known SPIRV.GroupOperation groupOp
+      , KnownNat n, b ~ Bool
+      )
+    => HasGroupLogic scope groupOp (V n b) i where
+  groupLogicalAnd = primOp @'(i,n) @('Vectorise SPIRV.GroupLogicalAnd)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupLogicalOr  = primOp @'(i,n) @('Vectorise SPIRV.GroupLogicalOr)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
+  groupLogicalXor = primOp @'(i,n) @('Vectorise SPIRV.GroupLogicalXor)
+    (Lit . SPIRV.synchronisationScope $ knownValue @scope :: Code Word32)
+    (groupOperationToWord32 $ knownValue @groupOp)
 
 --------------------------------------------------------------------------
 -- geometry shader primitive instructions

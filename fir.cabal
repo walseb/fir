@@ -230,6 +230,7 @@ library
       , SPIRV.Decoration
       , SPIRV.ExecutionMode
       , SPIRV.Extension
+      , SPIRV.Groups
       , SPIRV.Image
       , SPIRV.Operation
       , SPIRV.PrimOp

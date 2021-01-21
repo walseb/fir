@@ -30,7 +30,9 @@ import qualified SPIRV.Image    as Image
 import           SPIRV.Operation
   hiding ( Capability )
 import           SPIRV.PrimOp
-  ( PrimOp(..), VecPrimOp(..), op )
+  ( PrimOp(..), VecPrimOp(..), GroupPrimOp(..)
+  , op
+  )
 import           SPIRV.PrimTy
   ( PrimTy, scalars )
 import qualified SPIRV.PrimTy   as PrimTy
@@ -50,9 +52,15 @@ primOpCapabilities bk ( op bk -> SatConvertSToU ) = [ ComputeKernel ]
 primOpCapabilities bk ( op bk -> SatConvertUToS ) = [ ComputeKernel ]
 primOpCapabilities _  ( MatOp {}                ) = [ Matrix ]
 primOpCapabilities _  ( RayOp {}                ) = [ RayTracingKHR ]
-primOpCapabilities _  ( GroupNumOp _ _          ) = [ Groups, GroupNonUniformArithmetic ]
+primOpCapabilities bk ( GroupOp gpOp            ) = groupOpCapabilities bk gpOp
 primOpCapabilities bk ( VecOp ( Vectorise primop ) _ _ ) = primOpCapabilities bk primop
 primOpCapabilities _  _                           = [ ]
+
+groupOpCapabilities :: Backend -> GroupPrimOp -> Set Capability
+groupOpCapabilities bk _ =
+  case bk of
+    SPIRV.Stage.OpenCL -> [ Groups ]
+    SPIRV.Stage.Vulkan -> [ GroupNonUniformArithmetic ]
 
 --------------------------------------------------------------------------
 -- types

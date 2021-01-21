@@ -55,8 +55,8 @@ allTests
           [ ( "Geometry"   , Validate  )
           , ( "NotGeometry", Typecheck )
           ]
-    , Folder "Group"
-          [ ("Group"       , Validate)
+    , Folder "Groups"
+          [ ( "GroupAdd", Validate )
           ]
     , Folder "Images"
           [ ( "Gather"   , Validate )

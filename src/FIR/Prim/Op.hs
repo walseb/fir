@@ -464,17 +464,37 @@ instance PrimOp SPIRV.MemorySync (i :: ProgramState) where
   type PrimOpAugType SPIRV.MemorySync i = Val Word32 :--> Val Word32 :--> Eff i i ()
   opName = SPIRV.SyncOp SPIRV.MemorySync
 
--- subgroup instructions
-instance ( ScalarTy a, Semiring a) => PrimOp SPIRV.Group_Add '(i :: ProgramState, a)  where
-    type PrimOpAugType SPIRV.Group_Add '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
-    opName = SPIRV.GroupNumOp SPIRV.Group_Add (scalarTy @a)
-instance ( ScalarTy a, Ord a) => PrimOp SPIRV.Group_Min '(i :: ProgramState, a)  where
-    type PrimOpAugType SPIRV.Group_Min '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
-    opName = SPIRV.GroupNumOp SPIRV.Group_Min (scalarTy @a)
-instance ( ScalarTy a, Ord a) => PrimOp SPIRV.Group_Max '(i :: ProgramState, a)  where
-    type PrimOpAugType SPIRV.Group_Max '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
-    opName = SPIRV.GroupNumOp SPIRV.Group_Max (scalarTy @a)
-
+-- non uniform subgroup instructions
+instance ( ScalarTy a, AdditiveMonoid a) => PrimOp SPIRV.GroupAdd '(i :: ProgramState, a) where
+    type PrimOpAugType SPIRV.GroupAdd '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupOp $ SPIRV.GroupNumOp SPIRV.GroupAdd (scalarTy @a)
+instance ( ScalarTy a, Semiring a) => PrimOp SPIRV.GroupMul '(i :: ProgramState, a)  where
+    type PrimOpAugType SPIRV.GroupMul '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupOp $ SPIRV.GroupNumOp SPIRV.GroupMul (scalarTy @a)    
+instance ( ScalarTy a, Ord a) => PrimOp SPIRV.GroupMin '(i :: ProgramState, a)  where
+    type PrimOpAugType SPIRV.GroupMin '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupOp $ SPIRV.GroupNumOp SPIRV.GroupMin (scalarTy @a)
+instance ( ScalarTy a, Ord a) => PrimOp SPIRV.GroupMax '(i :: ProgramState, a)  where
+    type PrimOpAugType SPIRV.GroupMax '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupOp $ SPIRV.GroupNumOp SPIRV.GroupMax (scalarTy @a)
+instance ( ScalarTy a ) => PrimOp SPIRV.GroupBitwiseAnd '(i :: ProgramState, a) where
+    type PrimOpAugType SPIRV.GroupBitwiseAnd '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupOp $ SPIRV.GroupBitwiseOp SPIRV.GroupBitwiseAnd (scalarTy @a)
+instance ( ScalarTy a ) => PrimOp SPIRV.GroupBitwiseOr '(i :: ProgramState, a) where
+    type PrimOpAugType SPIRV.GroupBitwiseOr '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupOp $ SPIRV.GroupBitwiseOp SPIRV.GroupBitwiseOr (scalarTy @a)
+instance ( ScalarTy a ) => PrimOp SPIRV.GroupBitwiseXor '(i :: ProgramState, a) where
+    type PrimOpAugType SPIRV.GroupBitwiseXor '(i,a) = Val Word32 :--> Val Word32 :--> Val a :--> Eff i i a
+    opName = SPIRV.GroupOp $ SPIRV.GroupBitwiseOp SPIRV.GroupBitwiseXor (scalarTy @a)
+instance PrimOp SPIRV.GroupLogicalAnd (i :: ProgramState)  where
+    type PrimOpAugType SPIRV.GroupLogicalAnd i = Val Word32 :--> Val Word32 :--> Val Bool :--> Eff i i Bool
+    opName = SPIRV.GroupOp $ SPIRV.GroupLogicOp SPIRV.GroupLogicalAnd
+instance PrimOp SPIRV.GroupLogicalOr (i :: ProgramState)  where
+    type PrimOpAugType SPIRV.GroupLogicalOr i = Val Word32 :--> Val Word32 :--> Val Bool :--> Eff i i Bool
+    opName = SPIRV.GroupOp $ SPIRV.GroupLogicOp SPIRV.GroupLogicalOr
+instance PrimOp SPIRV.GroupLogicalXor (i :: ProgramState)  where
+    type PrimOpAugType SPIRV.GroupLogicalXor i = Val Word32 :--> Val Word32 :--> Val Bool :--> Eff i i Bool
+    opName = SPIRV.GroupOp $ SPIRV.GroupLogicOp SPIRV.GroupLogicalXor
 
 -- ray tracing instructions
 instance PrimOp SPIRV.RT_ReportIntersection (i :: ProgramState) where
@@ -519,15 +539,36 @@ instance ( KnownNat n, PrimTy a, Eq a, Logic a ~ Bool ) => PrimOp ('Vectorise SP
   op = liftA2 (/=)
   opName = SPIRV.VecOp (SPIRV.Vectorise (opName @_ @_ @SPIRV.NotEqual @a)) (val @n) SPIRV.Boolean
 
-instance (KnownNat n, ScalarTy a, Semiring a) => PrimOp ('Vectorise SPIRV.Group_Add) '(i :: ProgramState, V n a)  where
-    type PrimOpAugType ('Vectorise SPIRV.Group_Add) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
-    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Add @'(i, a))) (val @n) (primTy @a)
-instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.Group_Min) '(i :: ProgramState, V n a)  where
-    type PrimOpAugType ('Vectorise SPIRV.Group_Min) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
-    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Min @'(i, a))) (val @n) (primTy @a)
-instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.Group_Max) '(i :: ProgramState, V n a)  where
-    type PrimOpAugType ('Vectorise SPIRV.Group_Max) '(i,(V n a)) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
-    opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.Group_Max @'(i, a))) (val @n) (primTy @a)        
+instance (KnownNat n, ScalarTy a, AdditiveMonoid a) => PrimOp ('Vectorise SPIRV.GroupAdd) '(i :: ProgramState, V n a)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupAdd) '(i,V n a) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupAdd @'(i, a))) (val @n) (primTy @a)
+instance (KnownNat n, ScalarTy a, Semiring a) => PrimOp ('Vectorise SPIRV.GroupMul) '(i :: ProgramState, V n a)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupMul) '(i,V n a) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupMul @'(i, a))) (val @n) (primTy @a)    
+instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.GroupMin) '(i :: ProgramState, V n a)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupMin) '(i,V n a) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupMin @'(i, a))) (val @n) (primTy @a)
+instance (KnownNat n, ScalarTy a, Ord a) => PrimOp ('Vectorise SPIRV.GroupMax) '(i :: ProgramState, V n a)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupMax) '(i,V n a) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupMax @'(i, a))) (val @n) (primTy @a)
+instance (KnownNat n, ScalarTy a, Bits a) => PrimOp ('Vectorise SPIRV.GroupBitwiseAnd) '(i :: ProgramState, V n a)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupBitwiseAnd) '(i,V n a) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupBitwiseAnd @'(i, a))) (val @n) (primTy @a)
+instance (KnownNat n, ScalarTy a, Bits a) => PrimOp ('Vectorise SPIRV.GroupBitwiseOr) '(i :: ProgramState, V n a)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupBitwiseOr) '(i,V n a) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupBitwiseOr @'(i, a))) (val @n) (primTy @a)
+instance (KnownNat n, ScalarTy a, Bits a) => PrimOp ('Vectorise SPIRV.GroupBitwiseXor) '(i :: ProgramState, V n a)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupBitwiseXor) '(i,V n a) = Val Word32 :--> Val Word32 :--> Val (V n a) :--> Eff i i (V n a)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupBitwiseXor @'(i, a))) (val @n) (primTy @a)
+instance (KnownNat n) => PrimOp ('Vectorise SPIRV.GroupLogicalAnd) '(i :: ProgramState, n :: Nat)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupLogicalAnd) '(i,n) = Val Word32 :--> Val Word32 :--> Val (V n Bool) :--> Eff i i (V n Bool)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupLogicalAnd @i)) (val @n) SPIRV.Boolean
+instance (KnownNat n) => PrimOp ('Vectorise SPIRV.GroupLogicalOr) '(i :: ProgramState, n :: Nat)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupLogicalOr) '(i,n) = Val Word32 :--> Val Word32 :--> Val (V n Bool) :--> Eff i i (V n Bool)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupLogicalOr @i)) (val @n) SPIRV.Boolean
+instance (KnownNat n) => PrimOp ('Vectorise SPIRV.GroupLogicalXor) '(i :: ProgramState, n :: Nat)  where
+  type PrimOpAugType ('Vectorise SPIRV.GroupLogicalXor) '(i,n) = Val Word32 :--> Val Word32 :--> Val (V n Bool) :--> Eff i i (V n Bool)
+  opName = SPIRV.VecOp (SPIRV.Vectorise  (opName @_ @_ @SPIRV.GroupLogicalXor @i)) (val @n) SPIRV.Boolean
 
 instance ( KnownNat n, ScalarTy a, Bits a ) => PrimOp ('Vectorise SPIRV.BitAnd) (V n a) where
   type PrimOpAugType ('Vectorise SPIRV.BitAnd) (V n a) = Val (V n a) :--> Val (V n a) :--> Val (V n a)

@@ -122,11 +122,7 @@ instance Known ImageCoordinateKind FloatingPointCoordinates where
   known = FloatingPointCoordinates
 
 -- | Abstract handle to an image.
--- 
--- This type is uninhabited, but is tagged
--- with a type describing its properties.
-data Image (props :: ImageProperties) where
-
+data Image (props :: ImageProperties)
 
 -- newtype to retain injectivity of 'Demote' type family
 newtype ImageAndCoordinate
