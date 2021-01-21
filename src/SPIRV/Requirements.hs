@@ -43,6 +43,8 @@ import           SPIRV.Stage
   ( ExecutionModel(Stage), Stage(..), Shader, Backend(..) )
 import qualified SPIRV.Stage    as Stage
   ( ExecutionModel(..), Shader(..) )
+import           SPIRV.Version
+  ( Version(..) )
 
 --------------------------------------------------------------------------
 -- primitive operations
@@ -61,6 +63,10 @@ groupOpCapabilities bk _ =
   case bk of
     SPIRV.Stage.OpenCL -> [ Groups ]
     SPIRV.Stage.Vulkan -> [ GroupNonUniformArithmetic ]
+
+primOpMinVersion :: Backend -> PrimOp -> Version
+primOpMinVersion SPIRV.Stage.Vulkan ( GroupOp {} ) = Version 1 3
+primOpMinVersion _                  _              = Version 1 0
 
 --------------------------------------------------------------------------
 -- types
