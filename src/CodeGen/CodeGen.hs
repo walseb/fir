@@ -108,9 +108,9 @@ import FIR.AST
   ( AST
   , pattern (:$), pattern Lam, pattern MkID
   , AppF(..), LamF(..), LitF(..), MkIDF(..), ValueF(..)
-  , ReturnF(..), BindF(..)
+  , IxMonadF(..)
   , LetF(..), DefF(..), UnsafeCoerceF(..)
-  , NilHListF(..), ConsHListF(..)
+  , HListF(..)
   , UndefinedF(..)
   )
 import FIR.AST.Type
@@ -180,10 +180,10 @@ instance CodeGen AST => CodeGen (AppF AST) where
   codeGenArgs (Applied (AppF (Lam f) a) as) = codeGenArgs (Applied (f a) as)
   codeGenArgs (Applied (AppF f a) as) = codeGenArgs (Applied f (a `ConsAST` as))
 
-instance CodeGen AST => CodeGen (ReturnF AST) where
+instance CodeGen AST => CodeGen (IxMonadF AST) where
+
   codeGenArgs (Applied ReturnF (a `ConsAST` NilAST)) = codeGen a
 
-instance CodeGen AST => CodeGen (BindF AST) where
   codeGenArgs (Applied BindF (a `ConsAST` f `ConsAST` as))
     | ( _ :: AST ( Val a :--> q j ) ) <- f
     , Refl <- ( unsafeCoerce Refl :: FunArgs (q j) :~: '[] )
@@ -200,11 +200,8 @@ instance CodeGen AST => CodeGen (UndefinedF AST) where
       let undefTy = primTy @a
       in ( , undefTy ) <$> undefID undefTy
 
-instance CodeGen AST => CodeGen (NilHListF AST) where
-  codeGenArgs _ = throwError "codeGen: internal error, cannot generate code for 'NilHList'"
-
-instance CodeGen AST => CodeGen (ConsHListF AST) where
-  codeGenArgs _ = throwError "codeGen: internal error, cannot generate code for 'ConsHList'"
+instance CodeGen AST => CodeGen (HListF AST) where
+  codeGenArgs _ = throwError "codeGen: internal error, cannot generate code for HList operations"
 
 instance CodeGen AST => CodeGen (LetF AST) where
   codeGenArgs (Applied LetF (a `ConsAST` NilAST)) = locally (codeGen a)

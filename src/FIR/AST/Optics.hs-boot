@@ -14,12 +14,6 @@ import FIR.AST.Type
 
 ------------------------------------------------------------
 
-data UseF    ( ast :: AugType -> Type ) ( t :: AugType )
-data AssignF ( ast :: AugType -> Type ) ( t :: AugType )
-data ViewF   ( ast :: AugType -> Type ) ( t :: AugType )
-data SetF    ( ast :: AugType -> Type ) ( t :: AugType )
+data OpticF ( ast :: AugType -> Type ) ( t :: AugType )
 
-type role UseF    phantom nominal
-type role AssignF phantom nominal
-type role ViewF   phantom nominal
-type role SetF    phantom nominal
+type role OpticF phantom nominal

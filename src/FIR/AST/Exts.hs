@@ -130,8 +130,9 @@ type family PrintfAugType ( i :: ProgramState ) ( as :: [ Type ] ) = ( r :: AugT
   PrintfAugType i '[]         = Eff i i ()
   PrintfAugType i ( a ': as ) = Val a :--> PrintfAugType i as
 
--- | Trace a ray into the given acceleration structure.
-data TraceRayF ( ast :: AugType -> Type ) ( t :: AugType ) where
+
+data RayF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | Trace a ray into the given acceleration structure.
   TraceRayF ::
     { traceRayFAccelerationStructure :: ast ( Val AccelerationStructure )
     , traceRayFRayFlags              :: ast ( Val Word32 )
@@ -144,16 +145,15 @@ data TraceRayF ( ast :: AugType -> Type ) ( t :: AugType ) where
     , traceRayFRayDirection          :: ast ( Val ( V 3 Float ) )
     , traceRayFRayTMax               :: ast ( Val Float )
     , traceRayFRayPayloadName        :: ShortText
-    } -> TraceRayF ast ( Eff i i () )
+    } -> RayF ast ( Eff i i () )
 
--- | Invoke a callable shader.
-data ExecuteCallableF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | Invoke a callable shader.
   ExecuteCallableF ::
     { executeCallableFSBTIndex :: ast ( Val Word32 )
     , executeCallableFDataName :: ShortText
-    } -> ExecuteCallableF ast ( Eff i i () )
+    } -> RayF ast ( Eff i i () )
 
-data RayQueryF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | Initialise a ray query.
   RayQueryInitializeF ::
     { rayQueryFRayQueryName          :: RayQuery
     , rayQueryFAccelerationStructure :: ast ( Val AccelerationStructure )
@@ -163,7 +163,9 @@ data RayQueryF ( ast :: AugType -> Type ) ( t :: AugType ) where
     , rayQueryFRayTMin               :: ast ( Val Float )
     , rayQueryFRayDirection          :: ast ( Val ( V 3 Float ) )
     , rayQueryFRayTMax               :: ast ( Val Float )
-    } -> RayQueryF ast ( Eff i j () )
+    } -> RayF ast ( Eff i j () )
+
+  -- | Ray query operations.
   RayQueryPrimOpF
     :: ( All Nullary ( FunArgs opTy )
        , FunRes opTy ~ Eff i i a
@@ -173,7 +175,7 @@ data RayQueryF ( ast :: AugType -> Type ) ( t :: AugType ) where
     -> SPIRV.Operation
     -> RayQuery
     -> Maybe IntersectionType
-    -> RayQueryF ast opTy
+    -> RayF ast opTy
 
 ------------------------------------------------------------
 -- displaying
@@ -182,7 +184,8 @@ instance Display ast => Display (DebugPrintfF ast) where
   toTreeArgs = named \(DebugPrintfF formatString) ->
     "DebugPrintf \"" <> ShortText.unpack formatString <> "\""
 
-instance Display ast => Display (TraceRayF ast) where
+instance Display ast => Display (RayF ast) where
+
   toTreeArgs as (TraceRayF {..}) = do
     accelerationStructure <- toTreeArgs [] traceRayFAccelerationStructure
     rayFlags              <- toTreeArgs [] traceRayFRayFlags
@@ -212,7 +215,6 @@ instance Display ast => Display (TraceRayF ast) where
         : as
         )
 
-instance Display ast => Display (ExecuteCallableF ast) where
   toTreeArgs as (ExecuteCallableF {..}) = do
     sbtIndex <- toTreeArgs [] executeCallableFSBTIndex
     let
@@ -224,7 +226,6 @@ instance Display ast => Display (ExecuteCallableF ast) where
         : as
         )
 
-instance Display ast => Display (RayQueryF ast) where
   toTreeArgs as (RayQueryInitializeF {..}) = do
     let
       RayQuery rayQueryName = rayQueryFRayQueryName
@@ -247,6 +248,7 @@ instance Display ast => Display (RayQueryF ast) where
         : rayTMax
         : as
         )
+
   toTreeArgs as (RayQueryPrimOpF _ rayQueryOp (RayQuery rayQueryName) mbInterType) =
     pure $
       Node ( SPIRV.showOperation rayQueryOp )

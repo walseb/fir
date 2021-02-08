@@ -3,6 +3,7 @@
 {-# LANGUAGE BlockArguments         #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE PatternSynonyms        #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
@@ -54,10 +55,11 @@ pattern Assign lg optic = VF ( AssignF lg optic )
 pattern View   lg optic = VF ( ViewF   lg optic )
 pattern Set    lg optic = VF ( SetF    lg optic )
 
--- | /Use/ an optic, returning a monadic value read from the (indexed) state.
---
--- Like @use@ from the lens library.
-data UseF ( ast :: AugType -> Type ) ( t :: AugType ) where
+
+data OpticF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | /Use/ an optic, returning a monadic value read from the (indexed) state.
+  --
+  -- Like @use@ from the lens library.
   UseF
     :: forall optic ast
     .  ( GHC.Stack.HasCallStack
@@ -65,12 +67,11 @@ data UseF ( ast :: AugType -> Type ) ( t :: AugType ) where
        )
     => SLength ( Indices optic ) -- ^ Singleton for the number of run-time indices.
     -> SOptic optic              -- ^ Singleton for the optic.
-    -> UseF ast ( AugUser optic )
+    -> OpticF ast ( AugUser optic )
 
--- | /Assign/ a new value with an optic.
---
--- Like @assign@ from the lens library.
-data AssignF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | /Assign/ a new value with an optic.
+  --
+  -- Like @assign@ from the lens library.
   AssignF
     :: forall optic ast
     .  ( GHC.Stack.HasCallStack
@@ -78,12 +79,11 @@ data AssignF ( ast :: AugType -> Type ) ( t :: AugType ) where
        )
     => SLength ( Indices optic ) -- ^ Singleton for the number of run-time indices.
     -> SOptic optic              -- ^ Singleton for the optic.
-    -> AssignF ast ( AugAssigner optic )
+    -> OpticF ast ( AugAssigner optic )
 
--- | /View/: access a value using an optic.
---
--- Like @view@ from the lens library.
-data ViewF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | /View/: access a value using an optic.
+  --
+  -- Like @view@ from the lens library.
   ViewF
     :: forall optic ast
     .  ( GHC.Stack.HasCallStack
@@ -91,12 +91,11 @@ data ViewF ( ast :: AugType -> Type ) ( t :: AugType ) where
        )
     => SLength ( Indices optic ) -- ^ Singleton for the number of run-time indices.
     -> SOptic optic              -- ^ Singleton for the optic.
-    -> ViewF ast ( AugViewer optic )
+    -> OpticF ast ( AugViewer optic )
 
--- | /Set/: set a value using an optic.
---
--- Like @set@ from the lens library.
-data SetF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | /Set/: set a value using an optic.
+  --
+  -- Like @set@ from the lens library.
   SetF
     :: forall optic ast
     .  ( GHC.Stack.HasCallStack
@@ -104,7 +103,7 @@ data SetF ( ast :: AugType -> Type ) ( t :: AugType ) where
        )
     => SLength ( Indices optic ) -- ^ Singleton for the number of run-time indices.
     -> SOptic optic              -- ^ Singleton for the optic.
-    -> SetF ast ( AugSetter optic )
+    -> OpticF ast ( AugSetter optic )
 
 ------------------------------------------------------------
 -- type synonyms for augmented types of optical operations
@@ -134,15 +133,9 @@ type family AugListVariadicIx
 ------------------------------------------------------------
 -- displaying
 
-instance Display (UseF ast) where
-  toTreeArgs = named \(UseF _ o) ->
-    "Use @(" ++ showSOptic o ++ ")"
-instance Display (AssignF ast) where
-  toTreeArgs = named \(AssignF _ o) ->
-    "Assign @(" ++ showSOptic o ++ ")"
-instance Display (ViewF ast) where
-  toTreeArgs = named \(ViewF _ o) ->
-    "View @(" ++ showSOptic o ++ ")"
-instance Display (SetF ast) where
-  toTreeArgs = named \(SetF _ o) ->
-    "Set @(" ++ showSOptic o ++ ")"
+instance Display (OpticF ast) where
+  toTreeArgs = named \ case
+    UseF    _ o ->    "Use @(" ++ showSOptic o ++ ")"
+    AssignF _ o -> "Assign @(" ++ showSOptic o ++ ")"
+    ViewF   _ o ->   "View @(" ++ showSOptic o ++ ")"
+    SetF    _ o ->    "Set @(" ++ showSOptic o ++ ")"

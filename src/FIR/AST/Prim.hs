@@ -156,13 +156,13 @@ data ValueF ( ast :: AugType -> Type ) ( t :: AugType ) where
 data UnsafeCoerceF ( ast :: AugType -> Type ) ( t :: AugType ) where
   UnsafeCoerceF :: UnsafeCoerceF ast (Val a :--> Val b)
 
--- Indexed monadic operations (for the AST itself).
--- | Indexed /return/
-data ReturnF ( ast :: AugType -> Type ) ( t :: AugType ) where
-  ReturnF :: ReturnF ast (Val a :--> Eff i i a)
--- | Indexed /angelic bind/
-data BindF ( ast :: AugType -> Type ) ( t :: AugType ) where
-  BindF :: BindF ast ( Eff i j a :--> ( Val a :--> q j ) :--> q i )
+
+data IxMonadF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- Indexed monadic operations (for the AST itself).
+  -- | Indexed /return/
+  ReturnF :: IxMonadF ast (Val a :--> Eff i i a)
+  -- | Indexed /angelic bind/
+  BindF :: IxMonadF ast ( Eff i j a :--> ( Val a :--> q j ) :--> q i )
 
 -- | @SPIR-V@ primitive operations.
 data PrimOpF ( ast :: AugType -> Type ) ( t :: AugType ) where
@@ -178,8 +178,8 @@ data GradedMappendF ( ast :: AugType -> Type ) ( t :: AugType ) where
     :: ( GradedSemigroup g k, a ~ Grade k g i, b ~ Grade k g j )
     => GradedMappendF ast ( Val a :--> Val b :--> Val (Grade k g (i :<!>: j)) )
 
--- | pure/return for applicative functors within the AST.
-data PureF ( ast :: AugType -> Type ) ( t :: AugType ) where
+data ApplicativeF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | pure/return for applicative functors within the AST.
   PureF
     :: forall f a v ast
     .  ( PrimFunc f
@@ -188,15 +188,14 @@ data PureF ( ast :: AugType -> Type ) ( t :: AugType ) where
        )
     => Proxy f
     -> ast a
-    -> PureF ast ( ApplyFAug f a )
--- | ap/(<*>) for applicative functors within the AST.
-data ApF ( ast :: AugType -> Type ) ( t :: AugType ) where
+    -> ApplicativeF ast ( ApplyFAug f a )
+  -- | ap/(<*>) for applicative functors within the AST.
   ApF
     :: forall f a b ast. ( PrimFunc f, PrimTy a )
     => Proxy f
     -> ast ( Val (f a) :--> ApplyFAug f b )
     -> ast ( Val (f a) )
-    -> ApF ast ( ApplyFAug f b )
+    -> ApplicativeF ast ( ApplyFAug f b )
 
 -- | Create a vector from its components.
 data MkVectorF ( ast :: AugType -> Type ) ( t :: AugType ) where
@@ -205,18 +204,18 @@ data MkVectorF ( ast :: AugType -> Type ) ( t :: AugType ) where
     => V n (ast (Val a))
     -> MkVectorF ast (Val (V n a))
 
--- | Newtype wrapping for matrices.
 data MatF ( ast :: AugType -> Type ) ( t :: AugType ) where
+-- | Newtype wrapping for matrices.
   MatF
     :: forall m n a ast
     .  ( KnownNat m, KnownNat n )
     => MatF ast ( Val (V n (V m a)) :--> Val (M m n a) )
--- | Newtype unwrapping for matrices.
-data UnMatF ( ast :: AugType -> Type ) ( t :: AugType ) where
+
+  -- | Newtype unwrapping for matrices.
   UnMatF
     :: forall m n a ast
     .  ( KnownNat n, KnownNat m )
-    => UnMatF ast ( Val (M m n a) :--> Val (V n (V m a)) )
+    => MatF ast ( Val (M m n a) :--> Val (V n (V m a)) )
 
 -- | Construct a structure from statically-known parts.
 data StructF ( ast :: AugType -> Type ) ( t :: AugType ) where
@@ -244,18 +243,14 @@ data ArrayLengthF ( ast :: AugType -> Type ) ( t :: AugType ) where
 --
 -- Only used for providing multiple run-time indices to product optics.
 -- See [FIR issue #13](https://gitlab.com/sheaf/fir/issues/13).
-data ConsHListF ( ast :: AugType -> Type ) ( t :: AugType ) where
+data HListF ( ast :: AugType -> Type ) ( t :: AugType ) where
+
   ConsHListF
     :: PrimTy a
-    => ConsHListF ast ( Val a :--> Val (HList as) :--> Val (HList (a ': as)) )
+    => HListF ast ( Val a :--> Val (HList as) :--> Val (HList (a ': as)) )
 
--- | Internal HList data type.
---
--- Only used for providing multiple run-time indices to product optics.
--- See [FIR issue #13](https://gitlab.com/sheaf/fir/issues/13).
-data NilHListF ( ast :: AugType -> Type ) ( t :: AugType ) where
   NilHListF
-    :: NilHListF ast ( Val ( HList '[] ) )
+    :: HListF ast ( Val ( HList '[] ) )
 
 ------------------------------------------------------------
 -- displaying
@@ -281,10 +276,10 @@ instance Display (ValueF ast) where
   toTreeArgs = error "internal error: unexpected 'Value' constructor, unsupported in pretty-printing"
 instance Display (UnsafeCoerceF ast) where
   toTreeArgs = named (const "UnsafeCoerce")
-instance Display (ReturnF ast) where
-  toTreeArgs = named (const "Return")
-instance Display (BindF ast) where
-  toTreeArgs = named (const "Bind")
+instance Display (IxMonadF ast) where
+  toTreeArgs = named \case
+    ReturnF -> "Return"
+    BindF   -> "Bind"
 instance Display (PrimOpF ast) where
   toTreeArgs = named
     ( \( PrimOpF ( _ :: Proxy a ) ( _ :: Proxy op ) ) ->
@@ -295,11 +290,10 @@ instance Display (UndefinedF ast) where
   toTreeArgs = named (const "Undefined")
 instance Display (GradedMappendF ast) where
   toTreeArgs = named (const "(<!>)")
-instance Display ast => Display (PureF ast) where
+instance Display ast => Display (ApplicativeF ast) where
   toTreeArgs as (PureF ( _ :: Proxy f ) a) = do
     at <- toTreeArgs [] a
     pure $ Node ( "Pure @(" ++ primFuncName @f ++ ")" ) (at:as)
-instance Display ast => Display (ApF ast) where
   toTreeArgs as (ApF ( _ :: Proxy f ) f a) = do
     ft <- toTreeArgs [] f
     at <- toTreeArgs [] a
@@ -309,9 +303,9 @@ instance Display ast => Display (MkVectorF ast) where
     trees <- toList <$> traverse ( toTreeArgs @_ @ast []) vec
     pure $ Node ("Vec" ++ show ( knownValue @n ) ) ( trees ++ as )
 instance Display (MatF ast) where
-  toTreeArgs = named (const "Mat")
-instance Display (UnMatF ast) where
-  toTreeArgs = named (const "UnMat")
+  toTreeArgs = named \case
+    MatF   -> "Mat"
+    UnMatF -> "UnMat"
 instance Display ast => Display (StructF ast) where
   toTreeArgs as mkStruct@(StructF elts) = case mkStruct of
     ( _ :: StructF ast (Val (Struct bs)) ) -> do
@@ -340,7 +334,7 @@ instance Display (ArrayLengthF ast) where
       structPos = natVal px_pos
     in
       pure $ Node ( "ArrayLength @" <> structName <> " @" <> show structPos ) as
-instance Display (NilHListF ast) where
-  toTreeArgs = named (const "NilHList")
-instance Display (ConsHListF ast) where
-  toTreeArgs = named (const "ConsHList")
+instance Display (HListF ast) where
+  toTreeArgs = named \case
+    NilHListF  -> "NilHList"
+    ConsHListF -> "ConsHList"

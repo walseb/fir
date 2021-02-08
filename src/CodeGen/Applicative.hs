@@ -110,7 +110,7 @@ import FIR.AST
   , Syntactic(fromAST)
   , primOp
   , AppF(..), LitF(..)
-  , PureF(..), ApF(..)
+  , ApplicativeF(..)
   , PrimOpF(..), MkVectorF(..)
   , UnsafeCoerceF(..)
   , pattern (:$), pattern Lam, pattern Pure, pattern MkID
@@ -147,7 +147,8 @@ import qualified SPIRV.Storage as Storage
 ----------------------------------------------------------------------------
 -- Dispatch code-generation on AST constructors.
 
-instance CodeGen AST => CodeGen (ApF AST) where
+instance CodeGen AST => CodeGen (ApplicativeF AST) where
+
   codeGenArgs ( Applied ( ApF pxf (Pure _ f :: AST (Val (f a) :--> ApplyFAug f b )) (Pure _ a :: AST (Val (f a))) ) as )
     | ( _ :: AST t ) <- f
     , ( _ :: AST v ) <- a
@@ -158,7 +159,6 @@ instance CodeGen AST => CodeGen (ApF AST) where
   codeGenArgs ( Applied ( ApF ( _ :: Proxy f) f a ) as ) =
     codeGenArgs ( Applied f (a `ConsAST` as) )
 
-instance CodeGen AST => CodeGen (PureF AST) where
   codeGenArgs ( Applied (PureF ( _ :: Proxy f) (a :: AST a)) (as :: ASTs fas) )
     | Refl <- ( unsafeCoerce Refl :: ApplyFun a fas :~: Val (UnderlyingType (FunRes a)) )
     , Refl <- ( unsafeCoerce Refl :: fas :~: MapApplyFAug f (FunArgs a) )

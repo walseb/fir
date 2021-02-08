@@ -17,36 +17,36 @@ import Haskus.Utils.EGADT
 import FIR.AST.Type
   ( AugType(Val), UnderlyingType )
 import {-# SOURCE #-} FIR.AST.ControlFlow
-  ( IfF, IfMF, SwitchF, SwitchMF, WhileF, LoopF, BreakF, BreakContinueF )
+  ( SelectionF, LoopF )
 import {-# SOURCE #-} FIR.AST.Effs
-  ( LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF )
+  ( LetF, DefF, FunDefF, FunCallF, DefEntryPointF, StateF )
 import {-# SOURCE #-} FIR.AST.Exts
-  ( DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF )
+  ( DebugPrintfF, RayF )
 import {-# SOURCE #-} FIR.AST.Images
   ( ImgOpsF, ImgQueryF )
 import {-# SOURCE #-} FIR.AST.Optics
-  ( UseF, AssignF, ViewF, SetF )
+  ( OpticF )
 import {-# SOURCE #-} FIR.AST.Prim
   ( LamF, AppF, LitF, MkIDF, ValueF, UnsafeCoerceF
-  , ReturnF, BindF
+  , IxMonadF
   , PrimOpF, UndefinedF, GradedMappendF
-  , PureF, ApF
-  , MkVectorF, MatF, UnMatF, StructF, ArrayF, ArrayLengthF, NilHListF, ConsHListF
+  , ApplicativeF
+  , MkVectorF, MatF, StructF, ArrayF, ArrayLengthF, HListF
   )
 
 ------------------------------------------------------------
 
 type AllOpsF
   = '[ LamF, AppF, LitF, MkIDF, ValueF, UnsafeCoerceF
-     , ReturnF, BindF
+     , IxMonadF
      , PrimOpF, UndefinedF, GradedMappendF
-     , PureF, ApF
-     , MkVectorF, MatF, UnMatF, StructF, ArrayF, ArrayLengthF, NilHListF, ConsHListF
-     , IfF, IfMF, SwitchF, SwitchMF, WhileF, LoopF, BreakF, BreakContinueF
-     , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, LocallyF, EmbedF
-     , DebugPrintfF, TraceRayF, ExecuteCallableF, RayQueryF
+     , ApplicativeF
+     , MkVectorF, MatF, StructF, ArrayF, ArrayLengthF, HListF
+     , SelectionF, LoopF
+     , LetF, DefF, FunDefF, FunCallF, DefEntryPointF, StateF
+     , DebugPrintfF, RayF
      , ImgOpsF, ImgQueryF
-     , UseF, AssignF, ViewF, SetF
+     , OpticF
      ]
 
 type AST    = EGADT AllOpsF

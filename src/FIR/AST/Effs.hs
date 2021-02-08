@@ -4,6 +4,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -187,13 +188,12 @@ data DefEntryPointF ( ast :: AugType -> Type ) ( t :: AugType ) where
         )
 
 
--- | Encapsulate local state.
-data LocallyF ( ast :: AugType -> Type ) ( t :: AugType ) where
-  LocallyF :: LocallyF ast ( Eff i j a :--> Eff i i a )
+data StateF ( ast :: AugType -> Type ) ( t :: AugType ) where
+  -- | Encapsulate local state.
+  LocallyF :: StateF ast ( Eff i j a :--> Eff i i a )
 
--- | Embed a computation into one with larger state.
-data EmbedF ( ast :: AugType -> Type ) ( t :: AugType ) where
-  EmbedF :: Embeddable i j => EmbedF ast ( Eff i i a :--> Eff j j a )
+  -- | Embed a computation into one with larger state.
+  EmbedF :: Embeddable i j => StateF ast ( Eff i i a :--> Eff j j a )
 
 ------------------------------------------------------------
 -- displaying
@@ -212,7 +212,7 @@ instance Display (FunCallF ast) where
 instance Display (DefEntryPointF ast) where
   toTreeArgs = named \(DefEntryPointF _ (_ :: Proxy (stageInfo :: SPIRV.ExecutionInfo Nat stage) )) ->
     "Entry @(" ++ show (knownValue @stage) ++ ")"
-instance Display (LocallyF ast) where
-  toTreeArgs = named (const "Locally")
-instance Display (EmbedF ast) where
-  toTreeArgs = named (const "Embed")
+instance Display (StateF ast) where
+  toTreeArgs = named \ case
+    LocallyF -> "Locally"
+    EmbedF   -> "Embed"

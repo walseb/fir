@@ -114,9 +114,7 @@ import Data.Type.Map
   ( Keys )
 import FIR.AST
   ( AST, Code
-  , IfF(..), IfMF(..), SwitchF(..), SwitchMF(..)
-  , WhileF(..), LoopF(..), BreakF(..), BreakContinueF(..)
-  , LocallyF(..), EmbedF(..)
+  , SelectionF(..), LoopF(..), StateF(..)
   , pattern (:$), pattern Return
   )
 import FIR.AST.Type
@@ -236,7 +234,9 @@ multiWaySwitch scrut defBlock ids
 ----------------------------------------------------------------------------
 -- code generation for selections (pure or branching)
 
-instance CodeGen AST => CodeGen (IfF AST) where
+instance CodeGen AST => CodeGen (SelectionF AST) where
+
+  -- if statement
   codeGenArgs (Applied IfF (c `ConsAST` (t :: Code a) `ConsAST ` f `ConsAST` NilAST)) = do
     ver <- view _spirvVersion
     if canUseSelection (primTy @a) ver
@@ -253,9 +253,11 @@ instance CodeGen AST => CodeGen (IfF AST) where
           | SPIRV.Array  {} <- ty   = True
           | SPIRV.Struct {} <- ty   = True
           | otherwise               = False
-instance CodeGen AST => CodeGen (IfMF AST) where
+
+  -- monadic if statement
   codeGenArgs (Applied IfMF (c `ConsAST` t `ConsAST ` f `ConsAST` NilAST)) = ifM c (UCode t) (UCode f)
-instance CodeGen (SwitchMF AST) => CodeGen (SwitchF AST) where
+
+  -- switch statement
   codeGenArgs (Applied (SwitchF scrut def cases) NilAST) =
     codeGen
       ( SwitchMF
@@ -263,7 +265,8 @@ instance CodeGen (SwitchMF AST) => CodeGen (SwitchF AST) where
        ( Return :$ def   )
        ( map (second (Return :$)) cases )
       )
-instance CodeGen AST => CodeGen (SwitchMF AST) where
+
+  -- monadic switch statement
   codeGenArgs (Applied (SwitchMF scrut def cases) NilAST) = switch scrut def (map (second UCode) cases)
 
 
@@ -380,17 +383,11 @@ branchingSelection mkHeader cases = do
 ----------------------------------------------------------------------------
 -- code generation for loops
 
-instance CodeGen AST => CodeGen (WhileF AST) where
-  codeGenArgs ( Applied WhileF ( c `ConsAST` body `ConsAST` NilAST ) ) = while ( Just c ) body
-
 instance CodeGen AST => CodeGen (LoopF AST) where
-  codeGenArgs ( Applied LoopF ( body `ConsAST` NilAST ) ) = while ( Nothing :: Maybe ( AST ( Val Bool ) ) ) body
-
-instance CodeGen (BreakF AST) where
-  codeGenArgs ( Applied ( BreakF ( _ :: Proxy n ) ) NilAST ) = break ( knownValue @n )
-
-instance CodeGen (BreakContinueF AST) where
-  codeGenArgs ( Applied ( BreakContinueF ( _ :: Proxy n ) ) NilAST ) = breakContinue ( knownValue @n )
+  codeGenArgs ( Applied WhileF ( c `ConsAST` body `ConsAST` NilAST ) ) = while ( Just c ) body
+  codeGenArgs ( Applied LoopF              ( body `ConsAST` NilAST ) ) = while ( Nothing :: Maybe ( AST ( Val Bool ) ) ) body
+  codeGenArgs ( Applied ( BreakF         ( _ :: Proxy n ) ) NilAST   ) = break ( knownValue @n )
+  codeGenArgs ( Applied ( BreakContinueF ( _ :: Proxy n ) ) NilAST   ) = breakContinue ( knownValue @n )
 
 while :: ( CodeGen AST, Nullary c, Nullary b ) => Maybe ( AST c ) -> AST b -> CGMonad (ID, SPIRV.PrimTy)
 while mbCond loopBody = do
@@ -620,10 +617,9 @@ breakContinue nbLoopsToBreak = do
 ----------------------------------------------------------------------------
 -- code-generation for locally / embed
 
-instance CodeGen AST => CodeGen (LocallyF AST) where
+instance CodeGen AST => CodeGen (StateF AST) where
   codeGenArgs (Applied LocallyF (a `ConsAST` NilAST)) =
     locally (codeGen a)
-instance CodeGen AST => CodeGen (EmbedF AST) where
   codeGenArgs (Applied EmbedF   ( ( a :: AST ( Eff i i a ) ) `ConsAST` NilAST)) =
     embed ( Set.fromList $ knownValue @(Keys (Bindings i)) ) (codeGen a)
 

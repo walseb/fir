@@ -125,7 +125,7 @@ import FIR.AST
   , pattern (:$), pattern Lit
   , pattern MkID
   , pattern NilHList, pattern ConsHList
-  , UseF(..), AssignF(..), ViewF(..), SetF(..)
+  , OpticF(..)
   )
 import FIR.AST.Type
   ( AugType(Val), MapVal )
@@ -145,47 +145,44 @@ import qualified SPIRV.Storage as Storage
 ----------------------------------------------------------------------------
 -- Code generation for optics.
 
--- View.
+data OpticArgs where
+  OpticView   :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code s -> OpticArgs
+  OpticSet    :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code a -> Code s -> OpticArgs
+  OpticUse    :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> OpticArgs
+  OpticAssign :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code a -> OpticArgs
 
-data OpticView where
-  OpticView :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code s -> OpticView
-
-viewed :: Application (ViewF AST) f r -> OpticView
-viewed ( Applied ( ViewF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_s ) =
+opticArgs :: Application (OpticF AST) f r -> OpticArgs
+opticArgs ( Applied ( ViewF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_s ) =
   case unsafeCoerce is_s :: ( ASTs (MapVal is `Snoc` Val s) ) of
     ( is `SnocAST` s ) -> OpticView sOptic is s
+opticArgs ( Applied ( SetF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_a_s ) =
+  case unsafeCoerce is_a_s :: ( ASTs ( MapVal is `Snoc` Val a `Snoc` Val s ) ) of
+    ( is `SnocAST` a `SnocAST` s ) -> OpticSet sOptic is a s
+opticArgs ( Applied ( UseF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is ) =
+  case unsafeCoerce is :: ASTs ( MapVal is ) of
+    js -> OpticUse sOptic js
+opticArgs ( Applied ( AssignF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_a ) =
+  case unsafeCoerce is_a :: ( ASTs ( MapVal is `Snoc` Val a ) ) of
+    ( is `SnocAST` a ) -> OpticAssign sOptic is a
 
-instance CodeGen AST => CodeGen (ViewF AST) where
-  codeGenArgs ( viewed -> OpticView sOptic is s ) = do
+
+instance CodeGen AST => CodeGen (OpticF AST) where
+
+  codeGenArgs opticApplication = case opticArgs opticApplication of {
+
+  -- View.
+  OpticView sOptic is s -> do
     base <- codeGen s
     extractUsingGetter base sOptic is
 
--- Set.
-
-data OpticSet where
-  OpticSet :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code a -> Code s -> OpticSet
-
-setted :: Application (SetF AST) f r -> OpticSet
-setted ( Applied ( SetF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_a_s ) =
-  case unsafeCoerce is_a_s :: ( ASTs ( MapVal is `Snoc` Val a `Snoc` Val s ) ) of
-    ( is `SnocAST` a `SnocAST` s ) -> OpticSet sOptic is a s
-
-instance CodeGen AST => CodeGen (SetF AST) where
-  codeGenArgs ( setted -> OpticSet sOptic is a s ) =
+  ;
+  -- Set.
+  OpticSet sOptic is a s -> do
     setUsingSetter s a sOptic is
 
--- Use.
-
-data OpticUse where
-  OpticUse :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> OpticUse
-
-used :: Application (UseF AST) f r -> OpticUse
-used ( Applied ( UseF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is ) =
-  case unsafeCoerce is :: ASTs ( MapVal is ) of
-    js -> OpticUse sOptic js
-
-instance CodeGen AST => CodeGen (UseF AST) where
-  codeGenArgs ( used -> OpticUse sOptic is ) = case sOptic of
+  ;
+  -- Use.
+  OpticUse sOptic is -> case sOptic of
 
     SBinding (_ :: Proxy name) ->
       do  let varName = knownValue @name
@@ -247,18 +244,9 @@ instance CodeGen AST => CodeGen (UseF AST) where
                      <> "Optic does not start by accessing a binding (or image texel).\n"
                     )
 
--- Assign.
-
-data OpticAssign where
-  OpticAssign :: forall is s a (optic :: Optic is s a). SOptic optic -> Codes is -> Code a -> OpticAssign
-
-assigned :: Application (AssignF AST) f r -> OpticAssign
-assigned ( Applied ( AssignF _ ( sOptic :: SOptic ( optic :: Optic is s a) ) ) is_a ) =
-  case unsafeCoerce is_a :: ( ASTs ( MapVal is `Snoc` Val a ) ) of
-    ( is `SnocAST` a ) -> OpticAssign sOptic is a
-
-instance CodeGen AST => CodeGen (AssignF AST) where
-  codeGenArgs ( assigned -> OpticAssign sOptic is a ) = case sOptic of
+  ;
+  -- Assign.
+  OpticAssign sOptic is a -> case sOptic of
 
    SBinding (_ :: Proxy name) ->
      do  let varName = knownValue @name
@@ -308,6 +296,8 @@ instance CodeGen AST => CodeGen (AssignF AST) where
                     <> ShortText.pack (showSOptic sOptic) <> "\n"
                     <> "Optic does not start by accessing a binding."
                    )
+
+  }
 
 ----------------------------------------------------------------------------
 -- Perform code-generation by computing associated optical trees.

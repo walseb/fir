@@ -56,7 +56,7 @@ import CodeGen.State
 import FIR.AST
   ( AST )
 import FIR.AST.Exts
-  ( TraceRayF(..), ExecuteCallableF(..), RayQueryF(..) )
+  ( RayF(..) )
 import FIR.AST.Type
   ( Nullary )
 import FIR.Prim.RayTracing
@@ -74,7 +74,8 @@ import qualified SPIRV.Storage    as Storage
 
 -------------------------------------------------------------------------------
 
-instance CodeGen AST => CodeGen (TraceRayF AST) where
+instance CodeGen AST => CodeGen (RayF AST) where
+
   codeGenArgs ( Applied ( TraceRayF {..} ) NilAST ) = do
     ctxt <- use _functionContext
     case ctxt of
@@ -118,7 +119,6 @@ instance CodeGen AST => CodeGen (TraceRayF AST) where
         pure (ID 0, SPIRV.Unit) -- ID should not be used
       _ -> throwError "codeGen: 'traceRay' outside of a ray shader"
 
-instance CodeGen AST => CodeGen (ExecuteCallableF AST) where
   codeGenArgs ( Applied ( ExecuteCallableF {..} ) NilAST ) = do
     ctxt <- use _functionContext
     case ctxt of
@@ -144,7 +144,6 @@ instance CodeGen AST => CodeGen (ExecuteCallableF AST) where
         pure (ID 0, SPIRV.Unit) -- ID should not be used
       _ -> throwError "codeGen: 'executeCallable' outside of a ray shader"
 
-instance CodeGen AST => CodeGen (RayQueryF AST) where
   codeGenArgs ( Applied ( RayQueryInitializeF {..} ) NilAST ) = do
     let
       RayQuery rayQueryName = rayQueryFRayQueryName

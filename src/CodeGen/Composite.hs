@@ -83,7 +83,7 @@ import Data.Type.Known
 import FIR.AST
   ( AST
   , MkVectorF(..), GradedMappendF(..)
-  , MatF(..), UnMatF(..)
+  , MatF(..)
   , StructF(..), ArrayF(..), ArrayLengthF(..)
   )
 import FIR.AST.Type
@@ -106,9 +106,6 @@ import qualified SPIRV.ScalarTy as SPIRV
 ----------------------------------------------------------------------------
 -- Code generation for constructing composite objects.
 
-class    NoConstraint (a :: AugType) where
-instance NoConstraint (a :: AugType) where
-
 instance CodeGen AST => CodeGen (MkVectorF AST) where
   codeGenArgs ( Applied (MkVectorF (vec :: V n (AST (Val a))) ) NilAST ) = do
     let n = knownValue @n
@@ -126,8 +123,7 @@ instance CodeGen AST => CodeGen (MkVectorF AST) where
       =<< traverse codeGen vec
 
 instance CodeGen AST => CodeGen (MatF AST) where
-  codeGenArgs ( Applied MatF (a `ConsAST` NilAST) ) = codeGenArgs ( Nullary a )
-instance CodeGen AST => CodeGen (UnMatF AST) where
+  codeGenArgs ( Applied MatF   (a `ConsAST` NilAST) ) = codeGenArgs ( Nullary a )
   codeGenArgs ( Applied UnMatF (a `ConsAST` NilAST) ) = codeGenArgs ( Nullary a )
 
 instance CodeGen AST => CodeGen (StructF AST) where
