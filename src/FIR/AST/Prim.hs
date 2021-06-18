@@ -205,7 +205,7 @@ data MkVectorF ( ast :: AugType -> Type ) ( t :: AugType ) where
     -> MkVectorF ast (Val (V n a))
 
 data MatF ( ast :: AugType -> Type ) ( t :: AugType ) where
--- | Newtype wrapping for matrices.
+  -- | Newtype wrapping for matrices.
   MatF
     :: forall m n a ast
     .  ( KnownNat m, KnownNat n )
