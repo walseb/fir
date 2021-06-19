@@ -23,7 +23,7 @@ import Data.Type.Bool
 import GHC.TypeLits
   ( Symbol, CmpSymbol, AppendSymbol )
 import GHC.TypeNats
-  ( Nat, type (+) )
+  ( type (+) )
 
 -- fir
 import Data.Type.Map
@@ -45,8 +45,8 @@ type family NextTemp ( mbk :: Maybe Symbol ) :: Symbol where
   NextTemp (Just k)
     = TempPrefix `AppendSymbol` ( ShowNat (ReadPrefixedNat TempPrefix k + 1) )
 
-type family ReadTempNat ( k :: Symbol ) :: Nat where
-  ReadTempNat k = ReadPrefixedNat TempPrefix k
+--type family ReadTempNat ( k :: Symbol ) :: Nat where
+--  ReadTempNat k = ReadPrefixedNat TempPrefix k
 
 type family LastTemp (i :: [Symbol :-> t]) :: Maybe Symbol where
   LastTemp '[] = Nothing

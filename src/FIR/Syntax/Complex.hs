@@ -20,7 +20,7 @@ Note that @Floating@ operations such as trigonometric functions are not provided
 
 
 module FIR.Syntax.Complex
-  ( CodeComplex(..), pattern (:+:) )
+  ( CodeComplex(..), pattern (:+:), complexLog )
   where
 
 -- base
@@ -103,3 +103,6 @@ instance ( b ~ Code a, ScalarTy a, RealFloat a, Logic a ~ Bool ) => ComplexFloat
   scale r               = coerce ( ( r *^ ) :: Code ( V 2 a ) -> Code ( V 2 a ) )
   realPart  ( a :+: _ ) = a
   imagPart  ( _ :+: b ) = b
+
+complexLog :: ( ScalarTy a, RealFloat a, Logic a ~ Bool ) => CodeComplex a -> CodeComplex a
+complexLog z = log ( magnitude z ) :+: phase z
