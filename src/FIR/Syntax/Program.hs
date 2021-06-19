@@ -46,7 +46,7 @@ module FIR.Syntax.Program
     -- * Stateful operations (with indexed monadic state)
     -- ** Defining new objects
     -- *** Constants / variables
-  , let', def
+  , let', def, def'
     -- *** Functions
   , fundef
     -- *** Entry points
@@ -401,6 +401,29 @@ def :: forall
     => Code a -- ^ Initial value.
     -> Program i (AddBinding k (Var ps a) i) (Code a)
 def = fromAST ( Def (Proxy @k) (Proxy @ps) )
+
+-- | Define a new variable, using `Syntactic` for desugaring.
+--
+-- Type-level arguments:
+--
+-- *@k@: name to use for definition,
+-- *@ps@: 'FIR.Binding.Permission's (readable, writable, ...),
+-- *@a@: type of definition,
+-- *@i@: state at start of definition (usually inferred).
+def' :: forall
+         ( k  :: Symbol       )
+         ( ps :: Permissions  )
+         ( a  :: Type         )
+         ( i  :: ProgramState )
+    .  ( GHC.Stack.HasCallStack
+       , KnownSymbol k
+       , Known Permissions ps
+       , SyntacticVal a, PrimTy (InternalType a)
+       , ValidDef k i (InternalType a)
+       )
+    => a -- ^ Initial value.
+    -> Program i (AddBinding k (Var ps (InternalType a)) i) a
+def' = fromAST ( Def (Proxy @k) (Proxy @ps) )
 
 -- | Define a new function.
 --
