@@ -72,16 +72,16 @@ depthStencilAttachmentLayout
     = Vulkan.IMAGE_LAYOUT_GENERAL
 depthStencilAttachmentLayout
   ( DepthStencilType (Just ReadAttachment) Nothing )
-    = Vulkan.IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR
+    = Vulkan.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL --Vulkan.IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL_KHR
 depthStencilAttachmentLayout
   ( DepthStencilType (Just ReadWriteAttachment) Nothing )
-    = Vulkan.IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR
+    = Vulkan.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL --Vulkan.IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL_KHR
 depthStencilAttachmentLayout
   ( DepthStencilType Nothing (Just ReadAttachment) )
-    = Vulkan.IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR
+    = Vulkan.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL --Vulkan.IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL_KHR
 depthStencilAttachmentLayout
   ( DepthStencilType Nothing (Just ReadWriteAttachment) )
-    = Vulkan.IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR
+    = Vulkan.IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL --Vulkan.IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL_KHR
 depthStencilAttachmentLayout
   ( DepthStencilType (Just ReadAttachment) (Just ReadAttachment) )
     = Vulkan.IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
