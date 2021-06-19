@@ -254,19 +254,19 @@ geomPath = shaderDir </> "bezier_geom.spv"
 fragPath = shaderDir </> "bezier_frag.spv"
 
 compileVertexShader :: IO ( Either ShortText ModuleRequirements )
-compileVertexShader = compileTo vertPath [] vertex
+compileVertexShader = compileTo vertPath [SPIRV $ Version 1 0] vertex
 
 compileTessellationControlShader :: IO ( Either ShortText ModuleRequirements )
-compileTessellationControlShader = compileTo tescPath [] tessellationControl
+compileTessellationControlShader = compileTo tescPath [SPIRV $ Version 1 0] tessellationControl
 
 compileTessellationEvaluationShader :: IO ( Either ShortText ModuleRequirements )
-compileTessellationEvaluationShader = compileTo tesePath [] tessellationEvaluation
+compileTessellationEvaluationShader = compileTo tesePath [SPIRV $ Version 1 0] tessellationEvaluation
 
 compileGeometryShader :: IO ( Either ShortText ModuleRequirements )
-compileGeometryShader = compileTo geomPath [] geometry
+compileGeometryShader = compileTo geomPath [SPIRV $ Version 1 0] geometry
 
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
-compileFragmentShader = compileTo fragPath [] fragment
+compileFragmentShader = compileTo fragPath [SPIRV $ Version 1 0] fragment
 
 compileAllShaders :: IO ()
 compileAllShaders = sequence_

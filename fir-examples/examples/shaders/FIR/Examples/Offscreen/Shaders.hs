@@ -79,10 +79,10 @@ vertPath = shaderDir </> "offscreen_vert.spv"
 fragPath = shaderDir </> "offscreen_frag.spv"
 
 compileVertexShader :: IO ( Either ShortText ModuleRequirements )
-compileVertexShader = compileTo vertPath [] vertex
+compileVertexShader = compileTo vertPath [SPIRV $ Version 1 0] vertex
 
 compileFragmentShader :: IO ( Either ShortText ModuleRequirements )
-compileFragmentShader = compileTo fragPath [] fragment
+compileFragmentShader = compileTo fragPath [SPIRV $ Version 1 0] fragment
 
 compileAllShaders :: IO ()
 compileAllShaders = sequence_

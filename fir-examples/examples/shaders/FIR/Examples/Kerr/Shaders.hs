@@ -166,7 +166,7 @@ compPath :: FilePath
 compPath = shaderDir </> "kerr_comp.spv"
 
 compileComputeShader :: IO ( Either ShortText ModuleRequirements )
-compileComputeShader = compileTo compPath [Debug, Assert] computeShader
+compileComputeShader = compileTo compPath [Debug, Assert, SPIRV $ Version 1 0] computeShader
 
 compileAllShaders :: IO ()
 compileAllShaders = void compileComputeShader

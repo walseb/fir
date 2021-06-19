@@ -330,7 +330,7 @@ compPath :: FilePath
 compPath = shaderDir </> "logo_comp.spv"
 
 compileComputeShader :: IO ( Either ShortText ModuleRequirements )
-compileComputeShader = compileTo compPath [] computeShader
+compileComputeShader = compileTo compPath [SPIRV $ Version 1 0] computeShader
 
 compileAllShaders :: IO ()
 compileAllShaders = void compileComputeShader

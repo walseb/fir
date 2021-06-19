@@ -292,7 +292,9 @@ shaders = Prelude.fmap ( first ( shaderDir </> ) ) $ ShaderGroups $ Shaders
   }
 
 allShaderCompilations :: ShaderGroups ( ShortText, IO ( Either ShortText ModuleRequirements ) )
-allShaderCompilations = shaders <&> \ ( path, AnyProgram prog ) -> ( ShortText.pack path, compileTo path [Debug, Assert] prog )
+allShaderCompilations =
+  shaders <&> \ ( path, AnyProgram prog ) ->
+    ( ShortText.pack path, compileTo path [Debug, Assert,SPIRV $ Version 1 5] prog )
 
 compileAllShaders :: IO ()
 compileAllShaders = for_ allShaderCompilations \ ( _, compileIt ) -> void compileIt

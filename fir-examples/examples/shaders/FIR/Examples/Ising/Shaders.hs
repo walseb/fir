@@ -412,9 +412,9 @@ oddStepPath  = shaderDir </> "ising_odd_comp.spv"
 resolvePath  = shaderDir </> "ising_resolve_comp.spv"
 
 compileEvenStepShader, compileOddStepShader, compileResolveShader :: IO ( Either ShortText ModuleRequirements )
-compileEvenStepShader = compileTo evenStepPath [Debug] ( stepShader SEven )
-compileOddStepShader  = compileTo  oddStepPath [Debug] ( stepShader SOdd  )
-compileResolveShader  = compileTo  resolvePath [Debug] resolveShader
+compileEvenStepShader = compileTo evenStepPath [Debug, SPIRV $ Version 1 0] ( stepShader SEven )
+compileOddStepShader  = compileTo  oddStepPath [Debug, SPIRV $ Version 1 0] ( stepShader SOdd  )
+compileResolveShader  = compileTo  resolvePath [Debug, SPIRV $ Version 1 0] resolveShader
 
 compileAllShaders :: IO ()
 compileAllShaders = sequence_
