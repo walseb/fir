@@ -2,6 +2,7 @@
 
 {-# LANGUAGE BlockArguments        #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE OverloadedLabels      #-}
 {-# LANGUAGE RebindableSyntax      #-}
@@ -10,6 +11,7 @@
 {-# LANGUAGE NamedWildCards        #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE ViewPatterns          #-}
 
 module FIR.Examples.JuliaSet.Shaders where
 
@@ -71,9 +73,76 @@ type FragmentDefs =
    , "main"        ':-> EntryPoint '[ OriginUpperLeft ] Fragment
    ]
 
+maxDepth :: Code Word32
+maxDepth = 256
 
-complexSquare :: Code (V 2 Float) -> Code (V 2 Float)
-complexSquare (Vec2 x y) = Vec2 ( x * x - y * y ) ( 2 * x * y )
+xSamples, ySamples :: Code Word32
+xSamples = 4
+ySamples = 4
+
+xWidth, yWidth :: Code Float
+xWidth = recip . fromIntegral $ xSamples
+yWidth = recip . fromIntegral $ ySamples
+
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
+fragment = shader do
+
+    ~( Vec4 x y _ _ ) <- #gl_FragCoord
+    ( mkRescaledComplex -> c ) <- use @(Name "ubo" :.: Name "mousePos")
+
+    #total #= ( 0 :: Code Word32 )
+
+    supersamplingLoop \ xNo yNo -> locally do 
+
+      let
+        dx, dy :: Code Float
+        dx = ( fromIntegral xNo + 0.5 ) * xWidth - 0.5
+        dy = ( fromIntegral yNo + 0.5 ) * xWidth - 0.5
+
+      #z #= codeComplex ( mkRescaledComplex ( Vec2 (x + dx) (y + dy) ) )
+      #depth #= ( 0 :: Code Word32 )
+
+      loop do
+        ( CodeComplex -> z ) <- #z
+        depth <- #depth
+        if magnitude z > 4 || depth > maxDepth
+        then break @1
+        else do
+          #z     .= codeComplex ( z * z + c )
+          #depth .= depth + 1
+
+      depth <- #depth
+      #total %= (+depth)
+
+      pure ()
+
+    total <- #total
+    let t = log ( fromIntegral total * xWidth * yWidth )
+          / log ( fromIntegral maxDepth )
+
+    let col = gradient t (Lit sunset)
+
+    #out_colour .= col
+
+mkRescaledComplex :: Code (V 2 Float) -> CodeComplex Float
+mkRescaledComplex (Vec2 x y) =
+  ( (x - 960) / 250 ) :+: ( (y - 540) / 250 )
+
+supersamplingLoop
+  :: ( Code Word32 -> Code Word32 -> Program _s _s () )
+  -> Program _s _s ()
+supersamplingLoop prog = locally do
+  #ssX #= 0
+  #ssY #= 0
+  while ( ( xSamples > ) <<$>> #ssX ) do
+    ssX <- #ssX
+    #ssY .= 0
+    while ( ( ySamples > ) <<$>> #ssY ) do
+      ssY <- #ssY
+      embed $ prog ssX ssY
+      #ssY %= (+1)
+    #ssX %= (+1)
+  pure ()
 
 gradient :: forall n. KnownNat n
          => Code Float
@@ -102,72 +171,6 @@ sunset = MkArray . fromJust . Vector.fromList $
        , V4 1    0.91 0.6  1
        , V4 1    1    1    1
        ]
-
-maxDepth :: Code Word32
-maxDepth = 256
-
-xSamples, ySamples :: Code Word32
-xSamples = 4
-ySamples = 4
-
-xWidth, yWidth :: Code Float
-xWidth = recip . fromIntegral $ xSamples
-yWidth = recip . fromIntegral $ ySamples
-
-fragment :: ShaderModule "main" FragmentShader FragmentDefs _
-fragment = shader do
-
-    ~(Vec4 x y _ _) <- #gl_FragCoord
-    ~(Vec2 mx my) <- use @(Name "ubo" :.: Name "mousePos")
-
-    let
-      -- disambiguate to help type inference
-      (#<) :: _ => Program i i ( Code a ) -> Program i i ( Code a ) -> Program i i ( Code Bool )
-      (#<) = (<)
-
-    #total #= ( 0 :: Code Word32 )
-
-    #xSampleNo #= ( 0 :: Code Word32 )
-    while ( #xSampleNo #< pure xSamples ) do
-
-      #ySampleNo #= ( 0 :: Code Word32 )
-      while ( #ySampleNo #< pure ySamples ) do
-
-
-        xNo <- #xSampleNo
-        yNo <- #ySampleNo
-
-        let
-          dx, dy :: Code Float
-          dx = ( fromIntegral xNo + 0.5 ) * xWidth - 0.5
-          dy = ( fromIntegral yNo + 0.5 ) * xWidth - 0.5
-
-        #pos   #= Vec2 ((x+dx-960)/250) ((y+dy-540)/250)
-        #depth #= ( 0 :: Code Word32 )
-
-        loop do
-          pos   <- #pos
-          depth <- #depth
-          if ( pos ^.^ pos > 4 || depth > maxDepth )
-          then break @1
-          else do
-            #pos   .= complexSquare pos ^+^ Vec2 ((mx-960)/600) ((my-540)/600)
-            #depth .= depth + 1
-
-        depth <- #depth
-        #total %= (+depth)
-
-        #ySampleNo %= (+1)
-      #xSampleNo %= (+1)
-
-
-    total <- #total
-    t <- let' @( Code Float )
-        $ log ( fromIntegral total * xWidth * yWidth ) / log ( fromIntegral maxDepth )
-
-    let col = gradient t (Lit sunset)
-
-    #out_colour .= col
 
 ------------------------------------------------
 -- compiling
