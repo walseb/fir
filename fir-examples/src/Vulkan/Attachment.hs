@@ -133,7 +133,23 @@ presentableColorAttachmentDescription colorFormat =
         , initialLayout  = Vulkan.IMAGE_LAYOUT_UNDEFINED
         , finalLayout    = Vulkan.IMAGE_LAYOUT_PRESENT_SRC_KHR
         }
-        
+
+preservedColorAttachmentDescription :: Vulkan.Format -> ( Vulkan.AttachmentDescription, AttachmentType )
+preservedColorAttachmentDescription colorFormat =
+  ( description, ColorAttachment )
+  where
+    description =
+      Vulkan.AttachmentDescription
+        { flags          = Vulkan.zero
+        , format         = colorFormat
+        , samples        = Vulkan.SAMPLE_COUNT_1_BIT
+        , loadOp         = Vulkan.ATTACHMENT_LOAD_OP_LOAD
+        , storeOp        = Vulkan.ATTACHMENT_STORE_OP_STORE
+        , stencilLoadOp  = Vulkan.ATTACHMENT_LOAD_OP_DONT_CARE
+        , stencilStoreOp = Vulkan.ATTACHMENT_STORE_OP_DONT_CARE
+        , initialLayout  = Vulkan.IMAGE_LAYOUT_UNDEFINED
+        , finalLayout    = Vulkan.IMAGE_LAYOUT_PRESENT_SRC_KHR
+        }
 
 depthAttachmentDescription :: Vulkan.Format -> ( Vulkan.AttachmentDescription, AttachmentType )
 depthAttachmentDescription depthFormat =

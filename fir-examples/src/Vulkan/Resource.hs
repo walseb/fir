@@ -34,9 +34,13 @@ module Vulkan.Resource
   , SampledImage, SampledImages
   , TopLevelAS, TopLevelASes
   , initialiseResources
+
+  , createDescriptorPool
   ) where
 
 -- base
+import Control.Arrow
+  ( first )
 import Data.Bits
   ( (.|.) )
 import Data.Coerce
@@ -80,7 +84,7 @@ import Control.Monad.Log
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( allocate )
+  ( ResourceT, ReleaseKey, allocate )
 
 -- text-short
 import Data.Text.Short
@@ -251,8 +255,8 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
         resourceFlags
         []
 
-    descriptorTypes :: [ Vulkan.DescriptorType ]
-    descriptorTypes = map fst descriptorTypesAndFlags
+    descriptorTypes :: [ ( Vulkan.DescriptorType, Int ) ]
+    descriptorTypes = map ( \ ( ty, _ ) -> ( ty, 1 ) ) descriptorTypesAndFlags
     n :: Int
     n = fromIntegral ( natVal' @n proxy# )
     nb :: ShortText
@@ -260,13 +264,13 @@ initialiseResources physicalDevice device resourceFlags resourcesPre = do
 
   descriptorPool      <-
     logDebug ( "Creating descriptor pool for " <> nb <> " sets of descriptors, each with types:\n" <> ShortText.pack ( show descriptorTypes ) )
-      *> createDescriptorPool device n descriptorTypes
+      *> ( snd <$> createDescriptorPool device n descriptorTypes )
   descriptorSetLayout <-
     logDebug "Creating descriptor set layout"
       *> createDescriptorSetLayout device descriptorTypesAndFlags
   descriptorSets      <-
     logDebug ( "Allocating " <> nb <> " descriptor sets" )
-      *> allocateDescriptorSets @n device descriptorPool descriptorSetLayout
+      *>  allocateDescriptorSets @n device descriptorPool descriptorSetLayout
 
   ( resourcesPost :: resources n Post )
      <- logDebug "Initialising resources" *>
@@ -339,9 +343,9 @@ createDescriptorPool
   :: MonadVulkan m
   => Vulkan.Device
   -> Int
-  -> [ Vulkan.DescriptorType ]
-  -> m Vulkan.DescriptorPool
-createDescriptorPool device maxSets descTypes = snd <$> Vulkan.withDescriptorPool device createInfo Nothing allocate
+  -> [ ( Vulkan.DescriptorType, Int ) ]
+  -> m ( ReleaseKey, Vulkan.DescriptorPool )
+createDescriptorPool device maxSets descTypes = Vulkan.withDescriptorPool device createInfo Nothing allocate
 
     where
       poolSizes :: [ Vulkan.DescriptorPoolSize ]
@@ -349,7 +353,7 @@ createDescriptorPool device maxSets descTypes = snd <$> Vulkan.withDescriptorPoo
         counts descTypes <&> \ ( descType, descCount ) ->
           Vulkan.DescriptorPoolSize
           { Vulkan.type'           = descType
-          , Vulkan.descriptorCount = fromIntegral maxSets * descCount
+          , Vulkan.descriptorCount = fromIntegral $ maxSets * descCount
           }
       createInfo :: Vulkan.DescriptorPoolCreateInfo '[]
       createInfo =
@@ -379,8 +383,8 @@ allocateDescriptorSets dev descriptorPool layout0 = Boxed.Vector.toList . snd <$
         , Vulkan.setLayouts     = Boxed.Vector.replicate count layout0
         }
 
-counts :: (Ord a, Num i) => [ a ] -> [ (a, i) ]
-counts = Map.toList . foldr ( \ a -> Map.insertWith (+) a 1 ) Map.empty
+counts :: ( Ord a, Num i ) => [ ( a, i ) ] -> [ ( a, i ) ]
+counts = Map.toList . foldr ( uncurry $ Map.insertWith (+) ) Map.empty
 
 
 updateDescriptorSets

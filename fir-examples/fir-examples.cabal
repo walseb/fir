@@ -188,6 +188,21 @@ library
       , vulkan-utils
           >= 0.4 && < 0.5
 
+library fir-examples-dear-imgui
+
+  import: base-common
+
+  hs-source-dirs:
+      src
+
+  exposed-modules:
+      FIR.Examples.DearImGui
+
+  build-depends:
+      fir
+    , dear-imgui
+        ^>= 1.0.0
+
 ----------------------------------------------------------------
 -- Examples.
 
@@ -508,3 +523,35 @@ executable Texture
 
   build-depends:
     texture-shaders
+
+-----------------------------------
+-- Toy
+
+library toy-shaders
+
+  import: shaders-common
+
+  exposed-modules:
+    FIR.Examples.Toy.Shaders
+
+  build-depends:
+    fir-examples-dear-imgui
+
+executable Toy
+
+  import: apps-common
+
+  main-is:
+    Main.hs
+
+  other-modules:
+    FIR.Examples.Toy.Application
+
+  hs-source-dirs:
+    examples/exes/Toy
+
+  build-depends:
+      fir-examples-dear-imgui
+    , toy-shaders
+    , dear-imgui
+        ^>= 1.0.0

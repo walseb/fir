@@ -349,8 +349,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
 
   withSwapchainInfo aSwapchainInfo \ ( swapchainInfo@(SwapchainInfo {..}) :: SwapchainInfo numImages ) -> do
 
-    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
-    queue       <- getQueue device 0
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
 
     ( topLevelAS
       , SceneData

@@ -492,15 +492,16 @@ createSampler dev = snd <$> Vulkan.withSampler dev createInfo Nothing allocate
 createCommandPool
   :: MonadVulkan m
   => Vulkan.Device
-  -> Int
-  -> m ( ReleaseKey, Vulkan.CommandPool )
-createCommandPool dev queueFamilyIndex = Vulkan.withCommandPool dev createInfo Nothing allocate
+  -> Vulkan.CommandPoolCreateFlagBits
+  -> Word32
+  -> m Vulkan.CommandPool
+createCommandPool dev flags queueFamilyIndex = snd <$> Vulkan.withCommandPool dev createInfo Nothing allocate
   where
     createInfo :: Vulkan.CommandPoolCreateInfo
     createInfo =
       Vulkan.CommandPoolCreateInfo
-        { Vulkan.flags            = Vulkan.zero
-        , Vulkan.queueFamilyIndex = fromIntegral queueFamilyIndex
+        { Vulkan.flags            = flags
+        , Vulkan.queueFamilyIndex = queueFamilyIndex
         }
 
 
@@ -517,6 +518,22 @@ allocateCommandBuffer dev commandPool = second Boxed.Vector.head <$> Vulkan.with
         { Vulkan.commandPool        = commandPool
         , Vulkan.level              = Vulkan.COMMAND_BUFFER_LEVEL_PRIMARY
         , Vulkan.commandBufferCount = 1
+        }
+
+allocatePrimaryCommandBuffers
+  :: MonadVulkan m
+  => Vulkan.Device
+  -> Vulkan.CommandPool
+  -> Word32
+  -> m ( ReleaseKey, Boxed.Vector Vulkan.CommandBuffer )
+allocatePrimaryCommandBuffers dev commandPool count = Vulkan.withCommandBuffers dev allocInfo allocate
+  where
+    allocInfo :: Vulkan.CommandBufferAllocateInfo
+    allocInfo =
+      Vulkan.CommandBufferAllocateInfo
+        { Vulkan.commandPool        = commandPool
+        , Vulkan.level              = Vulkan.COMMAND_BUFFER_LEVEL_PRIMARY
+        , Vulkan.commandBufferCount = count
         }
 
 

@@ -328,8 +328,7 @@ texture = runVulkan initialState do
 
     logoSampler <- createSampler device
 
-    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
-    queue       <- getQueue device 0
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
 
     ( _copyCommandBufferKey, logoCopyCommandBuffer ) <- allocateCommandBuffer device commandPool
 

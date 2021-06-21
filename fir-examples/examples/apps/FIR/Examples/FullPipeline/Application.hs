@@ -334,7 +334,7 @@ fullPipeline = runVulkan initialState do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
     queue       <- getQueue device 0
 
     (_, nextImageSem ) <- createSemaphore device

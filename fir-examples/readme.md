@@ -15,6 +15,7 @@
     - [Texture sampling](#texture)
     - [Ising model](#ising)
     - [Julia set](#julia)
+    - [Shader toy](#toy)
     - [Offscreen rendering](#offscreen)
     - [Bézier curves](#bezier)
 
@@ -210,6 +211,25 @@ Demonstrates usage of shared local memory in a compute shader, synchronised usin
 </div>
 
 Interactive Julia set rendering, computed within a fragment shader.
+
+<a name="toy"></a>
+### Shader toy
+<div align="center">
+[Application](examples/apps/FIR/Examples/Toy/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Toy/Shaders.hs)
+</div>
+
+Shader toy example using Dear ImGui to provide interactive sliders whose values are passed on to the shader.
+
+__Note:__  this requires a manual installation of the Haskell `dear-imgui` package,
+because the `dear-imgui` package is not yet available on Hackage and contains an external submodule which
+isn't fetched by `extra-src-repository` in `cabal`.
+
+To allow `cabal` to use `Dear ImGui`, clone the [Dear ImGui](https://github.com/haskell-game/dear-imgui.hs)
+repository manually and then add it to the `cabal.project.local` file in the `fir-examples` subdirectory:
+
+```
+packages: path/to/your/DearImGui/package
+```
 
 <a name="offscreen"></a>
 ### Offscreen rendering

@@ -289,8 +289,7 @@ offscreen = runVulkan () do
   -- Create command buffers and record commands into them.
 
 
-  commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
-  queue       <- getQueue device 0
+  commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
 
   pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
   let pipelineInfo = VkPipelineInfo extent Vulkan.SAMPLE_COUNT_1_BIT pipelineLayout

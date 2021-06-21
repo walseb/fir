@@ -20,10 +20,10 @@ import Data.Bits
   ( (.|.) )
 import Data.Foldable
   ( toList )
-import Data.Maybe
-  ( fromMaybe, mapMaybe )
 import Data.Kind
   ( Type )
+import Data.Maybe
+  ( fromMaybe, mapMaybe )
 import Foreign.C.String
   ( CString )
 import Foreign.C.Types
@@ -199,9 +199,11 @@ data instance ContextSwapchainInfo WithSwapchain where
 
 data VulkanContext ( ctx :: RenderingContext )
   = VulkanContext
-  { physicalDevice   :: Vulkan.PhysicalDevice
+  { vkInstance       :: Vulkan.Instance
+  , physicalDevice   :: Vulkan.PhysicalDevice
   , device           :: Vulkan.Device
   , queueFamilyIndex :: Int
+  , queue            :: Vulkan.Queue
   , aSwapchainInfo   :: ContextSwapchainInfo ctx
   }
 
@@ -273,4 +275,5 @@ initialiseContext instanceType appName ( VulkanRequirements { instanceRequiremen
       V.withSized swapchainImageVec \ swapchainImages -> do
         let swapchainInfo = SwapchainInfo {..}
         pure ( device, ASwapchainInfo swapchainInfo )
+  queue  <- Vulkan.getDeviceQueue device ( fromIntegral queueFamilyIndex ) 0
   pure ( VulkanContext {..} )

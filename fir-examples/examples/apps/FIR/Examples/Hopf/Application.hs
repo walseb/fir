@@ -323,8 +323,7 @@ hopf = runVulkan initialState do
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
-    queue       <- getQueue device 0
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
 
     (_, nextImageSem ) <- createSemaphore device
     (_, submitted    ) <- createSemaphore device

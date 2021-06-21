@@ -63,6 +63,7 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan.Zero as Vulkan
 
 -- fir
 import FIR
@@ -253,7 +254,7 @@ logo = runVulkan initialStateLogo do
     -------------------------------------------
     -- Create a command buffer and record the commands into it.
 
-    commandPool <- logDebug "Creating command pool" *> ( snd <$> createCommandPool device queueFamilyIndex )
+    commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
     queue       <- getQueue device 0
 
     (_, nextImageSem ) <- createSemaphore device

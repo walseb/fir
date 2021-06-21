@@ -43,3 +43,6 @@ source-repository-package
   type: git
   location: https://github.com/sheaf/generic-lens
   tag: e2b4e7d77beaa094c8137b9f7a1f860a6469d837
+
+package dear-imgui
+  flags: +sdl2 -glfw -opengl2 -opengl3 +vulkan -examples
