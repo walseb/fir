@@ -59,6 +59,8 @@ type InputData :: ControllerRef -> Type
 type InputData ref =
   Struct
     '[ "mousePos"  ':-> V 2 Float
+     , "zoom"      ':-> Float
+     , "origin"    ':-> V 2 Float
      , "scancodes" ':-> Array 512 Word32
      , "imGuiData" ':-> ImGuiData ref
      ]
@@ -66,18 +68,20 @@ type InputData ref =
 type ImGuiData :: ControllerRef -> Type
 type ImGuiData ref =
   Struct
-    '[ "slider1" ':-> ControllerData ref Float
-     , "slider2" ':-> ControllerData ref Float
+    '[ "color"    ':-> ControllerData ref Float
+     , "max_iter" ':-> ControllerData ref Float
+     , "map_mode" ':-> ControllerData ref Int32
      ]
 
 initImGuiData :: ImGuiData InitValue
 initImGuiData
-  =  ( "Slider 1", Slider, 0 )
-  :& ( "Slider 2", Slider, 0 )
+  =  ( "Color", Slider, 0 )
+  :& ( "Iterations", Slider, 0 )
+  :& ( "Map Mode", Toggle, 0 )
   :& End
 
 initInputData :: InputData Value
-initInputData = V2 0 0 :& Prelude.pure 0 :& controllerInitValues initImGuiData :& End
+initInputData = V2 0 0 :& 0 :& V2 0 0 :& Prelude.pure 0 :& controllerInitValues initImGuiData :& End
 
 ------------------------------------------------
 -- pipeline input
@@ -121,30 +125,30 @@ xWidth, yWidth :: Code Float
 xWidth = recip . fromIntegral $ xSamples
 yWidth = recip . fromIntegral $ ySamples
 
-pixel2Coord :: Code Float -> Code (V 4 Float) -> Code (V 2 Float)
-pixel2Coord range (Vec4 pixX' pixY' _ _) =
+pixel2Coord :: Code Float -> Code (V 2 Float) -> Code (V 4 Float) -> Code (V 2 Float)
+pixel2Coord range (Vec2 centerX centerY) (Vec4 pixX' pixY' _ _) =
   let (pixX, pixY) = if inverseCoord then (pixY', pixX') else (pixX', pixY')
-      (uvX, uvY) = (pixX / screenX, pixY / screenY)
-      x = uvX * range - centerX
-      y = uvY * range - centerY
+      (uvX, uvY) = (pixX / screenXF, pixY / screenYF)
+      coordX = (screenXF / screenYF) * (uvX - 0.5)
+      coordY = (-1) * (uvY - 0.5)
+      x = centerX + coordX * range
+      y = centerY + coordY * range
    in Vec2 x y
 
 -- Params begins
 
 inverseCoord :: Bool
-inverseCoord = True
+inverseCoord = False
 
-screenX, screenY :: Code Float
-(screenX, screenY) = (500, 500)
+screenX, screenY :: Word32
+(screenX, screenY) = (800, 600)
 
-centerX, centerY :: Code Float
-(centerX, centerY) = (0, 0)
+screenXF, screenYF :: Code Float
+screenXF =  Lit (fromIntegral screenX)
+screenYF =  Lit (fromIntegral screenY)
 
 grad_freq :: Code Float
 grad_freq = 0.6
-
-max_iter' :: Word32
-max_iter' = 100
 
 seed :: Code (V 2 Float)
 seed = Vec2 (-0.7477055835083013) (-2.692868835794263)
@@ -153,24 +157,29 @@ seed = Vec2 (-0.7477055835083013) (-2.692868835794263)
 fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
   gl_FragCoord <- #gl_FragCoord
-  range' <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "slider1")
+  color <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "color")
+  max_iter' <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "max_iter")
+  map_mode' <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "map_mode")
+  range <- use @(Name "ubo" :.: Name "zoom")
+  origin <- use @(Name "ubo" :.: Name "origin")
 
-  let range = 1000 * range'
   let escape = 4242
-  let max_iter = 100
+      map_mode = map_mode' /= 0
+  let max_iter :: Code Word32
+      max_iter = 100 + (250 * round max_iter')
 
   #modulus #= (0 :: Code Float)
   #mean #= (0 :: Code Float)
 
   #iter #= (0 :: Code Word32)
 
-  #z #= pixel2Coord range gl_FragCoord
+  let pixelCoord = pixel2Coord range origin gl_FragCoord
+
   #depth #= (0 :: Code Word32)
 
-  -- let Vec2 mouseX mouseY = pixel2Coord (Vec4 mx my 0 0)
+  #z #=   (if map_mode then Lit (V2 0 0) else pixelCoord)
+  let c = (if map_mode then pixelCoord else seed)
 
-  -- let Vec2 x y = seed
-  let c = seed -- Vec2 (x + mouseX) (y + mouseY)
   loop do
     iter <- #iter
     modulus <- #modulus
@@ -206,11 +215,23 @@ fragment = shader do
           let ml = iterF - log (log (grad_freq * modulus)) / log 2 + log (log escape) / log 2
               res = ml / fromIntegral max_iter
            in res
-  let col = gradient t (Lit sunset)
+
+  let col = if map_mode && pixelCoord `nearBy` seed
+              then Lit seedColor
+              else gradient ((1 + 7 * color) * t) (Lit sunset)
 
   --let col' = Vec4 t 0.2 0.1 0.5
 
   #out_colour .= col
+
+nearBy :: Code (V 2 Float) -> Code (V 2 Float) -> Code Bool
+nearBy (Vec2 x y) (Vec2 x' y') =
+  if abs (x - x') < dist && abs (y - y') < dist
+    then Lit True
+    else Lit False
+  where
+    dist :: Code Float
+    dist = 0.01
 
 mkRescaledComplex :: Code (V 2 Float) -> CodeComplex Float
 mkRescaledComplex (Vec2 x y) =
@@ -230,6 +251,8 @@ gradient t colors
         s :: Code Float
         s = (n-1) * t - fromIntegral i
 
+seedColor :: V 4 Float
+seedColor = V4 0.9843 0.2823 0.7686 1.0
 
 sunset :: Array 9 (V 4 Float)
 sunset = MkArray . fromJust . Vector.fromList $

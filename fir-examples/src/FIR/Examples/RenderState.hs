@@ -21,6 +21,7 @@ module FIR.Examples.RenderState
   , move
   , modelViewProjection
   , camera
+  , pos2Coord
   ) where
 
 -- base
@@ -108,11 +109,13 @@ pattern Quit :: Quit
 pattern Quit = MkQuit (Any True)
 
 data Input = Input
-  { keysDown    :: [SDL.Scancode]
-  , keysPressed :: [SDL.Scancode]
-  , mousePos    :: V 2 Float
-  , mouseRel    :: V 2 Float
-  , quitEvent   :: Quit
+  { keysDown         :: [SDL.Scancode]
+  , keysPressed      :: [SDL.Scancode]
+  , mouseButtonsDown :: [SDL.MouseButton]
+  , mousePos         :: V 2 Float
+  , mouseRel         :: V 2 Float
+  , mouseWheel       :: Int
+  , quitEvent        :: Quit
   } deriving Show
 
 data Action = Action
@@ -134,11 +137,13 @@ data Observer = Observer
 nullInput :: Input
 nullInput
   = Input
-    { keysDown    = []
-    , keysPressed = []
-    , mousePos    = V2 0 0
-    , mouseRel    = V2 0 0
-    , quitEvent   = coerce False
+    { keysDown         = []
+    , keysPressed      = []
+    , mouseButtonsDown = []
+    , mousePos         = V2 0 0
+    , mouseRel         = V2 0 0
+    , mouseWheel       = 0
+    , quitEvent        = coerce False
     }
 
 initialObserver :: Observer
@@ -198,6 +203,12 @@ onSDLInput input (SDL.KeyboardEvent ev)
                                , keysPressed = keyCode : filter (/= keyCode) (keysPressed input)
                                }
          SDL.Released -> input { keysDown = filter (/= keyCode) (keysDown input) }
+onSDLInput input (SDL.MouseButtonEvent ev)
+  = let button = SDL.mouseButtonEventButton ev
+        down = filter (/= button) (mouseButtonsDown input)
+    in case SDL.mouseButtonEventMotion ev of
+      SDL.Pressed  -> input { mouseButtonsDown = button : down }
+      SDL.Released -> input { mouseButtonsDown = down }
 onSDLInput input (SDL.MouseMotionEvent ev)
   = input { mousePos = fmap Prelude.fromIntegral (V2 px py)
           , mouseRel = fmap ((* 0.003) . Prelude.fromIntegral) (V2 rx ry)
@@ -205,6 +216,10 @@ onSDLInput input (SDL.MouseMotionEvent ev)
     where
       SDL.P (SDL.V2 px py) = SDL.mouseMotionEventPos       ev
       SDL.V2        rx ry  = SDL.mouseMotionEventRelMotion ev
+onSDLInput input (SDL.MouseWheelEvent ev)
+  = input { mouseWheel = mouseWheel input + Prelude.fromIntegral wheelYOffset }
+    where
+      SDL.V2 _ wheelYOffset = SDL.mouseWheelEventPos ev
 onSDLInput input _ = input
 
 
@@ -261,3 +276,49 @@ camera Observer { angles = V2 x y, position } mbOrientation
       up      = rotate orientation ( V3 0 (-1) 0 )
       right   = rotate orientation ( V3 1   0  0 )
     in position :& right :& up :& forward :& End
+
+{-| 'pos2Coord' convert a mouse position to a plane coordinate.
+
+Screen is defined in pixels.
+The plane is defined by the center coordinate (the @x@ mark) and
+a range: the width of the screen in the plane (the dotted line).
+The mouse position is defined in pixels (the @o@ mark).
+
+ 0 _________  screenX
+  | o       |
+  |....x....|
+  |         |
+  |_________|
+ /
+ screenY
+
+Thus for a screen (800, 600), with a center at (0, 0) of range (1):
+>>> let screen0 = pos2Coord (V2 800 800) (V2 0 0) 1
+>>> screen0 (V2 0 0)
+V2 -0.5 0.5
+>>> screen0 (V2 800 800)
+V2 0.5 -0.5
+>>> screen0 (V2 400 400)
+V2 0.0 -0.0
+>>> screen0 (V2 0 800)
+V2 -0.5 -0.5
+
+The ratio is preserved for range
+>>> let screen1 = pos2Coord (V2 800 600) (V2 0 0) 1
+>>> screen1 (V2 800 600)
+V2 0.6666667 -0.5
+-}
+
+pos2Coord :: V 2 Word32 -> V 2 Float -> Float -> V 2 Float -> V 2 Float
+pos2Coord (V2 screenX' screenY') (V2 centerX centerY) range (V2 posX posY) =
+  let
+    (screenX, screenY) = (Prelude.fromIntegral screenX', Prelude.fromIntegral screenY')
+    -- normalize mouse coordinate in a [0..1] range
+    (uvX, uvY) = (posX / screenX, posY / screenY)
+    -- move to plane coordinate and adjust for screen ratio
+    coordX = (screenX / screenY) * (uvX - 0.5)
+    coordY = (-1) * (uvY - 0.5)
+    -- adjust for center and range
+    x = centerX + coordX * range
+    y = centerY + coordY * range
+   in V2 x y

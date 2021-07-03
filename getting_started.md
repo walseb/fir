@@ -510,6 +510,13 @@ Convenience functionality to create Vulkan graphics pipelines from such informat
 <a name="syntactic"></a>
 ## Manipulating custom data types
 
+To allow concret types to be internalised and compiled to *SPIR-V*, one needs to convert them to AST. For example:
+
+```haskell
+toCode :: Float -> Code Float
+toCode x = Lit x
+```
+
 To allow user-defined types to be internalised and compiled to *SPIR-V*, one needs to implement an instance of the `Syntactic` typeclass:
 
 ```haskell

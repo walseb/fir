@@ -23,7 +23,7 @@ module FIR.Examples.Toy.Application ( toy ) where
 import Control.Exception
   ( throw )
 import Control.Monad
-  ( when, void )
+  ( when, unless, void )
 import Data.Foldable
   ( traverse_ )
 import Data.String
@@ -34,6 +34,10 @@ import Data.Word
   ( Word32 )
 import GHC.Generics
   ( Generic )
+import Foreign.C.Types
+  ( CInt (..))
+import Data.IORef
+  ( newIORef, readIORef, writeIORef)
 
 -- dear-imgui
 import qualified DearImGui            as ImGui
@@ -57,6 +61,7 @@ import qualified Control.Monad.Trans.Resource as ResourceT
 -- sdl2
 import qualified SDL
 import qualified SDL.Raw.Event as SDL
+import qualified SDL.Raw.Timer as SDL hiding (delay)
 
 -- text-short
 import Data.Text.Short
@@ -193,8 +198,8 @@ toy = runVulkan initialState do
   ( window, windowExtensions ) <-
     initialiseWindow
       WindowInfo
-        { width      = 1920
-        , height     = 1080
+        { width      = CInt (fromIntegral screenX)
+        , height     = CInt (fromIntegral screenY)
         , windowName = appName
         , mouseMode  = SDL.AbsoluteLocation
         }
@@ -408,109 +413,203 @@ toy = runVulkan initialState do
     -- launch shader reload watcher, which writes command buffers to use to a TVar
     resourcesTVar <- statelessly $ shaderReloadWatcher device shaders recordAllCommandsFromShaders
 
+    -- keep track of plane position and zoom
+    zoomRef <- liftIO $ newIORef 3.7238941
+    scrollRef <- liftIO $ newIORef 0
+    originRef <- liftIO $ newIORef (V2 (-0.33162025) (-1.6875764))
+    mouseDownRef <- liftIO $ newIORef False
+
+    let
+      renderFrame paused fps = do
+
+        ----------------
+        -- shader reloading
+
+        ( updatedCommands, updatedScreenshotCommands )
+          <- statelessly ( snd <$> readTVarWithCleanup resourcesTVar )
+
+        ----------------
+        -- input
+
+        imguiWantMouse <- ImGui.wantCaptureMouse
+        imguiWantKeyboard <- ImGui.wantCaptureKeyboard
+        inputEvents' <- map SDL.eventPayload <$> pollEventsWithImGui
+        prevInput <- use _input
+        let
+          imguiWantInput = imguiWantMouse || imguiWantKeyboard
+          inputEvents =
+            if imguiWantInput
+              then []
+              else inputEvents'
+          prevAction = interpretInput 1 prevInput
+          newInput = foldl onSDLInput prevInput inputEvents
+          action   = interpretInput 1 newInput
+
+        mouseClicked <- liftIO do
+          mouseDown <- readIORef mouseDownRef
+          if SDL.ButtonLeft `elem` mouseButtonsDown newInput
+            then
+              if mouseDown
+                then
+                  -- The mouse is still down, and we already handle the event
+                  pure False
+                else do
+                  -- It is the first event
+                  writeIORef mouseDownRef True
+                  pure True
+            else do
+              -- The mouse has been released
+              writeIORef mouseDownRef False
+              pure False
+
+        scroll <- liftIO do
+          prevScroll <- readIORef scrollRef
+          let currentScroll = mouseWheel newInput
+          writeIORef scrollRef currentScroll
+          pure $ currentScroll - prevScroll
+
+        zoom <- liftIO do
+          currentZoom <- readIORef zoomRef
+          if scroll /= 0
+            then do
+              let
+                offset = if scroll < 0 then 0.1 else -0.1
+                newZoom = currentZoom + offset * currentZoom
+              liftIO $ writeIORef zoomRef newZoom
+              pure newZoom
+            else
+              pure currentZoom
+
+        origin <- liftIO do
+          currentOrigin <- readIORef originRef
+          currentZoom <- readIORef zoomRef
+          if scroll /= 0 || mouseClicked
+            then do
+              let
+                mousePos' = mousePos newInput
+                newOrigin = pos2Coord (V2 screenX screenY) currentOrigin currentZoom mousePos'
+              -- TODO: adjust newOrigin progressively to avoid jumping too far on scroll.
+              writeIORef originRef newOrigin
+              putStrLn $ "Coordinate changed to: " <> show zoom <> " @ " <> show newOrigin
+              pure newOrigin
+            else pure currentOrigin
+
+        pos <-
+          if locate action
+          then do void $ SDL.setMouseLocationMode SDL.RelativeLocation
+                  -- precision mode
+                  pure ( mousePos prevInput ^+^ ( 20 *^ mouseRel newInput ) )
+          else do void $ SDL.setMouseLocationMode SDL.AbsoluteLocation
+                  -- smooth out mouse movement slightly
+                  let pos@(V2 px py) = 0.5 *^ ( mousePos prevInput ^+^ mousePos newInput )
+                  when (locate prevAction) do
+                    ( SDL.warpMouse SDL.WarpCurrentFocus (SDL.P (SDL.V2 (round px) (round py))) )
+                    _ <- SDL.captureMouse True
+                    pure ()
+
+                  pure pos
+        assign _input ( newInput { mousePos = pos, mouseRel = pure 0 } )
+
+        ----------------
+        -- simulation
+
+        -- TODO: unpause for one-frame when the shader is reloaded
+        isPaused <- liftIO $ readIORef paused
+
+        -- update UBO
+        controllerValues <- readControllers imGuiControllerRefs
+
+        let
+          BufferResource _ updateInputData = inputDataUBO resources
+          currentInput :: InputData Value
+          currentInput = pos :& zoom :& origin :& Prelude.pure 0 :& controllerValues :& End
+
+        unless isPaused $ liftIO ( updateInputData currentInput )
+
+        ----------------
+        -- rendering
+
+        nextImageIndex <- acquireNextImage device swapchainInfo nextImageSem
+
+        ImGui.Vulkan.vulkanNewFrame
+        ImGui.SDL.sdl2NewFrame window
+        ImGui.newFrame
+        began <- ImGui.begin "Shader toy!"
+        when began do
+          -- TODO: hide fps when isPaused
+          ImGui.text $ "FPS: " <> show fps
+          ImGui.button (if isPaused then "Play" else "Pause") >>= \case
+            False -> return ()
+            True  -> liftIO $ writeIORef paused (not isPaused)
+          createControllers imGuiControllerRefs
+        ImGui.end
+        ImGui.render
+        drawData <- ImGui.getDrawData
+        let
+          imGuiCommandBuffer :: Vulkan.CommandBuffer
+          imGuiCommandBuffer = imGuiCommandBuffers Boxed.Vector.! fromIntegral nextImageIndex
+          framebuffer :: Vulkan.Framebuffer
+          framebuffer = fst $ framebuffersWithAttachments `V.index` nextImageIndex
+
+        let
+          commandBuffer
+            | takeScreenshot action = updatedScreenshotCommands `V.index` nextImageIndex
+            | otherwise             = updatedCommands           `V.index` nextImageIndex
+
+        unless isPaused $ submitCommandBuffer
+          queue
+          commandBuffer
+          []
+          []
+          Nothing
+
+        beginCommandBuffer imGuiCommandBuffer
+        cmdBeginRenderPass imGuiCommandBuffer imGuiRenderPass framebuffer [clearValue2] swapchainExtent
+        ImGui.Vulkan.vulkanRenderDrawData drawData imGuiCommandBuffer Nothing
+        cmdEndRenderPass imGuiCommandBuffer
+        endCommandBuffer imGuiCommandBuffer
+        submitCommandBuffer
+          queue
+          imGuiCommandBuffer
+          [ ( nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
+          [ submitted ]
+          Nothing
+
+        present queue swapchain nextImageIndex [submitted]
+
+        Vulkan.queueWaitIdle queue
+
+        when ( takeScreenshot action ) $
+          writeScreenshotData shortName device swapchainExtent
+            ( snd ( screenshotImagesAndMemories `V.index` nextImageIndex ) )
+
+        ----------------
+
+        pure ( shouldQuit action )
+
+    paused <- liftIO $ newIORef False
+    fpsRef <- liftIO $ newIORef 0
+
     mainLoop do
+      frameStart <- SDL.getTicks
 
-      ----------------
-      -- shader reloading
+      prevFps <- liftIO $ readIORef fpsRef
+      result <- renderFrame paused prevFps
 
-      ( updatedCommands, updatedScreenshotCommands )
-        <- statelessly ( snd <$> readTVarWithCleanup resourcesTVar )
-
-      ----------------
-      -- input
-
-      inputEvents <- map SDL.eventPayload <$> pollEventsWithImGui
-      prevInput <- use _input
-      let
-        prevAction = interpretInput 1 prevInput
-        newInput = foldl onSDLInput prevInput inputEvents
-        action   = interpretInput 1 newInput
-
-      pos <-
-        if locate action
-        then do void $ SDL.setMouseLocationMode SDL.RelativeLocation
-                -- precision mode
-                pure ( mousePos prevInput ^+^ ( 20 *^ mouseRel newInput ) )
-        else do void $ SDL.setMouseLocationMode SDL.AbsoluteLocation
-                -- smooth out mouse movement slightly
-                let pos@(V2 px py) = 0.5 *^ ( mousePos prevInput ^+^ mousePos newInput )
-                when (locate prevAction) do
-                  ( SDL.warpMouse SDL.WarpCurrentFocus (SDL.P (SDL.V2 (round px) (round py))) )
-                  _ <- SDL.captureMouse True
-                  pure ()
-
-                pure pos
-      assign _input ( newInput { mousePos = pos, mouseRel = pure 0 } )
-
-      ----------------
-      -- simulation
-
-      -- update UBO
-      controllerValues <- readControllers imGuiControllerRefs
+      frameEnd <- SDL.getTicks
 
       let
-        BufferResource _ updateInputData = inputDataUBO resources
-        currentInput :: InputData Value
-        currentInput = pos :& Prelude.pure 0 :& controllerValues :& End
-      
-      liftIO ( updateInputData currentInput )
+        elapsedMS = max 1 $ frameEnd - frameStart
+        fps = 1000 `div` elapsedMS
+        elapsedCap = 17 -- about 60 fps
+        waitMS = elapsedCap - min elapsedCap elapsedMS
 
-      ----------------
-      -- rendering
+      liftIO $ writeIORef fpsRef fps
 
-      nextImageIndex <- acquireNextImage device swapchainInfo nextImageSem
+      -- cap fps
+      SDL.delay $ fromInteger $ toInteger waitMS
 
-      ImGui.Vulkan.vulkanNewFrame
-      ImGui.SDL.sdl2NewFrame window
-      ImGui.newFrame
-      began <- ImGui.begin "Shader toy!"
-      when began do
-        createControllers imGuiControllerRefs
-      ImGui.end
-      ImGui.render
-      drawData <- ImGui.getDrawData
-      let
-        imGuiCommandBuffer :: Vulkan.CommandBuffer
-        imGuiCommandBuffer = imGuiCommandBuffers Boxed.Vector.! fromIntegral nextImageIndex
-        framebuffer :: Vulkan.Framebuffer
-        framebuffer = fst $ framebuffersWithAttachments `V.index` nextImageIndex
-
-      let
-        commandBuffer
-          | takeScreenshot action = updatedScreenshotCommands `V.index` nextImageIndex
-          | otherwise             = updatedCommands           `V.index` nextImageIndex
-
-      submitCommandBuffer
-        queue
-        commandBuffer
-        []
-        []
-        Nothing
-
-      beginCommandBuffer imGuiCommandBuffer
-      cmdBeginRenderPass imGuiCommandBuffer imGuiRenderPass framebuffer [clearValue2] swapchainExtent
-      ImGui.Vulkan.vulkanRenderDrawData drawData imGuiCommandBuffer Nothing
-      cmdEndRenderPass imGuiCommandBuffer
-      endCommandBuffer imGuiCommandBuffer
-      submitCommandBuffer
-        queue
-        imGuiCommandBuffer
-        [ ( nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
-        [ submitted ]
-        Nothing
-
-      present queue swapchain nextImageIndex [submitted]
-
-      Vulkan.queueWaitIdle queue
-
-      when ( takeScreenshot action ) $
-        writeScreenshotData shortName device swapchainExtent
-          ( snd ( screenshotImagesAndMemories `V.index` nextImageIndex ) )
-
-      ----------------
-
-      pure ( shouldQuit action )
-
+      pure result
 
 pollEventsWithImGui :: MonadVulkan m => m [ SDL.Event ]
 pollEventsWithImGui = do

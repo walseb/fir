@@ -15,7 +15,7 @@ import Control.Monad
 import Data.Int
   ( Int32 )
 import Data.IORef
-  ( IORef, readIORef, newIORef )
+  ( IORef, readIORef, newIORef, writeIORef )
 import Data.Kind
   ( Constraint, Type )
 import GHC.TypeLits
@@ -43,7 +43,16 @@ createController controllerName controllerType ref =
   case controllerType of
     Slider ->
       void $ DearImGui.sliderFloat controllerName ref 0.0 1.0
-    Toggle -> pure () -- TODO
+    Toggle -> do
+      bref <- liftIO $ do
+        -- Create a IORef Bool from the original Int32 controller ref
+        val <- readIORef ref
+        newIORef (val /= 0)
+      void $ DearImGui.checkbox controllerName bref
+      liftIO $ do
+        -- Convert back the Bool to the Int32 controller ref value
+        bval <- readIORef bref
+        writeIORef ref (if bval then 1 else 0)
 
 --------------------------------------------------------------------------------
 
