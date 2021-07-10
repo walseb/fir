@@ -315,7 +315,7 @@ juliaSet = runVulkan initialState do
       prevInput <- use _input
       let
         prevAction = interpretInput 1 prevInput
-        newInput = foldl onSDLInput prevInput inputEvents
+        newInput = foldl (onSDLInput window) prevInput inputEvents
         action   = interpretInput 1 newInput
 
       pos <-

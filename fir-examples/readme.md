@@ -218,18 +218,10 @@ Interactive Julia set rendering, computed within a fragment shader.
 [Application](examples/apps/FIR/Examples/Toy/Application.hs)   •   [Shaders](examples/shaders/FIR/Examples/Toy/Shaders.hs)
 </div>
 
-Shader toy example using Dear ImGui to provide interactive sliders whose values are passed on to the shader.
+Shader toy like example using Dear ImGui to provide interactive sliders whose values are passed on to the shader.
 
-__Note:__  this requires a manual installation of the Haskell `dear-imgui` package,
-because the `dear-imgui` package is not yet available on Hackage and contains an external submodule which
-isn't fetched by `extra-src-repository` in `cabal`.
-
-To allow `cabal` to use `Dear ImGui`, clone the [Dear ImGui](https://github.com/haskell-game/dear-imgui.hs)
-repository manually and then add it to the `cabal.project.local` file in the `fir-examples` subdirectory:
-
-```
-packages: path/to/your/DearImGui/package
-```
+Use the mouse wheel and left button to adjust the position.
+In the map mode, use the right button to adjust the seed (represented by a pink square).
 
 <a name="offscreen"></a>
 ### Offscreen rendering

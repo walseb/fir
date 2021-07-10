@@ -446,7 +446,7 @@ ising = runVulkan initialState do
       prevInput <- use _input
       timeNow <- SDL.time
       let
-        newInput = foldl onSDLInput prevInput inputEvents
+        newInput = foldl (onSDLInput window) prevInput inputEvents
         action   = interpretInput 1 newInput
         pos@(V2 px py) = mousePos newInput
         temperature = max 1e-4 $ px / ( 0.3 * Ising.width )

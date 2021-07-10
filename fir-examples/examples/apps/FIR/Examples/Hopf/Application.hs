@@ -375,7 +375,7 @@ hopf = runVulkan initialState do
 
       inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
       prevInput <- use _input
-      let newInput = foldl onSDLInput prevInput inputEvents
+      let newInput = foldl (onSDLInput window) prevInput inputEvents
       let action = interpretInput 0.1 newInput
       assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )
 

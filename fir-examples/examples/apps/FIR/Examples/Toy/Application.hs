@@ -23,7 +23,7 @@ module FIR.Examples.Toy.Application ( toy ) where
 import Control.Exception
   ( throw )
 import Control.Monad
-  ( when, unless, void )
+  ( when, unless )
 import Data.Foldable
   ( traverse_ )
 import Data.String
@@ -49,7 +49,7 @@ import qualified DearImGui.SDL.Vulkan as ImGui.SDL.Vulkan
 
 -- lens
 import Control.Lens
-  ( use, assign )
+  ( Lens', lens, use, assign )
 
 -- logging-effect
 import Control.Monad.Log
@@ -60,7 +60,6 @@ import qualified Control.Monad.Trans.Resource as ResourceT
 
 -- sdl2
 import qualified SDL
-import qualified SDL.Raw.Event as SDL
 import qualified SDL.Raw.Timer as SDL hiding (delay)
 
 -- text-short
@@ -93,9 +92,7 @@ import FIR
   , ModuleRequirements(..)
   )
 import Math.Linear
-  ( pattern V2, pattern V3
-  , (^+^), (*^)
-  )
+  ( pattern V2, pattern V3 )
 
 -- fir-examples
 import FIR.Examples.Common
@@ -116,6 +113,22 @@ import FIR.Examples.DearImGui
   ( ControllerRef(Value)
   , createControllers, createControllerRefs, readControllers
   )
+
+----------------------------------------------------------------------------
+-- Render state
+
+data ToyRenderState
+  = ToyRenderState
+    { inputJulia  :: Input
+    , inputMap    :: Input
+    }
+
+_inputJulia :: Lens' ToyRenderState Input
+_inputJulia = lens inputJulia ( \s v -> s { inputJulia = v } )
+
+_inputMap :: Lens' ToyRenderState Input
+_inputMap = lens inputMap ( \s v -> s { inputMap = v } )
+
 
 ----------------------------------------------------------------------------
 -- Shaders and resources.
@@ -166,6 +179,12 @@ initialResourceSet = ResourceSet
   ( BufferData viewportVertices )
   ( BufferData viewportIndices  )
 
+initialResourceSetMap :: ResourceSet numImagesMap Pre
+initialResourceSetMap = ResourceSet
+  ( BufferData initInputData )
+  ( BufferData viewportVertices )
+  ( BufferData viewportIndices  )
+
 clearValue1, clearValue2 :: Vulkan.ClearValue
 clearValue1 = Vulkan.Color black
   where
@@ -180,7 +199,7 @@ clearValue2 = Vulkan.Color yellow
 -- Application.
 
 toy :: IO ()
-toy = runVulkan initialState do
+toy = runVulkan (ToyRenderState nullInput nullInput) do
 
   -------------------------------------------
   -- Obtain requirements from shaders.
@@ -203,6 +222,7 @@ toy = runVulkan initialState do
         , windowName = appName
         , mouseMode  = SDL.AbsoluteLocation
         }
+
   let
     vulkanReqs = ignoreMinVersion . addInstanceExtensions windowExtensions $ vulkanRequirements reqs
     surfaceInfo =
@@ -218,14 +238,63 @@ toy = runVulkan initialState do
             ]
         }
 
-  VulkanContext{..} <-
+  vkContext <-
     initialiseContext @WithSwapchain Normal appName vulkanReqs
       RenderInfo
         { queueType   = Vulkan.QUEUE_GRAPHICS_BIT
         , surfaceInfo = surfaceInfo
         }
 
+  let
+    queueJulia            = Vulkan.Context.queue vkContext
+    deviceJulia           = Vulkan.Context.device vkContext
+    physicalDeviceJulia   = Vulkan.Context.physicalDevice vkContext
+    queueFamilyIndexJulia = Vulkan.Context.queueFamilyIndex vkContext
+    vkInstanceJulia       = Vulkan.Context.vkInstance vkContext
+    swapchainInfoJulia'    = Vulkan.Context.aSwapchainInfo vkContext
+
   _ <- ResourceT.allocate ImGui.createContext ImGui.destroyContext
+
+  -------------------------------------------
+  -- Initialise map window and Vulkan context.
+
+  ( windowMap, windowMapExtensions ) <-
+    initialiseWindow
+      WindowInfo
+        { width      = CInt (fromIntegral screenX)
+        , height     = CInt (fromIntegral screenY)
+        , windowName = (appName <> "Map")
+        , mouseMode  = SDL.AbsoluteLocation
+        }
+
+  let
+    vulkanReqsMap = ignoreMinVersion . addInstanceExtensions windowMapExtensions $ vulkanRequirements reqs
+    surfaceInfoMap =
+      SurfaceInfo
+        { surfaceWindow = windowMap
+        , preferredFormat =
+            Vulkan.SurfaceFormatKHR
+              Vulkan.FORMAT_B8G8R8A8_UNORM
+              Vulkan.COLOR_SPACE_SRGB_NONLINEAR_KHR
+        , surfaceUsage =
+            [ Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT
+            , Vulkan.IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+            ]
+        }
+
+  vkContextMap <-
+    initialiseContext @WithSwapchain Normal (appName <> "Map") vulkanReqsMap
+      RenderInfo
+        { queueType   = Vulkan.QUEUE_GRAPHICS_BIT
+        , surfaceInfo = surfaceInfoMap
+        }
+
+  let
+    queueMap            = Vulkan.Context.queue vkContextMap
+    deviceMap           = Vulkan.Context.device vkContextMap
+    physicalDeviceMap   = Vulkan.Context.physicalDevice vkContextMap
+    queueFamilyIndexMap = Vulkan.Context.queueFamilyIndex vkContextMap
+    swapchainInfoMap'    = Vulkan.Context.aSwapchainInfo vkContextMap
 
   let
     imGuiDescriptorTypes :: [ ( Vulkan.DescriptorType, Int ) ]
@@ -242,18 +311,24 @@ toy = runVulkan initialState do
       , Vulkan.DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
       , Vulkan.DESCRIPTOR_TYPE_INPUT_ATTACHMENT
       ]
-  imGuiCommandPool <- createCommandPool device Vulkan.COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT ( fromIntegral queueFamilyIndex )
-  ( _imGuiPoolKey, imGuiDescriptorPool ) <- createDescriptorPool device 1000 imGuiDescriptorTypes
+  imGuiCommandPool <- createCommandPool deviceJulia Vulkan.COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT ( fromIntegral queueFamilyIndexJulia )
+  ( _imGuiPoolKey, imGuiDescriptorPool ) <- createDescriptorPool deviceJulia 1000 imGuiDescriptorTypes
 
-  withSwapchainInfo aSwapchainInfo \ ( swapchainInfo@(SwapchainInfo {..}) :: SwapchainInfo numImages ) -> do
+  withSwapchainInfo swapchainInfoJulia' \ ( swapchainInfoJulia :: SwapchainInfo numImages ) ->
+   withSwapchainInfo swapchainInfoMap' \ ( swapchainInfoMap :: SwapchainInfo numImagesMap ) -> do
 
   -------------------------------------------
   -- Create framebuffer attachments.
 
     let
+      swapchainExtentJulia = swapchainExtent swapchainInfoJulia
+      swapchainJulia       = swapchain swapchainInfoJulia
+      surfaceFormatJulia   = surfaceFormat swapchainInfoJulia
+      swapchainImagesJulia = swapchainImages swapchainInfoJulia
+
       width, height :: Num a => a
-      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
-      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtentJulia
+      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtentJulia
 
       extent3D :: Vulkan.Extent3D
       extent3D
@@ -264,53 +339,93 @@ toy = runVulkan initialState do
             }
 
       colFmt :: Vulkan.Format
-      colFmt = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
+      colFmt = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormatJulia
 
     renderPass <- logDebug "Creating a render pass" *>
-      simpleRenderPass device
+      simpleRenderPass deviceJulia
         ( noAttachments
           { colorAttachments = Boxed.Vector.singleton $ presentableColorAttachmentDescription colFmt }
         )
 
     imGuiRenderPass <-
-      simpleRenderPass device
+      simpleRenderPass deviceJulia
         ( noAttachments
           { colorAttachments = Boxed.Vector.singleton $ preservedColorAttachmentDescription colFmt }
         )
 
     framebuffersWithAttachments
       <- logDebug "Creating frame buffers"
-        *> ( for swapchainImages $ \swapchainImage -> do
+        *> ( for swapchainImagesJulia $ \swapchainImage -> do
 
             colorImageView
               <- createImageView
-                    device swapchainImage
+                    deviceJulia swapchainImage
                     Vulkan.IMAGE_VIEW_TYPE_2D
                     colFmt
                     Vulkan.IMAGE_ASPECT_COLOR_BIT
             let attachment = (swapchainImage, colorImageView)
-            framebuffer <- createFramebuffer device renderPass swapchainExtent [colorImageView]
+            framebuffer <- createFramebuffer deviceJulia renderPass swapchainExtentJulia [colorImageView]
             pure (framebuffer, attachment)
          )
 
     screenshotImagesAndMemories <-
-      for swapchainImages $ \ _ ->
-        createScreenshotImage physicalDevice device
+      for swapchainImagesJulia $ \ _ ->
+        createScreenshotImage physicalDeviceJulia deviceJulia
           ( screenshotImageInfo extent3D colFmt )
+
+
+  -------------------------------------------
+  -- Create framebuffer attachments for the map.
+
+    let
+      swapchainExtentMap = swapchainExtent swapchainInfoMap
+      swapchainMap       = swapchain swapchainInfoMap
+      surfaceFormatMap   = surfaceFormat swapchainInfoMap
+      swapchainImagesMap = swapchainImages swapchainInfoMap
+
+      colFmtMap :: Vulkan.Format
+      colFmtMap = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormatMap
+
+    renderPassMap <- logDebug "Creating a render pass for map" *>
+      simpleRenderPass deviceMap
+        ( noAttachments
+          { colorAttachments = Boxed.Vector.singleton $ presentableColorAttachmentDescription colFmtMap }
+        )
+
+    framebuffersWithAttachmentsMap
+      <- logDebug "Creating frame buffers for map"
+        *> ( for swapchainImagesMap $ \swapchainImage -> do
+
+            colorImageView
+              <- createImageView
+                    deviceMap swapchainImage
+                    Vulkan.IMAGE_VIEW_TYPE_2D
+                    colFmtMap
+                    Vulkan.IMAGE_ASPECT_COLOR_BIT
+            let attachment = (swapchainImage, colorImageView)
+            framebuffer <- createFramebuffer deviceMap renderPassMap swapchainExtentMap [colorImageView]
+            pure (framebuffer, attachment)
+         )
+
+    screenshotImagesAndMemoriesMap <-
+      for swapchainImagesMap $ \ _ ->
+        createScreenshotImage physicalDeviceMap deviceMap
+          ( screenshotImageInfo extent3D colFmtMap )
+
 
     -------------------------------------------
     -- Initialise Dear ImGui
 
     let
       imageCount :: Word32
-      imageCount = fromIntegral $ length swapchainImages
+      imageCount = fromIntegral $ length swapchainImagesJulia
       initInfo :: ImGui.Vulkan.InitInfo
       initInfo = ImGui.Vulkan.InitInfo
-        { instance'      = vkInstance
-        , physicalDevice
-        , device
-        , queueFamily    = fromIntegral queueFamilyIndex
-        , queue
+        { instance'      = vkInstanceJulia
+        , physicalDevice = physicalDeviceJulia
+        , device         = deviceJulia
+        , queueFamily    = fromIntegral queueFamilyIndexJulia
+        , queue          = queueJulia
         , pipelineCache  = Vulkan.NULL_HANDLE
         , descriptorPool = imGuiDescriptorPool
         , subpass        = 0
@@ -322,7 +437,7 @@ toy = runVulkan initialState do
         }
 
     logDebug "Allocating Dear ImGui command buffers"
-    imGuiCommandBuffers <- snd <$> allocatePrimaryCommandBuffers device imGuiCommandPool imageCount
+    imGuiCommandBuffers <- snd <$> allocatePrimaryCommandBuffers deviceJulia imGuiCommandPool imageCount
 
     logDebug "Initialising ImGui SDL2 for Vulkan"
     _ <- ResourceT.allocate
@@ -335,10 +450,10 @@ toy = runVulkan initialState do
 
     logDebug "Running one-shot commands to upload ImGui textures"
     logDebug "Creating fence"
-    ( fenceKey, fence ) <- createFence device
+    ( fenceKey, fence ) <- createFence deviceJulia
     logDebug "Allocating one-shot command buffer"
     ( fontUploadCommandBufferKey, fontUploadCommandBuffer ) <-
-      allocateCommandBuffer device imGuiCommandPool
+      allocateCommandBuffer deviceJulia imGuiCommandPool
 
     logDebug "Recording one-shot commands"
     beginCommandBuffer fontUploadCommandBuffer
@@ -346,8 +461,8 @@ toy = runVulkan initialState do
     endCommandBuffer fontUploadCommandBuffer
 
     logDebug "Submitting one-shot commands"
-    submitCommandBuffer queue fontUploadCommandBuffer [] [] ( Just fence )
-    waitForFences device ( WaitAll [ fence ] )
+    submitCommandBuffer queueJulia fontUploadCommandBuffer [] [] ( Just fence )
+    waitForFences deviceJulia ( WaitAll [ fence ] )
 
     logDebug "Finished uploading font objects"
     logDebug "Cleaning up one-shot commands"
@@ -365,32 +480,43 @@ toy = runVulkan initialState do
         GeneralResource
         GeneralResource
 
+      resourceFlagsMap :: ResourceSet numImagesMap Named
+      resourceFlagsMap = ResourceSet
+        ( StageFlags Vulkan.SHADER_STAGE_FRAGMENT_BIT )
+        GeneralResource
+        GeneralResource
+
     imGuiControllerRefs <- liftIO $ createControllerRefs initImGuiData
 
     PostInitialisationResult
       descriptorSetLayout descriptorSets cmdBindBuffers resources
-       <- initialiseResources physicalDevice device resourceFlags initialResourceSet
+       <- initialiseResources physicalDeviceJulia deviceJulia resourceFlags initialResourceSet
+
+    PostInitialisationResult
+      descriptorSetLayoutMap descriptorSetsMap cmdBindBuffersMap resourcesMap
+       <- initialiseResources physicalDeviceMap deviceMap resourceFlagsMap initialResourceSetMap
+
 
     -------------------------------------------
     -- Create command buffers and record commands into them.
 
-    commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
+    commandPool <- logDebug "Creating command pool" *> createCommandPool deviceJulia Vulkan.zero ( fromIntegral queueFamilyIndexJulia )
 
-    (_, nextImageSem ) <- createSemaphore device
-    (_, submitted    ) <- createSemaphore device
+    (_, nextImageSem ) <- createSemaphore deviceJulia
+    (_, submitted    ) <- createSemaphore deviceJulia
 
-    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout device [descriptorSetLayout]
-    let pipelineInfo = VkPipelineInfo swapchainExtent Vulkan.SAMPLE_COUNT_1_BIT pipelineLayout
+    pipelineLayout <- logDebug "Creating pipeline layout" *> createPipelineLayout deviceJulia [descriptorSetLayout]
+    let pipelineInfo = VkPipelineInfo swapchainExtentJulia Vulkan.SAMPLE_COUNT_1_BIT pipelineLayout
 
-    shaders <- logDebug "Loading shaders" *> traverse (\path -> (path, ) <$> loadShader device path) shaderPipeline
+    shaders <- logDebug "Loading shaders" *> traverse (\path -> (path, ) <$> loadShader deviceJulia path) shaderPipeline
 
     let
       recordCommandBuffers pipe =
         for (V.zip descriptorSets framebuffersWithAttachments) $ \ ( descriptorSet, (framebuffer, attachment ) ) ->
           recordSimpleIndexedDrawCall
-            device commandPool framebuffer (renderPass, [clearValue1])
+            deviceJulia commandPool framebuffer (renderPass, [clearValue1])
             descriptorSet cmdBindBuffers
-            ( fst attachment, swapchainExtent )
+            ( fst attachment, swapchainExtentJulia )
             Nothing
             nbIndices
             pipelineLayout pipe
@@ -398,26 +524,75 @@ toy = runVulkan initialState do
         for (V.zip3 descriptorSets framebuffersWithAttachments screenshotImagesAndMemories)
           \ ( descriptorSet, (framebuffer, attachment), (screenshotImage, _) ) ->
             recordSimpleIndexedDrawCall
-              device commandPool framebuffer (renderPass, [clearValue1])
+              deviceJulia commandPool framebuffer (renderPass, [clearValue1])
               descriptorSet cmdBindBuffers
-              ( fst attachment, swapchainExtent )
+              ( fst attachment, swapchainExtentJulia )
               ( Just ( screenshotImage, extent3D ) )
               nbIndices
               pipelineLayout pipe
 
       recordAllCommandsFromShaders = record2CommandBuffersFromShaders
-        ( createGraphicsPipeline device renderPass pipelineInfo )
+        ( createGraphicsPipeline deviceJulia renderPass pipelineInfo )
         recordCommandBuffers
         recordScreenshotCommandBuffers
 
+    -------------------------------------------
+    -- Create command buffers and record commands into them for map.
+
+    commandPoolMap <- logDebug "Creating command pool for map" *> createCommandPool deviceMap Vulkan.zero ( fromIntegral queueFamilyIndexMap )
+
+    (_, nextImageSemMap ) <- createSemaphore deviceMap
+    (_, submittedMap    ) <- createSemaphore deviceMap
+
+    pipelineLayoutMap <- logDebug "Creating pipeline layout for map" *> createPipelineLayout deviceMap [descriptorSetLayoutMap]
+    let pipelineInfoMap = VkPipelineInfo swapchainExtentMap Vulkan.SAMPLE_COUNT_1_BIT pipelineLayoutMap
+
+    shadersMap <- logDebug "Loading shaders for map" *> traverse (\path -> (path, ) <$> loadShader deviceMap path) shaderPipeline
+
+    let
+      recordCommandBuffersMap pipe =
+        for (V.zip descriptorSetsMap framebuffersWithAttachmentsMap) $ \ ( descriptorSetMap, (framebufferMap, attachmentMap ) ) ->
+          recordSimpleIndexedDrawCall
+            deviceMap commandPoolMap framebufferMap (renderPassMap, [clearValue1])
+            descriptorSetMap cmdBindBuffersMap
+            ( fst attachmentMap, swapchainExtentMap )
+            Nothing
+            nbIndices
+            pipelineLayoutMap pipe
+      recordScreenshotCommandBuffersMap pipe =
+        for (V.zip3 descriptorSetsMap framebuffersWithAttachmentsMap screenshotImagesAndMemoriesMap)
+          \ ( descriptorSetMap, (framebufferMap, attachmentMap), (screenshotImageMap, _) ) ->
+            recordSimpleIndexedDrawCall
+              deviceMap commandPoolMap framebufferMap (renderPassMap, [clearValue1])
+              descriptorSetMap cmdBindBuffersMap
+              ( fst attachmentMap, swapchainExtentMap )
+              ( Just ( screenshotImageMap, extent3D ) )
+              nbIndices
+              pipelineLayoutMap pipe
+      recordAllCommandsFromShadersMap = record2CommandBuffersFromShaders
+        ( createGraphicsPipeline deviceMap renderPassMap pipelineInfoMap )
+        recordCommandBuffersMap
+        recordScreenshotCommandBuffersMap
+
     -- launch shader reload watcher, which writes command buffers to use to a TVar
-    resourcesTVar <- statelessly $ shaderReloadWatcher device shaders recordAllCommandsFromShaders
+    resourcesTVar <- statelessly $ shaderReloadWatcher deviceJulia shaders recordAllCommandsFromShaders
+    resourcesMapTVar <- statelessly $ shaderReloadWatcher deviceMap shadersMap recordAllCommandsFromShadersMap
 
     -- keep track of plane position and zoom
-    zoomRef <- liftIO $ newIORef 3.7238941
-    scrollRef <- liftIO $ newIORef 0
-    originRef <- liftIO $ newIORef (V2 (-0.33162025) (-1.6875764))
-    mouseDownRef <- liftIO $ newIORef False
+    juliaObserverRef <- liftIO $ newIORef $
+      initialObserver2D
+        { zoom = 66,
+          origin = V2 0 0
+        }
+
+
+    mapObserverRef <- liftIO $ newIORef $
+      initialObserver2D
+        { zoom = 3.7238941,
+          origin = V2 (-0.33162025) (-1.6875764)
+        }
+
+    juliaSeedRef <- liftIO $ newIORef $ V2 (-0.7477055835083013) (-2.692868835794263)
 
     let
       renderFrame paused fps = do
@@ -428,87 +603,47 @@ toy = runVulkan initialState do
         ( updatedCommands, updatedScreenshotCommands )
           <- statelessly ( snd <$> readTVarWithCleanup resourcesTVar )
 
+        ( updatedCommandsMap, updatedScreenshotCommandsMap )
+          <- statelessly ( snd <$> readTVarWithCleanup resourcesMapTVar )
+
         ----------------
         -- input
 
         imguiWantMouse <- ImGui.wantCaptureMouse
         imguiWantKeyboard <- ImGui.wantCaptureKeyboard
         inputEvents' <- map SDL.eventPayload <$> pollEventsWithImGui
-        prevInput <- use _input
+        prevInput <- use _inputJulia
+        prevInputMap <- use _inputMap
+        prevJuliaObserver <- liftIO $ readIORef juliaObserverRef
+        prevMapObserver <- liftIO $ readIORef mapObserverRef
         let
           imguiWantInput = imguiWantMouse || imguiWantKeyboard
           inputEvents =
             if imguiWantInput
               then []
               else inputEvents'
-          prevAction = interpretInput 1 prevInput
-          newInput = foldl onSDLInput prevInput inputEvents
+          newInput = foldl (onSDLInput window) prevInput inputEvents
+          newInputMap = foldl (onSDLInput windowMap) prevInputMap inputEvents
           action   = interpretInput 1 newInput
 
-        mouseClicked <- liftIO do
-          mouseDown <- readIORef mouseDownRef
-          if SDL.ButtonLeft `elem` mouseButtonsDown newInput
-            then
-              if mouseDown
-                then
-                  -- The mouse is still down, and we already handle the event
-                  pure False
-                else do
-                  -- It is the first event
-                  writeIORef mouseDownRef True
-                  pure True
-            else do
-              -- The mouse has been released
-              writeIORef mouseDownRef False
-              pure False
+          newJuliaObserver@(Observer2D juliaZoom juliaOrigin _ _ _ _ _ _ ) =
+            updateObserver2D prevJuliaObserver (V2 screenX screenY) newInput
 
-        scroll <- liftIO do
-          prevScroll <- readIORef scrollRef
-          let currentScroll = mouseWheel newInput
-          writeIORef scrollRef currentScroll
-          pure $ currentScroll - prevScroll
+          newMapObserver@(Observer2D mapZoom mapOrigin _ mapPos _ _ _ mapRightClicked ) =
+            updateObserver2D prevMapObserver (V2 screenX screenY) newInputMap
 
-        zoom <- liftIO do
-          currentZoom <- readIORef zoomRef
-          if scroll /= 0
+        liftIO $ writeIORef juliaObserverRef newJuliaObserver
+        liftIO $ writeIORef mapObserverRef newMapObserver
+
+        seed <- liftIO
+          if mapRightClicked
             then do
-              let
-                offset = if scroll < 0 then 0.1 else -0.1
-                newZoom = currentZoom + offset * currentZoom
-              liftIO $ writeIORef zoomRef newZoom
-              pure newZoom
-            else
-              pure currentZoom
+              writeIORef juliaSeedRef mapPos
+              pure mapPos
+            else readIORef juliaSeedRef
 
-        origin <- liftIO do
-          currentOrigin <- readIORef originRef
-          currentZoom <- readIORef zoomRef
-          if scroll /= 0 || mouseClicked
-            then do
-              let
-                mousePos' = mousePos newInput
-                newOrigin = pos2Coord (V2 screenX screenY) currentOrigin currentZoom mousePos'
-              -- TODO: adjust newOrigin progressively to avoid jumping too far on scroll.
-              writeIORef originRef newOrigin
-              putStrLn $ "Coordinate changed to: " <> show zoom <> " @ " <> show newOrigin
-              pure newOrigin
-            else pure currentOrigin
-
-        pos <-
-          if locate action
-          then do void $ SDL.setMouseLocationMode SDL.RelativeLocation
-                  -- precision mode
-                  pure ( mousePos prevInput ^+^ ( 20 *^ mouseRel newInput ) )
-          else do void $ SDL.setMouseLocationMode SDL.AbsoluteLocation
-                  -- smooth out mouse movement slightly
-                  let pos@(V2 px py) = 0.5 *^ ( mousePos prevInput ^+^ mousePos newInput )
-                  when (locate prevAction) do
-                    ( SDL.warpMouse SDL.WarpCurrentFocus (SDL.P (SDL.V2 (round px) (round py))) )
-                    _ <- SDL.captureMouse True
-                    pure ()
-
-                  pure pos
-        assign _input ( newInput { mousePos = pos, mouseRel = pure 0 } )
+        assign _inputJulia newInput
+        assign _inputMap newInputMap
 
         ----------------
         -- simulation
@@ -521,15 +656,19 @@ toy = runVulkan initialState do
 
         let
           BufferResource _ updateInputData = inputDataUBO resources
+          BufferResource _ updateInputMapData = inputDataUBO resourcesMap
           currentInput :: InputData Value
-          currentInput = pos :& zoom :& origin :& Prelude.pure 0 :& controllerValues :& End
+          currentInput = 0 :& juliaZoom :& juliaOrigin :& seed :& Prelude.pure 0 :& controllerValues :& End
+          currentInputMap :: InputData Value
+          currentInputMap = 1 :& mapZoom :& mapOrigin :& seed :& Prelude.pure 0 :& controllerValues :& End
 
         unless isPaused $ liftIO ( updateInputData currentInput )
+        unless isPaused $ liftIO ( updateInputMapData currentInputMap )
 
         ----------------
         -- rendering
 
-        nextImageIndex <- acquireNextImage device swapchainInfo nextImageSem
+        nextImageIndex <- acquireNextImage deviceJulia swapchainInfoJulia nextImageSem
 
         ImGui.Vulkan.vulkanNewFrame
         ImGui.SDL.sdl2NewFrame window
@@ -538,9 +677,10 @@ toy = runVulkan initialState do
         when began do
           -- TODO: hide fps when isPaused
           ImGui.text $ "FPS: " <> show fps
-          ImGui.button (if isPaused then "Play" else "Pause") >>= \case
-            False -> return ()
-            True  -> liftIO $ writeIORef paused (not isPaused)
+          -- TODO: enable pause button with https://gitlab.com/sheaf/fir/-/merge_requests/21
+          -- ImGui.button (if isPaused then "Play" else "Pause") >>= \case
+          --  False -> return ()
+          --  True  -> liftIO $ writeIORef paused (not isPaused)
           createControllers imGuiControllerRefs
         ImGui.end
         ImGui.render
@@ -557,31 +697,51 @@ toy = runVulkan initialState do
             | otherwise             = updatedCommands           `V.index` nextImageIndex
 
         unless isPaused $ submitCommandBuffer
-          queue
+          queueJulia
           commandBuffer
           []
           []
           Nothing
 
         beginCommandBuffer imGuiCommandBuffer
-        cmdBeginRenderPass imGuiCommandBuffer imGuiRenderPass framebuffer [clearValue2] swapchainExtent
+        cmdBeginRenderPass imGuiCommandBuffer imGuiRenderPass framebuffer [clearValue2] swapchainExtentJulia
         ImGui.Vulkan.vulkanRenderDrawData drawData imGuiCommandBuffer Nothing
         cmdEndRenderPass imGuiCommandBuffer
         endCommandBuffer imGuiCommandBuffer
         submitCommandBuffer
-          queue
+          queueJulia
           imGuiCommandBuffer
           [ ( nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
           [ submitted ]
           Nothing
 
-        present queue swapchain nextImageIndex [submitted]
+        present queueJulia swapchainJulia nextImageIndex [submitted]
 
-        Vulkan.queueWaitIdle queue
+        ----------------
+        -- rendering map
+        nextImageIndexMap <- acquireNextImage deviceMap swapchainInfoMap nextImageSemMap
+        let
+          commandBufferMap
+            | takeScreenshot action = updatedScreenshotCommandsMap `V.index` nextImageIndexMap
+            | otherwise             = updatedCommandsMap `V.index` nextImageIndexMap
+
+        unless isPaused $ submitCommandBuffer
+          queueMap
+          commandBufferMap
+          [ ( nextImageSemMap, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
+          [ submittedMap ]
+          Nothing
+
+        present queueMap swapchainMap nextImageIndexMap [submittedMap]
+
+
+        Vulkan.queueWaitIdle queueJulia
 
         when ( takeScreenshot action ) $
-          writeScreenshotData shortName device swapchainExtent
+          writeScreenshotData shortName deviceJulia swapchainExtentJulia
             ( snd ( screenshotImagesAndMemories `V.index` nextImageIndex ) )
+
+        Vulkan.queueWaitIdle queueMap
 
         ----------------
 

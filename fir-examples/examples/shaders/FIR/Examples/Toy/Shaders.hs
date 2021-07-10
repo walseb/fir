@@ -58,9 +58,10 @@ import FIR.Examples.Paths
 type InputData :: ControllerRef -> Type
 type InputData ref =
   Struct
-    '[ "mousePos"  ':-> V 2 Float
+    '[ "map_mode"  ':-> Word32
      , "zoom"      ':-> Float
      , "origin"    ':-> V 2 Float
+     , "seed"      ':-> V 2 Float
      , "scancodes" ':-> Array 512 Word32
      , "imGuiData" ':-> ImGuiData ref
      ]
@@ -70,18 +71,16 @@ type ImGuiData ref =
   Struct
     '[ "color"    ':-> ControllerData ref Float
      , "max_iter" ':-> ControllerData ref Float
-     , "map_mode" ':-> ControllerData ref Int32
      ]
 
 initImGuiData :: ImGuiData InitValue
 initImGuiData
   =  ( "Color", Slider, 0 )
   :& ( "Iterations", Slider, 0 )
-  :& ( "Map Mode", Toggle, 0 )
   :& End
 
 initInputData :: InputData Value
-initInputData = V2 0 0 :& 0 :& V2 0 0 :& Prelude.pure 0 :& controllerInitValues initImGuiData :& End
+initInputData = 0 :& 0 :& V2 0 0 :& V2 0 0 :& Prelude.pure 0 :& controllerInitValues initImGuiData :& End
 
 ------------------------------------------------
 -- pipeline input
@@ -150,16 +149,14 @@ screenYF =  Lit (fromIntegral screenY)
 grad_freq :: Code Float
 grad_freq = 0.6
 
-seed :: Code (V 2 Float)
-seed = Vec2 (-0.7477055835083013) (-2.692868835794263)
-
 -- Params ends
 fragment :: ShaderModule "main" FragmentShader FragmentDefs _
 fragment = shader do
   gl_FragCoord <- #gl_FragCoord
   color <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "color")
   max_iter' <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "max_iter")
-  map_mode' <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "map_mode")
+  map_mode' <- use @(Name "ubo" :.: Name "map_mode")
+  seed <- use @(Name "ubo" :.: Name "seed")
   range <- use @(Name "ubo" :.: Name "zoom")
   origin <- use @(Name "ubo" :.: Name "origin")
 
@@ -216,7 +213,7 @@ fragment = shader do
               res = ml / fromIntegral max_iter
            in res
 
-  let col = if map_mode && pixelCoord `nearBy` seed
+  let col = if map_mode && nearBy (range / 100) pixelCoord seed
               then Lit seedColor
               else gradient ((1 + 7 * color) * t) (Lit sunset)
 
@@ -224,14 +221,11 @@ fragment = shader do
 
   #out_colour .= col
 
-nearBy :: Code (V 2 Float) -> Code (V 2 Float) -> Code Bool
-nearBy (Vec2 x y) (Vec2 x' y') =
+nearBy :: Code Float -> Code (V 2 Float) -> Code (V 2 Float) -> Code Bool
+nearBy dist (Vec2 x y) (Vec2 x' y') =
   if abs (x - x') < dist && abs (y - y') < dist
     then Lit True
     else Lit False
-  where
-    dist :: Code Float
-    dist = 0.01
 
 mkRescaledComplex :: Code (V 2 Float) -> CodeComplex Float
 mkRescaledComplex (Vec2 x y) =

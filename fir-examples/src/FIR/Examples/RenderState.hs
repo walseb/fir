@@ -13,6 +13,7 @@ module FIR.Examples.RenderState
   , Action(..)
   , Quit(Quit)
   , Observer(..), initialObserver
+  , Observer2D(..), initialObserver2D, updateObserver2D
   , RenderState(..), initialState
   , _observer, _position, _angles, _input
   , mainLoop
@@ -100,6 +101,7 @@ _angles = lens angles ( \s v -> s { angles = v } )
 _input :: Lens' RenderState Input
 _input = lens input ( \s v -> s { input = v } )
 
+
 ----------------------------------------------------------------------------
 
 newtype Quit = MkQuit Any
@@ -133,6 +135,67 @@ data Observer = Observer
   , frame    :: Word32
   } deriving Show
 
+data Observer2D = Observer2D
+  { zoom              :: Float
+  , origin            :: V 2 Float
+  , scroll            :: Int
+  , mouseCoordPos     :: V 2 Float
+  , mouseLeftDown     :: Bool
+  , mouseLeftClicked  :: Bool
+  , mouseRightDown    :: Bool
+  , mouseRightClicked :: Bool
+  } deriving Show
+
+initialObserver2D :: Observer2D
+initialObserver2D =
+  let
+    zoom = 1
+    origin = V2 0 0
+    scroll = 0
+    mouseCoordPos = V2 0 0
+    mouseLeftDown = False
+    mouseLeftClicked = False
+    mouseRightDown = False
+    mouseRightClicked = False
+  in Observer2D {..}
+
+updateObserver2D :: Observer2D -> V 2 Word32 -> Input -> Observer2D
+updateObserver2D Observer2D {..} screen Input {..} =
+  let
+    scrolled = mouseWheel - scroll
+    newZoom =
+      if scrolled /= 0
+        then
+          let
+            offset = if scrolled < 0 then 0.1 else -0.1
+           in zoom + offset * zoom
+        else
+         zoom
+
+    newMouseCoordPos = pos2Coord screen origin zoom mousePos
+
+    newOrigin =
+      if newMouseLeftClicked
+        then mouseCoordPos
+        else origin
+
+    newScroll = mouseWheel
+    newMouseRightDown = SDL.ButtonRight `elem` mouseButtonsDown
+    newMouseLeftDown = SDL.ButtonLeft `elem` mouseButtonsDown
+    newMouseLeftClicked =
+      if newMouseLeftDown
+        -- Clicked is True only the first time the event is received
+        then Prelude.not mouseLeftDown
+        else False
+    newMouseRightClicked =
+      if newMouseRightDown
+        -- Clicked is True only the first time the event is received
+        then Prelude.not mouseRightDown
+        else False
+   in
+    Observer2D
+      newZoom newOrigin newScroll newMouseCoordPos
+      newMouseLeftDown newMouseLeftClicked newMouseRightDown newMouseRightClicked
 
 nullInput :: Input
 nullInput
@@ -191,36 +254,44 @@ strafe multiplier
   . foldMap (fmap Sum . strafeDir)
 
 
-onSDLInput :: Input -> SDL.EventPayload -> Input
-onSDLInput input SDL.QuitEvent
+onSDLInput :: SDL.Window -> Input -> SDL.EventPayload -> Input
+onSDLInput _ input SDL.QuitEvent
   = input { quitEvent = Quit }
-onSDLInput input (SDL.WindowClosedEvent _)
+onSDLInput _ input (SDL.WindowClosedEvent _)
   = input { quitEvent = Quit }
-onSDLInput input (SDL.KeyboardEvent ev)
+onSDLInput win input (SDL.KeyboardEvent ev)
+  | SDL.keyboardEventWindow ev /= Just win = input
+  | otherwise
   = let keyCode = SDL.keysymScancode (SDL.keyboardEventKeysym ev)
     in case SDL.keyboardEventKeyMotion ev of
          SDL.Pressed  -> input { keysDown    = keyCode : filter (/= keyCode) (keysDown    input)
                                , keysPressed = keyCode : filter (/= keyCode) (keysPressed input)
                                }
          SDL.Released -> input { keysDown = filter (/= keyCode) (keysDown input) }
-onSDLInput input (SDL.MouseButtonEvent ev)
+onSDLInput win input (SDL.MouseButtonEvent ev)
+  | SDL.mouseButtonEventWindow ev /= Just win = input
+  | otherwise
   = let button = SDL.mouseButtonEventButton ev
         down = filter (/= button) (mouseButtonsDown input)
     in case SDL.mouseButtonEventMotion ev of
       SDL.Pressed  -> input { mouseButtonsDown = button : down }
       SDL.Released -> input { mouseButtonsDown = down }
-onSDLInput input (SDL.MouseMotionEvent ev)
+onSDLInput win input (SDL.MouseMotionEvent ev)
+  | SDL.mouseMotionEventWindow ev /= Just win = input
+  | otherwise
   = input { mousePos = fmap Prelude.fromIntegral (V2 px py)
           , mouseRel = fmap ((* 0.003) . Prelude.fromIntegral) (V2 rx ry)
           }
     where
       SDL.P (SDL.V2 px py) = SDL.mouseMotionEventPos       ev
       SDL.V2        rx ry  = SDL.mouseMotionEventRelMotion ev
-onSDLInput input (SDL.MouseWheelEvent ev)
+onSDLInput win input (SDL.MouseWheelEvent ev)
+  | SDL.mouseWheelEventWindow ev /= Just win = input
+  | otherwise
   = input { mouseWheel = mouseWheel input + Prelude.fromIntegral wheelYOffset }
     where
       SDL.V2 _ wheelYOffset = SDL.mouseWheelEventPos ev
-onSDLInput input _ = input
+onSDLInput _ input _ = input
 
 
 interpretInput :: Float -> Input -> Action

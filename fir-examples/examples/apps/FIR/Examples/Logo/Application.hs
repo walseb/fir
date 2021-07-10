@@ -309,7 +309,7 @@ logo = runVulkan initialStateLogo do
 
       inputEvents <- map SDL.Event.eventPayload <$> SDL.pollEvents
       prevInput <- use _input
-      let newInput = foldl onSDLInput prevInput inputEvents
+      let newInput = foldl (onSDLInput window) prevInput inputEvents
       let action = interpretInput 1 newInput
           angs   = fmap getSum ( look action )
       assign _input ( newInput { mouseRel = pure 0, keysPressed = [] } )

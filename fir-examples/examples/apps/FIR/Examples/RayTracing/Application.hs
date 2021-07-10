@@ -820,7 +820,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
       prevCamLocked <- cameraIsLocked <$> use ( typed @CameraLock )
       prevInput     <- use ( typed @RenderState . _input )
       let
-        newInput = foldl onSDLInput prevInput inputEvents
+        newInput = foldl (onSDLInput window) prevInput inputEvents
         cameraIsLocked =
           if   SDL.ScancodeL `elem` ( keysPressed newInput )
           then not prevCamLocked
