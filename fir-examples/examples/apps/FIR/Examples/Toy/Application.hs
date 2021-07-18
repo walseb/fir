@@ -23,7 +23,11 @@ module FIR.Examples.Toy.Application ( toy ) where
 import Control.Exception
   ( throw )
 import Control.Monad
-  ( when, unless )
+  ( when )
+import Control.Monad.IO.Class
+  ( MonadIO )
+import Data.Bits
+  ( (.|.) )
 import Data.Foldable
   ( traverse_ )
 import Data.String
@@ -37,7 +41,7 @@ import GHC.Generics
 import Foreign.C.Types
   ( CInt (..))
 import Data.IORef
-  ( newIORef, readIORef, writeIORef)
+  ( IORef, newIORef, readIORef, writeIORef)
 
 -- dear-imgui
 import qualified DearImGui            as ImGui
@@ -234,6 +238,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
               Vulkan.COLOR_SPACE_SRGB_NONLINEAR_KHR
         , surfaceUsage =
             [ Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT
+            , Vulkan.IMAGE_USAGE_TRANSFER_DST_BIT
             , Vulkan.IMAGE_USAGE_COLOR_ATTACHMENT_BIT
             ]
         }
@@ -373,6 +378,19 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         createScreenshotImage physicalDeviceJulia deviceJulia
           ( screenshotImageInfo extent3D colFmt )
 
+    let
+      imageInfo =
+        Default2DImageInfo extent3D colFmt
+          (   Vulkan.IMAGE_USAGE_TRANSFER_SRC_BIT
+          .|. Vulkan.IMAGE_USAGE_TRANSFER_DST_BIT
+          .|. Vulkan.IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+          )
+
+    (imageJulia, _)
+      <- createImage
+            physicalDeviceJulia deviceJulia
+            imageInfo
+            Vulkan.zero
 
   -------------------------------------------
   -- Create framebuffer attachments for the map.
@@ -512,28 +530,35 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
 
     let
       recordCommandBuffers pipe =
-        for (V.zip descriptorSets framebuffersWithAttachments) $ \ ( descriptorSet, (framebuffer, attachment ) ) ->
-          recordSimpleIndexedDrawCall
+        for (V.zip descriptorSets framebuffersWithAttachments) $ \ ( descriptorSet, (framebuffer, attachment) ) ->
+          recordSavedDrawCall
             deviceJulia commandPool framebuffer (renderPass, [clearValue1])
             descriptorSet cmdBindBuffers
             ( fst attachment, swapchainExtentJulia )
+            ( imageJulia, extent3D )
             Nothing
             nbIndices
             pipelineLayout pipe
+      recordRestoreCommandBuffers _pipe =
+        for (V.zip descriptorSets framebuffersWithAttachments) $ \ ( _, (_, attachment) ) ->
+          recordRestoreSavedImage
+            deviceJulia commandPool imageJulia ( fst attachment ) extent3D
       recordScreenshotCommandBuffers pipe =
         for (V.zip3 descriptorSets framebuffersWithAttachments screenshotImagesAndMemories)
           \ ( descriptorSet, (framebuffer, attachment), (screenshotImage, _) ) ->
-            recordSimpleIndexedDrawCall
+            recordSavedDrawCall
               deviceJulia commandPool framebuffer (renderPass, [clearValue1])
               descriptorSet cmdBindBuffers
               ( fst attachment, swapchainExtentJulia )
+              ( imageJulia, extent3D )
               ( Just ( screenshotImage, extent3D ) )
               nbIndices
               pipelineLayout pipe
 
-      recordAllCommandsFromShaders = record2CommandBuffersFromShaders
+      recordAllCommandsFromShaders = record3CommandBuffersFromShaders
         ( createGraphicsPipeline deviceJulia renderPass pipelineInfo )
         recordCommandBuffers
+        recordRestoreCommandBuffers
         recordScreenshotCommandBuffers
 
     -------------------------------------------
@@ -584,23 +609,34 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         { zoom = 66,
           origin = V2 0 0
         }
-
+    juliaInputDataRef <- liftIO $ newIORef Nothing
 
     mapObserverRef <- liftIO $ newIORef $
       initialObserver2D
         { zoom = 3.7238941,
           origin = V2 (-0.33162025) (-1.6875764)
         }
+    mapInputDataRef <- liftIO $ newIORef Nothing
 
     juliaSeedRef <- liftIO $ newIORef $ V2 (-0.7477055835083013) (-2.692868835794263)
 
     let
+      isUpdated :: MonadIO m => IORef (Maybe (InputData Value)) -> InputData Value -> m Bool
+      isUpdated inputDataRef inputData = liftIO do
+        -- Check if a given inputData has been updated
+        prevInputData <- readIORef inputDataRef
+        writeIORef inputDataRef (Just inputData)
+        pure $ prevInputData /= Just inputData
+
+      isMapUpdated = isUpdated mapInputDataRef
+      isJuliaUpdated = isUpdated juliaInputDataRef
+
       renderFrame paused fps = do
 
         ----------------
         -- shader reloading
 
-        ( updatedCommands, updatedScreenshotCommands )
+        ( updatedCommands, restoreCommands, updatedScreenshotCommands )
           <- statelessly ( snd <$> readTVarWithCleanup resourcesTVar )
 
         ( updatedCommandsMap, updatedScreenshotCommandsMap )
@@ -649,7 +685,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         -- simulation
 
         -- TODO: unpause for one-frame when the shader is reloaded
-        isPaused <- liftIO $ readIORef paused
+        _isPaused <- liftIO $ readIORef paused
 
         -- update UBO
         controllerValues <- readControllers imGuiControllerRefs
@@ -662,12 +698,14 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
           currentInputMap :: InputData Value
           currentInputMap = 1 :& mapZoom :& mapOrigin :& seed :& Prelude.pure 0 :& controllerValues :& End
 
-        unless isPaused $ liftIO ( updateInputData currentInput )
-        unless isPaused $ liftIO ( updateInputMapData currentInputMap )
+        juliaUpdated <- isJuliaUpdated currentInput
+        when juliaUpdated $ liftIO ( updateInputData currentInput )
+
+        mapUpdated <- isMapUpdated currentInputMap
+        when mapUpdated $ liftIO ( updateInputMapData currentInputMap )
 
         ----------------
         -- rendering
-
         nextImageIndex <- acquireNextImage deviceJulia swapchainInfoJulia nextImageSem
 
         ImGui.Vulkan.vulkanNewFrame
@@ -694,14 +732,10 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         let
           commandBuffer
             | takeScreenshot action = updatedScreenshotCommands `V.index` nextImageIndex
-            | otherwise             = updatedCommands           `V.index` nextImageIndex
+            | juliaUpdated          = updatedCommands           `V.index` nextImageIndex
+            | otherwise             = restoreCommands           `V.index` nextImageIndex
 
-        unless isPaused $ submitCommandBuffer
-          queueJulia
-          commandBuffer
-          []
-          []
-          Nothing
+        submitCommandBuffer queueJulia commandBuffer [] [] Nothing
 
         beginCommandBuffer imGuiCommandBuffer
         cmdBeginRenderPass imGuiCommandBuffer imGuiRenderPass framebuffer [clearValue2] swapchainExtentJulia
@@ -719,21 +753,21 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
 
         ----------------
         -- rendering map
-        nextImageIndexMap <- acquireNextImage deviceMap swapchainInfoMap nextImageSemMap
-        let
-          commandBufferMap
-            | takeScreenshot action = updatedScreenshotCommandsMap `V.index` nextImageIndexMap
-            | otherwise             = updatedCommandsMap `V.index` nextImageIndexMap
+        when mapUpdated do
+          nextImageIndexMap <- acquireNextImage deviceMap swapchainInfoMap nextImageSemMap
+          let
+            commandBufferMap
+              | takeScreenshot action = updatedScreenshotCommandsMap `V.index` nextImageIndexMap
+              | otherwise             = updatedCommandsMap `V.index` nextImageIndexMap
 
-        unless isPaused $ submitCommandBuffer
-          queueMap
-          commandBufferMap
-          [ ( nextImageSemMap, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
-          [ submittedMap ]
-          Nothing
+          submitCommandBuffer
+            queueMap
+            commandBufferMap
+            [ ( nextImageSemMap, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
+            [ submittedMap ]
+            Nothing
 
-        present queueMap swapchainMap nextImageIndexMap [submittedMap]
-
+          present queueMap swapchainMap nextImageIndexMap [submittedMap]
 
         Vulkan.queueWaitIdle queueJulia
 
