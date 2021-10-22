@@ -709,7 +709,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         nextImageIndex <- acquireNextImage deviceJulia swapchainInfoJulia nextImageSem
 
         ImGui.Vulkan.vulkanNewFrame
-        ImGui.SDL.sdl2NewFrame window
+        ImGui.SDL.sdl2NewFrame
         ImGui.newFrame
         began <- ImGui.begin "Shader toy!"
         when began do

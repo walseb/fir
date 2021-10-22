@@ -201,7 +201,7 @@ library fir-examples-dear-imgui
   build-depends:
       fir
     , dear-imgui
-        ^>= 1.0.0
+        ^>= 1.2
 
 ----------------------------------------------------------------
 -- Examples.
@@ -554,4 +554,3 @@ executable Toy
       fir-examples-dear-imgui
     , toy-shaders
     , dear-imgui
-        ^>= 1.0.0
