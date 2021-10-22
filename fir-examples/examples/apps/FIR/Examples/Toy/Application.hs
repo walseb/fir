@@ -735,7 +735,12 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
             | juliaUpdated          = updatedCommands           `V.index` nextImageIndex
             | otherwise             = restoreCommands           `V.index` nextImageIndex
 
-        submitCommandBuffer queueJulia commandBuffer [] [] Nothing
+        submitCommandBuffer
+          queueJulia
+          commandBuffer
+          [ ( nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
+          []
+          Nothing
 
         beginCommandBuffer imGuiCommandBuffer
         cmdBeginRenderPass imGuiCommandBuffer imGuiRenderPass framebuffer [clearValue2] swapchainExtentJulia
@@ -745,7 +750,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         submitCommandBuffer
           queueJulia
           imGuiCommandBuffer
-          [ ( nextImageSem, Vulkan.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ) ]
+          []
           [ submitted ]
           Nothing
 
