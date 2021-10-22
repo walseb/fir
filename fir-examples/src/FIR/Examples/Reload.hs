@@ -2,13 +2,16 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns        #-}
 
 module FIR.Examples.Reload
-  ( shaderReloadWatcher, readTVarWithCleanup )
+  ( shaderReloadWatcher
+  , DynResources(..), readDynResources
+  )
   where
 
 -- base
@@ -84,17 +87,48 @@ import Vulkan.Pipeline
 
 ----------------------------------------------------------------------------
 
--- Read a TVar containing a clean-up action.
--- Ensures the clean-up action is run exactly once.
-readTVarWithCleanup :: MonadIO m => TVar ( x, m () ) -> m x
-readTVarWithCleanup tvar = do
-  ( x, cleanup )
-    <- liftIO $ atomically do
-          ( x, cleanup ) <- readTVar tvar
-          writeTVar tvar ( x, pure () )
-          pure ( x, cleanup )
+-- | Reads a 'DynResources' 'TVar' and ensures the clean-up action is run exactly once.
+--
+-- The returned 'Bool' indicates whether the resources are new.
+readDynResources :: MonadIO m => TVar (DynResources m r) -> m (r, Bool)
+readDynResources tvar = do
+  ( res, cleanup ) <- liftIO $ atomically do
+    DynResources
+      { currentResources = x
+      , cleanupPrevious  = cleanup
+      , resourcesAreNew  = new
+      } <- readTVar tvar
+    writeTVar tvar $
+      DynResources
+        { currentResources = x
+        , cleanupPrevious  = pure ()
+        , resourcesAreNew  = False
+        }
+    pure ( (x, new), cleanup )
   cleanup
-  pure x
+  pure res
+
+newDynResources
+  :: ( MonadIO m, Applicative t )
+  => r -> m ( TVar ( DynResources t r ) )
+newDynResources r
+  = liftIO $ newTVarIO dynRes
+  where
+    dynRes =
+      DynResources
+        { currentResources = r
+        , cleanupPrevious  = pure ()
+        , resourcesAreNew  = False
+        }
+
+data DynResources t r
+  = DynResources
+    { currentResources :: r
+    , cleanupPrevious  :: t ()
+    -- | A flag to indicate whether the resources are new,
+    -- to be reset to 'False' once we start using them.
+    , resourcesAreNew  :: Bool
+    }
 
 shaderReloadWatcher
   :: forall t l r
@@ -102,11 +136,11 @@ shaderReloadWatcher
   => Vulkan.Device
   -> t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) )
   -> ( t Vulkan.ShaderModule -> l ( l (), r ) )
-  -> l ( TVar ( ( l () , r ), l () ) )
+  -> l ( TVar (DynResources l ( l (), r )) )
 shaderReloadWatcher device shaders createFromShaders = do
   logDebug "Starting shader reload watcher."
   originalResources  <- createFromShaders $ fmap ( snd . snd ) shaders
-  resourcesTVar      <- liftIO $ newTVarIO ( originalResources, pure () )
+  resourcesTVar      <- newDynResources originalResources
   modifiedFilesTMVar <- liftIO $ newEmptyTMVarIO
   signalStop         <- liftIO $ newEmptyTMVarIO
   let
@@ -115,7 +149,7 @@ shaderReloadWatcher device shaders createFromShaders = do
     shaderNames :: Set FilePath
     shaderNames = Set.fromList $ toList ( fmap ( takeFileName . fst ) shaders )
   liftIO $ startWatchOver signalStop shaderDir shaderNames modifiedFilesTMVar
-  runInIO <- askRunInIO  
+  runInIO <- askRunInIO
   void $ allocate
     ( forkIO ( runInIO reloader ) )
     ( \ reloaderThreadId -> do
@@ -134,7 +168,7 @@ resourceReloader
   -> t ( FilePath, (ReleaseKey, Vulkan.ShaderModule) )
   -> ( t Vulkan.ShaderModule -> l ( l (), r ) )
   -> TMVar (Set FilePath)
-  -> TVar ( ( l () , r ), l () )
+  -> TVar (DynResources l ( l (), r ) )
   -> l ()
 resourceReloader device shaders createFromShaders modifiedFilesTMVar resourcesTVar
   = outerLoop shaders
@@ -196,7 +230,9 @@ resourceReloader device shaders createFromShaders modifiedFilesTMVar resourcesTV
             -- As we don't own the resources currently in use (they are from the main thread),
             -- we return an action which performs cleanup of current resources before returning the new resources.
             liftIO $ atomically do
-              ( ( releaseCurrentResources, _ ), releaseOldResources )
+              DynResources
+                { currentResources = (releaseCurrentResources, _)
+                , cleanupPrevious  = releaseOldResources }
                 <- readTVar resourcesTVar
               let
                 releasePreviousResources :: l ()
@@ -204,7 +240,12 @@ resourceReloader device shaders createFromShaders modifiedFilesTMVar resourcesTV
                   releaseOldResources
                   releaseCurrentResources
                   traverse_ release oldShaderKeys
-              writeTVar resourcesTVar ( ( releaseNewResources, newResources ), releasePreviousResources )
+              writeTVar resourcesTVar $
+                DynResources
+                  { currentResources = (releaseNewResources, newResources)
+                  , cleanupPrevious  = releasePreviousResources
+                  , resourcesAreNew  = True
+                  }
             logDebug ( "New resources ready to be used." )
             outerLoop newShaders
 
@@ -226,7 +267,7 @@ loadNewShaders device shaders modifiedPaths =
 
 startWatchOver :: TMVar () -> FilePath -> Set FilePath -> TMVar (Set FilePath) -> IO ()
 startWatchOver signalStop dir watchNames modifiedPaths =
-  void $ forkIO $ 
+  void $ forkIO $
     FSNotify.withManager \ watchManager -> do
       stop <- FSNotify.watchDir watchManager dir
         ( ( `Set.member` watchNames ) . takeFileName . eventPath )

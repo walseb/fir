@@ -368,7 +368,7 @@ hopf = runVulkan initialState do
       -- shader reloading
 
       ( updatedCommands, updatedScreenshotCommands )
-        <- statelessly ( snd <$> readTVarWithCleanup resourcesTVar )
+        <- statelessly ( snd . fst <$> readDynResources resourcesTVar )
 
       ----------------
       -- input

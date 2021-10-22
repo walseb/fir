@@ -20,6 +20,8 @@
 module FIR.Examples.Toy.Application ( toy ) where
 
 -- base
+import Control.Arrow
+  ( first )
 import Control.Exception
   ( throw )
 import Control.Monad
@@ -65,6 +67,8 @@ import qualified Control.Monad.Trans.Resource as ResourceT
 -- sdl2
 import qualified SDL
 import qualified SDL.Raw.Timer as SDL hiding (delay)
+import qualified SDL.Raw.Video as SDL (getWindowDisplayIndex)
+import qualified SDL.Internal.Types (Window(..))
 
 -- text-short
 import Data.Text.Short
@@ -96,7 +100,7 @@ import FIR
   , ModuleRequirements(..)
   )
 import Math.Linear
-  ( pattern V2, pattern V3 )
+  ( V, pattern V2, pattern V3 )
 
 -- fir-examples
 import FIR.Examples.Common
@@ -199,6 +203,56 @@ clearValue2 = Vulkan.Color yellow
     yellow :: Vulkan.ClearColorValue
     yellow = Vulkan.Float32 1 1 0 1
 
+{-| 'moveWindowsSideBySide' positions both windows, side by side,
+     possibly in the center of the screen, like so:
+
+  -----------------
+  |  ----- -----  |
+  |  | 1 | | 2 |  |
+  |  ----- -----  |
+  -----------------
+-}
+moveWindowsSideBySide :: SDL.Window -> SDL.Window -> IO ()
+moveWindowsSideBySide win1 win2 = do
+  -- assume both window are on the same display
+  (displayX, displayY) <- getDisplaySize win1
+  (win1X, win1Y) <- getWinSize win1
+  (win2X, win2Y) <- getWinSize win2
+
+  let
+    win1PosX = max 0 $ (displayX - win1X - win2X) `div` 2
+    win1PosY = max 0 $ (displayY - win1Y) `div` 2
+    win2PosX = win1PosX + win1X
+    win2PosY = max 0 $ (displayY - win2Y) `div` 2
+
+  setPosition win1 (win1PosX, win1PosY)
+  setPosition win2 (win2PosX, win2PosY)
+
+  where
+    getDisplaySize :: SDL.Window -> IO (CInt, CInt)
+    getDisplaySize (SDL.Internal.Types.Window win) = do
+      displayIndex <- SDL.getWindowDisplayIndex win
+      displays <- SDL.getDisplays
+      let
+        display = displays !! fromInteger (toInteger displayIndex)
+        SDL.V2 displayX displayY = SDL.displayBoundsSize display
+      pure (displayX, displayY)
+
+    getWinSize :: SDL.Window -> IO (CInt, CInt)
+    getWinSize win = do
+      -- TODO: take border into account with https://github.com/haskell-game/sdl2/pull/231
+      --       We'll have to do the moveWindowsSideBySide call after the first render
+      -- SDL.V4 winT winL winB winR <- SDL.getWindowBordersSize win
+      let
+        borderWidth  = 0 -- winL + winR
+        borderHeight = 0 -- winT + winB
+      SDL.V2 winX winY <- SDL.get (SDL.windowSize win)
+      pure (winX + borderWidth, winY + borderHeight)
+
+    setPosition :: SDL.Window -> (CInt, CInt) -> IO ()
+    setPosition win (x, y) = do
+      SDL.setWindowPosition win (SDL.Absolute (SDL.P (SDL.V2 x y)))
+
 ----------------------------------------------------------------------------
 -- Application.
 
@@ -217,6 +271,11 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
 
   -------------------------------------------
   -- Initialise window and Vulkan context.
+
+  let screenX = 800
+      screenY = 600
+      screen :: V 2 Float
+      screen  = V2 (fromIntegral screenX) (fromIntegral screenY)
 
   ( window, windowExtensions ) <-
     initialiseWindow
@@ -300,6 +359,8 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
     physicalDeviceMap   = Vulkan.Context.physicalDevice vkContextMap
     queueFamilyIndexMap = Vulkan.Context.queueFamilyIndex vkContextMap
     swapchainInfoMap'    = Vulkan.Context.aSwapchainInfo vkContextMap
+
+  liftIO $ moveWindowsSideBySide window windowMap
 
   let
     imGuiDescriptorTypes :: [ ( Vulkan.DescriptorType, Int ) ]
@@ -606,8 +667,8 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
     -- keep track of plane position and zoom
     juliaObserverRef <- liftIO $ newIORef $
       initialObserver2D
-        { zoom = 66,
-          origin = V2 0 0
+        { zoom = 3.8356593,
+          origin = V2 1.39 0
         }
     juliaInputDataRef <- liftIO $ newIORef Nothing
 
@@ -636,11 +697,21 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         ----------------
         -- shader reloading
 
-        ( updatedCommands, restoreCommands, updatedScreenshotCommands )
-          <- statelessly ( snd <$> readTVarWithCleanup resourcesTVar )
+        ( ( updatedCommands, restoreCommands, updatedScreenshotCommands )
+          , juliaReloaded )
+          <- statelessly ( first snd <$> readDynResources resourcesTVar )
 
-        ( updatedCommandsMap, updatedScreenshotCommandsMap )
-          <- statelessly ( snd <$> readTVarWithCleanup resourcesMapTVar )
+        ( ( updatedCommandsMap, updatedScreenshotCommandsMap )
+          , mapReloaded )
+          <- statelessly ( first snd <$> readDynResources resourcesMapTVar )
+
+        --------------------
+        -- controller values
+
+        controllerValues <- readControllers imGuiControllerRefs
+        let
+          inversed' :& _ = controllerValues
+          inversed = inversed' /= 0
 
         ----------------
         -- input
@@ -663,10 +734,10 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
           action   = interpretInput 1 newInput
 
           newJuliaObserver@(Observer2D juliaZoom juliaOrigin _ _ _ _ _ _ ) =
-            updateObserver2D prevJuliaObserver (V2 screenX screenY) newInput
+            updateObserver2D inversed prevJuliaObserver (V2 screenX screenY) newInput
 
           newMapObserver@(Observer2D mapZoom mapOrigin _ mapPos _ _ _ mapRightClicked ) =
-            updateObserver2D prevMapObserver (V2 screenX screenY) newInputMap
+            updateObserver2D False prevMapObserver (V2 screenX screenY) newInputMap
 
         liftIO $ writeIORef juliaObserverRef newJuliaObserver
         liftIO $ writeIORef mapObserverRef newMapObserver
@@ -688,15 +759,13 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         _isPaused <- liftIO $ readIORef paused
 
         -- update UBO
-        controllerValues <- readControllers imGuiControllerRefs
-
         let
           BufferResource _ updateInputData = inputDataUBO resources
           BufferResource _ updateInputMapData = inputDataUBO resourcesMap
           currentInput :: InputData Value
-          currentInput = 0 :& juliaZoom :& juliaOrigin :& seed :& Prelude.pure 0 :& controllerValues :& End
+          currentInput = 0 :& screen :& juliaZoom :& juliaOrigin :& seed :& Prelude.pure 0 :& controllerValues :& End
           currentInputMap :: InputData Value
-          currentInputMap = 1 :& mapZoom :& mapOrigin :& seed :& Prelude.pure 0 :& controllerValues :& End
+          currentInputMap = 1 :& screen :& mapZoom :& mapOrigin :& seed :& Prelude.pure 0 :& controllerValues :& End
 
         juliaUpdated <- isJuliaUpdated currentInput
         when juliaUpdated $ liftIO ( updateInputData currentInput )
@@ -731,9 +800,9 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
 
         let
           commandBuffer
-            | takeScreenshot action = updatedScreenshotCommands `V.index` nextImageIndex
-            | juliaUpdated          = updatedCommands           `V.index` nextImageIndex
-            | otherwise             = restoreCommands           `V.index` nextImageIndex
+            | takeScreenshot action         = updatedScreenshotCommands `V.index` nextImageIndex
+            | juliaUpdated || juliaReloaded = updatedCommands           `V.index` nextImageIndex
+            | otherwise                     = restoreCommands           `V.index` nextImageIndex
 
         submitCommandBuffer
           queueJulia
@@ -758,7 +827,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
 
         ----------------
         -- rendering map
-        when mapUpdated do
+        when (mapUpdated || mapReloaded) do
           nextImageIndexMap <- acquireNextImage deviceMap swapchainInfoMap nextImageSemMap
           let
             commandBufferMap

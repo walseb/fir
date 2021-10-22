@@ -159,8 +159,8 @@ initialObserver2D =
     mouseRightClicked = False
   in Observer2D {..}
 
-updateObserver2D :: Observer2D -> V 2 Word32 -> Input -> Observer2D
-updateObserver2D Observer2D {..} screen Input {..} =
+updateObserver2D :: Bool -> Observer2D -> V 2 Word32 -> Input -> Observer2D
+updateObserver2D inversed Observer2D {..} screen Input {..} =
   let
     scrolled = mouseWheel - scroll
     newZoom =
@@ -172,7 +172,12 @@ updateObserver2D Observer2D {..} screen Input {..} =
         else
          zoom
 
-    newMouseCoordPos = pos2Coord screen origin zoom mousePos
+    inverse :: V 2 a -> V 2 a
+    inverse (V2 x y)
+      | inversed  = V2 y x
+      | otherwise = V2 x y
+
+    newMouseCoordPos = pos2Coord (inverse screen) origin zoom (inverse mousePos)
 
     newOrigin =
       if newMouseLeftClicked

@@ -25,6 +25,8 @@ import Data.Maybe
   ( fromJust )
 import GHC.TypeNats
   ( KnownNat )
+import Prelude
+  ( Int )
 import qualified Prelude
 
 -- filepath
@@ -59,6 +61,7 @@ type InputData :: ControllerRef -> Type
 type InputData ref =
   Struct
     '[ "map_mode"  ':-> Word32
+     , "screen"    ':-> V 2 Float
      , "zoom"      ':-> Float
      , "origin"    ':-> V 2 Float
      , "seed"      ':-> V 2 Float
@@ -69,18 +72,20 @@ type InputData ref =
 type ImGuiData :: ControllerRef -> Type
 type ImGuiData ref =
   Struct
-    '[ "color"    ':-> ControllerData ref Float
-     , "max_iter" ':-> ControllerData ref Float
+    '[ "inverse"  ':-> ControllerData ref ()             Int32
+     , "color"    ':-> ControllerData ref (Float, Float) Float
+     , "max_iter" ':-> ControllerData ref (Int,   Int)   Int32
      ]
 
 initImGuiData :: ImGuiData InitValue
 initImGuiData
-  =  ( "Color", Slider, 0 )
-  :& ( "Iterations", Slider, 0 )
+  =  ( "Inverse Axis", Toggle, (), 1 )
+  :& ( "Itensity",     Slider, (0, 1), 0.5 )
+  :& ( "Iterations",   DiscreteSlider, (1, 256), 42 )
   :& End
 
 initInputData :: InputData Value
-initInputData = 0 :& 0 :& V2 0 0 :& V2 0 0 :& Prelude.pure 0 :& controllerInitValues initImGuiData :& End
+initInputData = 0 :& V2 0 0 :& 0 :& V2 0 0 :& V2 0 0 :& Prelude.pure 0 :& controllerInitValues initImGuiData :& End
 
 ------------------------------------------------
 -- pipeline input
@@ -113,111 +118,82 @@ type FragmentDefs =
                           Fragment
    ]
 
-maxDepth :: Code Word32
-maxDepth = 256
-
-xSamples, ySamples :: Code Word32
-xSamples = 4
-ySamples = 4
-
-xWidth, yWidth :: Code Float
-xWidth = recip . fromIntegral $ xSamples
-yWidth = recip . fromIntegral $ ySamples
-
-pixel2Coord :: Code Float -> Code (V 2 Float) -> Code (V 4 Float) -> Code (V 2 Float)
-pixel2Coord range (Vec2 centerX centerY) (Vec4 pixX' pixY' _ _) =
-  let (pixX, pixY) = if inverseCoord then (pixY', pixX') else (pixX', pixY')
-      (uvX, uvY) = (pixX / screenXF, pixY / screenYF)
-      coordX = (screenXF / screenYF) * (uvX - 0.5)
+pixel2Coord :: Code (V 2 Float) -> Code Float -> Code (V 2 Float) -> Code (V 2 Float) -> Code (V 2 Float)
+pixel2Coord (Vec2 scrX scrY) range (Vec2 centerX centerY) (Vec2 pixX pixY) =
+  let
+      (uvX, uvY) = (pixX / scrX, pixY / scrY)
+      coordX = (scrX / scrY) * (uvX - 0.5)
       coordY = (-1) * (uvY - 0.5)
       x = centerX + coordX * range
       y = centerY + coordY * range
    in Vec2 x y
 
--- Params begins
-
-inverseCoord :: Bool
-inverseCoord = False
-
-screenX, screenY :: Word32
-(screenX, screenY) = (800, 600)
-
-screenXF, screenYF :: Code Float
-screenXF =  Lit (fromIntegral screenX)
-screenYF =  Lit (fromIntegral screenY)
-
-grad_freq :: Code Float
-grad_freq = 0.6
-
--- Params ends
-fragment :: ShaderModule "main" FragmentShader FragmentDefs _
-fragment = shader do
-  gl_FragCoord <- #gl_FragCoord
-  color <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "color")
-  max_iter' <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "max_iter")
-  map_mode' <- use @(Name "ubo" :.: Name "map_mode")
-  seed <- use @(Name "ubo" :.: Name "seed")
-  range <- use @(Name "ubo" :.: Name "zoom")
-  origin <- use @(Name "ubo" :.: Name "origin")
-
-  let escape = 4242
-      map_mode = map_mode' /= 0
-  let max_iter :: Code Word32
-      max_iter = 100 + (250 * round max_iter')
-
-  #modulus #= (0 :: Code Float)
-  #mean #= (0 :: Code Float)
-
-  #iter #= (0 :: Code Word32)
-
-  let pixelCoord = pixel2Coord range origin gl_FragCoord
-
-  #depth #= (0 :: Code Word32)
-
-  #z #=   (if map_mode then Lit (V2 0 0) else pixelCoord)
-  let c = (if map_mode then pixelCoord else seed)
+-- | Compute the pixel color using the Duck set fractal:
+--   http://www.algorithmic-worlds.net/blog/blog.php?Post=20110227
+quackColor :: Code Word32 -> Code (V 2 Float) -> Code (V 2 Float) -> Program _ _ (Code Float)
+quackColor max_iter initZ c = purely do
+  -- Define stateful variable for the loop
+  _ <- def @"iter" @RW ( 0 :: Code Word32 )
+  _ <- def @"z" @RW initZ
+  _ <- def @"mean" @RW ( 0 :: Code Float )
 
   loop do
-    iter <- #iter
-    modulus <- #modulus
-    z <- #z
-    if iter > max_iter || modulus > escape
+    -- Get the current z value
+    ~(Vec2 zR zI) <- get @"z"
+    -- Compute next z value :              log( zR+abs(zI)i + c )
+    z <- let' $ complexLog $ CodeComplex ( Vec2 zR (abs zI) ^+^ c )
+
+    modulus <- let' (magnitude z)
+    mean <- get @"mean"
+    put @"mean" $ mean + modulus
+    put @"z" $ codeComplex z
+
+    iter <- get @"iter"
+    if iter >= max_iter || modulus > escape
       then break @1
-      else do
-        let Vec2 zR zI = z
-            newZ = Vec2 zR (abs zI) ^+^ c
+      else put @"iter" $ iter + 1
 
-            newZLog = complexLog (CodeComplex newZ)
+  iter <- get @"iter"
+  mean <- get @"mean"
+  pure $
+      if iter == max_iter
+        then 1 - (0.3 * mean / fromIntegral iter)
+        else 0
 
-            newModulus = magnitude newZLog
+  where
+    escape = 4242
 
-        #modulus .= newModulus
 
-        mean <- #mean
-        #mean .= (mean + newModulus)
+fragment :: ShaderModule "main" FragmentShader FragmentDefs _
+fragment = shader do
+  -- Get CPU data
+  ~(Vec4 px py _ _) <- #gl_FragCoord
+  ~(Vec2 sx sy)     <- use @(Name "ubo" :.: Name "screen")
+  intensity         <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "color")
+  max_iter'         <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "max_iter")
+  inverse_coord     <- use @(Name "ubo" :.: Name "imGuiData" :.: Name "inverse")
+  map_mode'         <- use @(Name "ubo" :.: Name "map_mode")
+  seed              <- use @(Name "ubo" :.: Name "seed")
+  range             <- use @(Name "ubo" :.: Name "zoom")
+  origin            <- use @(Name "ubo" :.: Name "origin")
 
-        #iter .= (iter + 1)
-        #z .= codeComplex newZLog
+  -- Adapt the values
+  map_mode  <- let' $ map_mode' /= 0
+  inversed  <- let' $ not map_mode && (inverse_coord /= 0)
+  pixel     <- let' $ if inversed then Vec2 py px else Vec2 px py
+  screen    <- let' $ if inversed then Vec2 sy sx else Vec2 sx sy
+  coord     <- let' $ pixel2Coord screen range origin pixel
 
-  iter <- #iter
-  mean <- #mean
-  modulus <- #modulus
-  let iterF = fromIntegral iter
+  max_iter  <- let' $ fromIntegral max_iter'
+  z         <- let' $ if map_mode then Lit (V2 0 0) else coord
+  c         <- let' $ if map_mode then coord else seed
 
-  t <-
-    let' @(Code Float) $
-      if iter == (max_iter + 1)
-        then 1 - (0.3 * mean / iterF)
-        else
-          let ml = iterF - log (log (grad_freq * modulus)) / log 2 + log (log escape) / log 2
-              res = ml / fromIntegral max_iter
-           in res
+  -- Compute the color
+  color <- quackColor max_iter z c
 
-  let col = if map_mode && nearBy (range / 100) pixelCoord seed
+  let col = if map_mode && nearBy (range / 100) coord seed
               then Lit seedColor
-              else gradient ((1 + 7 * color) * t) (Lit sunset)
-
-  --let col' = Vec4 t 0.2 0.1 0.5
+              else gradient (color * intensity) (Lit sunset)
 
   #out_colour .= col
 
