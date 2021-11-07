@@ -115,7 +115,7 @@ I extend my thanks to:
 * **Li-yao Xia**, for his assistance in improving the typing of the AST, and his always excellent answers on StackOverflow.
 * **Sylvain Henry**, for his help and suggestions regarding extensible syntax trees as well as the nicely thought-out [variants](https://hackage.haskell.org/package/haskus-utils-variant) library (among other things).
 * **Oliver Charles**, for inspiring me to take on this project by streaming his efforts at [porting Quake 3 to Haskell using Vulkan](https://github.com/ocharles/zero-to-quake-3). This was invaluable in helping me get started with using Vulkan in Haskell.
-* **Artem Chirkin** and **Joe Hermaszewski** for their work providing Vulkan bindings for Haskell.
+* **Artem Chirkin** and **Ellie Hermaszewska** for their work providing Vulkan bindings for Haskell.
 * **Schell Scivally**, for patiently explaining his [ixshader library](https://hackage.haskell.org/package/ixshader).
 * **Conor McBride**, whose paper [*Kleisli arrows of outrageous fortune*](https://personal.cis.strath.ac.uk/conor.mcbride/Kleisli.pdf) forms the basis of the implementation of indexed monads which enabled the approach taken in FIR.
 * **The GHC developers**, for their tireless work on improving Haskell, tremendously helpful advice, and for continually keeping me excited in the future of programming.
