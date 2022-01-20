@@ -32,7 +32,7 @@ import Data.Type.List
   ( Length, Replicate, type (:++:) )
 import Data.Type.Map
   ( Map, (:->)((:->)) )
-import Data.Type.Ord
+import Data.Type.POrd
   ( POrd(..) )
 import FIR.Prim.Array
   ( Array )

@@ -21,6 +21,8 @@ module FIR.Examples.RayTracing.Geometry
 import qualified Prelude
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy(..) )
 import Data.Type.Bool
   ( If )
 import Data.Typeable
@@ -174,7 +176,7 @@ instance HittableGeometry Triangle where
     n2 <- use @( Name "geometries" :.: Name "geometryArray" :.: AnIndex Word32 :.: Name "normal" ) i2
     ~( Vec2 u v ) <- use @( Name "hitAttribute" :.: Name "attributes" )
     ~( Vec3 px py pz ) <- let' $ p0 ^+^ u *^ ( p1 ^-^ p0 ) ^+^ v *^ ( p2 ^-^ p0 )
-    objectNormal <- let' $ n0 ^+^ n1 ^+^ n2 -- ( 1 - u - v ) *^ n0 ^+^ u *^ n1 ^+^ v *^ n2 -- 
+    objectNormal <- let' $ n0 ^+^ n1 ^+^ n2 -- ( 1 - u - v ) *^ n0 ^+^ u *^ n1 ^+^ v *^ n2
     -- Transform back into world space.
     hitPos <- let' $ ( objectToWorld !*^ Vec4 px py pz 1 )
     -- Use the inverse-transpose of the object-to-world transformation to transform normal vectors.
@@ -229,7 +231,7 @@ instance HittableGeometry Sphere where
       p2  <- let' $ worldCentre ^+^ r *^ n2
       t1' <- let' $ s1 * distance worldRayOrigin p1
       t2' <- let' $ s2 * distance worldRayOrigin p2
- 
+
       assign @( Name "hitAttribute" :.: Name "attributes" ) ( Struct $ p1 :& n1 :& End )
       _ <- reportIntersection t1' 0
       assign @( Name "hitAttribute" :.: Name "attributes" ) ( Struct $ p2 :& n2 :& End )
@@ -276,4 +278,4 @@ primaryClosestHitShader = Module $ entryPoint @"main" @ClosestHit do
   def @"quasiRandomConstants" @R  =<< use @( Name "payload" :.: Name "quasiRandomConstants" )
   def @"quasiRandomState"     @RW =<< use @( Name "payload" :.: Name "quasiRandomState"     )
 
-  estimateRadiance accel shaderRecord hitPos normal
+  estimateRadiance Proxy accel shaderRecord hitPos normal

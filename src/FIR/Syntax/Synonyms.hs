@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -Wno-missing-pattern-synonym-signatures #-}
+{-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures -Wno-missing-signatures #-}
 
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE ConstraintKinds        #-}

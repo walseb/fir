@@ -105,7 +105,7 @@ import Data.Type.Map
   ( (:->)((:->)) )
 import Data.Type.Maybe
   ( IfNothingThen )
-import Data.Type.Ord
+import Data.Type.POrd
   ( POrd(..)
   , PEnum(EnumFromOfCount)
   )

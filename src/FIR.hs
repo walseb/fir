@@ -105,7 +105,7 @@ module FIR
   , module Data.Product
   , module Data.Type.List
   , (Data.Type.Map.:->)((:->))
-  , module Data.Type.Ord
+  , module Data.Type.POrd
   , AST, FIR.AST.Code, EGADT
   , module FIR.AST.Type
   , pattern (:$), pattern Lit, pattern Struct, pattern Array
@@ -323,7 +323,7 @@ import Data.Product
 import Data.Type.Known
 import Data.Type.List
 import Data.Type.Map
-import Data.Type.Ord
+import Data.Type.POrd
 import FIR.AST
 import FIR.AST.Type
 import FIR.Binding

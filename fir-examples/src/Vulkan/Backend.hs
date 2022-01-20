@@ -619,7 +619,6 @@ present queue swapchain imageIndex wait = void $ Vulkan.queuePresentKHR queue pr
         , Vulkan.results        = Vulkan.zero
         }
 
-        
 
 getQueue :: MonadIO m => Vulkan.Device -> Int -> m Vulkan.Queue
 getQueue device queueFamilyIndex = Vulkan.getDeviceQueue device ( fromIntegral queueFamilyIndex ) 0

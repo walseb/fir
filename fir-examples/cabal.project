@@ -20,6 +20,8 @@ allow-newer:
   , *:template-haskell
   , *:lens
   , lens:Cabal
+  , ghc-typelits-natnormalise:ghc-bignum
+  , sdl2:bytestring
 
 source-repository-package
   type: git
@@ -28,21 +30,24 @@ source-repository-package
 
 source-repository-package
   type: git
-  location: https://github.com/ekmett/lens
-  tag: 5b53b48a9c7a5cfcc4eb9b3dd0f7834a4acbdfa0
-
-source-repository-package
-  type: git
-  location: https://github.com/sheaf/packages
-  tag: cd259b94ce5a6dd0c15b4368198fb2a205c32b92
-  subdir: haskus-utils-data
-  subdir: haskus-utils-variant
-  subdir: haskus-utils-types
+  location: https://github.com/tfausak/unix-compat
+  tag: 154c3a63f154cb49c51d5f9d13488e8119631d8a
 
 source-repository-package
   type: git
   location: https://github.com/sheaf/generic-lens
-  tag: e2b4e7d77beaa094c8137b9f7a1f860a6469d837
+  tag: c265eb236c8264a8a06241d6ea04443a6803c92c
+
+source-repository-package
+  type: git
+  location: https://github.com/sheaf/typelits-witnesses
+  tag: 5db7b553a3bf2c5bb98da0abf3ab37115c078df9
+
+-- Crucial bug fix for GHC 9.2 (alignment error)
+source-repository-package
+  type: git
+  location: https://github.com/haskell-game/sdl2
+  tag: e9b0b6910b10de44c26d99dcb0b144299970f56b
 
 package dear-imgui
   flags: +sdl2 -glfw -opengl2 -opengl3 +vulkan -examples

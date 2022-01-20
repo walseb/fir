@@ -33,7 +33,7 @@ import Data.Binary.Class.Put
   ( Put(..) )
 import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
-import Data.Type.Ord
+import Data.Type.POrd
   ( POrd(..) )
 
 --------------------------------------------------

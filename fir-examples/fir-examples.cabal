@@ -28,7 +28,7 @@ common base-common
 
     build-depends:
         base
-          >= 4.13     && < 4.16
+          >= 4.13     && < 4.17
       , directory
           ^>= 1.3.3.0
       , filepath
@@ -36,7 +36,7 @@ common base-common
       , finite-typelits
           ^>= 0.1.4.2
       , template-haskell
-          >= 2.15     && < 2.18
+          >= 2.15     && < 2.19
       , text-short
           >= 0.1.4    && < 0.2
       , vector
@@ -64,7 +64,7 @@ common vulkan-common
 
   build-depends:
       bytestring
-        >= 0.10.9.0 && < 0.11
+        >= 0.10.9.0 && < 0.12
     , JuicyPixels
         ^>= 3.3.2
     , lens

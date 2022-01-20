@@ -20,6 +20,10 @@ module FIR.Examples.RayTracing.Estimator
   ( estimateRadiance )
   where
 
+-- base
+import Data.Proxy
+  ( Proxy(..) )
+
 -- fir
 import FIR
 import Math.Linear
@@ -42,16 +46,17 @@ import FIR.Examples.RayTracing.Types
 --------------------------------------------------------------------------
 
 type HasRW s name ty = ( Has name s ~ ty, CanGet name s, CanPut name s )
+type Luminaires = Struct '[ "luminaireArray" ':-> RuntimeArray LuminaireID ]
 
 estimateRadiance
-  :: forall s
+  :: forall (s :: ProgramState)
   .  ( HasRW s "payload"         PrimaryPayload
      , HasRW s "occPayload"      OcclusionPayload
      , HasRW s "emitterData"     EmitterCallableData
      , HasRW s "matSampleData"   MaterialSampleCallableData
      , HasRW s "matQueryData"    MaterialQueryCallableData
      , HasRW s "lightSampleData" LightSamplingCallableData
-     , Has     "luminaires" s ~  ( Struct '[ "luminaireArray" ':-> RuntimeArray LuminaireID ] )
+     , Has     "luminaires" s ~  Luminaires
      , CanGet  "luminaires" s
      , CanTraceRay        "occPayload"      s
      , CanExecuteCallable "emitterData"     s
@@ -61,12 +66,13 @@ estimateRadiance
      , QuasiRandom s
      , _
      )
-  => Code AccelerationStructure
+  => Proxy s -- Workaround for https://gitlab.haskell.org/ghc/ghc/-/issues/20921
+  -> Code AccelerationStructure
   -> Code ShaderRecord
   -> Code ( V 3 Float )  -- ^ World position of hit.
   -> Code ( V 3 Float )  -- ^ Normal vector to surface at hit point.
   -> Program s s ( Code () )
-estimateRadiance accel shaderRecord hitPos normal = do
+estimateRadiance _ accel shaderRecord hitPos normal = do
 
   prevHitType  <- use @( Name "payload" :.: Name "hitType"           )
   rayOrigin    <- use @( Name "payload" :.: Name "worldRayOrigin"    )
@@ -94,7 +100,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
 
   emitterCallable <- let' $ view @( Name "emitterCallable" ) shaderRecord
   when ( specular prevHitType && emitterCallable >= 0 ) do
-  
+
     -- Pass the data that the callable shader needs.
     emitterInfoIndex <- let' $ view @( Name "emitterInfoIndex" ) shaderRecord
     put @"emitterData" ( Struct $ emitterInfoIndex :& rayDirection :& normal :& wavelengths :& End )
@@ -172,6 +178,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
 
     lg <- arrayLength @( Name "luminaires" :.: Index 0 )
     unless ( lg < 1 ) do
+
       luminaire              <- randomLuminaire lg
     --lumWeight              <- let' $ view @( Name "luminaireWeight"     ) luminaire
       lightPrimitiveID       <- let' $ view @( Name "primitiveID"         ) luminaire
@@ -238,7 +245,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
       put @"matQueryData"
         ( Struct $ materialInfoIndex :& normal :& rayDirection :& lightDirection :& wavelengths :& extinctionCoeffs :& Vec4 1 1 1 1 :& Vec4 0 0 0 0 :& End )
       executeCallable @"matQueryData" materialQueryCallable
-  
+
       -- Obtain results.
       lightDirBSDF <- use @( Name "matQueryData" :.: Name "bsdf"  )
       lightDirProb <- use @( Name "matQueryData" :.: Name "probs" )
@@ -250,7 +257,7 @@ estimateRadiance accel shaderRecord hitPos normal = do
         mis
           ( (*) <$$> bounceDirBSDF <**>      bounceEmitterRadiances ) ( bounceDirProb ^*   p_λ )
           ( (*) <$$>  lightDirBSDF <**> lightSampleEmitterRadiances ) (  lightDirProb ^* ( p_λ * psa_correction ) )
-  
+
       modifying @( Name "payload" :.: Name "radiance" ) ( ^+^ ( (*) <$$> throughput <**> estimatedRadiance ) )
 
   -- Update the ray throughput using BSDF values.
@@ -296,23 +303,30 @@ russianRoulette ( Vec4 t1 t2 t3 t4 ) = do
     then recip continueProb
     else (-1)
 
+-- Defining this synonym because GHC 9.2 gets confused about kinds if I don't write the
+-- return kind (RuntimeArray LuminaireID) explicitly.
+type LuminaireArray = Name "luminaireArray" :: Optic '[] Luminaires (RuntimeArray LuminaireID)
+type Luminaire = Name "luminaires" :.: LuminaireArray :.: AnIndex Word32 :: Optic '[ Word32 ] s LuminaireID
+
 -- | Randomly choose a scene light, with probability
 -- proportional to its weight in the given array of all scene lights.
 --
 -- The total weight (i.e. sum of each light's weight) must be 1.
 randomLuminaire
-  :: ( QuasiRandom s, _ )
-  => Code Word32 -> Program s s ( Code LuminaireID )
+  :: forall (s :: ProgramState)
+  .  ( QuasiRandom s, _ )
+  => Code Word32
+  -> Program s s ( Code LuminaireID )
 randomLuminaire nbLuminaires = do
   ~( Vec4 r _ _ _ ) <- random01s
   locally do
     _  <- def @"i"        @RW @Word32      0
     _  <- def @"acc"      @RW @Float       0
-    _  <- def @"res"      @RW @LuminaireID =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) 0
+    _  <- def @"res"      @RW @LuminaireID =<< use @Luminaire 0
     while ( (< nbLuminaires) <<$>> get @"i" ) do
       i    <- get @"i"
       acc  <- get @"acc"
-      lum  <- let' @( Code LuminaireID ) =<< use @( Name "luminaires" :.: Name "luminaireArray" :.: AnIndex Word32 ) i
+      lum  <- let' =<< use @Luminaire i
       acc' <- let' $ acc + view @( Name "luminaireWeight" ) lum
       if acc' >= r
       then do

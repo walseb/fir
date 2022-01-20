@@ -67,7 +67,6 @@ import Haskus.Utils.EGADT
 import Data.Tree.View
   ( showTree )
 
-
 -- fir
 import FIR.AST.ControlFlow
 import FIR.AST.Display
@@ -122,7 +121,8 @@ instance Syntactic (AST a) where
 
 instance (SyntacticVal a, Syntactic b) => Syntactic (a -> b) where
   type Internal (a -> b) = Internal a :--> Internal b
-  toAST        f    = Lam ( toAST . f . fromAST )
+  toAST        f    = Lam @( Val (InternalType a) :--> Internal b )
+                      ( toAST . f . fromAST )
   fromAST (Lam f) a = fromAST ( f  $ toAST a )
   fromAST      f  a = fromAST ( f :$ toAST a )
 

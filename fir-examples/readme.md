@@ -52,9 +52,13 @@ After extracting, we need to:
     If PKG_CONFIG_PATH does not exist (`echo %PKG_CONFIG_PATH%` returns nothing), set it with `setx PKG_CONFIG_PATH path\to\sdl2\lib\pkg-config\`.
 You can check that SDL2 is registered with pkg-config using `pkg-config --list-all`.
 
-The Windows Vulkan SDK installer can be downloaded from the [LunarG website](https://vulkan.lunarg.com/sdk/home).
-No further setup should be required after installing. The relevant `bin` folder (by default `VulkanSDK\[vulkan-sdk-version]\Bin`) is automatically added to PATH, and the environment variables VULKAN_SDK and VK_SDK_PATH should also have been initialised (pointing to `VulkanSDK\[vulkan-sdk-version]` by default).
+The Windows Vulkan SDK installer can be downloaded from the [LunarG website](https://vulkan.lunarg.com/sdk/home). The relevant `bin` folder (by default `VulkanSDK\[vulkan-sdk-version]\Bin`) is automatically added to PATH, and the environment variables VULKAN_SDK and VK_SDK_PATH should also have been initialised (pointing to `VulkanSDK\[vulkan-sdk-version]` by default). You might need to point to the directory in your `cabal.project.local` file, e.g.
 
+```
+package vulkan
+  extra-lib-dirs: C:/VulkanSDK/1.2.198.1/Lib
+  extra-include-dirs: C:/VulkanSDK/1.2.198.1/Include/
+```
 
 <a name="linux"></a>
 ### Linux

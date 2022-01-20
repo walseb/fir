@@ -23,14 +23,12 @@ module FIR.Validation.Bounds
 -- base
 import Data.Kind
   ( Constraint )
-import Data.Type.Bool
-  ( If )
 import GHC.TypeLits
   ( TypeError
   , ErrorMessage(..)
   )
 import GHC.TypeNats
-  ( Nat, type (+) )
+  ( Nat, CmpNat, type (+) )
 
 -- fir
 import Data.Type.List
@@ -39,52 +37,48 @@ import Data.Type.Map
   ( (:->)((:->)) )
 import Data.Type.Maybe
   ( FromJust )
-import Data.Type.Ord
-  ( POrd((:<)) )
 
 ---------------------------------------------------------------------------------------------
 
+type family ErrorIfNotLT (n :: Nat) (i :: Nat) (msg :: ErrorMessage) :: Constraint where
+  ErrorIfNotLT n i msg = ErrorIfNotLT_Helper msg (CmpNat i n)
+
+type family ErrorIfNotLT_Helper (msg :: ErrorMessage) (cmp :: Ordering) :: Constraint where
+  ErrorIfNotLT_Helper _  LT = ( () :: Constraint )
+  ErrorIfNotLT_Helper msg _ = TypeError msg
+
 type family VectorIndexInBounds (n :: Nat) (i :: Nat) :: Constraint where
   VectorIndexInBounds n i
-    = If (i :< n)
-        ( () :: Constraint )
-        ( TypeError
-          (    Text "Vector index "
-          :<>: ShowType i
-          :<>: Text " is out of bounds."
-          :$$: Text "Vector dimension is "
-          :<>: ShowType n :<>: Text "."
-          :$$: Text "Note: indexing starts from 0."
-          )
+    = ErrorIfNotLT n i
+        (    Text "Vector index "
+        :<>: ShowType i
+        :<>: Text " is out of bounds."
+        :$$: Text "Vector dimension is "
+        :<>: ShowType n :<>: Text "."
+        :$$: Text "Note: indexing starts from 0."
         )
 
 type family MatrixColumnIndexInBounds (m :: Nat) (n :: Nat) (i :: Nat) :: Constraint where
   MatrixColumnIndexInBounds m n i
-    = If (i :< n)
-        ( () :: Constraint )
-        ( TypeError
-          (    Text "Matrix column index "
-          :<>: ShowType i
-          :<>: Text " is out of bounds."
-          :$$: Text "This matrix has "
-          :<>: ShowType m :<>: Text " rows, "
-          :<>: ShowType n :<>: Text " columns."
-          :$$: Text "Note: indexing starts from 0."
-          )
+    = ErrorIfNotLT n i
+        (    Text "Matrix column index "
+        :<>: ShowType i
+        :<>: Text " is out of bounds."
+        :$$: Text "This matrix has "
+        :<>: ShowType m :<>: Text " rows, "
+        :<>: ShowType n :<>: Text " columns."
+        :$$: Text "Note: indexing starts from 0."
         )
 
 type family ArrayIndexInBounds (n :: Nat) (i :: Nat) :: Constraint where
   ArrayIndexInBounds n i
-    = If (i :< n)
-        ( () :: Constraint )
-        ( TypeError
-          (    Text "Array index "
-          :<>: ShowType i
-          :<>: Text " is out of bounds."
-          :$$: Text "Array size is "
-          :<>: ShowType n :<>: Text "."
-          :$$: Text "Note: indexing starts from 0."
-          )
+    = ErrorIfNotLT n i
+        (    Text "Array index "
+        :<>: ShowType i
+        :<>: Text " is out of bounds."
+        :$$: Text "Array size is "
+        :<>: ShowType n :<>: Text "."
+        :$$: Text "Note: indexing starts from 0."
         )
 
 type family StructFieldFromIndex (i :: Nat) (as :: [fld :-> ty]) :: ( fld :-> ty ) where

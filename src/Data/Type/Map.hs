@@ -14,17 +14,15 @@ Simple type-level maps (association lists).
 
 module Data.Type.Map where
 
--- base 
+-- base
 import Data.Type.Bool
   ( If )
-import Data.Type.Ord
-  ( Compare )
 import GHC.TypeLits
   ( TypeError, ErrorMessage(..) )
 
 -- fir
-import Data.Type.Ord
-  ( POrd((:<)) )
+import Data.Type.POrd
+  ( POrd(Compare, (:<)) )
 
 ------------------------------------------------
 -- barebones type-level map functionality
@@ -121,7 +119,7 @@ type family Delete (s :: k) (is :: Map k v) :: Map k v where
 
 type family Remove (i :: Map k v) (j :: Map k v) :: Map k v where
   Remove '[]                j = j
-  Remove ( (k ':-> _) ': i) j = Remove i (Delete k j) 
+  Remove ( (k ':-> _) ': i) j = Remove i (Delete k j)
 
 type family InsertionSort (i :: [k :-> v]) :: Map k v where
   InsertionSort '[]              = '[]

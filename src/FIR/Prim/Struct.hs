@@ -85,7 +85,7 @@ import Data.Type.Known
   ( Demotable(Demote)
   , Known(known), knownValue
   )
-import Data.Type.Ord
+import Data.Type.POrd
   ( POrd(Compare)
   , PEnum(Succ, Pred, FromEnum, ToEnum)
   )

@@ -302,37 +302,37 @@ type family NoSizes
   NoSizes k em given (InputPoints ': _ )
     = TypeError
         (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
-        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputPoints :<>: Text "."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType (InputPoints :: ExecutionMode Nat ) :<>: Text "."
         )
   NoSizes k em given (InputLines ': _ )
     = TypeError
         (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
-        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputLines :<>: Text "."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType (InputLines :: ExecutionMode Nat ) :<>: Text "."
         )
   NoSizes k em given (InputLinesAdjacency ': _ )
     = TypeError
         (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
-        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputLinesAdjacency :<>: Text "."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType ( InputLinesAdjacency :: ExecutionMode Nat ) :<>: Text "."
         )
   NoSizes k em given (Triangles ': _ )
     = TypeError
         (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
-        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Triangles :<>: Text "."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType ( Triangles :: ExecutionMode Nat ) :<>: Text "."
         )
   NoSizes k em given (InputTrianglesAdjacency ': _ )
     = TypeError
         (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
-        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType InputTrianglesAdjacency :<>: Text "."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType ( InputTrianglesAdjacency :: ExecutionMode Nat ) :<>: Text "."
         )
   NoSizes k em given (Quads ': _ )
     = TypeError
         (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
-        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Quads :<>: Text "."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType ( Quads :: ExecutionMode Nat ) :<>: Text "."
         )
   NoSizes k em given (Isolines ': _ )
     = TypeError
         (   Text (NamedExecutionModel k em) :<>: Text " has conflicting inputs."
-        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType Isolines :<>: Text "."
+        :$$:  Text "Provided both " :<>: ShowType given :<>: Text " and " :<>: ShowType ( Isolines :: ExecutionMode Nat ) :<>: Text "."
         )
   NoSizes k em given ( _ ': modes )
     = NoSizes k em given modes

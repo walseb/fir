@@ -124,7 +124,7 @@ import Data.Type.Map
   ( (:->)((:->)), Value )
 import Data.Type.Nat
   ( NextPositivePowerOf2, RoundUp )
-import Data.Type.Ord
+import Data.Type.POrd
   ( POrd(Max) )
 import FIR.Prim.Array
   ( Array(..) )
@@ -719,10 +719,10 @@ layoutStructMembers lay offset ((name, ty, decs):nxt) = do
   first ( (name, laidOutTy, Set.union newDecs decs) : ) <$> layoutStructMembers lay newOffset nxt
 
 primTySizeAndAli :: MonadError ShortText m => Layout -> SPIRV.PrimTy -> m ( Word32, Word32 )
-primTySizeAndAli Base ty 
+primTySizeAndAli Base ty
   | Just ( LayoutablePrimTy ( _ :: Proxy ty ) ) <- layoutable @Base ty
   = pure $ ( sizeOf @ty @Base, alignment @ty @Base )
-primTySizeAndAli Extended ty 
+primTySizeAndAli Extended ty
   | Just ( LayoutablePrimTy ( _ :: Proxy ty ) ) <- layoutable @Extended ty
   = pure $ ( sizeOf @ty @Extended, alignment @ty @Extended )
 primTySizeAndAli lay ty = throwError

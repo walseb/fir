@@ -3,6 +3,7 @@
 {-# LANGUAGE DerivingStrategies   #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -61,11 +62,10 @@ instance Applicative Option where
   pure = some
   (<*>) = ap
 instance Monad Option where
-  return = some
+  return = pure
   Option { isSome = c, fromSome = a } >>= f
     | Option { isSome = d, fromSome = b } <- f a
     = Option { isSome = c && d, fromSome = b }
-
 
 instance ( SyntacticVal a, PrimTy (InternalType a) ) => Syntactic (Option a) where
   type Internal (Option a) =
@@ -81,8 +81,8 @@ instance ( SyntacticVal a, PrimTy (InternalType a) ) => Syntactic (Option a) whe
       }
 some :: a -> Option a
 some a = Option { isSome = Lit True, fromSome = a }
-none :: ( SyntacticVal a, PrimTy (InternalType a) ) => Option a
-none = Option { isSome = Lit False, fromSome = fromAST Undefined }
+none :: forall a. ( SyntacticVal a, PrimTy (InternalType a) ) => Option a
+none = Option { isSome = Lit False, fromSome = fromAST $ Undefined @(InternalType a) }
 option
   :: ( SyntacticVal a
      , PrimTy (InternalType a)

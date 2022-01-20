@@ -324,7 +324,7 @@ createShaderBindingTableBuffer physicalDevice device ( vkPipeline -> pipeline )
 
     ( bufKeys, ( sbtBuffer, sbtPtr ) ) <-
       createBufferFromPoke
-        (   Vulkan.BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR  
+        (   Vulkan.BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR
         .|. Vulkan.BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
         )
         ( Vulkan.MEMORY_PROPERTY_HOST_VISIBLE_BIT .|. Vulkan.MEMORY_PROPERTY_HOST_COHERENT_BIT )
@@ -447,7 +447,7 @@ buildAccelerationStructuresDevice physicalDevice device commandPool queue asType
     buildSizes <-
       Vulkan.getAccelerationStructureBuildSizesKHR device Vulkan.ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_KHR
         ( buildGeometryInfo Vulkan.zero Vulkan.zero ) maxPrimsVector
-    
+
     -- We've got the sizes: now create the required buffers.
     logDebug "Allocating acceleration structure buffers."
     ( accelKeys, ( accelBuffer, _ ) )

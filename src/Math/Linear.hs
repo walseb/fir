@@ -2,6 +2,7 @@
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise       #-}
 
 {-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveFoldable             #-}
@@ -177,11 +178,11 @@ deriving stock instance Prelude.Ord a => Prelude.Ord (V n a)
 instance (KnownNat n, Binary a) => Binary (V n a) where
   put = traverse_ put
   get = case Proxy @1 %<=? Proxy @n of
-            LE Refl   -> liftA2 (:.) 
-                           get 
+            LE Refl   -> liftA2 (:.)
+                           get
                            $ get @(V (n-1) a)
             NLE nle _ ->
-              case lt1_is_Zero nle of
+              case lt1_is_Zero @n nle of
                    Refl -> pure VNil
 
 instance KnownNat n => Distributive (V n) where
@@ -193,15 +194,16 @@ instance KnownNat n => Distributive (V n) where
                    . strong
                    . fmap headTailV
         NLE nle _ ->
-          case lt1_is_Zero nle of
+          case lt1_is_Zero @n nle of
                Refl -> const VNil
-    
+
 instance KnownNat n => Applicative (V n) where
   pure                    = unfold id
   _         <*>  VNil     = VNil
   (f :. fs) <*> (a :. as) = f a :. fs <*> as
+#if !MIN_VERSION_base(4,16,0)
   _         <*> _         = error "unreachable"
-
+#endif
 
 instance (KnownNat n, Eq a) => Eq (V n a) where
   type Logic (V n a) = Logic a
@@ -210,11 +212,15 @@ instance (KnownNat n, Eq a) => Eq (V n a) where
 instance (KnownNat n, Ord a) => Ord (V n a) where
   VNil <= VNil = true
   (a :. as) <= (b :. bs) = a < b || (a <= b && as <= bs)
+#if !MIN_VERSION_base(4,16,0)
   _ <= _ = error "unreachable"
+#endif
 
   VNil < VNil = false
   (a :. as) <  (b :. bs) = a < b || (a <= b && as <  bs)
+#if !MIN_VERSION_base(4,16,0)
   _ < _ = error "unreachable"
+#endif
 
   min = liftA2 min
   max = liftA2 max
@@ -244,7 +250,7 @@ splitAtV v = case Proxy @1 %<=? Proxy @s of
     Refl -> case headTailV v of
       ( h, t ) -> case splitAtV @(s-1) t of
         ( hs, d ) -> ( h :. hs, d )
-  NLE nle _ -> case lt1_is_Zero nle of
+  NLE nle _ -> case lt1_is_Zero @s nle of
     Refl -> ( VNil, v )
 
 instance (KnownNat n, Storable a) => Storable (V n a) where
@@ -253,14 +259,14 @@ instance (KnownNat n, Storable a) => Storable (V n a) where
     where n = fromIntegral $ natVal (Proxy @n)
 
   alignment _ = alignment (undefined :: a)
-  
+
   poke ptr u = go u 0#
     where go :: KnownNat m => V m a -> Int# -> IO()
           go VNil     _  = pure ()
           go (a :. v) n# = do
               pokeElemOff (castPtr ptr) (I# n#) a
               go v (n# +# 1#)
-  
+
   peek :: Ptr (V n a) -> IO (V n a)
   peek ptr = traverse (peekElemOff (castPtr ptr)) ixVec
       where ixVec :: V n Int
@@ -331,7 +337,7 @@ buildV f = go @0
     go :: forall j. (KnownNat j, j <= n) => V (n-j) a
     go = case Proxy @1 %<=? Proxy @(n-j) of
       NLE nle _ ->
-        case lt1_is_Zero nle of
+        case lt1_is_Zero @(n-j) nle of
           Refl -> VNil
       LE Refl -> case ( lemma1 @j @n, lemma2 @j @n ) of
         (Refl, Refl) -> f ( Proxy @j ) :. go @(j+1)
@@ -354,11 +360,11 @@ unfold :: forall n a. KnownNat n
        => (a -> a) -- ^ Function to iterate.
        -> a        -- ^ Starting value.
        -> V n a
-unfold f a 
+unfold f a
   = case Proxy @1 %<=? Proxy @n of
       LE Refl   -> let b = f a in b :. (unfold f b :: V (n-1) a)
-      NLE nle _ -> 
-       case lt1_is_Zero nle of
+      NLE nle _ ->
+       case lt1_is_Zero @n nle of
             Refl -> VNil
 
 
@@ -410,7 +416,9 @@ fromHListVec (ConsReplication repl) (x :> xs) = x :. fromHListVec repl xs
 toHListVec :: Replication n a rs -> V n a -> HList rs
 toHListVec NilReplication         _         = HNil
 toHListVec (ConsReplication repl) (x :. xs) = x :> toHListVec repl xs
+#if !MIN_VERSION_base(4,16,0)
 toHListVec (ConsReplication _   ) VNil      = error "impossible"
+#endif
 
 instance GradedSemigroup (V 0 a) Nat where
   type Grade Nat (V 0 a) i = V i a
@@ -693,7 +701,7 @@ splitCols
   => V (m*n) a -> V n (V m a)
 splitCols v = case Proxy @1 %<=? Proxy @n of
   NLE nle Refl ->
-    case lt1_is_Zero nle of
+    case lt1_is_Zero @n nle of
       Refl -> VNil
   LE Refl ->
     case splitAtV @m v of

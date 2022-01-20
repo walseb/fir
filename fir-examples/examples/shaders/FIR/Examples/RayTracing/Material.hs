@@ -22,6 +22,8 @@ module FIR.Examples.RayTracing.Material
 -- base
 import Data.Kind
   ( Type )
+import Data.Proxy
+  ( Proxy(..) )
 import Data.Typeable
   ( Typeable )
 import GHC.TypeNats
@@ -283,8 +285,9 @@ instance Material Fresnel where
       computeReflectance
         :: forall ( i :: Nat ) ( s :: ProgramState )
         .  ( ( i :< 4 ) ~ True, _ )
-        => Program s s ( Code Float, Code Float )
-      computeReflectance = do
+        => Proxy i -> Program s s ( Code Float, Code Float )
+      -- N.B.: the Proxy argument here works around https://gitlab.haskell.org/ghc/ghc/-/issues/20921
+      computeReflectance _ = do
         abs_cosθ_refr <- refractionCosine ( view @( Index i ) ηs ) abs_cosθ_inc
         reflectance_s <-
           fresnelReflectance S
@@ -296,10 +299,10 @@ instance Material Fresnel where
             ( view @( Index i ) n_outs ) ( view @( Index i ) k_outs ) abs_cosθ_refr
         let' $ ( abs_cosθ_refr, 0.5 * ( reflectance_s + reflectance_p ) )
 
-    ( abs_cosθ_refr0, reflectance0 ) <- computeReflectance @0
-    ( abs_cosθ_refr1, reflectance1 ) <- computeReflectance @1
-    ( abs_cosθ_refr2, reflectance2 ) <- computeReflectance @2
-    ( abs_cosθ_refr3, reflectance3 ) <- computeReflectance @3
+    ( abs_cosθ_refr0, reflectance0 ) <- computeReflectance @0 Proxy
+    ( abs_cosθ_refr1, reflectance1 ) <- computeReflectance @1 Proxy
+    ( abs_cosθ_refr2, reflectance2 ) <- computeReflectance @2 Proxy
+    ( abs_cosθ_refr3, reflectance3 ) <- computeReflectance @3 Proxy
     reflectance <- let' $ Vec4 reflectance0 reflectance1 reflectance2 reflectance3
 
     ( vals, probs ) <-

@@ -297,11 +297,12 @@ data ProductComponents (iss :: [[Type]]) (s :: k) (as :: [Type]) where
 
 
 -- | Run-time index (kind-correct).
-type AnIndex (ix :: Type  ) = (RTOptic_ :: Optic '[ix] s a)
+type AnIndex (ix :: Type  ) = RTOptic_ @'[ix]
 -- | Compile-time index (kind-correct).
-type Index   (i  :: Nat   ) = (Field_ i :: Optic '[]   s a)
+type Index   (i  :: Nat   ) = Field_ @Nat @'[] i
 -- | Compile-time field name (kind-correct).
-type Name    (k  :: Symbol) = (Field_ k :: Optic '[]   s a)
+type Name    (k  :: Symbol) = Field_ @Symbol @'[] k
+
 
 -- | Optic for components of a particular type (kind-correct).
 type OfType (ty :: Type) = (OfType_ ty :: Optic '[] s ty)
@@ -919,15 +920,14 @@ passGetterIndex (SSameSucc ( same1 :: SSameLength t_js t_as ) ) js views =
       case same2 of
         ( sameSucc@(SSameSucc (same3 :: SSameLength t_is jss) ) ) ->
           case sameSucc of
-            ( _ :: SSameLength (i ': t_is) (js ': jss) ) ->
-              case ( unsafeCoerce Refl :: ZipCons t_is (Tail iss) :~: jss
-                   , unsafeCoerce Refl :: ( t_js ': MapTail jss ) :~: iss
-                   , unsafeCoerce Refl :: i :~: j
-                   ) of
-                ( Refl, Refl, Refl ) ->
-                    ConsViewer same3 (Proxy @t_is) (Proxy @(Tail iss)) Proxy
-                      ( getter k )
-                      ( passGetterIndex @t_js @(MapTail jss) @s @t_as same1 ks getters )
+            ( _ :: SSameLength (i ': t_is) (js ': jss) )
+              | Refl <- ( unsafeCoerce Refl :: ZipCons t_is (Tail iss) :~: jss )
+              , Refl <- ( unsafeCoerce Refl :: ( t_js ': MapTail jss ) :~: iss )
+              , Refl <- ( unsafeCoerce Refl :: i :~: j )
+              , Proxy :: Proxy bss <- Proxy @(Tail iss)
+              -> ConsViewer same3 (Proxy @t_is) (Proxy @bss) Proxy
+                    ( getter k )
+                    ( passGetterIndex @t_js @(MapTail jss) @s @t_as same1 ks getters )
 
 passSetterIndex
   :: forall (js :: [Type]) (jss :: [[Type]]) (s :: Type) (as :: [Type])
@@ -939,15 +939,14 @@ passSetterIndex (SSameSucc ( same1 :: SSameLength t_js t_as ) ) js sets =
       case same2 of
         ( sameSucc@(SSameSucc (same3 :: SSameLength t_is jss) ) ) ->
           case sameSucc of
-            ( _ :: SSameLength (i ': t_is) (js ': jss) ) ->
-              case ( unsafeCoerce Refl :: ZipCons t_is (Tail iss) :~: jss
-                   , unsafeCoerce Refl :: ( t_js ': MapTail jss ) :~: iss
-                   , unsafeCoerce Refl :: i :~: j
-                   ) of
-                ( Refl, Refl, Refl ) ->
-                    ConsSetter same3 (Proxy @t_is) (Proxy @(Tail iss)) Proxy
-                      ( setter k )
-                      ( passSetterIndex @t_js @(MapTail jss) @s @t_as same1 ks setts )
+            ( _ :: SSameLength (i ': t_is) (js ': jss) )
+              | Refl <- ( unsafeCoerce Refl :: ZipCons t_is (Tail iss) :~: jss )
+              , Refl <- ( unsafeCoerce Refl :: ( t_js ': MapTail jss ) :~: iss )
+              , Refl <- ( unsafeCoerce Refl :: i :~: j )
+              , Proxy :: Proxy bss <- Proxy @(Tail iss)
+              -> ConsSetter same3 (Proxy @t_is) (Proxy @(Tail iss)) Proxy
+                    ( setter k )
+                    ( passSetterIndex @t_js @bss @s @t_as same1 ks setts )
 
 data Viewers (iss :: [[Type]]) (s :: Type) (as :: [Type]) where
   NilViewer  :: Viewers iss s '[] -- iss should always be a list of empty lists

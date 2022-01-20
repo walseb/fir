@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures #-}
+{-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures -Wno-missing-signatures #-}
 
 {-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE DataKinds            #-}
@@ -105,7 +105,13 @@ import qualified SPIRV.Stage  as SPIRV
 infixl 9 :$
 infixr 5 `ConsHList`
 
-pattern Lam   f             = VF (LamF   f  )
+pattern Lam :: forall fun fs
+            .  ( LamF :<! fs )
+            => forall a b
+            .  ( fun ~ ( Val a :--> b ) )
+            => ( EGADT fs ( Val a ) -> EGADT fs b )
+            -> EGADT fs fun
+pattern Lam   f             = VF (LamF f )
 pattern (:$)  f a           = VF (AppF   f a)
 pattern Lit   l             = VF (LitF   l  )
 pattern MkID  i             = VF (MkIDF  i  )
@@ -114,6 +120,10 @@ pattern UnsafeCoerce        = VF UnsafeCoerceF
 pattern Return              = VF ReturnF
 pattern Bind                = VF BindF
 pattern PrimOp a op         = VF (PrimOpF a op)
+
+pattern Undefined :: forall a fs
+                  .  ( PrimTy a, UndefinedF :<! fs )
+                  => EGADT fs (Val a)
 pattern Undefined           = VF UndefinedF
 pattern GradedMappend       = VF GradedMappendF
 pattern Pure px   a         = VF (PureF px   a)

@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DerivingVia           #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -47,7 +48,7 @@ import Data.Binary.Class.Put
   ( Put(..), PutWord32Enum(..) )
 import Data.Type.Known
   ( Demotable(Demote), Known(known), knownValue )
-import Data.Type.Ord
+import Data.Type.POrd
   ( POrd(Compare) )
 
 -------------------------------------------------------

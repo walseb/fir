@@ -84,7 +84,7 @@ allocateMemory physicalDevice device memReqs memFlags allocateFlags = do
       allocateFlagsInfo =
         Vulkan.MemoryAllocateFlagsInfo
           { Vulkan.flags      = allocateFlags
-          , Vulkan.deviceMask = 0 
+          , Vulkan.deviceMask = 0
           }
       allocateInfo :: Vulkan.MemoryAllocateInfo '[ Vulkan.MemoryAllocateFlagsInfo ]
       allocateInfo =

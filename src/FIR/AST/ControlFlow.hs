@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures #-}
+{-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures -Wno-missing-signatures #-}
 
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
@@ -32,7 +32,7 @@ import Data.Tree
 
 -- haskus-utils-variant
 import Haskus.Utils.EGADT
-  ( pattern VF )
+  ( EGADT, type (:<!), pattern VF )
 
 -- fir
 import Control.Arrow.Strength
@@ -48,6 +48,9 @@ import FIR.Validation.CFG
 
 ------------------------------------------------------------
 
+pattern If :: forall a fs
+           .  ( GHC.Stack.HasCallStack, PrimTy a, SelectionF :<! fs )
+           => EGADT fs ( Val Bool :--> Val a :--> Val a :--> Val a )
 pattern If              = VF IfF
 pattern IfM             = VF IfMF
 pattern Switch  s d cs  = VF (SwitchF  s d cs)

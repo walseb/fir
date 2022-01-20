@@ -51,7 +51,7 @@ import Data.Type.Map
   , Lookup, Union
   , Keys
   )
-import Data.Type.Ord
+import Data.Type.POrd
   ( POrd(Compare) )
 import FIR.Binding
   ( Binding, BindingsMap, FunctionType

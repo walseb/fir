@@ -1,16 +1,17 @@
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 {-|
-Module: Data.Type.Ord
+Module: Data.Type.POrd
 
 Promotion of the 'Ord' type class.
 -}
 
-module Data.Type.Ord where
+module Data.Type.POrd where
 
 -- base
 import Data.Type.Bool

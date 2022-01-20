@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LiberalTypeSynonyms   #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -107,7 +108,7 @@ instance ( SyntacticVal z
          , x ~ z, y ~ z
          )
        => Chooser x y z PureChoice where
-  chosen = fromAST If
+  chosen = fromAST ( If @(InternalType z) )
 instance ( x ~ Program i j1 x'
          , y ~ Program i j2 y'
          , z ~ Program i i  z'

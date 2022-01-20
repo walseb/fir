@@ -20,7 +20,7 @@ infix 4 `LazyEq`
 
 -- Alternative version of 'Data.Type.Equality.=='.
 -- Ensures that @a == a@ reduces to True for any argument @a@.
--- 
+--
 -- See "Data.Type.Equality.==", which explains the trade-off.
 type family (a :: k) `LazyEq` (b :: k) :: Bool where
   a `LazyEq` a = 'True
