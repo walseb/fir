@@ -101,8 +101,8 @@ type ModelBuiltins (info :: ExecutionInfo Nat stage)
 
 type family ModelBuiltins' (info :: ExecutionInfo Nat stage) :: [ Symbol :-> Binding ] where
   ModelBuiltins' VertexInfo
-    = '[ "gl_VertexID"       ':-> Var R Word32
-       , "gl_InstanceID"     ':-> Var R Word32
+    = '[ "gl_VertexIndex"    ':-> Var R Word32
+       , "gl_InstanceIndex"  ':-> Var R Word32
        , "gl_Position"       ':-> Var W ( V 4 Float )
        , "gl_PointSize"      ':-> Var W Float
        ]
