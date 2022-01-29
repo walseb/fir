@@ -74,7 +74,7 @@ import GHC.TypeLits
   )
 import GHC.TypeNats
   ( Nat, KnownNat
-  , CmpNat, sameNat
+  , type (+), CmpNat, sameNat
   )
 
 -- half
@@ -125,6 +125,7 @@ import FIR.AST
   , pattern View, pattern Set
   , pattern Pure, pattern Ap
   , pattern MkVector, pattern Mat, pattern UnMat, pattern Array, pattern Struct
+  , pattern GradedMappend
   )
 import FIR.AST.Optics
   ( AugListVariadic )
@@ -163,6 +164,8 @@ import Math.Algebra.Class
   , Integral, Unsigned
   , Convert(..), Rounding(..)
   )
+import Math.Algebra.GradedSemigroup
+  ( GradedSemigroup(..) )
 import Math.Linear
   ( Semimodule(..), LinearModule(..)
   , Inner(..), Cross(..)
@@ -1202,3 +1205,8 @@ instance (ScalarTy a, Floating a) => Matrix Nat (Code (M 0 0 a)) where
   (!*) :: forall i j. (KnownNat i, KnownNat j)
        => Code (M i j a) -> Code a -> Code (M i j a)
   (!*) = primOp @'(a,i,j) @SPIRV.MMulK
+
+instance GradedSemigroup (Code (V 0 a)) Nat where
+  type Grade Nat (Code (V 0 a)) n = Code (V n a)
+  type n1 :<!>: n2 = n1 + n2
+  (<!>) = fromAST GradedMappend
