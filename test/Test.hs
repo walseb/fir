@@ -129,7 +129,7 @@ compileTest flags testName = do
                   }
         (Just inputHandle, _, _, processHandle)
           <- createProcess codeGenProcess
-        
+
         Text.hPutStrLn inputHandle compile
         Text.hPutStrLn inputHandle ":q"
         hClose inputHandle
@@ -192,9 +192,9 @@ compileTest flags testName = do
                 _  -> do renameFile val test
                          renameFile spv (spv <.> "fail")
                          pure ( Failure ( ValidateFail valContents ) )
-                
+
   where dir  = "test" </> "Tests"
-        src  = dir </> testName <.> "hs"        
+        src  = dir </> testName <.> "hs"
         test = dir </> testName <.> "fail"
         spv  = dir </> testName <.> "spv"
         compile =  "compileTo "
@@ -208,8 +208,8 @@ typeCheck testName = do
   srcExists <- doesFileExist src
   case srcExists of
     False -> pure ( Failure MissingSource )
-    True  -> 
-      do 
+    True  ->
+      do
         (temp, tempHandle) <- ( uncurry openBinaryTempFile )
                                 ( second
                                     ( `replaceExtension` "tmp" )

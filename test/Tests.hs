@@ -100,6 +100,7 @@ allTests
           , ( "Overlapping"   , Typecheck )
           , ( "ProductIndices", Typecheck )
           , ( "PureProducts"  , Typecheck )
+          , ( "UnarySwizzle"  , Validate  )
           , ( "Various"       , Validate  )
           ]
     , Folder "PrimOps"

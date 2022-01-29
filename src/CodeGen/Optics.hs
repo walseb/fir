@@ -393,11 +393,16 @@ operationTree is (SComposeO lg1 opt1 opt2)
 operationTree is
   ( SProd same (comps :: SProductComponents (os :: ProductComponents iss s as))
     :: SOptic (optic :: Optic is s a)
-  ) =
-    (:[]) . Combine ( Proxy @a ) ( Proxy @as ) <$>
-      ( componentsTrees same comps =<<
-          combinedIndices @iss @is @as sSameLength sLength is
-      )
+  ) = do
+        comp_indices <- combinedIndices @iss @is @as sSameLength sLength is
+        comp_trees   <- componentsTrees same comps comp_indices
+        case comp_trees of
+          []       -> return []
+          [ tree ] -> return tree
+          trees    -> return [ Combine ( Proxy @a ) ( Proxy @as ) trees ]
+            -- N.B.: only combine optical subtrees when there is combining taking place.
+            -- If there are fewer than 2 subtrees, we won't be creating a composite structure.
+            -- See bug #88.
 operationTree _ (SBinding {})
   = throwError "operationTree: trying to access a binding within a binding"
 operationTree _ (SImageTexel {})
