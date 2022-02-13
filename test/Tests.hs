@@ -32,6 +32,8 @@ allTests
           [ ( "Bits"   , Validate )
           , ( "Zipbits", Validate )
           ]
+    , Folder "Builtins"
+          [ ( "SampleId", Validate ) ]
     , Folder "Components"
           [ ( "FloatInt"  , Typecheck )
           , ( "FloatWidth", Typecheck )

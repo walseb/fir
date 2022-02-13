@@ -312,6 +312,10 @@ builtinDecorations builtin
 
 builtinCapabilities :: SPIRV.Backend -> ShortText -> Set SPIRV.Capability
 builtinCapabilities bk builtinName
+  | builtinName `elem` [ "gl_ClipDistance", "gl_CullDistance" ]
+  = Set.singleton SPIRV.ClipDistance
+  | builtinName `elem` [ "gl_SampleID", "gl_SamplePosition" ]
+  = Set.singleton SPIRV.SampleRateShading
   | isSubgroupBuiltin ( ShortText.drop 3 builtinName )
   = case bk of
     SPIRV.Vulkan -> Set.singleton SPIRV.GroupNonUniform
