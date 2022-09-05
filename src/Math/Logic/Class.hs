@@ -8,6 +8,7 @@
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
@@ -24,32 +25,16 @@ module Math.Logic.Class where
 
 -- base
 import Prelude
-  ( Bool(..)
-  , Int, Word, Float, Double
-  , Semigroup, Monoid
-  , Foldable(..)
-  , flip
-  )
+  ( Int, Word, Foldable(..) )
 import qualified Prelude
-import Data.Coerce
-  ( Coercible, coerce )
-import Data.Int
-  ( Int8,Int16,Int32,Int64 )
-import Data.Kind
-  ( Type )
-import Data.Word
-  ( Word8,Word16,Word32,Word64 )
 import Foreign.C.Types
 import qualified GHC.Stack
   ( HasCallStack )
 
--- half
-import Numeric.Half
-  ( Half )
-
 -- fir
 import Deriving.Base
   ( Base(..) ) -- newtype for deriving via base instances
+import FIR.Prelude
 
 ----------------------------------------------------------------------
 

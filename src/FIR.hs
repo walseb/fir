@@ -82,7 +82,7 @@ of the project's repository.
 
 -}
 
-module FIR 
+module FIR
   ( DrawableProgramAST(showAST, drawAST)
   , CompilableProgram(compile, compileTo)
   , CompilerFlag(..)
@@ -221,53 +221,15 @@ module FIR
   , Data.Type.Known.Known(..)
   , Data.Type.Known.knownValue
 
-  -- re-exporting parts of Prelude
-  , Prelude.Bool(..), Prelude.otherwise
-  , Prelude.Maybe(..), Prelude.maybe
-  , Prelude.Either(..), Prelude.either
-  , Prelude.fst, Prelude.snd
-  , Prelude.curry, Prelude.uncurry
-  , Prelude.subtract
-  , Prelude.Semigroup(..), Prelude.Monoid(..)
-  , Prelude.id, Prelude.const, (Prelude..)
-  , Prelude.flip, (Prelude.$)
-  , Prelude.until, Prelude.asTypeOf
-  , Prelude.error, Prelude.errorWithoutStackTrace
-  , Prelude.seq, (Prelude.$!)
-  , Prelude.IO
-  , Prelude.FilePath
-
-  -- numeric datatypes
-  , Data.Word.Word8
-  , Data.Word.Word16
-  , Data.Word.Word32
-  , Data.Word.Word64
-  , Data.Int.Int8
-  , Data.Int.Int16
-  , Data.Int.Int32
-  , Data.Int.Int64
-  , Numeric.Half.Half
-  , Prelude.Float
-  , Prelude.Double
-  -- deliberately not re-exporting Int/Word
-
-  -- overloaded strings syntax
-  , Data.String.IsString(..)
-
+  -- Re-export of prelude and related functions
+  , module FIR.Prelude
   ) where
 
 -- base
-import Data.String
-  ( IsString(fromString) )
-import Prelude
 import Data.Foldable
   ( foldl' )
 import Data.Functor
   ( ($>) )
-import Data.Word
-  ( Word8, Word16, Word32, Word64 )
-import Data.Int
-  ( Int8, Int16, Int32, Int64 )
 import GHC.Generics
   ( Generic )
 
@@ -301,10 +263,6 @@ import Haskus.Utils.EGADT
 import Data.Monoid.Generic
   ( GenericSemigroup(..), GenericMonoid(..) )
 
--- half
-import Numeric.Half
-  ( Half )
-
 -- tree-view
 import Data.Tree.View
   ( showTree )
@@ -331,6 +289,7 @@ import FIR.Definition
 import FIR.Layout
 import FIR.Module
 import FIR.Pipeline
+import FIR.Prelude
 import FIR.Prim.Array
 import FIR.Prim.Image
 import FIR.Prim.RayTracing

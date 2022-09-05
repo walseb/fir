@@ -7,6 +7,7 @@
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 
 {-|
@@ -37,30 +38,15 @@ module Math.Algebra.Class where
 
 -- base
 import Prelude
-  ( id, (.), ($)
-  , Bool
-  , Integer, Rational
+  ( Integer, Rational
   , Word, Int
-  , Float, Double
   )
 import qualified Prelude
-import Data.Coerce
-  ( coerce )
-import Data.Complex
-  ( Complex(..) )
-import Data.Int
-  ( Int8, Int16, Int32, Int64 )
-import Data.Kind
-  ( Type )
 import qualified Data.Fixed as Fixed
-import Data.Word
-  ( Word8, Word16, Word32, Word64 )
 import Foreign.C.Types
 import qualified GHC.Float as Float
 
 -- half
-import Numeric.Half
-  ( Half )
 import qualified Numeric.Half as Half
 
 -- fir
@@ -70,6 +56,7 @@ import Math.Logic.Class
   ( Eq(Logic,(==)), Ord
   , ifThenElse
   )
+import FIR.Prelude
 
 ----------------------------------------------------------------------------
 

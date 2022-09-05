@@ -13,6 +13,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
 {-|
@@ -28,13 +29,13 @@ module Math.Quaternion where
 
 -- base
 import Prelude
-  hiding ( Num(..), Fractional(..), Floating(..) )
+  ( Eq(..), Show(..), Functor(..), Applicative(..)
+  , Foldable(..), Traversable(..) )
 import Control.Applicative
   ( liftA2 )
-import Data.Coerce
-  ( coerce )
 
 -- fir
+import FIR.Prelude
 import Math.Algebra.Class
   ( AdditiveMonoid(..), CancellativeAdditiveMonoid(..), AdditiveGroup(..)
   , Semiring(..), Ring, DivisionRing(..)

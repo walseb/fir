@@ -69,6 +69,10 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
+import qualified Vulkan as Vulkan.Surface
+  ( SurfaceFormatKHR(..) )
 import qualified Vulkan.Zero as Vulkan
 
 -- fir
@@ -187,8 +191,8 @@ ising = runVulkan initialState do
     let
 
       sc_width, sc_height :: Num a => a
-      sc_width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
-      sc_height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      sc_width  = fromIntegral $ Vulkan.Extent2D.width  swapchainExtent
+      sc_height = fromIntegral $ Vulkan.Extent2D.height swapchainExtent
 
       extent3D, checkerboardExtent3D :: Vulkan.Extent3D
       extent3D
@@ -205,7 +209,7 @@ ising = runVulkan initialState do
             }
 
       colFmt, checkerboardFormat :: Vulkan.Format
-      colFmt = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
+      colFmt = Vulkan.Surface.format surfaceFormat
       checkerboardFormat = Vulkan.FORMAT_R32_SFLOAT
 
 

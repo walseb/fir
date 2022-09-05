@@ -48,6 +48,8 @@ import qualified Data.Vector as Boxed.Vector
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
 import qualified Vulkan.CStruct.Extends as Vulkan
   ( SomeStruct(SomeStruct) )
 import qualified Vulkan.Zero as Vulkan
@@ -298,8 +300,8 @@ createGraphicsPipeline device renderPass
         Vulkan.Viewport
           { Vulkan.x        = 0
           , Vulkan.y        = 0
-          , Vulkan.width    = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) extent
-          , Vulkan.height   = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) extent
+          , Vulkan.width    = fromIntegral $ Vulkan.Extent2D.width  extent
+          , Vulkan.height   = fromIntegral $ Vulkan.Extent2D.height extent
           , Vulkan.minDepth = 0
           , Vulkan.maxDepth = 1
           }
@@ -405,6 +407,7 @@ createGraphicsPipeline device renderPass
           { Vulkan.next               = ()
           , Vulkan.flags              = Vulkan.zero
           , Vulkan.stages             = Boxed.Vector.fromList ( map Vulkan.SomeStruct shaderInfos )
+          , Vulkan.stageCount         = fromIntegral $ length shaderInfos
           , Vulkan.vertexInputState   = Just ( Vulkan.SomeStruct vertexInputState )
           , Vulkan.tessellationState  = fmap Vulkan.SomeStruct mbTessellationState
           , Vulkan.basePipelineIndex  = 0
@@ -412,7 +415,7 @@ createGraphicsPipeline device renderPass
           , Vulkan.subpass            = 0
           , Vulkan.renderPass         = renderPass
           , Vulkan.layout             = pipelineLayout
-          , Vulkan.rasterizationState = Vulkan.SomeStruct rasterizationCreateInfo
+          , Vulkan.rasterizationState = Just $ Vulkan.SomeStruct rasterizationCreateInfo
           , Vulkan.inputAssemblyState = Just assemblyState
           , Vulkan.viewportState      = Just ( Vulkan.SomeStruct viewportState )
           , Vulkan.multisampleState   = Just ( Vulkan.SomeStruct multisampleState )

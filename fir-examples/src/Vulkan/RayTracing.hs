@@ -412,7 +412,7 @@ buildAccelerationStructuresDevice
   -> Boxed.Sized.Vector n
       ( [ ( Vulkan.AccelerationStructureGeometryKHR, Word32 ) ]
       , [ Vulkan.AccelerationStructureBuildRangeInfoKHR ]
-      ) 
+      )
   -> m ( Boxed.Sized.Vector n ( [ReleaseKey], Vulkan.AccelerationStructureKHR ) )
 buildAccelerationStructuresDevice physicalDevice device commandPool queue asType manyGeomsAndBuildRanges = do
   accelsData <- for manyGeomsAndBuildRanges \ ( geoms, buildRanges ) -> do
@@ -424,8 +424,6 @@ buildAccelerationStructuresDevice physicalDevice device commandPool queue asType
       geomsVector :: Boxed.Vector Vulkan.AccelerationStructureGeometryKHR
       maxPrimsVector :: Boxed.Vector Word32
       ( geomsVector, maxPrimsVector ) = Boxed.Vector.unzip $ Boxed.Vector.fromList geoms
-      nbGeoms :: Int
-      nbGeoms = Boxed.Vector.length geomsVector
       buildGeometryInfo
         :: Vulkan.AccelerationStructureKHR
         -> Vulkan.DeviceOrHostAddressKHR
@@ -436,7 +434,6 @@ buildAccelerationStructuresDevice physicalDevice device commandPool queue asType
         , Vulkan.mode                     = Vulkan.BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR
         , Vulkan.srcAccelerationStructure = Vulkan.zero
         , Vulkan.dstAccelerationStructure = someAS
-        , Vulkan.geometryCount            = fromIntegral nbGeoms
         , Vulkan.geometries               = geomsVector
         , Vulkan.scratchData              = someScratchAddress
         }
@@ -470,7 +467,7 @@ buildAccelerationStructuresDevice physicalDevice device commandPool queue asType
     logDebug ( "Scratch buffer device address is " <> ShortText.pack ( show scratchBufferAddress ) )
     -- Now create the acceleration structure.
     let
-      createInfo :: Vulkan.AccelerationStructureCreateInfoKHR
+      createInfo :: Vulkan.AccelerationStructureCreateInfoKHR '[]
       createInfo = Vulkan.AccelerationStructureCreateInfoKHR
         { Vulkan.type'         = asType
         , Vulkan.createFlags   = Vulkan.zero
@@ -478,6 +475,7 @@ buildAccelerationStructuresDevice physicalDevice device commandPool queue asType
         , Vulkan.offset        = 0
         , Vulkan.size          = Vulkan.accelerationStructureSize buildSizes
         , Vulkan.deviceAddress = Vulkan.zero -- no device address
+        , Vulkan.next          = Vulkan.zero
         }
     logDebug "Creating acceleration structure."
     ( _, as ) <- Vulkan.withAccelerationStructureKHR device createInfo Nothing allocate

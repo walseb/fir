@@ -63,6 +63,10 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
+import qualified Vulkan as Vulkan.Surface
+  ( SurfaceFormatKHR(..) )
 import qualified Vulkan.Zero as Vulkan
 
 -- fir
@@ -202,8 +206,8 @@ juliaSet = runVulkan initialState do
 
     let
       width, height :: Num a => a
-      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
-      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      width  = fromIntegral $ Vulkan.Extent2D.width  swapchainExtent
+      height = fromIntegral $ Vulkan.Extent2D.height swapchainExtent
 
       extent3D :: Vulkan.Extent3D
       extent3D
@@ -214,7 +218,7 @@ juliaSet = runVulkan initialState do
             }
 
       colFmt :: Vulkan.Format
-      colFmt = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
+      colFmt = Vulkan.Surface.format surfaceFormat
 
     renderPass <- logDebug "Creating a render pass" *>
       simpleRenderPass device
@@ -261,7 +265,7 @@ juliaSet = runVulkan initialState do
     -- Create command buffers and record commands into them.
 
     commandPool <- logDebug "Creating command pool" *> createCommandPool device Vulkan.zero ( fromIntegral queueFamilyIndex )
-    queue       <- getQueue device 0
+    --queue       <- getQueue device 0
 
     (_, nextImageSem ) <- createSemaphore device
     (_, submitted    ) <- createSemaphore device

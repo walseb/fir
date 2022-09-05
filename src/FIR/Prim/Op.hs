@@ -32,18 +32,11 @@ module FIR.Prim.Op where
 
 -- base
 import Prelude
-  ( Bool(..), Float, Functor(..), Maybe(..), Show(..)
-  , ($), (<>), (.)
-  , error, fromIntegral
-  )
+  ( Show(..), Functor(..), fromIntegral )
 import Control.Applicative
   ( liftA2 )
-import Data.Kind
-  ( Type )
 import Data.Proxy
   ( Proxy(Proxy) )
-import Data.Word
-  ( Word32, Word64 )
 import GHC.TypeNats
   ( Nat, KnownNat, natVal )
 
@@ -54,6 +47,7 @@ import FIR.AST.Type
   ( AugType(Val, (:-->)), Eff, FunArgs, UnderlyingType, Nullary
   , ApplyFAug
   )
+import FIR.Prelude
 import FIR.Prim.RayTracing
   ( AccelerationStructure )
 import FIR.Prim.Types

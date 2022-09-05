@@ -2,9 +2,11 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoImplicitPrelude     #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
 {-|
@@ -24,14 +26,6 @@ module FIR.Syntax.Complex
   ( CodeComplex(..), pattern (:+:), complexLog )
   where
 
--- base
-import Prelude
-  ( Bool, ($) )
-import Data.Coerce
-  ( coerce )
-import Data.Complex
-  ( Complex(..) )
-
 -- fir
 import Math.Algebra.Class
   ( AdditiveMonoid(..), CancellativeAdditiveMonoid(..), AdditiveGroup(..)
@@ -46,6 +40,7 @@ import FIR.AST
   ( Code, Syntactic(..), SyntacticVal, InternalType )
 import FIR.AST.Type
   ( AugType(Val) )
+import FIR.Prelude
 import FIR.Prim.Types
   ( PrimTy, ScalarTy )
 import FIR.Syntax.AST

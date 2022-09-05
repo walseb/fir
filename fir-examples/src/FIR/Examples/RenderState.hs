@@ -28,8 +28,6 @@ module FIR.Examples.RenderState
 -- base
 import Prelude
   hiding ( Num(..), Fractional(..), Floating(..) )
-import Data.Coerce
-  ( coerce )
 import Data.Maybe
   ( fromMaybe )
 import Data.Monoid

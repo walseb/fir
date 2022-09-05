@@ -103,6 +103,13 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
+import qualified Vulkan as Vulkan.PhysicalDevice
+  ( PhysicalDeviceAccelerationStructureFeaturesKHR(..)
+  , PhysicalDeviceVulkan12Features(..) )
+import qualified Vulkan as Vulkan.Surface
+  ( SurfaceFormatKHR(..) )
 import qualified Vulkan.CStruct.Extends as Vulkan
 import qualified Vulkan.Requirement     as Vulkan
 import qualified Vulkan.Zero            as Vulkan
@@ -291,36 +298,21 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
     rtDevFeats =
       [ Vulkan.RequireDeviceFeature
           { Vulkan.featureName = "accelerationStructure"
-          , Vulkan.checkFeature =
-              ( Vulkan.accelerationStructure
-                  :: Vulkan.PhysicalDeviceAccelerationStructureFeaturesKHR -> Bool
-              )
+          , Vulkan.checkFeature = Vulkan.PhysicalDevice.accelerationStructure
           , Vulkan.enableFeature = \ accelFeats ->
-             accelFeats
-               { Vulkan.accelerationStructure = True }
-                 :: Vulkan.PhysicalDeviceAccelerationStructureFeaturesKHR 
+             accelFeats { Vulkan.PhysicalDevice.accelerationStructure = True }
           }
       , Vulkan.RequireDeviceFeature
           { Vulkan.featureName = "bufferDeviceAddress"
-          , Vulkan.checkFeature =
-              ( Vulkan.bufferDeviceAddress
-                  :: Vulkan.PhysicalDeviceVulkan12Features -> Bool
-              )
+          , Vulkan.checkFeature = Vulkan.PhysicalDevice.bufferDeviceAddress
           , Vulkan.enableFeature = \ feats ->
-             feats
-               { Vulkan.bufferDeviceAddress = True }
-                 :: Vulkan.PhysicalDeviceVulkan12Features
+             feats { Vulkan.PhysicalDevice.bufferDeviceAddress = True }
           }
       , Vulkan.RequireDeviceFeature
           { Vulkan.featureName = "descriptorIndexing"
-          , Vulkan.checkFeature =
-              ( Vulkan.descriptorIndexing
-                  :: Vulkan.PhysicalDeviceVulkan12Features -> Bool
-              )
+          , Vulkan.checkFeature = Vulkan.PhysicalDevice.descriptorIndexing
           , Vulkan.enableFeature = \ feats ->
-             feats
-               { Vulkan.descriptorIndexing = True }
-                 :: Vulkan.PhysicalDeviceVulkan12Features
+             feats { Vulkan.PhysicalDevice.descriptorIndexing = True }
           }
       ]
     rtReqs = case vulkanReqs of
@@ -383,8 +375,8 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
     let
 
       width, height :: Num a => a
-      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
-      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      width  = fromIntegral $ Vulkan.Extent2D.width  swapchainExtent
+      height = fromIntegral $ Vulkan.Extent2D.height swapchainExtent
 
       extent3D, mipExtent3D :: Vulkan.Extent3D
       extent3D
@@ -401,7 +393,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
             }
 
       colFmt :: Vulkan.Format
-      colFmt = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
+      colFmt = Vulkan.Surface.format surfaceFormat
 
     swapchainImagesAndViews <-
       for swapchainImages \swapchainImage -> do
@@ -505,7 +497,7 @@ rayTracing = runVulkan ( initialState, CameraIsLocked False ) do
         , accelResource    = StageFlags $
                              Vulkan.SHADER_STAGE_RAYGEN_BIT_KHR
                          .|. Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
-        , luminaireIDs     = StageFlags 
+        , luminaireIDs     = StageFlags
                              Vulkan.SHADER_STAGE_CLOSEST_HIT_BIT_KHR
         , missData         = StageFlags $
                              Vulkan.SHADER_STAGE_MISS_BIT_KHR

@@ -23,12 +23,8 @@ module CodeGen.Array
   where
 
 -- base
-import Prelude
-  ( ($), Bool(..) )
 import Data.Type.Equality
   ( (:~:)(Refl) )
-import Data.Word
-  ( Word32 )
 import GHC.TypeLits
   ( KnownSymbol )
 import GHC.TypeNats
@@ -58,6 +54,7 @@ import FIR.AST.Type
   ( Eff )
 import FIR.Binding
   ( Var, RW )
+import FIR.Prelude
 import FIR.Prim.Array
   ( Array )
 import FIR.Prim.Types

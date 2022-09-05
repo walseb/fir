@@ -90,6 +90,10 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
+import qualified Vulkan as Vulkan.Surface
+  ( SurfaceFormatKHR(..) )
 import qualified Vulkan.Exception as Vulkan
 import qualified Vulkan.Zero      as Vulkan
 
@@ -393,8 +397,8 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
       swapchainImagesJulia = swapchainImages swapchainInfoJulia
 
       width, height :: Num a => a
-      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtentJulia
-      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtentJulia
+      width  = fromIntegral $ Vulkan.Extent2D.width  swapchainExtentJulia
+      height = fromIntegral $ Vulkan.Extent2D.height swapchainExtentJulia
 
       extent3D :: Vulkan.Extent3D
       extent3D
@@ -405,7 +409,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
             }
 
       colFmt :: Vulkan.Format
-      colFmt = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormatJulia
+      colFmt = Vulkan.Surface.format surfaceFormatJulia
 
     renderPass <- logDebug "Creating a render pass" *>
       simpleRenderPass deviceJulia

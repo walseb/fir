@@ -39,8 +39,6 @@ module Vulkan.Resource
   ) where
 
 -- base
-import Control.Arrow
-  ( first )
 import Data.Bits
   ( (.|.) )
 import Data.Coerce
@@ -84,7 +82,7 @@ import Control.Monad.Log
 
 -- resourcet
 import Control.Monad.Trans.Resource
-  ( ResourceT, ReleaseKey, allocate )
+  ( ReleaseKey, allocate )
 
 -- text-short
 import Data.Text.Short
@@ -112,6 +110,8 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.DescriptorSet
+  ( WriteDescriptorSet(..) )
 import qualified Vulkan.CStruct.Extends as Vulkan
   ( SomeStruct(SomeStruct) )
 import qualified Vulkan.Zero as Vulkan
@@ -655,7 +655,7 @@ instance
     Vulkan.SomeStruct $
       ( mkDescriptorWrite descriptorSet ( descriptorType @TLAS ) bindingNumber [] Nothing
         :: Vulkan.WriteDescriptorSet '[] )
-        { Vulkan.next = ( accelWrite, () ) }
+        { Vulkan.DescriptorSet.next = ( accelWrite, () ) }
       where
         accelWrite :: Vulkan.WriteDescriptorSetAccelerationStructureKHR
         accelWrite = Vulkan.WriteDescriptorSetAccelerationStructureKHR

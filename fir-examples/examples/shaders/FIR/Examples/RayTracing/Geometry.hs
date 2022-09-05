@@ -12,15 +12,13 @@
 
 module FIR.Examples.RayTracing.Geometry
   ( Geometry(..)
-  , HittableGeometry(..)
+  , HittableGeometry(..), AABBFunction
   , occlusionClosestHitShader, primaryClosestHitShader
   )
   where
 
 -- base
 import qualified Prelude
-import Data.Kind
-  ( Type )
 import Data.Proxy
   ( Proxy(..) )
 import Data.Type.Bool

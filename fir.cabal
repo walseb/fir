@@ -1,6 +1,6 @@
 cabal-version:  3.0
 name:           fir
-version:        0.0.1.0
+version:        0.1.0.0
 synopsis:       An EDSL that compiles to SPIR-V for graphics programming on the GPU in Haskell.
 category:       Graphics
 author:         Sam Derbyshire
@@ -96,7 +96,7 @@ common common
 
   build-depends:
         base
-          >= 4.13     && < 4.17
+          >= 4.13     && < 4.18
       , bytestring
           >= 0.10.9.0 && < 0.12
       , directory
@@ -110,7 +110,7 @@ common test
       , process
           ^>= 1.6.3.0
       , text
-          ^>= 1.2.3.1
+           >= 1.2.3.1 && < 2.1
 
 library
 
@@ -188,6 +188,7 @@ library
       , FIR.Layout
       , FIR.Module
       , FIR.Pipeline
+      , FIR.Prelude
       , FIR.Prim.Array
       , FIR.Prim.Image
       , FIR.Prim.RayTracing
@@ -264,13 +265,13 @@ library
       , haskus-utils-variant
           >= 3.0 && < 3.3
       , lens
-          >= 4.18     && < 5.1
+          >= 4.18     && < 5.3
       , mtl
           ^>= 2.2.2
       , split
           >= 0.2.3.3  && < 0.3
       , template-haskell
-          >= 2.15     && < 2.19
+          >= 2.15     && < 2.20
       , text-short
           >= 0.1.4    && < 0.2
       , transformers
@@ -321,7 +322,7 @@ test-suite fir-tests
     build-depends:
         fir
       , Cabal
-          >= 3.0.0.0 && < 3.5
+          >= 3.0.0.0 && < 3.9
 
     default-language:
         Haskell2010

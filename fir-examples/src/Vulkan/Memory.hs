@@ -19,7 +19,7 @@ import Control.Monad
 import Data.Bits
   ( (.&.), testBit )
 import Data.Word
-  ( Word32, Word64 )
+  ( Word32 )
 
 -- resourcet
 import Control.Monad.Trans.Resource
@@ -33,6 +33,8 @@ import qualified Data.Vector as Boxed.Vector
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Memory
+  ( MemoryRequirements(..) )
 
 -- fir-examples
 import Vulkan.Monad
@@ -61,7 +63,7 @@ allocateMemory physicalDevice device memReqs memFlags allocateFlags = do
           i = fromIntegral i_int
         guard
           ( testBit
-              ( ( Vulkan.memoryTypeBits :: Vulkan.MemoryRequirements -> Word32 ) memReqs )
+              ( Vulkan.Memory.memoryTypeBits memReqs )
               i_int
           )
         guard ( Vulkan.propertyFlags memoryType .&. memFlags >= memFlags )
@@ -90,7 +92,7 @@ allocateMemory physicalDevice device memReqs memFlags allocateFlags = do
       allocateInfo =
         Vulkan.MemoryAllocateInfo
           { Vulkan.next            = ( allocateFlagsInfo, () )
-          , Vulkan.allocationSize  = ( Vulkan.size :: Vulkan.MemoryRequirements -> Word64 ) memReqs
+          , Vulkan.allocationSize  = Vulkan.Memory.size memReqs
           , Vulkan.memoryTypeIndex = memoryTypeIndex
           }
 

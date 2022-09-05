@@ -50,6 +50,8 @@ import qualified Data.Vector.Storable as Storable.Vector
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
 import qualified Vulkan.Zero as Vulkan
 
 -- fir-examples
@@ -165,8 +167,8 @@ writeScreenshotData screenshotPath device extent2D screenshotImageMemory = liftI
 
   let
     imageWidth, imageHeight :: Num a => a
-    imageWidth  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) extent2D
-    imageHeight = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) extent2D
+    imageWidth  = fromIntegral $ Vulkan.Extent2D.width  extent2D
+    imageHeight = fromIntegral $ Vulkan.Extent2D.height extent2D
     size = 4 * imageWidth * imageHeight
 
     -- image data is stored in BGRA component order,

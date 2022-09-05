@@ -27,8 +27,6 @@ module FIR.Examples.RayTracing.Luminaire
 -- base
 import qualified Prelude
   ( Show, Eq, Ord )
-import Data.Kind
-  ( Type )
 import Data.Typeable
   ( Typeable )
 

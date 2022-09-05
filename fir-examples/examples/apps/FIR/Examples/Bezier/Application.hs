@@ -65,6 +65,10 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
+import qualified Vulkan as Vulkan.Surface
+  ( SurfaceFormatKHR(..) )
 import qualified Vulkan.Zero as Vulkan
 
 -- fir
@@ -246,8 +250,8 @@ bezier = runVulkan bezierInitialState do
     let
 
       width, height :: Num a => a
-      width  = fromIntegral $ ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) swapchainExtent
-      height = fromIntegral $ ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) swapchainExtent
+      width  = fromIntegral $ Vulkan.Extent2D.width  swapchainExtent
+      height = fromIntegral $ Vulkan.Extent2D.height swapchainExtent
 
       extent3D :: Vulkan.Extent3D
       extent3D
@@ -258,7 +262,7 @@ bezier = runVulkan bezierInitialState do
             }
 
       colFmt, depthFmt :: Vulkan.Format
-      colFmt   = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormat
+      colFmt   = Vulkan.Surface.format surfaceFormat
       depthFmt = Vulkan.FORMAT_D32_SFLOAT
 
       depthImageInfo :: ImageInfo

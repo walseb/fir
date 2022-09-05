@@ -20,8 +20,6 @@ module FIR.Examples.RayTracing.Material
   where
 
 -- base
-import Data.Kind
-  ( Type )
 import Data.Proxy
   ( Proxy(..) )
 import Data.Typeable

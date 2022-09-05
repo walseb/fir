@@ -1,53 +1,61 @@
 packages: .
           ../../fir
 
-constraints:
-  sdl2 +no-linear
+package sdl2
+  flags: +no-linear
 
-allow-newer:
-  unix-compat:time
+package dear-imgui
+  flags: +sdl2 -glfw -opengl2 -opengl3 +vulkan -examples
 
 -- GHC package environment files needed to be able to load shaders in GHCi
 -- (using 'cabal repl' loads the whole project, which is not wanted when reloading shaders)
 write-ghc-environment-files: always
 
-
--- GHC 9.0 patches
 allow-newer:
-    *:base
-  , *:ghc
-  , *:ghc-prim
-  , *:template-haskell
-  , *:lens
-  , lens:Cabal
-  , ghc-typelits-natnormalise:ghc-bignum
-  , sdl2:bytestring
+    constraints-extras:base
+  , constraints-extras:template-haskell
+  , dear-imgui:base
+  , dear-imgui:template-haskell
+  , dependent-sum:some
+  , generic-lens:text
+  , generic-monoid:base
+  , logging-effect:base
+  , logging-effect:text
+  , typelits-witnesses:base
+
+constraints:
+  dependent-sum >= 0.7.1.0
+
+-----------------------------
+-- GHC 9.4 support patches --
+-----------------------------
 
 source-repository-package
   type: git
-  location: https://github.com/haskellari/some
-  tag: 22bee3ef18a5b3093ba568268a07762e6a58b723
+  location: https://github.com/clash-lang/ghc-typelits-natnormalise
+  tag: d5c54fd59a258b566a8e885aef82cb69fa99c9e2
 
 source-repository-package
   type: git
-  location: https://github.com/tfausak/unix-compat
-  tag: 154c3a63f154cb49c51d5f9d13488e8119631d8a
+  location: https://github.com/clash-lang/ghc-typelits-knownnat
+  tag: 634b0c076e5cf6ce24d80fa845121b38ec9efe01
 
-source-repository-package
-  type: git
-  location: https://github.com/sheaf/generic-lens
-  tag: c265eb236c8264a8a06241d6ea04443a6803c92c
+--source-repository-package
+--  type: git
+--  location: https://github.com/sheaf/vulkan-1
+--  tag: 5e952d2750197b882a66fdfb5ce4f9bb24be6029
+--  subdir: utils
+
+-----------------------------
+-- GHC 9.2 support patches --
+-----------------------------
 
 source-repository-package
   type: git
   location: https://github.com/sheaf/typelits-witnesses
   tag: 5db7b553a3bf2c5bb98da0abf3ab37115c078df9
 
--- Crucial bug fix for GHC 9.2 (alignment error)
 source-repository-package
   type: git
-  location: https://github.com/haskell-game/sdl2
-  tag: e9b0b6910b10de44c26d99dcb0b144299970f56b
-
-package dear-imgui
-  flags: +sdl2 -glfw -opengl2 -opengl3 +vulkan -examples
+  location: https://github.com/sheaf/generic-lens
+  tag: c265eb236c8264a8a06241d6ea04443a6803c92c

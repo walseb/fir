@@ -22,6 +22,7 @@
 {-# LANGUAGE RebindableSyntax           #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE StandaloneKindSignatures   #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilyDependencies     #-}
 {-# LANGUAGE TypeOperators              #-}
@@ -160,7 +161,8 @@ infixr 3 :.
 -- Represented as a linked list.
 data V :: Nat -> Type -> Type where
   VNil :: V 0 a
-  (:.) :: a -> V n a -> V (1+n) a
+  (:.) :: (1 <= m, m ~ (1+n), n ~ (m-1))
+       => a -> V n a -> V m a
 
 deriving stock instance Functor     (V n)
 deriving stock instance Foldable    (V n)
@@ -344,7 +346,7 @@ buildV f = go @0
 
 -- | Dependent fold of a vector.
 -- Folds a vector with a function whose type depends on the index.
-dfoldrV :: forall n a b. KnownNat n 
+dfoldrV :: forall n a b. KnownNat n
         => (forall k. (KnownNat k, k+1 <= n) => a -> b k -> b (k+1)) -- ^ Function used to fold.
         -> b 0   -- ^ Starting value.
         -> V n a -- ^ Vector to fold.
@@ -416,9 +418,7 @@ fromHListVec (ConsReplication repl) (x :> xs) = x :. fromHListVec repl xs
 toHListVec :: Replication n a rs -> V n a -> HList rs
 toHListVec NilReplication         _         = HNil
 toHListVec (ConsReplication repl) (x :. xs) = x :> toHListVec repl xs
-#if !MIN_VERSION_base(4,16,0)
 toHListVec (ConsReplication _   ) VNil      = error "impossible"
-#endif
 
 instance GradedSemigroup (V 0 a) Nat where
   type Grade Nat (V 0 a) i = V i a

@@ -139,6 +139,8 @@ import qualified Data.Vector.Sized as Boxed.Sized.Vector
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan.CStruct.Extends as Vulkan
+  ( SomeStruct(SomeStruct) )
 import qualified Vulkan.Zero as Vulkan
 
 -- fir
@@ -255,7 +257,7 @@ buildScene physicalDevice device commandPool queue
       emitterBLASInfos <-
         ifor sceneEmitters
           \ i ( EmitterObject samplingMethod ( sGeom :: STriangleQ geom ) geomData ( pLum :: Proxy lum ) lumWeight lumProps ( pMat :: Proxy mat ) matProps ) -> do
-    
+
             ( ( ( emitterGeom, nbGeoms :: Int ), ( _ :: GeometryKind ), geomIndex ), buildRange ) <-
               case sGeom of
                 STriangle    -> buildTriangleGeometry   physicalDevice device [0,1,2] geomData
@@ -505,7 +507,7 @@ buildTriangleGeometry physicalDevice device indices geomData = do
       ( fromIntegral $ 4 * nbIndices )
   indsBufferAddress <- Vulkan.getBufferDeviceAddress device ( Vulkan.BufferDeviceAddressInfo indsBuffer )
   let
-    trianglesData :: Vulkan.AccelerationStructureGeometryTrianglesDataKHR
+    trianglesData :: Vulkan.AccelerationStructureGeometryTrianglesDataKHR '[]
     trianglesData = Vulkan.AccelerationStructureGeometryTrianglesDataKHR
       { Vulkan.vertexFormat  = Vulkan.FORMAT_R32G32B32_SFLOAT
       , Vulkan.vertexData    = Vulkan.DeviceAddressConst trisBufferAddress
@@ -514,11 +516,12 @@ buildTriangleGeometry physicalDevice device indices geomData = do
       , Vulkan.indexType     = Vulkan.INDEX_TYPE_UINT32
       , Vulkan.indexData     = Vulkan.DeviceAddressConst indsBufferAddress
       , Vulkan.transformData = Vulkan.zero
+      , Vulkan.next          = Vulkan.zero
       }
     geometry :: Vulkan.AccelerationStructureGeometryKHR
     geometry = Vulkan.AccelerationStructureGeometryKHR
       { Vulkan.geometryType = Vulkan.GEOMETRY_TYPE_TRIANGLES_KHR
-      , Vulkan.geometry     = Vulkan.Triangles trianglesData
+      , Vulkan.geometry     = Vulkan.Triangles (Vulkan.SomeStruct trianglesData)
       , Vulkan.flags        = Vulkan.GEOMETRY_OPAQUE_BIT_KHR
       }
     buildRangeInfo :: Vulkan.AccelerationStructureBuildRangeInfoKHR
@@ -526,7 +529,7 @@ buildTriangleGeometry physicalDevice device indices geomData = do
       { Vulkan.primitiveCount  = fromIntegral nbGeoms
       , Vulkan.primitiveOffset = 0
       , Vulkan.firstVertex     = 0
-      , Vulkan.transformOffset = 0 
+      , Vulkan.transformOffset = 0
       }
   pure ( ( ( geometry, nbGeoms ), Triangle, geomIndex ), buildRangeInfo )
 

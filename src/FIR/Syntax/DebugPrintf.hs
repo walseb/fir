@@ -1,16 +1,17 @@
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE DerivingStrategies     #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MagicHash              #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE PatternSynonyms        #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE DataKinds               #-}
+{-# LANGUAGE DerivingStrategies      #-}
+{-# LANGUAGE FlexibleContexts        #-}
+{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE FunctionalDependencies  #-}
+{-# LANGUAGE MagicHash               #-}
+{-# LANGUAGE OverloadedStrings       #-}
+{-# LANGUAGE PatternSynonyms         #-}
+{-# LANGUAGE PolyKinds               #-}
+{-# LANGUAGE ScopedTypeVariables     #-}
+{-# LANGUAGE TypeFamilyDependencies  #-}
+{-# LANGUAGE TypeOperators           #-}
+{-# LANGUAGE UndecidableInstances    #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 {-|
 Module: FIR.Syntax.DebugPrintf

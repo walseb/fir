@@ -85,6 +85,11 @@ import qualified Data.Vector.Sized as V
 
 -- vulkan
 import qualified Vulkan
+import qualified Vulkan as Vulkan.Extent2D
+  ( Extent2D(..) )
+import qualified Vulkan as Vulkan.Surface
+  ( SurfaceFormatKHR(..)
+  , SurfaceCapabilitiesKHR(..) )
 import qualified Vulkan.CStruct.Extends as Vulkan
   ( SomeStruct(SomeStruct) )
 import qualified Vulkan.Zero as Vulkan
@@ -216,7 +221,7 @@ chooseSwapchainFormat
       case sortOn ( Down . score ) ( Boxed.Vector.toList surfaceFormats ) of
         [] -> error "No formats found."
         ( best : _ )
-          | Vulkan.FORMAT_UNDEFINED <- ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) best
+          | Vulkan.FORMAT_UNDEFINED <- Vulkan.Surface.format best
             -> pure preferredFormat
           | otherwise
             -> pure best
@@ -246,17 +251,17 @@ createSwapchain physicalDevice device surface surfaceFormat imageUsage = do
 
   let
     minImageCount, maxImageCount, imageCount :: Word32
-    minImageCount = ( Vulkan.minImageCount :: Vulkan.SurfaceCapabilitiesKHR -> Word32 ) surfaceCapabilities
-    maxImageCount = ( Vulkan.maxImageCount :: Vulkan.SurfaceCapabilitiesKHR -> Word32 ) surfaceCapabilities
+    minImageCount = Vulkan.Surface.minImageCount surfaceCapabilities
+    maxImageCount = Vulkan.Surface.maxImageCount surfaceCapabilities
     imageCount
       | maxImageCount == 0 = minImageCount + 1 -- no maximum
       | otherwise = min ( minImageCount + 1 ) maxImageCount
 
     currentExtent :: Vulkan.Extent2D
-    currentExtent = ( Vulkan.currentExtent :: Vulkan.SurfaceCapabilitiesKHR -> Vulkan.Extent2D ) surfaceCapabilities
+    currentExtent = Vulkan.Surface.currentExtent surfaceCapabilities
 
     currentTransform :: Vulkan.SurfaceTransformFlagBitsKHR
-    currentTransform = ( Vulkan.currentTransform :: Vulkan.SurfaceCapabilitiesKHR -> Vulkan.SurfaceTransformFlagBitsKHR ) surfaceCapabilities
+    currentTransform = Vulkan.Surface.currentTransform surfaceCapabilities
 
     swapchainCreateInfo :: Vulkan.SwapchainCreateInfoKHR '[]
     swapchainCreateInfo =
@@ -265,8 +270,8 @@ createSwapchain physicalDevice device surface surfaceFormat imageUsage = do
         , Vulkan.flags                 = Vulkan.zero
         , Vulkan.surface               = Vulkan.SurfaceKHR surface
         , Vulkan.minImageCount         = imageCount
-        , Vulkan.imageFormat           = ( Vulkan.format     :: Vulkan.SurfaceFormatKHR -> Vulkan.Format        ) surfaceFormat
-        , Vulkan.imageColorSpace       = ( Vulkan.colorSpace :: Vulkan.SurfaceFormatKHR -> Vulkan.ColorSpaceKHR ) surfaceFormat
+        , Vulkan.imageFormat           = Vulkan.Surface.format     surfaceFormat
+        , Vulkan.imageColorSpace       = Vulkan.Surface.colorSpace surfaceFormat
         , Vulkan.imageExtent           = currentExtent
         , Vulkan.imageArrayLayers      = 1
         , Vulkan.imageUsage            = imageUsage
@@ -306,8 +311,8 @@ createFramebuffer dev renderPass extent attachments = snd <$> Vulkan.withFramebu
         , Vulkan.flags       = Vulkan.zero
         , Vulkan.renderPass  = renderPass
         , Vulkan.attachments = Boxed.Vector.fromList . toList $ attachments
-        , Vulkan.width       = ( Vulkan.width  :: Vulkan.Extent2D -> Word32 ) extent
-        , Vulkan.height      = ( Vulkan.height :: Vulkan.Extent2D -> Word32 ) extent
+        , Vulkan.width       = Vulkan.Extent2D.width  extent
+        , Vulkan.height      = Vulkan.Extent2D.height extent
         , Vulkan.layers      = 1
         }
 
