@@ -366,12 +366,13 @@ createGraphicsPipeline device renderPass
       colorBlendState :: Vulkan.PipelineColorBlendStateCreateInfo '[]
       colorBlendState =
         Vulkan.PipelineColorBlendStateCreateInfo
-          { Vulkan.next           = ()
-          , Vulkan.flags          = Vulkan.zero
-          , Vulkan.logicOpEnable  = False
-          , Vulkan.logicOp        = Vulkan.LOGIC_OP_COPY
-          , Vulkan.blendConstants = ( 0, 0, 0, 0 )
-          , Vulkan.attachments    = Boxed.Vector.singleton attachmentState
+          { Vulkan.next            = ()
+          , Vulkan.flags           = Vulkan.zero
+          , Vulkan.logicOpEnable   = False
+          , Vulkan.logicOp         = Vulkan.LOGIC_OP_COPY
+          , Vulkan.blendConstants  = ( 0, 0, 0, 0 )
+          , Vulkan.attachments     = Boxed.Vector.singleton attachmentState
+          , Vulkan.attachmentCount = 1
           }
 
       nullStencilOp :: Vulkan.StencilOpState

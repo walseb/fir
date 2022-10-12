@@ -81,6 +81,8 @@ import qualified Vulkan
 import qualified Vulkan.CStruct.Extends as Vulkan
   ( SomeStruct(SomeStruct) )
 import qualified Vulkan.Zero as Vulkan
+import qualified Vulkan.Extensions.VK_KHR_acceleration_structure
+  as Vulkan.AS
 
 -- fir
 import FIR
@@ -462,7 +464,7 @@ buildAccelerationStructuresDevice physicalDevice device commandPool queue asType
             Vulkan.MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
             physicalDevice device
             ( const ( pure () ) )
-            ( Vulkan.buildScratchSize buildSizes )
+            ( Vulkan.AS.buildScratchSize buildSizes )
     scratchBufferAddress <- Vulkan.getBufferDeviceAddress device ( Vulkan.BufferDeviceAddressInfo scratchBuffer )
     logDebug ( "Scratch buffer device address is " <> ShortText.pack ( show scratchBufferAddress ) )
     -- Now create the acceleration structure.
