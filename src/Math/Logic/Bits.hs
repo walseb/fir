@@ -43,20 +43,9 @@ module Math.Logic.Bits
 
 -- base
 import Prelude
-  ( Bool(..)
-  , Int, Word, Float, Double
-  , (.), ($)
-  )
+  ( Int, Word )
 import qualified Prelude
 import qualified Data.Bits as Base
-import Data.Coerce
-  ( coerce )
-import Data.Int
-  ( Int8,Int16,Int32,Int64 )
-import Data.Kind
-  ( Type )
-import Data.Word
-  ( Word8,Word16,Word32,Word64 )
 import Foreign.C.Types
 import GHC.Float
   ( castWord32ToFloat , castFloatToWord32
@@ -70,6 +59,7 @@ import Numeric.Half
 -- fir
 import Deriving.Base
   ( Base(..) ) -- newtype for deriving via base instances
+import FIR.Prelude
 import Math.Algebra.Class
   ( Integral )
 

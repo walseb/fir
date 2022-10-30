@@ -47,6 +47,7 @@ allTests
           [ ( "Def"      , Validate )
           , ( "Loop1"    , Validate )
           , ( "Loop2"    , Validate )
+          , ( "Loop3"    , Validate )
           , ( "Selection", Validate )
           , ( "Switch"   , Validate )
           ]

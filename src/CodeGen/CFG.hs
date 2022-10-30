@@ -1,17 +1,21 @@
-{-# LANGUAGE BlockArguments       #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE NamedFieldPuns       #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE PatternSynonyms      #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TupleSections        #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE NamedWildCards        #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PatternSynonyms       #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
+
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
 {-|
 Module: CodeGen.CFG
@@ -100,7 +104,7 @@ import CodeGen.Monad
 import CodeGen.Phi
   ( phiInstruction, phiInstructions )
 import CodeGen.State
-  ( CGState(earlyExits, localBindings)
+  ( CGState(localBindings)
   , ContinueOrMergeID(..), LoopBlockIDs(..)
   , _currentBlock, _loopBlockIDs, _earlyExit, _earlyExits
   , _localBindings, _localBinding
@@ -415,7 +419,7 @@ while mbCond loopBody = do
     -- Perform code-generation for the loop block.
     --
     -- Factored out because we do this code-generation twice.
-    codeGenLoop :: CGMonad ()
+    codeGenLoop :: CGMonad ( Map ID ( ContinueOrMergeID, Map ShortText (ID, SPIRV.PrimTy) ) )
     codeGenLoop = do
       early <- use _earlyExit
       block loopBlockID
@@ -463,7 +467,9 @@ while mbCond loopBody = do
 
       branch headerBlockID
 
-    dryRunLoopGenOutput :: Either ShortText ((), CGState, ByteString)
+      return loopEarlyExits
+
+    dryRunLoopGenOutput :: Either ShortText (_earlyExits, CGState, ByteString)
     dryRunLoopGenOutput = runCGMonad ctxt state codeGenLoop
 
   dryRunLoopEndState
@@ -526,9 +532,8 @@ while mbCond loopBody = do
   -- but this time with updated local bindings referring to the ϕ-instructions
   put state
   assign _localBindings updatedLocalBindings
-  _ <- codeGenLoop
+  finalEarlyExits <- codeGenLoop
   put headerEndState -- account for what happened in the loop header (e.g. IDs of ϕ-instructions)
-  bonafideEndState <- get
 
   -- merge block (first block after the loop)
   block mergeBlockID
@@ -556,7 +561,7 @@ while mbCond loopBody = do
             | mergeID' == mergeBlockID
             -> Just earlyExitBds
           _ -> Nothing
-      $ earlyExits bonafideEndState
+      $ finalEarlyExits
 
   phiBindings <- case predMergeBindings of
     [] -> pure Map.empty
