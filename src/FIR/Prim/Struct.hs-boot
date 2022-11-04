@@ -1,16 +1,17 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE RoleAnnotations       #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE AllowAmbiguousTypes    #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE RoleAnnotations        #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module FIR.Prim.Struct where
 
@@ -29,6 +30,8 @@ import Data.Type.Known
   ( Demote )
 import Data.Type.Map
   ( (:->) )
+import FIR.AST.Type
+  ( AugType(Val) )
 
 ------------------------------------------------------------
 -- structs
@@ -52,3 +55,13 @@ class (Show (Demote fld), Typeable fld) => StructFieldKind fld where
 instance StructFieldKind Symbol where
 instance StructFieldKind (LocationSlot Nat) where
 instance {-# OVERLAPPABLE #-} (Show (Demote fld), Typeable fld) => StructFieldKind fld where
+
+class Typeable bs =>
+        ASTStructFields
+          ( ast :: ( AugType -> Type ) )
+          ( as :: [ Symbol :-> Type ] )
+          ( bs :: [ Symbol :-> Type ] )
+        | as -> bs, bs ast -> as where
+  traverseStructASTs
+    :: forall f b. Applicative f
+    => ( forall a. ast (Val a) -> f b ) -> Struct as -> f [b]

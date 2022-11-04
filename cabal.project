@@ -1,13 +1,24 @@
-packages: .
+packages: ., fir-examples
 
 -- GHC package environment files needed for running tests
 write-ghc-environment-files: always
 
+package sdl2
+  flags: +no-linear
+
+package dear-imgui
+  flags: +sdl2 -glfw -opengl2 -opengl3 +vulkan -examples
+
 allow-newer:
     constraints-extras:base
   , constraints-extras:template-haskell
+  , dear-imgui:base
+  , dear-imgui:template-haskell
   , dependent-sum:some
+  , generic-lens:text
   , generic-monoid:base
+  , logging-effect:base
+  , logging-effect:text
   , typelits-witnesses:base
 
 constraints:
@@ -30,12 +41,12 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/clash-lang/ghc-typelits-natnormalise
-  tag: d5c54fd59a258b566a8e885aef82cb69fa99c9e2
+  tag: 64f3fe6bbc1a3c8d729ede7c9f14b158e2a12641
 
 source-repository-package
   type: git
   location: https://github.com/clash-lang/ghc-typelits-knownnat
-  tag: 634b0c076e5cf6ce24d80fa845121b38ec9efe01
+  tag: 1bc4ee33e005e96d1f7785c715588a289707cd48
 
 -----------------------------
 -- GHC 9.2 support patches --
@@ -45,3 +56,8 @@ source-repository-package
   type: git
   location: https://github.com/sheaf/typelits-witnesses
   tag: 5db7b553a3bf2c5bb98da0abf3ab37115c078df9
+
+source-repository-package
+  type: git
+  location: https://github.com/sheaf/generic-lens
+  tag: c265eb236c8264a8a06241d6ea04443a6803c92c

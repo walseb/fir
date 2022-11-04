@@ -1,12 +1,13 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE RoleAnnotations     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies        #-}
-{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE AllowAmbiguousTypes      #-}
+{-# LANGUAGE DataKinds                #-}
+{-# LANGUAGE FlexibleInstances        #-}
+{-# LANGUAGE GADTs                    #-}
+{-# LANGUAGE PolyKinds                #-}
+{-# LANGUAGE RoleAnnotations          #-}
+{-# LANGUAGE ScopedTypeVariables      #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE TypeFamilies             #-}
+{-# LANGUAGE TypeOperators            #-}
 
 module FIR.Prim.Types where
 
@@ -15,6 +16,10 @@ import Data.Kind
   ( Type )
 import Data.Typeable
   ( Typeable )
+
+-- text-short
+import Data.Text.Short
+  ( ShortText )
 
 -- fir
 import {-# SOURCE #-} Control.Type.Optic
@@ -27,8 +32,12 @@ import Data.Type.Known
   ( Known )
 import Data.Type.Map
   ( (:->)((:->)) )
+import {-# SOURCE #-} FIR.AST
+import FIR.AST.Type
+  ( AugType(Val) )
 import {-# SOURCE #-} FIR.Prim.Struct
   ( StructFieldKind )
+import qualified SPIRV.Decoration as SPIRV
 import qualified SPIRV.PrimTy   as SPIRV
 import qualified SPIRV.ScalarTy as SPIRV
 
@@ -72,6 +81,10 @@ type role SPrimTyMap nominal
 class    (Typeable as, StructFieldKind fld) => PrimTyMap (as :: [fld :-> Type]) where
   primTyMapSing :: SPrimTyMap as
 
+primTyMap :: forall (fld :: Type) (flds :: [fld :-> Type])
+          .  PrimTyMap flds
+          => [ (Maybe ShortText, SPIRV.PrimTy, SPIRV.Decorations) ]
+
 instance StructFieldKind fld => PrimTyMap ('[] :: [fld :-> Type]) where
 
 instance forall ( fld :: Type           )
@@ -85,3 +98,21 @@ instance forall ( fld :: Type           )
         , PrimTyMap as
         )
        => PrimTyMap ((k ':-> a) ': as) where
+
+
+type SPrimFunc :: (Type -> Type) -> Type
+data SPrimFunc :: (Type -> Type) -> Type where
+type role SPrimFunc nominal
+
+type DistDict :: (Type -> Type) -> Type -> Type
+data DistDict f a where
+type role DistDict nominal nominal
+
+class ( Applicative f
+    --, forall a. (Syntactic a, Internal a ~ Val va, PrimTy va) => Syntactic (f a)
+      ) => PrimFunc f where
+  primFuncSing :: SPrimFunc f
+  distDict     :: ( Syntactic a, Internal a ~ Val va, PrimTy va )
+               => DistDict f a
+
+primFuncName :: forall f. PrimFunc f => String

@@ -1,18 +1,19 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE InstanceSigs          #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE AllowAmbiguousTypes      #-}
+{-# LANGUAGE DataKinds                #-}
+{-# LANGUAGE FlexibleContexts         #-}
+{-# LANGUAGE FlexibleInstances        #-}
+{-# LANGUAGE GADTs                    #-}
+{-# LANGUAGE InstanceSigs             #-}
+{-# LANGUAGE MultiParamTypeClasses    #-}
+{-# LANGUAGE PolyKinds                #-}
 --{-# LANGUAGE QuantifiedConstraints #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE RankNTypes               #-}
+{-# LANGUAGE ScopedTypeVariables      #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE TypeApplications         #-}
+{-# LANGUAGE TypeFamilies             #-}
+{-# LANGUAGE TypeOperators            #-}
+{-# LANGUAGE UndecidableInstances     #-}
 
 {-|
 Module: FIR.Prim.Types
@@ -144,7 +145,8 @@ showSScalarTy SDouble = "Double"
 type ScalarFromTy (ty :: Type)
   = ( ScalarFromSScalar ( ScalarTySing ty ) :: SPIRV.ScalarTy )
 
-type family ScalarFromSScalar (sTy :: SScalarTy ty) :: SPIRV.ScalarTy where
+type ScalarFromSScalar :: SScalarTy ty -> SPIRV.ScalarTy
+type family ScalarFromSScalar sTy where
   ScalarFromSScalar SWord8  = SPIRV.Integer Unsigned W8
   ScalarFromSScalar SWord16 = SPIRV.Integer Unsigned W16
   ScalarFromSScalar SWord32 = SPIRV.Integer Unsigned W32
@@ -266,6 +268,7 @@ data SKPrimTyMap :: [fld :-> Type] -> Type where
   SKNil :: SKPrimTyMap '[]
   SKCons :: SKPrimTy a -> SKPrimTyMap as -> SKPrimTyMap ((k ':-> a) ': as)
 
+type ScalarTySing :: forall (ty :: Type) -> SScalarTy ty
 type family ScalarTySing (ty :: Type) :: SScalarTy ty where
   ScalarTySing Word8  = SWord8
   ScalarTySing Word16 = SWord16
@@ -282,6 +285,7 @@ type family ScalarTySing (ty :: Type) :: SScalarTy ty where
     = TypeError
       ( Text "Type " :<>: ShowType a :<>: Text " is not a valid scalar type." )
 
+type PrimTySing :: forall (ty :: Type) -> SKPrimTy ty
 type family PrimTySing (ty :: Type) :: SKPrimTy ty where
   PrimTySing ()     = SKUnit
   PrimTySing Bool   = SKBool
@@ -306,7 +310,8 @@ type family PrimTySing (ty :: Type) :: SKPrimTy ty where
     = TypeError
         ( Text "Type " :<>: ShowType ty :<>: Text " is not a valid primitive type." )
 
-type family MapPrimTySing (as :: [fld :-> Type]) :: SKPrimTyMap as where
+type MapPrimTySing :: forall (as :: [fld :-> Type]) -> SKPrimTyMap as
+type family MapPrimTySing as where
   MapPrimTySing '[] = SKNil
   MapPrimTySing ( ( k ':-> a) ': as)
     = SKCons (PrimTySing a) (MapPrimTySing as)
@@ -657,7 +662,8 @@ instance (KnownInterfaceBinding bd, KnownInterface bds)
 ------------------------------------------------------------
 -- functors
 
-data SPrimFunc :: (Type -> Type) -> Type where
+type SPrimFunc :: (Type -> Type) -> Type
+data SPrimFunc f where
   SFuncVector  :: KnownNat n => SPrimFunc (V n)
   SFuncMatrix  :: (KnownNat m, KnownNat n) => SPrimFunc (M m n)
   SFuncArray   :: KnownNat n => SPrimFunc (Array n)
@@ -665,6 +671,7 @@ data SPrimFunc :: (Type -> Type) -> Type where
 -- explicit dictionary passing workaround
 -- would like to use a quantified constraint instead
 -- (see (GHC issue #17226)[https://gitlab.haskell.org/ghc/ghc/issues/17226])
+type DistDict :: (Type -> Type) -> Type -> Type
 data DistDict f a where
   DistDict
     :: ( Syntactic a, Internal a ~ Val va

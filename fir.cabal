@@ -263,7 +263,7 @@ library
       , half
           ^>= 0.3
       , haskus-utils-variant
-          >= 3.0 && < 3.3
+          >= 3.0 && < 3.4
       , lens
           >= 4.18     && < 5.3
       , mtl
@@ -281,7 +281,7 @@ library
       , typelits-witnesses
           >= 0.2.3    && < 0.5
       , vector
-          ^>= 0.12.0.3
+          >= 0.12.0.3 && < 0.14
       , vector-sized
           ^>= 1.4.0.0
 
