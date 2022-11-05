@@ -471,7 +471,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
       swapchainImagesMap = swapchainImages swapchainInfoMap
 
       colFmtMap :: Vulkan.Format
-      colFmtMap = ( Vulkan.format :: Vulkan.SurfaceFormatKHR -> Vulkan.Format ) surfaceFormatMap
+      colFmtMap = Vulkan.Surface.format surfaceFormatMap
 
     renderPassMap <- logDebug "Creating a render pass for map" *>
       simpleRenderPass deviceMap
