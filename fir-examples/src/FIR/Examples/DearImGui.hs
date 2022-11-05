@@ -24,6 +24,10 @@ import GHC.TypeLits
 -- dear-imgui
 import qualified DearImGui
 
+-- text
+import Data.Text
+  ( Text )
+
 -- transformers
 import Control.Monad.IO.Class
   ( MonadIO(liftIO) )
@@ -40,7 +44,7 @@ data Controller range dyn where
   DiscreteSlider :: Controller (Int,   Int)   Int32
   Toggle         :: Controller ()             Int32
 
-createController :: MonadIO m => String -> Controller range dyn -> range -> IORef dyn -> m ()
+createController :: MonadIO m => Text -> Controller range dyn -> range -> IORef dyn -> m ()
 createController controllerName controllerType range ref =
   case controllerType of
     Slider ->
@@ -80,9 +84,9 @@ data ControllerRef = InitValue | Ref | Value
 type ControllerData :: ControllerRef -> Type -> Type -> Type
 type family ControllerData ref range dyn where
   -- | (name, controller, range, initial value)
-  ControllerData 'InitValue range dyn = ( String, Controller range dyn, range, dyn )
+  ControllerData 'InitValue range dyn = ( Text, Controller range dyn, range, dyn )
   -- | (name, controller, range, ref value)
-  ControllerData 'Ref       range dyn = ( String, Controller range dyn, range, IORef dyn )
+  ControllerData 'Ref       range dyn = ( Text, Controller range dyn, range, IORef dyn )
   -- | the value
   ControllerData 'Value     _     dyn = dyn
 
@@ -94,7 +98,7 @@ instance ControllerInitValues '[] '[] where
   controllerInitValues _ = End
 instance ( ControllerInitValues as bs
          , k1 ~ k2
-         , v ~ ( String, Controller range dyn, range, dyn )
+         , v ~ ( Text, Controller range dyn, range, dyn )
          , r ~ dyn
          )
       => ControllerInitValues ( ( k1 ':-> v ) ': as ) ( ( k2 ':-> r ) ': bs )
@@ -112,8 +116,8 @@ instance CreateControllerRefs '[] '[] where
   createControllerRefs _ = pure End
 instance ( CreateControllerRefs as bs
          , k1 ~ k2
-         , v ~ ( String, Controller range dyn, range, dyn )
-         , r ~ ( String, Controller range dyn, range, IORef dyn )
+         , v ~ ( Text, Controller range dyn, range, dyn )
+         , r ~ ( Text, Controller range dyn, range, IORef dyn )
          )
       => CreateControllerRefs ( ( k1 ':-> v ) ': as ) ( ( k2 ':-> r ) ': bs )
       where
@@ -129,7 +133,7 @@ class CreateControllers as where
 instance CreateControllers '[] where
   createControllers _ = pure ()
 instance ( CreateControllers as
-         , r ~ ( String, Controller range dyn, range, IORef dyn )
+         , r ~ ( Text, Controller range dyn, range, IORef dyn )
          )
       => CreateControllers ( ( k ':-> r ) ': as )
       where
@@ -144,7 +148,7 @@ instance ReadControllers '[] '[] where
   readControllers _ = pure End
 instance ( ReadControllers as bs
          , k1 ~ k2
-         , r ~ ( String, Controller range dyn, range, IORef dyn )
+         , r ~ ( Text, Controller range dyn, range, IORef dyn )
          , b ~ dyn
          )
       => ReadControllers ( ( k1 ':-> r ) ': as ) ( ( k2 ':-> b ) ': bs )

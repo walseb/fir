@@ -70,6 +70,10 @@ import qualified SDL.Raw.Timer as SDL hiding (delay)
 import qualified SDL.Raw.Video as SDL (getWindowDisplayIndex)
 import qualified SDL.Internal.Types (Window(..))
 
+-- text
+import qualified Data.Text as Text
+  ( pack )
+
 -- text-short
 import Data.Text.Short
   ( ShortText )
@@ -787,7 +791,7 @@ toy = runVulkan (ToyRenderState nullInput nullInput) do
         began <- ImGui.begin "Shader toy!"
         when began do
           -- TODO: hide fps when isPaused
-          ImGui.text $ "FPS: " <> show fps
+          ImGui.text $ "FPS: " <> Text.pack ( show fps )
           -- TODO: enable pause button with https://gitlab.com/sheaf/fir/-/merge_requests/21
           -- ImGui.button (if isPaused then "Play" else "Pause") >>= \case
           --  False -> return ()

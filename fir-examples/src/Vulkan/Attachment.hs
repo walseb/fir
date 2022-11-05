@@ -147,7 +147,7 @@ preservedColorAttachmentDescription colorFormat =
         , storeOp        = Vulkan.ATTACHMENT_STORE_OP_STORE
         , stencilLoadOp  = Vulkan.ATTACHMENT_LOAD_OP_DONT_CARE
         , stencilStoreOp = Vulkan.ATTACHMENT_STORE_OP_DONT_CARE
-        , initialLayout  = Vulkan.IMAGE_LAYOUT_UNDEFINED
+        , initialLayout  = Vulkan.IMAGE_LAYOUT_PREINITIALIZED
         , finalLayout    = Vulkan.IMAGE_LAYOUT_PRESENT_SRC_KHR
         }
 
