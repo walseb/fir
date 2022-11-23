@@ -383,6 +383,32 @@ executable Kerr
   build-depends:
     kerr-shaders
 
+-----------------------------------
+-- Klein
+
+library klein-shaders
+
+  import: shaders-common
+
+  exposed-modules:
+    FIR.Examples.Klein.Shaders
+
+executable Klein
+
+  import: apps-common
+
+  main-is:
+    Main.hs
+
+  other-modules:
+    FIR.Examples.Klein.Application
+
+  hs-source-dirs:
+    examples/exes/Klein
+
+  build-depends:
+    klein-shaders
+
 
 -----------------------------------
 -- Logo
