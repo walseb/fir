@@ -310,7 +310,7 @@ type family PrimTySing (ty :: Type) :: SKPrimTy ty where
     = TypeError
         ( Text "Type " :<>: ShowType ty :<>: Text " is not a valid primitive type." )
 
-type MapPrimTySing :: forall (as :: [fld :-> Type]) -> SKPrimTyMap as
+type MapPrimTySing :: forall fld. forall (as :: [fld :-> Type]) -> SKPrimTyMap as
 type family MapPrimTySing as where
   MapPrimTySing '[] = SKNil
   MapPrimTySing ( ( k ':-> a) ': as)
