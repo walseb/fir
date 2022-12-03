@@ -35,20 +35,6 @@ source-repository-package
   tag: 8a69e7bc8873c04d5b671271c2dbdf759f405a56
 
 -----------------------------
--- GHC 9.4 support patches --
------------------------------
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/ghc-typelits-natnormalise
-  tag: 64f3fe6bbc1a3c8d729ede7c9f14b158e2a12641
-
-source-repository-package
-  type: git
-  location: https://github.com/clash-lang/ghc-typelits-knownnat
-  tag: 1bc4ee33e005e96d1f7785c715588a289707cd48
-
------------------------------
 -- GHC 9.2 support patches --
 -----------------------------
 
