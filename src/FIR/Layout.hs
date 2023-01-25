@@ -57,6 +57,7 @@ module FIR.Layout
   , Poke(..), pokeArrayOff, pokeArray
   , inferPointerLayout
   , roundUp, nextAligned
+  , primTySizeAndAli
   )
   where
 
