@@ -14,11 +14,15 @@ allow-newer:
   , constraints-extras:template-haskell
   , dear-imgui:base
   , dear-imgui:template-haskell
+  , dear-imgui:transformers
   , dependent-sum:some
   , generic-lens:text
   , generic-monoid:base
   , logging-effect:base
   , logging-effect:text
+  , logging-effect:transformers
+  , logging-effect:free
+  , logging-effect:mtl
   , typelits-witnesses:base
 
 constraints:

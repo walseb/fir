@@ -28,7 +28,7 @@ common base-common
 
     build-depends:
         base
-          >= 4.13     && < 4.18
+          >= 4.13     && < 4.19
       , directory
           ^>= 1.3.3.0
       , filepath
@@ -36,13 +36,13 @@ common base-common
       , finite-typelits
           ^>= 0.1.4.2
       , template-haskell
-          >= 2.15     && < 2.20
+          >= 2.15     && < 2.21
       , text-short
           >= 0.1.4    && < 0.2
       , vector
           >= 0.12.0.3 && < 0.14
       , vector-sized
-          ^>= 1.4.0.0
+          >= 1.4.0.0  && < 1.6
 
     default-language:
       Haskell2010
@@ -76,7 +76,7 @@ common vulkan-common
     , sdl2
         >= 2.5.0 && <= 2.6
     , transformers
-        ^>= 0.5.6.2
+        >= 0.5.6.2 && < 0.7
     , vulkan
         >= 3.23 && < 3.24
 
@@ -188,7 +188,7 @@ library
       , fsnotify
           ^>= 0.3.0.1
       , mtl
-          ^>= 2.2.2
+          >= 2.2.2 && < 2.4
       , stm
           ^>= 2.5.0.0
       , unliftio-core
@@ -487,7 +487,7 @@ library raytracing-shaders
 
   build-depends:
     bifunctors
-      >= 5.5.4 && < 5.6
+      >= 5.5.4 && < 5.7
 
 executable RayTracing
 
