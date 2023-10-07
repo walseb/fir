@@ -686,7 +686,7 @@ instance ( KnownNat m
 instance ( KnownNat n, 1 <= n
          , KnownNat m, 1 <= m
          , Replicated (m*n-1) a rs
-         , Length rs ~ (n*m-1)
+         , Length rs ~ (n*m-1), (1 + Length rs) ~ (n*m)
          , 1 <= (n*m), (m*n) ~ (n*m)     -- help the natnormalise plugin along...
          , Replicate (n*m) a ~ (a ': rs) -- type checker unfortunately can't deduce this
          )

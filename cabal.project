@@ -29,6 +29,15 @@ constraints:
   dependent-sum >= 0.7.1.0
 
 -----------------------------
+-- GHC 9.8 support patches --
+-----------------------------
+
+source-repository-package
+  type: git
+  location: https://github.com/recursion-schemes/recursion-schemes.git
+  tag: cc2e88c3400a6548e975830c9addb12ab087545f
+
+-----------------------------
 -- GHC 9.6 support patches --
 -----------------------------
 

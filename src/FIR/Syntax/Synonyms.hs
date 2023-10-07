@@ -338,12 +338,14 @@ type family FieldRes ( k :: Symbol ) ( struct :: Type ) :: Type where
   FieldRes k (Code (Struct as)) = Code (Value (StructIndexFromName k as))
 
 type family Field ( k :: Symbol ) :: Optic '[] struct (FieldRes k struct) where
-  Field k = ( Field_ (k :: Symbol)
-              :: Optic '[] (Struct as) (FieldRes k (Struct as))
-            )
-  Field k = ( Field_ (k :: Symbol)
-              :: Optic '[] (Code (Struct as)) (FieldRes k (Code (Struct as)))
-            )
+  forall as k.
+    Field k = ( Field_ (k :: Symbol)
+                :: Optic '[] (Struct as) (FieldRes k (Struct as))
+              )
+  forall as k.
+    Field k = ( Field_ (k :: Symbol)
+                :: Optic '[] (Code (Struct as)) (FieldRes k (Code (Struct as)))
+              )
 
 -- internal synonyms to help inference in subsequent definitions
 type Col_  (i :: Nat) = ( Index i :: Optic '[] (M m n a) (V m a) )
@@ -360,32 +362,39 @@ type family EltRes (t :: Type) :: Type where
   EltRes (Code (Array n a)) = Code a
 
 type family Elts = ( optic :: Optic '[] t (EltRes t) ) where
-  Elts = ( OfType (EltRes t) :: Optic '[] t (EltRes t) )
+  forall t.
+    Elts = ( OfType (EltRes t) :: Optic '[] t (EltRes t) )
 
 type family ColRes (mat :: Type) :: Type where
   ColRes (Code (M m n a)) = Code (V m a)
   ColRes (M m n a) = V m a
 
 type family Col (i :: Nat) = ( optic :: Optic '[] mat (ColRes mat) ) | optic -> i where
-  Col i = ( Col__ i :: Optic '[] (Code (M m n a)) (Code (V m a)) )
-  Col i = ( Col_ i :: Optic '[] (M m n a) (V m a) )
+  forall m n a i.
+    Col i = ( Col__ i :: Optic '[] (Code (M m n a)) (Code (V m a)) )
+  forall m n a i.
+    Col i = ( Col_ i :: Optic '[] (M m n a) (V m a) )
 
 type family Cols = ( optic :: Optic '[] mat (ColRes mat) ) where
-  Cols = ( OfType (ColRes mat) :: Optic '[] mat (ColRes mat) )
+  Cols @mat = ( OfType (ColRes mat) :: Optic '[] mat (ColRes mat) )
 
 type family RowRes (mat :: Type) :: Type where
   RowRes (M m n a) = V n a
   RowRes (Code (M m n a)) = Code (V n a)
 
 type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
-  Row i = ( Prod_
+  forall m a i.
+    Row i
+        = ( Prod_
               (   (Col__ 0 :.: Ix__ i)
               :*: (Col__ 1 :.: Ix__ i)
               :*: EndProd
               )
             :: Optic '[] (Code (M m 2 a)) (Code (V 2 a))
           )
-  Row i = ( Prod_
+  forall m a i.
+    Row i
+        = ( Prod_
               (   (Col__ 0 :.: Ix__ i)
               :*: (Col__ 1 :.: Ix__ i)
               :*: (Col__ 2 :.: Ix__ i)
@@ -393,7 +402,9 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
               )
             :: Optic '[] (Code (M m 3 a)) (Code (V 3 a))
           )
-  Row i = ( Prod_
+  forall m a i.
+    Row i
+        = ( Prod_
               (   (Col__ 0 :.: Ix__ i)
               :*: (Col__ 1 :.: Ix__ i)
               :*: (Col__ 2 :.: Ix__ i)
@@ -402,14 +413,18 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
               )
             :: Optic '[] (Code (M m 4 a)) (Code (V 4 a))
           )
-  Row i = ( Prod_
+  forall m a i.
+    Row i
+        = ( Prod_
               (   (Col_ 0 :.: Ix_ i)
               :*: (Col_ 1 :.: Ix_ i)
               :*: EndProd
               )
             :: Optic '[] (M m 2 a) (V 2 a)
           )
-  Row i = ( Prod_
+  forall m a i.
+    Row i
+        = ( Prod_
               (   (Col_ 0 :.: Ix_ i)
               :*: (Col_ 1 :.: Ix_ i)
               :*: (Col_ 2 :.: Ix_ i)
@@ -417,7 +432,9 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
               )
             :: Optic '[] (M m 3 a) (V 3 a)
           )
-  Row i = ( Prod_
+  forall m a i.
+    Row i
+       = ( Prod_
               (   (Col_ 0 :.: Ix_ i)
               :*: (Col_ 1 :.: Ix_ i)
               :*: (Col_ 2 :.: Ix_ i)
@@ -428,32 +445,44 @@ type family Row (i :: Nat) = ( optic :: Optic '[] mat (RowRes mat) ) where
          )
 
 type family Rows = ( optic :: Optic '[] mat (RowRes mat) ) where
-  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: EndProd )
+  forall n a.
+    Rows
+       = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: EndProd )
                 :: Optic '[] (M 2 n a) (Struct '[ "row0" ':-> V n a, "row1" ':-> V n a]) )
            :.: OfType (V n a)
            ) :: Optic '[] (M 2 n a) (V n a)
          )
-  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: EndProd )
+  forall n a.
+    Rows
+       = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: EndProd )
                 :: Optic '[] (M 3 n a) (Struct '[ "row0" ':-> V n a, "row1" ':-> V n a, "row2" ':-> V n a]) )
            :.: OfType (V n a)
            ) :: Optic '[] (M 3 n a) (V n a)
          )
-  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: Row 3 :*: EndProd )
+  forall n a.
+    Rows
+       = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: Row 3 :*: EndProd )
                 :: Optic '[] (M 4 n a) (Struct '[ "row0" ':-> V n a, "row1" ':-> V n a, "row2" ':-> V n a, "row3" ':-> V n a ]) )
            :.: OfType (V n a)
            ) :: Optic '[] (M 4 n a) (V n a)
          )
-  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: EndProd )
+  forall n a.
+    Rows
+       = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: EndProd )
                 :: Optic '[] (Code (M 2 n a)) (Struct '[ "row0" ':-> Code (V n a), "row1" ':-> Code (V n a)]) )
            :.: OfType (Code (V n a))
            ) :: Optic '[] (Code (M 2 n a)) (Code (V n a))
          )
-  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: EndProd )
+  forall n a.
+    Rows
+       = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: EndProd )
                 :: Optic '[] (Code (M 3 n a)) (Struct '[ "row0" ':-> Code (V n a), "row1" ':-> Code (V n a), "row2" ':-> Code (V n a)]) )
            :.: OfType (Code (V n a))
            ) :: Optic '[] (Code (M 3 n a)) (Code (V n a))
          )
-  Rows = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: Row 3 :*: EndProd )
+  forall n a.
+    Rows
+       = ( ( ( Prod_ ( Row 0 :*: Row 1 :*: Row 2 :*: Row 3 :*: EndProd )
                 :: Optic '[] (Code (M 4 n a)) (Struct '[ "row0" ':-> Code (V n a), "row1" ':-> Code (V n a), "row2" ':-> Code (V n a), "row3" ':-> Code (V n a)]) )
            :.: OfType (Code (V n a))
            ) :: Optic '[] (Code (M 4 n a)) (Code (V n a))
@@ -464,65 +493,74 @@ type family EntryRes (mat :: Type) :: Type where
   EntryRes (Code (M m n a)) = Code a
 
 type family Entry (i :: Nat) (j :: Nat) = ( optic :: Optic '[] mat (EntryRes mat)) where
-  Entry i j = ( ( Col_  j :.: Ix_  i ) :: Optic '[] (M m n a) a )
-  Entry i j = ( ( Col__ j :.: Ix__ i ) :: Optic '[] (Code (M m n a)) (Code a) )
+  forall m n a i j.
+    Entry i j = ( ( Col_  j :.: Ix_  i ) :: Optic '[] (M m n a) a )
+  forall m n a i j.
+    Entry i j = ( ( Col__ j :.: Ix__ i ) :: Optic '[] (Code (M m n a)) (Code a) )
 
 type family DiagRes (mat :: Type) :: Type where
   DiagRes (M n n a) = V n a
   DiagRes (Code (M n n a)) = Code (V n a)
 
 type family Diag :: Optic '[] mat (DiagRes mat) where
-  Diag = ( Prod_
-              (   (Col_ 0 :.: Ix_ 0)
-              :*: (Col_ 1 :.: Ix_ 1)
-              :*: EndProd
-              )
-            :: Optic '[] (M 2 2 a) (V 2 a)
-         )
-  Diag = ( Prod_
-              (   (Col_ 0 :.: Ix_ 0)
-              :*: (Col_ 1 :.: Ix_ 1)
-              :*: (Col_ 2 :.: Ix_ 2)
-              :*: EndProd
-              )
-            :: Optic '[] (M 3 3 a) (V 3 a)
-         )
-  Diag = ( Prod_
-              (   (Col_ 0 :.: Ix_ 0)
-              :*: (Col_ 1 :.: Ix_ 1)
-              :*: (Col_ 2 :.: Ix_ 2)
-              :*: (Col_ 3 :.: Ix_ 3)
-              :*: EndProd
-              )
-            :: Optic '[] (M 4 4 a) (V 4 a)
-         )
-  Diag = ( Prod_
-              (   (Col__ 0 :.: Ix__ 0)
-              :*: (Col__ 1 :.: Ix__ 1)
-              :*: EndProd
-              )
-            :: Optic '[] (Code (M 2 2 a)) (Code (V 2 a))
-         )
-  Diag = ( Prod_
-              (   (Col__ 0 :.: Ix__ 0)
-              :*: (Col__ 1 :.: Ix__ 1)
-              :*: (Col__ 2 :.: Ix__ 2)
-              :*: EndProd
-              )
-            :: Optic '[] (Code (M 3 3 a)) (Code (V 3 a))
-         )
-  Diag = ( Prod_
-              (   (Col__ 0 :.: Ix__ 0)
-              :*: (Col__ 1 :.: Ix__ 1)
-              :*: (Col__ 2 :.: Ix__ 2)
-              :*: (Col__ 3 :.: Ix__ 3)
-              :*: EndProd
-              )
-            :: Optic '[] (Code (M 4 4 a)) (Code (V 4 a))
-         )
+  forall a.
+    Diag = ( Prod_
+                (   (Col_ 0 :.: Ix_ 0)
+                :*: (Col_ 1 :.: Ix_ 1)
+                :*: EndProd
+                )
+              :: Optic '[] (M 2 2 a) (V 2 a)
+           )
+  forall a.
+    Diag = ( Prod_
+                (   (Col_ 0 :.: Ix_ 0)
+                :*: (Col_ 1 :.: Ix_ 1)
+                :*: (Col_ 2 :.: Ix_ 2)
+                :*: EndProd
+                )
+              :: Optic '[] (M 3 3 a) (V 3 a)
+           )
+  forall a.
+    Diag = ( Prod_
+                (   (Col_ 0 :.: Ix_ 0)
+                :*: (Col_ 1 :.: Ix_ 1)
+                :*: (Col_ 2 :.: Ix_ 2)
+                :*: (Col_ 3 :.: Ix_ 3)
+                :*: EndProd
+                )
+              :: Optic '[] (M 4 4 a) (V 4 a)
+           )
+  forall a.
+    Diag = ( Prod_
+                (   (Col__ 0 :.: Ix__ 0)
+                :*: (Col__ 1 :.: Ix__ 1)
+                :*: EndProd
+                )
+              :: Optic '[] (Code (M 2 2 a)) (Code (V 2 a))
+           )
+  forall a.
+    Diag = ( Prod_
+                (   (Col__ 0 :.: Ix__ 0)
+                :*: (Col__ 1 :.: Ix__ 1)
+                :*: (Col__ 2 :.: Ix__ 2)
+                :*: EndProd
+                )
+              :: Optic '[] (Code (M 3 3 a)) (Code (V 3 a))
+           )
+  forall a.
+    Diag = ( Prod_
+                (   (Col__ 0 :.: Ix__ 0)
+                :*: (Col__ 1 :.: Ix__ 1)
+                :*: (Col__ 2 :.: Ix__ 2)
+                :*: (Col__ 3 :.: Ix__ 3)
+                :*: EndProd
+                )
+              :: Optic '[] (Code (M 4 4 a)) (Code (V 4 a))
+           )
 
 type family Center :: Optic '[] mat (EntryRes mat) where
-  Center = ( ( ( Diag :: Optic '[] mat (DiagRes mat) )
+  Center @mat
+         = ( ( ( Diag :: Optic '[] mat (DiagRes mat) )
                :.:
                ( OfType (EntryRes mat) :: Optic '[] (DiagRes mat) (EntryRes mat) )
              ) :: Optic '[] mat (EntryRes mat)

@@ -139,20 +139,21 @@ type family ImageTexel
               )
             | optic -> k
             where
-  ImageTexel k
-    = ( ( ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
-          `ComposeO`
-          ( RTOptic_
-              :: Optic
-                  '[ ImageOperands props ops, imgCds ]
-                  ( Image props )
-                  ( ImageTexelType props ops )
-          )
-        ) :: Optic
-              '[ ImageOperands props ops, imgCds ]
-              i
-              (ImageTexelType props ops)
-      )
+  forall i props ops imgCds k.
+    ImageTexel k
+      = ( ( ( Field_ (k :: Symbol) :: Optic '[] i (Image props) )
+            `ComposeO`
+            ( RTOptic_
+                :: Optic
+                    '[ ImageOperands props ops, imgCds ]
+                    ( Image props )
+                    ( ImageTexelType props ops )
+            )
+          ) :: Optic
+                '[ ImageOperands props ops, imgCds ]
+                i
+                (ImageTexelType props ops)
+        )
 
 ----------------------------------------------------
 -- instances for this particular 'ghost' composite
