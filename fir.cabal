@@ -101,6 +101,12 @@ flag internals
                use the internals of FIR rather than end users writing shader
                programs.
 
+flag sop
+
+  manual: True
+  default: False
+  description: This flag exposes a module with Syntactic instances for generics-sop.
+
 
 common common
 
@@ -142,6 +148,10 @@ library
       , FIR.Syntax.Labels
       , Math.Linear
       , Math.Quaternion
+
+    if flag(sop)
+        exposed-modules:
+            , FIR.Generics
 
     if flag(internals)
         exposed-modules:
@@ -406,6 +416,13 @@ library
           >= 0.12.0.3 && < 0.14
       , vector-sized
           >= 1.4.0.0  && < 1.6
+
+    if flag(sop)
+        build-depends:
+          , generics-sop
+              >= 0.4 && < 0.5.2
+          , sop-core
+              >= 0.4 && < 0.5.1
 
     default-language:
         Haskell2010

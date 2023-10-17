@@ -9,6 +9,7 @@
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -31,6 +32,8 @@ import Data.Foldable
   ( toList )
 import Data.Kind
   ( Type )
+import GHC.TypeLits
+  ( Symbol )
 import Data.Proxy
   ( Proxy )
 import Data.Word
@@ -41,6 +44,7 @@ import GHC.TypeNats
   ( KnownNat, natVal )
 import Numeric.Natural
   ( Natural )
+import Data.Type.Map
 
 -- containers
 import Data.Tree
@@ -230,9 +234,17 @@ data MatF ( ast :: AugType -> Type ) ( t :: AugType ) where
 -- | Construct a structure from statically-known parts.
 data StructF ( ast :: AugType -> Type ) ( t :: AugType ) where
   StructF
-    :: ( PrimTyMap bs, ASTStructFields ast as bs )
+    :: ( PrimTyMap bs, ASTStructFields ast as bs, bs ~ StructFResultFromArgs as, as ~ StructFArgsFromResult bs ast)
     => Struct as
     -> StructF ast ( Val (Struct bs) )
+
+type family StructFResultFromArgs (as :: [ Symbol :-> Type ]) :: [ Symbol :-> Type ] where
+  StructFResultFromArgs '[] = '[]
+  StructFResultFromArgs ((k ':-> ast (Val b)) : as) = ((k ':-> b) : StructFResultFromArgs as)
+
+type family StructFArgsFromResult (bs :: [ Symbol :-> Type ]) (ast :: AugType -> Type) :: [ Symbol :-> Type ] where
+  StructFArgsFromResult '[] ast = '[]
+  StructFArgsFromResult ((k ':-> b) : bs) ast = ((k ':-> ast (Val b)) : StructFArgsFromResult bs ast)
 
 -- | Construct an array from its components.
 data ArrayF ( ast :: AugType -> Type ) ( t :: AugType ) where
