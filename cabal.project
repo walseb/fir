@@ -1,4 +1,4 @@
-packages: ., fir-examples
+packages: .
 
 -- GHC package environment files needed for running tests
 write-ghc-environment-files: always
