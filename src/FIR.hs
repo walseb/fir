@@ -220,6 +220,9 @@ module FIR
   -- known
   , Data.Type.Known.Known(..)
   , Data.Type.Known.knownValue
+
+  -- Re-export of prelude and related functions
+  , module FIR.Prelude
   ) where
 
 -- base
