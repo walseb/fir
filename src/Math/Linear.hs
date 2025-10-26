@@ -233,6 +233,12 @@ instance (KnownNat n, Semigroup a) => Semigroup (V n a) where
 instance (KnownNat n, Monoid a) => Monoid (V n a) where
   mempty = pure mempty
 
+instance (KnownNat m, KnownNat n, Semigroup a) => Semigroup (M m n a) where
+  (<>) = liftA2 (<>)
+
+instance (KnownNat m, KnownNat n, Monoid a) => Monoid (M m n a) where
+  mempty = pure mempty
+
 headV :: (KnownNat n, 1 <= n) => V n a -> a
 headV (a :. _) = a
 
