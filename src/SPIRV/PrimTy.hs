@@ -105,22 +105,23 @@ pattern PointerTy storage ty = PtrTy (Pointer storage ty)
 
 
 tyOp :: PrimTy -> Operation
-tyOp Unit                  = TypeVoid
-tyOp Boolean               = TypeBool
-tyOp (Scalar Integer   {}) = TypeInt
-tyOp (Scalar Floating  {}) = TypeFloat
-tyOp Vector             {} = TypeVector
-tyOp Matrix             {} = TypeMatrix
-tyOp Array              {} = TypeArray
-tyOp RuntimeArray       {} = TypeRuntimeArray
-tyOp Struct             {} = TypeStruct
-tyOp Function           {} = TypeFunction
-tyOp Pointer            {} = TypePointer
-tyOp Image              {} = TypeImage
-tyOp Sampler               = TypeSampler
-tyOp SampledImage       {} = TypeSampledImage
-tyOp AccelerationStructure = TypeAccelerationStructure
-tyOp RayQuery              = TypeRayQuery
+tyOp Unit                    = TypeVoid
+tyOp Boolean                 = TypeBool
+tyOp (Scalar Integer   {})   = TypeInt
+tyOp (Scalar Floating  {})   = TypeFloat
+tyOp (Vector _ (Vector _ _)) = TypeMatrix
+tyOp Vector             {}   = TypeVector
+tyOp Matrix             {}   = TypeMatrix
+tyOp Array              {}   = TypeArray
+tyOp RuntimeArray       {}   = TypeRuntimeArray
+tyOp Struct             {}   = TypeStruct
+tyOp Function           {}   = TypeFunction
+tyOp Pointer            {}   = TypePointer
+tyOp Image              {}   = TypeImage
+tyOp Sampler                 = TypeSampler
+tyOp SampledImage       {}   = TypeSampledImage
+tyOp AccelerationStructure   = TypeAccelerationStructure
+tyOp RayQuery                = TypeRayQuery
 
 scalars :: PrimTy -> [ ScalarTy ]
 scalars Unit                     = [ ]
